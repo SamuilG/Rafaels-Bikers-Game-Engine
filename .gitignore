@@ -8,7 +8,6 @@ a1-vulkan-base/lib/
 *.d
 
 # Executables
-*.exe
 *.out
 *.app
 
