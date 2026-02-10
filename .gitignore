@@ -1,0 +1,25 @@
+# Build directories
+a1-vulkan-base/_build_/
+a1-vulkan-base/bin/
+a1-vulkan-base/lib/
+
+# Object files and dependencies
+*.o
+*.d
+
+# Executables
+*.exe
+*.out
+*.app
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Build system
+Makefile
+*.make
+
+*.frag.*
+*.vert.*
+temp*.txt
