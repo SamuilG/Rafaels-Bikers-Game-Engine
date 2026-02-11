@@ -12,6 +12,8 @@
 
 namespace lut = labut2;
 
+
+
 void record_commands( 
 	VkCommandBuffer aCmdBuff, 
 	VkPipeline aGraphicsPipe, 

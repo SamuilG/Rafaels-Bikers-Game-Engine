@@ -1,0 +1,25 @@
+# --- IDE & System ---
+.vs/
+.vscode/
+*.sln
+*.vcxproj
+*.user
+.DS_Store
+
+# --- Build & Output ---
+_build_/
+bin/
+lib/
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.cache
+
+# --- Project Specific Exceptions ---
+
+!premake5.exe
+
+# --- Temporary Files ---
+*.log
+*.tmp

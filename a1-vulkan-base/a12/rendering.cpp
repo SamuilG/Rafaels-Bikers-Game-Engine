@@ -4,12 +4,13 @@
 #include "../labut2/synch.hpp"
 #include "../labut2/error.hpp"
 #include "../labut2/to_string.hpp"
+#include "setup.hpp"	
 
 // multi-pass rendering
 // render scene to offscreen image
 // apply post processing and render to swapchain
 // function definition
-constexpr std::uint32_t kShadowMapResolution = 2048; // 2048 for high quality; also tested with lower values
+//Now change shadow map resolution in setup.hpp 
 
 void record_commands( VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipeline aAlphaPipe, ImageAndView const& aColorAttach, ImageAndView const& aDepthAttach, VkExtent2D const& aImageExtent, VkBuffer aSceneUBO, glsl::SceneUniform const& aSceneUniform, VkPipelineLayout aGraphicsLayout, VkDescriptorSet aSceneDescriptors, std::vector<lut::Buffer> const& aMeshPositions, std::vector<lut::Buffer> const& aMeshTexCoords, std::vector<lut::Buffer> const& aMeshNormals, std::vector<lut::Buffer> const& aMeshIndices, std::vector<BakedMeshData> const& aMeshInfos, std::vector<BakedMaterialInfo> const& aMaterials, std::vector<VkDescriptorSet> const& aMaterialDescriptors, VkPipeline aPostProcPipe, VkDescriptorSet aPostProcDescriptors, VkPipelineLayout aPostProcLayout, ImageAndView const& aOffscreenColor, VkClearColorValue aClearColor, VkPipeline aShadowPipe, ImageAndView const& aShadowMap )
 {

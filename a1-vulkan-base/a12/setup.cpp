@@ -1534,8 +1534,8 @@ lut::ImageWithView create_shadow_map( lut::VulkanWindow const& aWindow, lut::All
 	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	imageInfo.imageType = VK_IMAGE_TYPE_2D;
 	imageInfo.format = cfg::kShadowMapFormat; // D32_SFLOAT
-	imageInfo.extent.width = 2048; // resolution goes brrrr
-	imageInfo.extent.height = 2048;
+	imageInfo.extent.width = kShadowMapResolution; // resolution goes brrrr
+	imageInfo.extent.height = kShadowMapResolution;
 	imageInfo.extent.depth = 1;
 	imageInfo.mipLevels = 1;
 	imageInfo.arrayLayers = 1;
