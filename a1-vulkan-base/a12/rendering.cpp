@@ -82,6 +82,7 @@ void record_commands( VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipe
 		vkCmdSetScissor( aCmdBuff, 0, 1, &scissor );
 
 		vkCmdSetDepthBias( aCmdBuff, 1.25f, 0.f, 1.75f ); // bias
+		
 
 		// bind uniforms (set 0); light matrix
 		vkCmdBindDescriptorSets( aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr );
@@ -95,7 +96,7 @@ void record_commands( VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipe
 
 			vkCmdBindVertexBuffers( aCmdBuff, 0, 1, &aMeshPositions[i].buffer, &kZeroOffset );
 			vkCmdBindVertexBuffers( aCmdBuff, 1, 1, &aMeshTexCoords[i].buffer, &kZeroOffset );
-			vkCmdBindVertexBuffers( aCmdBuff, 2, 1, &aMeshNormals[i].buffer, &kZeroOffset );
+			//vkCmdBindVertexBuffers( aCmdBuff, 2, 1, &aMeshNormals[i].buffer, &kZeroOffset );
 			// shadowmap.vert defines location 0, 1, 2
 
 			vkCmdBindIndexBuffer( aCmdBuff, aMeshIndices[i].buffer, 0, VK_INDEX_TYPE_UINT32 );

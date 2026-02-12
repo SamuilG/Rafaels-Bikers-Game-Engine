@@ -19,7 +19,7 @@ lib/
 # --- Project Specific Exceptions ---
 
 !premake5.exe
-
+!glslc.exe
 # --- Temporary Files ---
 *.log
 *.tmp

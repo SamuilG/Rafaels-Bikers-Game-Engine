@@ -1512,6 +1512,7 @@ lut::Sampler create_shadow_sampler( lut::VulkanWindow const& aWindow )
 	samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
 	// outside shadow map = 1.0 (lit)
 	samplerInfo.compareEnable = VK_TRUE;
+
 	samplerInfo.compareOp = VK_COMPARE_OP_LESS;
 	// shadow test: ref < texture ?
 	samplerInfo.unnormalizedCoordinates = VK_FALSE;

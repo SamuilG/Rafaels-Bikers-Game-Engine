@@ -18,7 +18,7 @@ void main()
 	if (alpha < 0.5)
 	{
 		discard;
-	}
+	} 
 	
 	// no color output
 	// depth automatically
