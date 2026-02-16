@@ -363,7 +363,115 @@ namespace labut2
 
 	}
 
+	Image load_image_texture2d_from_memory(
+		void const* aPixels, std::uint32_t aWidth, std::uint32_t aHeight,
+		VulkanContext const& aContext, VkCommandPool aCmdPool,
+		Allocator const& aAllocator, VkFormat format)
+	{
+		//pixels size
+		std::size_t const size = std::size_t(aWidth) * std::size_t(aHeight) * 4;
 
+		// staging buffer
+		Buffer staging = create_buffer(
+			aAllocator, size,
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+		);
+
+		void* ptr = nullptr;
+		if (auto const res = vmaMapMemory(aAllocator.allocator, staging.allocation, &ptr); VK_SUCCESS != res)
+			throw Error("Mapping staging memory\nvmaMapMemory() returned {}", to_string(res));
+
+		std::memcpy(ptr, aPixels, size);
+
+		vmaUnmapMemory(aAllocator.allocator, staging.allocation);
+
+		// following is the same as load_image_texture2d 
+		Image image = create_image_texture2d(
+			aAllocator, aWidth, aHeight, format,
+			VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+		);
+
+		VkCommandBuffer cmdBuff = alloc_command_buffer(aContext, aCmdPool);
+		VkCommandBufferBeginInfo beginInfo{};
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+		vkBeginCommandBuffer(cmdBuff, &beginInfo);
+
+		image_barrier(cmdBuff, image.image,
+			VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, 1 }
+		);
+
+		VkBufferImageCopy copy{};
+		copy.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+		copy.imageExtent = { aWidth, aHeight, 1 };
+		vkCmdCopyBufferToImage(cmdBuff, staging.buffer, image.image,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+
+		std::uint32_t const mipLevels = compute_mip_level_count(aWidth, aHeight);
+
+		image_barrier(cmdBuff, image.image,
+			VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			VK_PIPELINE_STAGE_2_BLIT_BIT, VK_ACCESS_2_TRANSFER_READ_BIT,
+			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
+		);
+
+		for (std::uint32_t i = 1; i < mipLevels; ++i)
+		{
+			VkImageBlit blit{};
+			blit.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, i - 1, 0, 1 };
+			blit.srcOffsets[1] = {
+				std::max(1, std::int32_t(aWidth >> (i - 1))),
+				std::max(1, std::int32_t(aHeight >> (i - 1))), 1
+			};
+			blit.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, i, 0, 1 };
+			blit.dstOffsets[1] = {
+				std::max(1, std::int32_t(aWidth >> i)),
+				std::max(1, std::int32_t(aHeight >> i)), 1
+			};
+			vkCmdBlitImage(cmdBuff,
+				image.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+				image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				1, &blit, VK_FILTER_LINEAR);
+
+			image_barrier(cmdBuff, image.image,
+				VK_PIPELINE_STAGE_2_BLIT_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				VK_PIPELINE_STAGE_2_BLIT_BIT, VK_ACCESS_2_TRANSFER_READ_BIT,
+				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+				VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT, i, 1, 0, 1 }
+			);
+		}
+
+		image_barrier(cmdBuff, image.image,
+			VK_PIPELINE_STAGE_2_BLIT_BIT, VK_ACCESS_2_TRANSFER_READ_BIT,
+			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, mipLevels, 0, 1 }
+		);
+
+		vkEndCommandBuffer(cmdBuff);
+
+		Fence uploadComplete = create_fence(aContext.device);
+		VkCommandBufferSubmitInfo submit[1]{};
+		submit[0].sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+		submit[0].commandBuffer = cmdBuff;
+		VkSubmitInfo2 submitInfo{};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+		submitInfo.commandBufferInfoCount = 1;
+		submitInfo.pCommandBufferInfos = submit;
+		vkQueueSubmit2(aContext.graphicsQueue, 1, &submitInfo, uploadComplete.handle);
+		vkWaitForFences(aContext.device, 1, &uploadComplete.handle, VK_TRUE,
+			std::numeric_limits<std::uint64_t>::max());
+
+		return image;
+	}
 	std::uint32_t compute_mip_level_count( std::uint32_t aWidth, std::uint32_t aHeight )
 	{
 		std::uint32_t const bits = aWidth | aHeight;

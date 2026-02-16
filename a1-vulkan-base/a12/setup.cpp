@@ -4,6 +4,12 @@
 #include "../labut2/to_string.hpp"
 #include "../labut2/load.hpp"
 
+
+#include <glm/glm.hpp>
+#include <glm/gtx/transform.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
+
 lut::PipelineLayout create_triangle_pipeline_layout( lut::VulkanContext const& aContext, VkDescriptorSetLayout aSceneLayout, VkDescriptorSetLayout aObjectLayout )
 {
 	VkDescriptorSetLayout layouts[] = {
@@ -12,12 +18,19 @@ lut::PipelineLayout create_triangle_pipeline_layout( lut::VulkanContext const& a
 		aObjectLayout // set 1
 	};
 
+	//matrix calculate
+	VkPushConstantRange pushConstant{};
+	pushConstant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT; 
+	pushConstant.offset = 0;
+	pushConstant.size = sizeof(glm::mat4); 
+
+
 	VkPipelineLayoutCreateInfo layoutInfo{};
 	layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	layoutInfo.setLayoutCount = sizeof(layouts)/sizeof(layouts[0]); // updated!
-	layoutInfo.pSetLayouts = layouts; // updated!
-	layoutInfo.pushConstantRangeCount = 0;
-	layoutInfo.pPushConstantRanges = nullptr;
+	layoutInfo.setLayoutCount = sizeof(layouts)/sizeof(layouts[0]); 
+	layoutInfo.pSetLayouts = layouts; 
+	layoutInfo.pushConstantRangeCount = 1;
+	layoutInfo.pPushConstantRanges = &pushConstant;
 
 	VkPipelineLayout layout = VK_NULL_HANDLE;
 	if( auto const res = vkCreatePipelineLayout( aContext.device, &layoutInfo, nullptr, &layout ); VK_SUCCESS != res )

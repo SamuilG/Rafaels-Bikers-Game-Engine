@@ -37,7 +37,7 @@ using namespace labut2::literals;
 #include "../labut2/vulkan_window.hpp"
 namespace lut = labut2;
 
-#include "baked_model.hpp"
+#include "engine_model.hpp"
 #include "camera.hpp"
 #include "setup.hpp"
 #include "rendering.hpp"
@@ -54,7 +54,7 @@ namespace
 {
 	namespace local_cfg
 	{
-		constexpr char const* kBakedModelPath = "assets/a12/suntemple202526.comp5892mesh";
+		constexpr char const* SceneModel = "assets/a12/models/TScene.glb";
 	}
 
 	using Clock_ = std::chrono::steady_clock;
@@ -123,31 +123,60 @@ int main() try
 	// TexturedMesh planeMesh = create_plane_mesh( window, allocator );
 	// TexturedMesh spriteMesh = create_sprite_mesh( window, allocator );
 	
-	BakedModel model = load_baked_model( local_cfg::kBakedModelPath );
+	EngineModel model = load_engine_model_glb(local_cfg::SceneModel);
 
 	// textures
 	std::vector<lut::Image> modelTextures;
 	std::vector<lut::ImageView> modelTextureViews;
 
-	for( auto const& textureInfo : model.textures )
+
+	for (auto const& tex : model.textures)
 	{
-		glfwPollEvents(); 
+		glfwPollEvents();
 
-		VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
-		if ( textureInfo.space == ETextureSpace::srgb )
-		{
-			format = VK_FORMAT_R8G8B8A8_SRGB;
-
-		}
-
-		// use default label for now
-		modelTextures.emplace_back( lut::load_image_texture2d( textureInfo.path.c_str(), window, cpool.handle, allocator, format ) );
-		// modelTextureViews.emplace_back( lut::create_image_view_texture2d( window, modelTextures.back().image, VK_FORMAT_R8G8B8A8_UNORM ) );
-		modelTextureViews.emplace_back( lut::create_image_view_texture2d( window, modelTextures.back().image, format ) );
+		VkFormat format = (tex.space == ETextureSpace::srgb)
+			? VK_FORMAT_R8G8B8A8_SRGB
+			: VK_FORMAT_R8G8B8A8_UNORM;
 
 
+		//upload texture data to gpu memory
+		modelTextures.emplace_back(lut::load_image_texture2d_from_memory(
+			tex.pixels.data(),
+			static_cast<uint32_t>(tex.width),
+			static_cast<uint32_t>(tex.height),
+			window, cpool.handle, allocator, format
+		));
+
+		//Create an imageview so the shader samplers can interpret the image data
+		modelTextureViews.emplace_back(
+			lut::create_image_view_texture2d(window, modelTextures.back().image, format)
+		);
 	}
 	
+	//just for objects without texture to set a default texture
+	lut::Image defaultGrayTexture;
+	lut::ImageView defaultGrayTextureView;
+	{
+		// RGBA: 128, 128, 128, 255 (grey)
+		std::uint8_t pixelData[4] = { 128, 128, 128, 255 };
+
+		// uploda 1x1 pixel to GPU
+		defaultGrayTexture = lut::load_image_texture2d_from_memory(
+			pixelData,
+			1, 1,
+			window, cpool.handle, allocator,
+			VK_FORMAT_R8G8B8A8_UNORM
+		);
+
+		//create grey imageview
+		defaultGrayTextureView = lut::create_image_view_texture2d(
+			window,
+			defaultGrayTexture.image,
+			VK_FORMAT_R8G8B8A8_UNORM
+		);
+	}
+
+
 	// sampler
 	lut::Sampler defaultSampler = lut::create_default_sampler( window );
 	lut::Sampler debugSampler = create_debug_sampler( window );
@@ -158,22 +187,34 @@ int main() try
 	std::vector<VkDescriptorSet> materialDescriptors;
 	for( auto const& material : model.materials )
 	{
-		VkDescriptorSet desc = lut::alloc_desc_set( window, dpool.handle, objectLayout.handle );
-		
+		VkDescriptorSet desc = lut::alloc_desc_set(window, dpool.handle, objectLayout.handle);
+
+		//Base Color
+		VkImageView baseColorView = defaultGrayTextureView.handle;
+		if (material.baseColorTexture >= 0) {
+			baseColorView = modelTextureViews[material.baseColorTexture].handle;
+		}
+
+		// 2. Roughness / Metalness
+		//if roughness/metallic textures are missing, using gray (0.5 roughness/metal)
+		VkImageView mrView = defaultGrayTextureView.handle;
+		if (material.metalRoughTexture >= 0) {
+			mrView = modelTextureViews[material.metalRoughTexture].handle;
+		}
+
 		VkDescriptorImageInfo imageInfo{};
 		imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		imageInfo.imageView = modelTextureViews[material.baseColorTextureId].handle;
+		imageInfo.imageView = baseColorView; 
 		imageInfo.sampler = defaultSampler.handle;
-
 
 		VkDescriptorImageInfo roughInfo{};
 		roughInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		roughInfo.imageView = modelTextureViews[material.roughnessTextureId].handle;
+		roughInfo.imageView = mrView;        
 		roughInfo.sampler = defaultSampler.handle;
 
 		VkDescriptorImageInfo metalInfo{};
 		metalInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		metalInfo.imageView = modelTextureViews[material.metalnessTextureId].handle;
+		metalInfo.imageView = mrView;        
 		metalInfo.sampler = defaultSampler.handle;
 
 		VkWriteDescriptorSet write[3]{};
@@ -208,19 +249,25 @@ int main() try
 		{
 			VkDescriptorSet desc = lut::alloc_desc_set( window, dpool.handle, objectLayout.handle );
 			
+			VkImageView baseColorView = defaultGrayTextureView.handle;
+			if (material.baseColorTexture >= 0) baseColorView = modelTextureViews[material.baseColorTexture].handle;
+
+			VkImageView mrView = defaultGrayTextureView.handle;
+			if (material.metalRoughTexture >= 0) mrView = modelTextureViews[material.metalRoughTexture].handle;
+
 			VkDescriptorImageInfo imageInfo{};
 			imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			imageInfo.imageView = modelTextureViews[material.baseColorTextureId].handle;
+			imageInfo.imageView = baseColorView; 
 			imageInfo.sampler = debugSampler.handle;
-	
+
 			VkDescriptorImageInfo roughInfo{};
 			roughInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			roughInfo.imageView = modelTextureViews[material.roughnessTextureId].handle;
+			roughInfo.imageView = mrView;        
 			roughInfo.sampler = debugSampler.handle;
-	
+
 			VkDescriptorImageInfo metalInfo{};
 			metalInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			metalInfo.imageView = modelTextureViews[material.metalnessTextureId].handle;
+			metalInfo.imageView = mrView;       
 			metalInfo.sampler = debugSampler.handle;
 	
 			VkWriteDescriptorSet write[3]{};
@@ -837,7 +884,7 @@ int main() try
 			model.meshes,
 			model.materials,
 			*currentDescriptors,
-
+			model.scenes,
 			resolvePipeline,
 			resolveDescriptors,
 			resolveLayout,

@@ -5,10 +5,10 @@
 
 #include "setup.hpp"
 #include "camera.hpp"
-#include "baked_model.hpp"
+#include "engine_model.hpp"
 #include "../labut2/vkobject.hpp"
 #include "../labut2/vulkan_window.hpp"
-#include "../labut2/vkbuffer.hpp" // Added
+#include "../labut2/vkbuffer.hpp" 
 
 namespace lut = labut2;
 
@@ -29,9 +29,10 @@ void record_commands(
 	std::vector<lut::Buffer> const& aMeshTexCoords, 
 	std::vector<lut::Buffer> const& aMeshNormals,
 	std::vector<lut::Buffer> const& aMeshIndices, 
-	std::vector<BakedMeshData> const& aMeshInfos, 
-	std::vector<BakedMaterialInfo> const& aMaterials,
+	std::vector<EngineMesh> const& aMeshInfos, 
+	std::vector<EngineMaterial> const& aMaterials,
 	std::vector<VkDescriptorSet> const& aMaterialDescriptors,
+	std::vector<EngineInstance> const& aInstances,//to render obj
 	VkPipeline aPostProcPipe,
 	VkDescriptorSet aPostProcDescriptors,
 	VkPipelineLayout aPostProcLayout,

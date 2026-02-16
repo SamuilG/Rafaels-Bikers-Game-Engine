@@ -26,17 +26,24 @@ layout( location = 1 ) out vec3 v2fNormal;
 layout( location = 2 ) out vec3 v2fPos;
 layout( location = 3 ) out vec4 v2fLightProjPos; // p_1.5
 
+//import modelmatrix in glb
+layout( push_constant ) uniform PushConstants {
+	mat4 model; 
+} uPush;
+
 void main()
 {
 	v2fTexCoord = iTexCoord;
 	
-	v2fNormal = iNormal;
+	v2fNormal = normalize(mat3(uPush.model) * iNormal);
 	// Pass original normal
 	// object space = world space for static
 
-	v2fPos = iPosition;
-	gl_Position = uScene.projCam * vec4( iPosition, 1.f );
+	vec4 worldPos = uPush.model * vec4(iPosition, 1.f);
+	v2fPos = worldPos.xyz;
+
+	gl_Position = uScene.projCam * worldPos;
 
 	// p_1.5 position in light space
-	v2fLightProjPos = uScene.lightVP * vec4( iPosition, 1.f );
+	v2fLightProjPos = uScene.lightVP * worldPos;
 }

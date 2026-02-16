@@ -6,13 +6,17 @@
 #include "../labut2/to_string.hpp"
 #include "setup.hpp"	
 
+#include <glm/glm.hpp>
+#include <glm/gtx/transform.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
 // multi-pass rendering
 // render scene to offscreen image
 // apply post processing and render to swapchain
 // function definition
 //Now change shadow map resolution in setup.hpp 
 
-void record_commands( VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipeline aAlphaPipe, ImageAndView const& aColorAttach, ImageAndView const& aDepthAttach, VkExtent2D const& aImageExtent, VkBuffer aSceneUBO, glsl::SceneUniform const& aSceneUniform, VkPipelineLayout aGraphicsLayout, VkDescriptorSet aSceneDescriptors, std::vector<lut::Buffer> const& aMeshPositions, std::vector<lut::Buffer> const& aMeshTexCoords, std::vector<lut::Buffer> const& aMeshNormals, std::vector<lut::Buffer> const& aMeshIndices, std::vector<BakedMeshData> const& aMeshInfos, std::vector<BakedMaterialInfo> const& aMaterials, std::vector<VkDescriptorSet> const& aMaterialDescriptors, VkPipeline aPostProcPipe, VkDescriptorSet aPostProcDescriptors, VkPipelineLayout aPostProcLayout, ImageAndView const& aOffscreenColor, VkClearColorValue aClearColor, VkPipeline aShadowPipe, ImageAndView const& aShadowMap )
+void record_commands( VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipeline aAlphaPipe, ImageAndView const& aColorAttach, ImageAndView const& aDepthAttach, VkExtent2D const& aImageExtent, VkBuffer aSceneUBO, glsl::SceneUniform const& aSceneUniform, VkPipelineLayout aGraphicsLayout, VkDescriptorSet aSceneDescriptors, std::vector<lut::Buffer> const& aMeshPositions, std::vector<lut::Buffer> const& aMeshTexCoords, std::vector<lut::Buffer> const& aMeshNormals, std::vector<lut::Buffer> const& aMeshIndices, std::vector<EngineMesh> const& aMeshInfos, std::vector<EngineMaterial> const& aMaterials, std::vector<VkDescriptorSet> const& aMaterialDescriptors, std::vector<EngineInstance> const& aInstances,VkPipeline aPostProcPipe, VkDescriptorSet aPostProcDescriptors, VkPipelineLayout aPostProcLayout, ImageAndView const& aOffscreenColor, VkClearColorValue aClearColor, VkPipeline aShadowPipe, ImageAndView const& aShadowMap )
 {
 
 	// begin recording commands
@@ -88,18 +92,31 @@ void record_commands( VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipe
 
 		VkDeviceSize kZeroOffset = 0;
 
-		for( std::size_t i = 0; i < aMeshInfos.size(); ++i )
+		for (const auto& instance : aInstances)
 		{
-			// bind materials (set 1); alpha mask
-			vkCmdBindDescriptorSets( aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[aMeshInfos[i].materialId], 0, nullptr );
+			uint32_t meshIdx = instance.meshIndex;
 
-			vkCmdBindVertexBuffers( aCmdBuff, 0, 1, &aMeshPositions[i].buffer, &kZeroOffset );
-			vkCmdBindVertexBuffers( aCmdBuff, 1, 1, &aMeshTexCoords[i].buffer, &kZeroOffset );
-			vkCmdBindVertexBuffers( aCmdBuff, 2, 1, &aMeshNormals[i].buffer, &kZeroOffset );
-			// shadowmap.vert defines location 0, 1, 2
+			// push the model matrix and bind vertex/index buffers
+			vkCmdPushConstants(
+				aCmdBuff,
+				aGraphicsLayout,
+				VK_SHADER_STAGE_VERTEX_BIT,
+				0,
+				sizeof(glm::mat4),
+				&instance.transform 
+			);
 
-			vkCmdBindIndexBuffer( aCmdBuff, aMeshIndices[i].buffer, 0, VK_INDEX_TYPE_UINT32 );
-			vkCmdDrawIndexed( aCmdBuff, aMeshInfos[i].indices.size(), 1, 0, 0, 0 );
+			// bind material descriptor set (set 1), which contains the texture index for this mesh
+			uint32_t matIdx = aMeshInfos[meshIdx].materialIndex;
+			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
+
+			// bind vertex and index buffersw
+			vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset);
+			vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &kZeroOffset);
+			vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &kZeroOffset);
+
+			vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
+			vkCmdDrawIndexed(aCmdBuff, aMeshInfos[meshIdx].indices.size(), 1, 0, 0, 0);
 		}
 
 		vkCmdEndRendering( aCmdBuff );
@@ -198,14 +215,24 @@ void record_commands( VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipe
 	VkPipeline currentPipeline = aGraphicsPipe;
 	VkDeviceSize kZeroOffset = 0;
 
-	for( std::size_t i = 0; i < aMeshInfos.size(); ++i )
+	for (const auto& instance : aInstances)
 	{
-		auto const& meshInfo = aMeshInfos[i];
-		
+		uint32_t meshIdx = instance.meshIndex;
+		auto const& meshInfo = aMeshInfos[meshIdx];
+
+		vkCmdPushConstants(
+			aCmdBuff,
+			aGraphicsLayout,
+			VK_SHADER_STAGE_VERTEX_BIT,
+			0,
+			sizeof(glm::mat4),
+			&instance.transform
+		);
+
 
 		// task 1.6: select pipeline based on material
 		VkPipeline targetPipeline = aGraphicsPipe;
-		if( meshInfo.materialId < aMaterials.size() && aMaterials[meshInfo.materialId].alphaMaskTextureId != 0xffffffff )
+		if (meshInfo.materialIndex < aMaterials.size() && aMaterials[meshInfo.materialIndex].alphaMaskTexture >= 0)
 		{
 			targetPipeline = aAlphaPipe;
 		}
@@ -217,12 +244,12 @@ void record_commands( VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipe
 		}
 		
 		// bind object descriptor set
-		vkCmdBindDescriptorSets( aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[meshInfo.materialId], 0, nullptr );
+		vkCmdBindDescriptorSets( aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[meshInfo.materialIndex], 0, nullptr );
 
-		vkCmdBindVertexBuffers( aCmdBuff, 0, 1, &aMeshPositions[i].buffer, &kZeroOffset );
-		vkCmdBindVertexBuffers( aCmdBuff, 1, 1, &aMeshTexCoords[i].buffer, &kZeroOffset );
-		vkCmdBindVertexBuffers( aCmdBuff, 2, 1, &aMeshNormals[i].buffer, &kZeroOffset );
-		vkCmdBindIndexBuffer( aCmdBuff, aMeshIndices[i].buffer, 0, VK_INDEX_TYPE_UINT32 );
+		vkCmdBindVertexBuffers( aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset );
+		vkCmdBindVertexBuffers( aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &kZeroOffset );
+		vkCmdBindVertexBuffers( aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &kZeroOffset );
+		vkCmdBindIndexBuffer( aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32 );
 
 		vkCmdDrawIndexed( aCmdBuff, meshInfo.indices.size(), 1, 0, 0, 0 );
 	}
