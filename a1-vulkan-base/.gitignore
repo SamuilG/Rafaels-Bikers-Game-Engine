@@ -19,6 +19,8 @@ lib/
 # --- Project Specific Exceptions ---
 
 !premake5.exe
+/premake5
+/third_party/shaderc/linux-x86_64/glslc
 
 # --- Temporary Files ---
 *.log
