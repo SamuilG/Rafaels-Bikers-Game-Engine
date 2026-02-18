@@ -24,9 +24,19 @@ layout( scalar, set = 0, binding = 0 ) uniform UScene
 } uScene;
 
 
+layout( push_constant ) uniform PushConstants {
+	mat4 model; 
+} uPush;
+
 void main()
 {
 	v2fTexCoord = iTexCoord;
 	
-	gl_Position = uScene.lightVP * vec4(iPos, 1.0);
+	// world pos of the vertex
+	// multiplied by model matrix (local to world space)
+	vec4 worldPos = uPush.model * vec4(iPos, 1.0);
+
+	// world pos into light's clip space
+	// (render from the light's perspective)
+	gl_Position = uScene.lightVP * worldPos;
 }

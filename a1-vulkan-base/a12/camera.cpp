@@ -154,8 +154,7 @@ void update_scene_uniforms( glsl::SceneUniform& aSceneUniforms, std::uint32_t aF
 	aSceneUniforms.cameraPos = glm::vec4( aState.camera2world[3][0], aState.camera2world[3][1], aState.camera2world[3][2], 1.0f );
 	
 	// light source position and color
-	// aSceneUniforms.lightPos = glm::vec4( -0.2972f, 7.3100f, -11.9532f, 1.0f ); // og pos
-	aSceneUniforms.lightPos = glm::vec4( 1.4418f, 6.4484f, 0.8148f, 1.0f ); // new pos for shadows
+	aSceneUniforms.lightPos = glm::vec4( 0.f, 20.f, 0.f, 1.0f ); // new pos for shadows
 	aSceneUniforms.lightColor = glm::vec4( 1.0f, 1.0f, 1.0f, 1.0f );
 
 	aSceneUniforms.renderMode = std::uint32_t(aState.renderMode);
@@ -163,9 +162,7 @@ void update_scene_uniforms( glsl::SceneUniform& aSceneUniforms, std::uint32_t aF
 	// p2_1.5 shadow map matrix
 	// tuned for the statues: statue level, slightly offset, looking at center; i think
 	glm::vec3 lightPos = glm::vec3(aSceneUniforms.lightPos);
-	// glm::vec3 lightPos = glm::vec3(2.f, 25.f, 0.f);
-	// glm::mat4 lightView = glm::lookAt(lightPos, glm::vec3(0.f, 0.f, 0.f), glm::vec3(0.f, 1.f, 0.f));
-	glm::mat4 lightView = glm::lookAt(lightPos, glm::vec3( 0.2157f, 0.9278f, -47.9831f ), glm::vec3(0.f, 1.f, 0.f));
+	glm::mat4 lightView = glm::lookAt(lightPos, glm::vec3( 26.f, 0.f, 36.f ), glm::vec3(0.f, 1.f, 0.f));
 
 	
 	// wide frustum
