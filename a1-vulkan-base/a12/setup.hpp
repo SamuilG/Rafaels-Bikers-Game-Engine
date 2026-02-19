@@ -6,7 +6,7 @@
 #include "../labut2/vkimage.hpp"
 
 namespace lut = labut2;
-constexpr std::uint32_t kShadowMapResolution = 200; // 2048 for high quality; also tested with lower values
+constexpr std::uint32_t kShadowMapResolution = 2048; // 2048 for high quality; also tested with lower values
 namespace cfg
 {
 	// Compiled shader code for the graphics pipeline
