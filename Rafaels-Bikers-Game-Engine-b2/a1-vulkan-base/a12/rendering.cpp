@@ -16,7 +16,7 @@
 // function definition
 //Now change shadow map resolution in setup.hpp 
 
-void record_commands( VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipeline aAlphaPipe, ImageAndView const& aColorAttach, ImageAndView const& aDepthAttach, VkExtent2D const& aImageExtent, VkBuffer aSceneUBO, glsl::SceneUniform const& aSceneUniform, VkPipelineLayout aGraphicsLayout, VkDescriptorSet aSceneDescriptors, std::vector<lut::Buffer> const& aMeshPositions, std::vector<lut::Buffer> const& aMeshTexCoords, std::vector<lut::Buffer> const& aMeshNormals, std::vector<lut::Buffer> const& aMeshIndices, std::vector<EngineMesh> const& aMeshInfos, std::vector<EngineMaterial> const& aMaterials, std::vector<VkDescriptorSet> const& aMaterialDescriptors, std::vector<EngineInstance> const& aInstances,VkPipeline aPostProcPipe, VkDescriptorSet aPostProcDescriptors, VkPipelineLayout aPostProcLayout, ImageAndView const& aOffscreenColor, VkClearColorValue aClearColor, VkPipeline aShadowPipe, ImageAndView const& aShadowMap )
+void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipeline aAlphaPipe, ImageAndView const& aColorAttach, ImageAndView const& aDepthAttach, VkExtent2D const& aImageExtent, VkBuffer aSceneUBO, glsl::SceneUniform const& aSceneUniform, VkPipelineLayout aGraphicsLayout, VkDescriptorSet aSceneDescriptors, std::vector<lut::Buffer> const& aMeshPositions, std::vector<lut::Buffer> const& aMeshTexCoords, std::vector<lut::Buffer> const& aMeshNormals, std::vector<lut::Buffer> const& aMeshIndices, std::vector<EngineMesh> const& aMeshInfos, std::vector<EngineMaterial> const& aMaterials, std::vector<VkDescriptorSet> const& aMaterialDescriptors, std::vector<EngineInstance> const& aInstances, VkPipeline aPostProcPipe, VkDescriptorSet aPostProcDescriptors, VkPipelineLayout aPostProcLayout, ImageAndView const& aOffscreenColor, VkClearColorValue aClearColor, VkPipeline aShadowPipe, ImageAndView const& aShadowMap)
 {
 
 	// begin recording commands
@@ -25,25 +25,25 @@ void record_commands( VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipe
 	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	beginInfo.pInheritanceInfo = nullptr;
 
-	if( auto const res = vkBeginCommandBuffer( aCmdBuff, &beginInfo ); VK_SUCCESS != res )
+	if (auto const res = vkBeginCommandBuffer(aCmdBuff, &beginInfo); VK_SUCCESS != res)
 	{
-		throw lut::Error( "Unable to begin recording command buffer\n"
+		throw lut::Error("Unable to begin recording command buffer\n"
 			"vkBeginCommandBuffer() returned {}", lut::to_string(res)
 		);
 	}
 
 	// Upload scene uniforms
-	lut::buffer_barrier( aCmdBuff, aSceneUBO, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_ACCESS_UNIFORM_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT );
+	lut::buffer_barrier(aCmdBuff, aSceneUBO, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_ACCESS_UNIFORM_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 
-	vkCmdUpdateBuffer( aCmdBuff, aSceneUBO, 0, sizeof(glsl::SceneUniform), &aSceneUniform );
+	vkCmdUpdateBuffer(aCmdBuff, aSceneUBO, 0, sizeof(glsl::SceneUniform), &aSceneUniform);
 
-	lut::buffer_barrier( aCmdBuff, aSceneUBO, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_ACCESS_UNIFORM_READ_BIT );
+	lut::buffer_barrier(aCmdBuff, aSceneUBO, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_ACCESS_UNIFORM_READ_BIT);
 
 
 	// p2_1.5 shadow pass
 	{
 		// transition shadow map to depth attachment
-		lut::image_barrier( aCmdBuff, aShadowMap.image,
+		lut::image_barrier(aCmdBuff, aShadowMap.image,
 			VK_PIPELINE_STAGE_2_NONE,
 			VK_ACCESS_2_NONE,
 			VK_IMAGE_LAYOUT_UNDEFINED,
@@ -70,26 +70,25 @@ void record_commands( VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipe
 		shadowRenderInfo.colorAttachmentCount = 0;
 		shadowRenderInfo.pDepthAttachment = &shadowDepthInfo;
 
-		vkCmdBeginRendering( aCmdBuff, &shadowRenderInfo );
+		vkCmdBeginRendering(aCmdBuff, &shadowRenderInfo);
 
-		vkCmdBindPipeline( aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aShadowPipe );
-		
+		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aShadowPipe);
+
 		VkViewport viewport{};
 		viewport.width = float(kShadowMapResolution);
 		viewport.height = float(kShadowMapResolution);
 		viewport.minDepth = 0.f;
 		viewport.maxDepth = 1.f;
-		vkCmdSetViewport( aCmdBuff, 0, 1, &viewport );
+		vkCmdSetViewport(aCmdBuff, 0, 1, &viewport);
 
 		VkRect2D scissor{};
 		scissor.extent = { kShadowMapResolution, kShadowMapResolution };
-		vkCmdSetScissor( aCmdBuff, 0, 1, &scissor );
+		vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
 
-		vkCmdSetDepthBias( aCmdBuff, 1.25f, 0.f, 1.75f ); // bias
-		
+		vkCmdSetDepthBias(aCmdBuff, 1.25f, 0.f, 1.75f); // bias
 
 		// bind uniforms (set 0); light matrix
-		vkCmdBindDescriptorSets( aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr );
+		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
 
 		VkDeviceSize kZeroOffset = 0;
 
@@ -104,7 +103,7 @@ void record_commands( VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipe
 				VK_SHADER_STAGE_VERTEX_BIT,
 				0,
 				sizeof(glm::mat4),
-				&instance.transform 
+				&instance.transform
 			);
 
 			// bind material descriptor set (set 1), which contains the texture index for this mesh
@@ -118,29 +117,19 @@ void record_commands( VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipe
 
 			vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
 			vkCmdDrawIndexed(aCmdBuff, aMeshInfos[meshIdx].indices.size(), 1, 0, 0, 0);
-			// bind materials (set 1); alpha mask
-			vkCmdBindDescriptorSets( aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[aMeshInfos[i].materialId], 0, nullptr );
-
-			vkCmdBindVertexBuffers( aCmdBuff, 0, 1, &aMeshPositions[i].buffer, &kZeroOffset );
-			vkCmdBindVertexBuffers( aCmdBuff, 1, 1, &aMeshTexCoords[i].buffer, &kZeroOffset );
-			//vkCmdBindVertexBuffers( aCmdBuff, 2, 1, &aMeshNormals[i].buffer, &kZeroOffset );
-			// shadowmap.vert defines location 0, 1, 2
-
-			vkCmdBindIndexBuffer( aCmdBuff, aMeshIndices[i].buffer, 0, VK_INDEX_TYPE_UINT32 );
-			vkCmdDrawIndexed( aCmdBuff, aMeshInfos[i].indices.size(), 1, 0, 0, 0 );
 		}
 
-		vkCmdEndRendering( aCmdBuff );
+		vkCmdEndRendering(aCmdBuff);
 
-		
+
 		// transition shadow map to shader read
-		lut::image_barrier( aCmdBuff, aShadowMap.image,
+		lut::image_barrier(aCmdBuff, aShadowMap.image,
 			VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
 			VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
 			VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
 			VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-			VK_ACCESS_2_SHADER_SAMPLED_READ_BIT, 
-			VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL, 
+			VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+			VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
 			VkImageSubresourceRange{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 }
 		);
 	}
@@ -149,7 +138,7 @@ void record_commands( VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipe
 	// render scene to offscreen image
 
 	// transition offscreen image to color attachment optimal
-	lut::image_barrier( aCmdBuff, aOffscreenColor.image,
+	lut::image_barrier(aCmdBuff, aOffscreenColor.image,
 		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
 		VK_ACCESS_2_NONE,
 		VK_IMAGE_LAYOUT_UNDEFINED,
@@ -160,7 +149,7 @@ void record_commands( VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipe
 	);
 
 	// transition depth buffer to depth attachment optimal
-	lut::image_barrier( aCmdBuff, aDepthAttach.image,
+	lut::image_barrier(aCmdBuff, aDepthAttach.image,
 		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
 		VK_ACCESS_2_NONE,
 		VK_IMAGE_LAYOUT_UNDEFINED,
@@ -197,13 +186,13 @@ void record_commands( VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipe
 	renderInfo.pColorAttachments = &colorAttachment;
 	renderInfo.pDepthAttachment = &depthAttachment;
 
-	vkCmdBeginRendering( aCmdBuff, &renderInfo );
+	vkCmdBeginRendering(aCmdBuff, &renderInfo);
 
 
 	// Bind pipeline
 	// Bind opaque pipeline initially
-	vkCmdBindPipeline( aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsPipe );
-	vkCmdBindDescriptorSets( aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr );
+	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsPipe);
+	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
 
 	// Set viewport/scissor
 	VkViewport viewport{};
@@ -214,13 +203,13 @@ void record_commands( VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipe
 	viewport.minDepth = 0.f;
 	viewport.maxDepth = 1.f;
 
-	vkCmdSetViewport( aCmdBuff, 0, 1, &viewport );
+	vkCmdSetViewport(aCmdBuff, 0, 1, &viewport);
 
 	VkRect2D scissor{};
 	scissor.offset = { 0, 0 };
 	scissor.extent = aImageExtent;
 
-	vkCmdSetScissor( aCmdBuff, 0, 1, &scissor );
+	vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
 
 	// draw scene geometry
 	VkPipeline currentPipeline = aGraphicsPipe;
@@ -248,29 +237,29 @@ void record_commands( VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipe
 			targetPipeline = aAlphaPipe;
 		}
 
-		if( targetPipeline != currentPipeline )
+		if (targetPipeline != currentPipeline)
 		{
-			vkCmdBindPipeline( aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, targetPipeline );
+			vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, targetPipeline);
 			currentPipeline = targetPipeline;
 		}
-		
+
 		// bind object descriptor set
-		vkCmdBindDescriptorSets( aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[meshInfo.materialIndex], 0, nullptr );
+		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[meshInfo.materialIndex], 0, nullptr);
 
-		vkCmdBindVertexBuffers( aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset );
-		vkCmdBindVertexBuffers( aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &kZeroOffset );
-		vkCmdBindVertexBuffers( aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &kZeroOffset );
-		vkCmdBindIndexBuffer( aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32 );
+		vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset);
+		vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &kZeroOffset);
+		vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &kZeroOffset);
+		vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
 
-		vkCmdDrawIndexed( aCmdBuff, meshInfo.indices.size(), 1, 0, 0, 0 );
+		vkCmdDrawIndexed(aCmdBuff, meshInfo.indices.size(), 1, 0, 0, 0);
 	}
 
-	vkCmdEndRendering( aCmdBuff );
+	vkCmdEndRendering(aCmdBuff);
 
 	// apply post processing and render to swapchain
 
 	// transition offscreen image to shader read only
-	lut::image_barrier( aCmdBuff, aOffscreenColor.image,
+	lut::image_barrier(aCmdBuff, aOffscreenColor.image,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
 		VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
 		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -281,7 +270,7 @@ void record_commands( VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipe
 	);
 
 	// transition swapchain image to color attachment
-	lut::image_barrier( aCmdBuff, aColorAttach.image,
+	lut::image_barrier(aCmdBuff, aColorAttach.image,
 		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
 		VK_ACCESS_2_NONE,
 		VK_IMAGE_LAYOUT_UNDEFINED,
@@ -307,22 +296,22 @@ void record_commands( VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipe
 	postProcRenderInfo.pColorAttachments = &postProcColorAttachment;
 	// no depth attachment for post process
 
-	vkCmdBeginRendering( aCmdBuff, &postProcRenderInfo );
+	vkCmdBeginRendering(aCmdBuff, &postProcRenderInfo);
 
-	vkCmdBindPipeline( aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aPostProcPipe );
-	vkCmdBindDescriptorSets( aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aPostProcLayout, 0, 1, &aPostProcDescriptors, 0, nullptr );
+	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aPostProcPipe);
+	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aPostProcLayout, 0, 1, &aPostProcDescriptors, 0, nullptr);
 
 	// viewport/scissor already set but reset for safety
-	vkCmdSetViewport( aCmdBuff, 0, 1, &viewport );
-	vkCmdSetScissor( aCmdBuff, 0, 1, &scissor );
+	vkCmdSetViewport(aCmdBuff, 0, 1, &viewport);
+	vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
 
 	// draw full screen triangle
-	vkCmdDraw( aCmdBuff, 3, 1, 0, 0 );
+	vkCmdDraw(aCmdBuff, 3, 1, 0, 0);
 
-	vkCmdEndRendering( aCmdBuff );
+	vkCmdEndRendering(aCmdBuff);
 
 	// transition swapchain image to present source
-	lut::image_barrier( aCmdBuff, aColorAttach.image,
+	lut::image_barrier(aCmdBuff, aColorAttach.image,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
 		VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
 		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -332,15 +321,15 @@ void record_commands( VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipe
 		VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
 	);
 
-	if( auto const res = vkEndCommandBuffer( aCmdBuff ); VK_SUCCESS != res )
+	if (auto const res = vkEndCommandBuffer(aCmdBuff); VK_SUCCESS != res)
 	{
-		throw lut::Error( "Unable to end recording command buffer\n"
+		throw lut::Error("Unable to end recording command buffer\n"
 			"vkEndCommandBuffer() returned {}", lut::to_string(res)
 		);
 	}
 }
 
-void submit_commands( lut::VulkanContext const& aContext, VkCommandBuffer aCmdBuff, VkFence aFence, VkSemaphore aWaitSemaphore, VkSemaphore aSignalSemaphore )
+void submit_commands(lut::VulkanContext const& aContext, VkCommandBuffer aCmdBuff, VkFence aFence, VkSemaphore aWaitSemaphore, VkSemaphore aSignalSemaphore)
 {
 	VkSemaphoreSubmitInfo wait[1]{};
 	wait[0].sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
@@ -365,15 +354,15 @@ void submit_commands( lut::VulkanContext const& aContext, VkCommandBuffer aCmdBu
 	submitInfo.signalSemaphoreInfoCount = 1;
 	submitInfo.pSignalSemaphoreInfos = signal;
 
-	if( auto const res = vkQueueSubmit2( aContext.graphicsQueue, 1, &submitInfo, aFence ); VK_SUCCESS != res )
+	if (auto const res = vkQueueSubmit2(aContext.graphicsQueue, 1, &submitInfo, aFence); VK_SUCCESS != res)
 	{
-		throw lut::Error( "Unable to submit command buffer to queue\n"
+		throw lut::Error("Unable to submit command buffer to queue\n"
 			"vkQueueSubmit2() returned {}", lut::to_string(res)
 		);
 	}
 }
 
-void present_results( VkQueue aPresentQueue, VkSwapchainKHR aSwapchain, std::uint32_t aImageIndex, VkSemaphore aRenderFinished, bool& aNeedToRecreateSwapchain )
+void present_results(VkQueue aPresentQueue, VkSwapchainKHR aSwapchain, std::uint32_t aImageIndex, VkSemaphore aRenderFinished, bool& aNeedToRecreateSwapchain)
 {
 	VkPresentInfoKHR presentInfo{};
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -384,15 +373,15 @@ void present_results( VkQueue aPresentQueue, VkSwapchainKHR aSwapchain, std::uin
 	presentInfo.pImageIndices = &aImageIndex;
 	presentInfo.pResults = nullptr;
 
-	auto const presentRes = vkQueuePresentKHR( aPresentQueue, &presentInfo );
+	auto const presentRes = vkQueuePresentKHR(aPresentQueue, &presentInfo);
 
-	if( VK_SUBOPTIMAL_KHR == presentRes || VK_ERROR_OUT_OF_DATE_KHR == presentRes )
+	if (VK_SUBOPTIMAL_KHR == presentRes || VK_ERROR_OUT_OF_DATE_KHR == presentRes)
 	{
 		aNeedToRecreateSwapchain = true;
 	}
-	else if( VK_SUCCESS != presentRes )
+	else if (VK_SUCCESS != presentRes)
 	{
-		throw lut::Error( "Unable present swapchain image {}\n"
+		throw lut::Error("Unable present swapchain image {}\n"
 			"vkQueuePresentKHR() returned {}", aImageIndex, lut::to_string(presentRes)
 		);
 	}
