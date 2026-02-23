@@ -15,8 +15,13 @@
 // apply post processing and render to swapchain
 // function definition
 //Now change shadow map resolution in setup.hpp 
+struct ShadowPushConstant {
+	uint32_t cascadeIndex;
+	uint32_t _pad[3]; // 保持 16 字节对齐
+	glm::mat4 transform;
+};
 
-void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipeline aAlphaPipe, ImageAndView const& aColorAttach, ImageAndView const& aDepthAttach, VkExtent2D const& aImageExtent, VkBuffer aSceneUBO, glsl::SceneUniform const& aSceneUniform, VkPipelineLayout aGraphicsLayout, VkDescriptorSet aSceneDescriptors, std::vector<lut::Buffer> const& aMeshPositions, std::vector<lut::Buffer> const& aMeshTexCoords, std::vector<lut::Buffer> const& aMeshNormals, std::vector<lut::Buffer> const& aMeshIndices, std::vector<EngineMesh> const& aMeshInfos, std::vector<EngineMaterial> const& aMaterials, std::vector<VkDescriptorSet> const& aMaterialDescriptors, std::vector<EngineInstance> const& aInstances, VkPipeline aPostProcPipe, VkDescriptorSet aPostProcDescriptors, VkPipelineLayout aPostProcLayout, ImageAndView const& aOffscreenColor, VkClearColorValue aClearColor, VkPipeline aShadowPipe, ImageAndView const& aShadowMap)
+void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipeline aAlphaPipe, ImageAndView const& aColorAttach, ImageAndView const& aDepthAttach, VkExtent2D const& aImageExtent, VkBuffer aSceneUBO, glsl::SceneUniform const& aSceneUniform, VkPipelineLayout aGraphicsLayout, VkDescriptorSet aSceneDescriptors, std::vector<lut::Buffer> const& aMeshPositions, std::vector<lut::Buffer> const& aMeshTexCoords, std::vector<lut::Buffer> const& aMeshNormals, std::vector<lut::Buffer> const& aMeshIndices, std::vector<EngineMesh> const& aMeshInfos, std::vector<EngineMaterial> const& aMaterials, std::vector<VkDescriptorSet> const& aMaterialDescriptors, std::vector<EngineInstance> const& aInstances, VkPipeline aPostProcPipe, VkDescriptorSet aPostProcDescriptors, VkPipelineLayout aPostProcLayout, ImageAndView const& aOffscreenColor, VkClearColorValue aClearColor, VkPipeline aShadowPipe, ImageAndView const& aShadowMap, std::vector<VkImageView> const& aShadowCascadeViews)
 {
 
 	// begin recording commands
@@ -41,8 +46,9 @@ void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipel
 
 
 	// p2_1.5 shadow pass
+	
 	{
-		// transition shadow map to depth attachment
+		// 1. 全局 Barrier：将整个 Shadow Map Array 转换为深度附件布局
 		lut::image_barrier(aCmdBuff, aShadowMap.image,
 			VK_PIPELINE_STAGE_2_NONE,
 			VK_ACCESS_2_NONE,
@@ -50,79 +56,75 @@ void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipel
 			VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT,
 			VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
 			VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-			VkImageSubresourceRange{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 }
+			VkImageSubresourceRange{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, kCascadeCount } 
 		);
 
-
-		VkRenderingAttachmentInfo shadowDepthInfo{};
-		shadowDepthInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-		shadowDepthInfo.imageView = aShadowMap.view;
-		shadowDepthInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-		shadowDepthInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		shadowDepthInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-		shadowDepthInfo.clearValue.depthStencil = { 1.f, 0 };
-
-		VkRenderingInfo shadowRenderInfo{};
-		shadowRenderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-		shadowRenderInfo.renderArea.offset = { 0, 0 };
-		shadowRenderInfo.renderArea.extent = { kShadowMapResolution, kShadowMapResolution }; // shadow map resolution
-		shadowRenderInfo.layerCount = 1;
-		shadowRenderInfo.colorAttachmentCount = 0;
-		shadowRenderInfo.pDepthAttachment = &shadowDepthInfo;
-
-		vkCmdBeginRendering(aCmdBuff, &shadowRenderInfo);
-
-		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aShadowPipe);
-
-		VkViewport viewport{};
-		viewport.width = float(kShadowMapResolution);
-		viewport.height = float(kShadowMapResolution);
-		viewport.minDepth = 0.f;
-		viewport.maxDepth = 1.f;
-		vkCmdSetViewport(aCmdBuff, 0, 1, &viewport);
-
-		VkRect2D scissor{};
-		scissor.extent = { kShadowMapResolution, kShadowMapResolution };
-		vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
-
-		vkCmdSetDepthBias(aCmdBuff, 1.25f, 0.f, 1.75f); // bias
-
-		// bind uniforms (set 0); light matrix
-		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
-
-		VkDeviceSize kZeroOffset = 0;
-
-		for (const auto& instance : aInstances)
+		
+		// 2. 循环绘制每一个级联
+		for (uint32_t i = 0; i < kCascadeCount; ++i)
 		{
-			uint32_t meshIdx = instance.meshIndex;
+			VkImageView currentLayerView = aShadowCascadeViews[i]; // 使用传入的视图数组
 
-			// push the model matrix and bind vertex/index buffers
-			vkCmdPushConstants(
-				aCmdBuff,
-				aGraphicsLayout,
-				VK_SHADER_STAGE_VERTEX_BIT,
-				0,
-				sizeof(glm::mat4),
-				&instance.transform
-			);
+			VkRenderingAttachmentInfo shadowDepthInfo{};
+			shadowDepthInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+			shadowDepthInfo.imageView = currentLayerView;
+			shadowDepthInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+			shadowDepthInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+			shadowDepthInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+			shadowDepthInfo.clearValue.depthStencil = { 1.f, 0 };
 
-			// bind material descriptor set (set 1), which contains the texture index for this mesh
-			uint32_t matIdx = aMeshInfos[meshIdx].materialIndex;
-			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
+			VkRenderingInfo shadowRenderInfo{};
+			shadowRenderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+			shadowRenderInfo.renderArea.offset = { 0, 0 };
+			shadowRenderInfo.renderArea.extent = { kShadowMapResolution, kShadowMapResolution };
+			shadowRenderInfo.layerCount = 1;
+			shadowRenderInfo.pDepthAttachment = &shadowDepthInfo;
 
-			// bind vertex and index buffersw
-			vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset);
-			vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &kZeroOffset);
-			vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &kZeroOffset);
+			vkCmdBeginRendering(aCmdBuff, &shadowRenderInfo);
+			vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aShadowPipe);
 
-			vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
-			vkCmdDrawIndexed(aCmdBuff, aMeshInfos[meshIdx].indices.size(), 1, 0, 0, 0);
+			// 设置 Viewport/Scissor 为阴影图大小
+			VkViewport viewport{ 0.f, 0.f, float(kShadowMapResolution), float(kShadowMapResolution), 0.f, 1.f };
+			vkCmdSetViewport(aCmdBuff, 0, 1, &viewport);
+			VkRect2D scissor{ {0,0}, {kShadowMapResolution, kShadowMapResolution} };
+			vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
+
+			vkCmdSetDepthBias(aCmdBuff, 1.25f, 0.f, 1.75f);
+
+			// 绑定 Set 0 (包含 lightVP 数组的 UBO)
+			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
+
+			VkDeviceSize kZeroOffset = 0;
+			for (const auto& instance : aInstances)
+			{
+				uint32_t meshIdx = instance.meshIndex;
+
+				// 打包发送级联索引和模型矩阵
+				ShadowPushConstant pc;
+				pc.cascadeIndex = i;
+				pc.transform = instance.transform;
+				vkCmdPushConstants(
+					aCmdBuff,
+					aGraphicsLayout,
+					VK_SHADER_STAGE_VERTEX_BIT,
+					0,
+					sizeof(ShadowPushConstant),
+					&pc
+				);
+				// 绑定材质 (为了处理树叶等 Alpha Mask 的 discard)
+				uint32_t matIdx = aMeshInfos[meshIdx].materialIndex;
+				vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
+
+				vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset);
+				vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &kZeroOffset);
+				vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
+
+				vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(aMeshInfos[meshIdx].indices.size()), 1, 0, 0, 0);
+			}
+			vkCmdEndRendering(aCmdBuff);
 		}
 
-		vkCmdEndRendering(aCmdBuff);
-
-
-		// transition shadow map to shader read
+		// 3. 结束后 Barrier：转换为着色器读取
 		lut::image_barrier(aCmdBuff, aShadowMap.image,
 			VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
 			VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
@@ -130,10 +132,9 @@ void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipel
 			VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
 			VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
 			VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
-			VkImageSubresourceRange{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 }
+			VkImageSubresourceRange{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, kCascadeCount }
 		);
 	}
-
 
 	// render scene to offscreen image
 

@@ -503,6 +503,26 @@ int main() try
 
 	// p2_1.5 Shadow Resources
 	lut::ImageWithView shadowMap = create_shadow_map( window, allocator );
+	// 新增：创建 4 个单层 ImageView 用于渲染循环
+	std::vector<VkImageView> shadowCascadeViews;
+	for (uint32_t i = 0; i < kCascadeCount; ++i) {
+		VkImageViewCreateInfo vInfo{};
+		vInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		vInfo.image = shadowMap.image;
+		vInfo.viewType = VK_IMAGE_VIEW_TYPE_2D; // 必须是 2D 才能绑定为渲染附件
+		vInfo.format = cfg::kShadowMapFormat;
+		vInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+		vInfo.subresourceRange.baseMipLevel = 0;
+		vInfo.subresourceRange.levelCount = 1;
+		vInfo.subresourceRange.baseArrayLayer = i; // 关键：指向第 i 层
+		vInfo.subresourceRange.layerCount = 1;
+
+		VkImageView cView = VK_NULL_HANDLE;
+		if (vkCreateImageView(window.device, &vInfo, nullptr, &cView) != VK_SUCCESS) {
+			throw lut::Error("Failed to create shadow cascade view");
+		}
+		shadowCascadeViews.push_back(cView);
+	}
 	lut::Sampler shadowSampler = create_shadow_sampler( window );
 	lut::Pipeline shadowPipe = create_shadow_pipeline( window, pipeLayout.handle );
 
@@ -891,7 +911,8 @@ int main() try
 			offscreenTarget,
 			clearColor,
 			shadowPipe.handle,
-			shadowTarget
+			shadowTarget,
+			shadowCascadeViews
 		);
 		
 		// update mosaic ubo

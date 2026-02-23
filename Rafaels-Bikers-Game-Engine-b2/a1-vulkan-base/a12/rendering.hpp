@@ -40,7 +40,8 @@ void record_commands(
 	VkClearColorValue aClearColor,
 	// p2_1.5 shadow mapping
 	VkPipeline aShadowPipe,
-	ImageAndView const& aShadowMap
+	ImageAndView const& aShadowMap,
+	std::vector<VkImageView> const& aShadowCascadeViews
 );
 
 void submit_commands( 

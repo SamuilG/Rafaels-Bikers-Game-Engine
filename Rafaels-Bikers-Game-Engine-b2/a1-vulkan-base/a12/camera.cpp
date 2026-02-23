@@ -4,6 +4,19 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <cstdio>
+#include "setup.hpp"
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
+#include "camera.hpp"
+#include <glm/gtx/transform.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/matrix_inverse.hpp> 
+#include <cmath>    
+#include <algorithm> 
+#include <limits>    
+#include <glm/gtc/matrix_transform.hpp>
 
 namespace lut = labut2;
 
@@ -131,43 +144,92 @@ void update_user_state( UserState& aState, float aElapsedTime )
 		cam = cam * glm::translate( glm::vec3( 0.f, -move, 0.f ) );
 }
 
-void update_scene_uniforms( glsl::SceneUniform& aSceneUniforms, std::uint32_t aFramebufferWidth, std::uint32_t aFramebufferHeight, UserState const& aState )
+void update_scene_uniforms(glsl::SceneUniform& aSceneUniforms, std::uint32_t aFramebufferWidth, std::uint32_t aFramebufferHeight, UserState const& aState)
 {
-	// Initialize projection matrix
+	// --- 1. 基础相机矩阵计算 ---
 	float const aspect = float(aFramebufferWidth) / float(aFramebufferHeight);
-
 	aSceneUniforms.projection = glm::perspectiveRH_ZO(
-		lut::Radians( cfg::kCameraFov ).value(),
+		lut::Radians(cfg::kCameraFov).value(),
 		aspect,
 		cfg::kCameraNear,
 		cfg::kCameraFar
 	);
+	aSceneUniforms.projection[1][1] *= -1.f; // 适配 Vulkan Y 轴
 
-	aSceneUniforms.projection[1][1] *= -1.f; // mirror Y axis
-
-	// Initialize view matrix
-	// aSceneUniforms.camera = glm::translate( glm::vec3( 0.f, -0.3f, -1.f ) );
-	aSceneUniforms.camera = glm::inverse( aState.camera2world ); 
-
+	aSceneUniforms.camera = glm::inverse(aState.camera2world);
 	aSceneUniforms.projCam = aSceneUniforms.projection * aSceneUniforms.camera;
-	
-	aSceneUniforms.cameraPos = glm::vec4( aState.camera2world[3][0], aState.camera2world[3][1], aState.camera2world[3][2], 1.0f );
-	
-	// light source position and color
-	aSceneUniforms.lightPos = glm::vec4( 0.f, 20.f, 0.f, 1.0f ); // new pos for shadows
-	aSceneUniforms.lightColor = glm::vec4( 1.0f, 1.0f, 1.0f, 1.0f );
+	aSceneUniforms.cameraPos = glm::vec4(aState.camera2world[3][0], aState.camera2world[3][1], aState.camera2world[3][2], 1.0f);
 
+	// 设置灯光方向 (从 lightPos 指向场景中心)
+	aSceneUniforms.lightPos = glm::vec4(0.f, 20.f, 0.f, 0.0f); // w=0 表示方向光
+	aSceneUniforms.lightColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
 	aSceneUniforms.renderMode = std::uint32_t(aState.renderMode);
-
-	// p2_1.5 shadow map matrix
-	// tuned for the statues: statue level, slightly offset, looking at center; i think
-	glm::vec3 lightPos = glm::vec3(aSceneUniforms.lightPos);
-	glm::mat4 lightView = glm::lookAt(lightPos, glm::vec3( 26.f, 0.f, 36.f ), glm::vec3(0.f, 1.f, 0.f));
-
 	
-	// wide frustum
-	glm::mat4 lightProj = glm::perspectiveRH_ZO( glm::radians(90.0f), 1.0f, 1.0f, 200.0f); 
-	lightProj[1][1] *= -1.f; // flip Y for Vulkan
-	
-	aSceneUniforms.lightVP = lightProj * lightView;
+	// --- 2. CSM 级联分割计算 ---
+	float const nearP = cfg::kCameraNear;
+	float const farP = cfg::kCameraFar;
+	float cascadeSplits[kCascadeCount];
+
+	float lambda = 0.75f; 
+	for (uint32_t i = 0; i < kCascadeCount; i++) {
+		float p = (i + 1) / static_cast<float>(kCascadeCount);
+		float logSplit = nearP * std::pow(farP / nearP, p);
+		float linSplit = nearP + (farP - nearP) * p;
+		cascadeSplits[i] = lambda * logSplit + (1.0f - lambda) * linSplit;
+	}
+	aSceneUniforms.cascadeSplits = glm::vec4(cascadeSplits[0], cascadeSplits[1], cascadeSplits[2], cascadeSplits[3]);
+
+	// --- 3. 为每个级联计算 LightVP ---
+
+	glm::vec3 lightPosWS = glm::vec3(aSceneUniforms.lightPos);
+	//::vec3 lightDir = glm::normalize(lightPosWS - glm::vec3(0.0f));
+	glm::vec3 lightDir = glm::normalize(glm::vec3(-0.3f, 1.0f, -0.3f));
+
+	float lastSplit = nearP;
+	for (uint32_t i = 0; i < kCascadeCount; i++) {
+		float currentSplit = cascadeSplits[i];
+
+		// 1. 获取当前分段视锥体的世界空间 8 个顶点
+		glm::mat4 segProj = glm::perspectiveRH_ZO(lut::Radians(cfg::kCameraFov).value(), aspect, lastSplit, currentSplit);
+		glm::mat4 invVP = glm::inverse(segProj * aSceneUniforms.camera);
+
+
+
+		glm::vec4 frustumCorners[8] = {
+			{-1, -1, 0, 1}, {1, -1, 0, 1}, {1, 1, 0, 1}, {-1, 1, 0, 1},
+			{-1, -1, 1, 1}, {1, -1, 1, 1}, {1, 1, 1, 1}, {-1, 1, 1, 1}
+		};
+
+		glm::vec3 center(0.0f);
+		for (int j = 0; j < 8; j++) {
+			frustumCorners[j] = invVP * frustumCorners[j];
+			frustumCorners[j] /= frustumCorners[j].w;
+			center += glm::vec3(frustumCorners[j]);
+		}
+		center /= 8.0f;
+
+		// 2. 计算视锥体分段的外接球半径，用于构建稳定的正交矩阵
+		float radius = 0.0f;
+		for (int j = 0; j < 8; j++) {
+			float dist = glm::length(glm::vec3(frustumCorners[j]) - center);
+			radius = glm::max(radius, dist);
+		}
+		radius = std::ceil(radius * 16.0f) / 16.0f; // 稳定化处理
+
+		// 3. 构建灯光观察矩阵
+		// 将灯光位置沿反方向拉得极远（例如 500.f），确保涵盖视锥体前后的遮挡物
+		glm::mat4 lightView = glm::lookAt(center + lightDir * radius * 2.0f, center, glm::vec3(0, 1, 0));
+
+		// 4. 构建对称且足够深的正交投影矩阵
+		// zMargin 是解决“裁断平面”的关键。将其设为一个很大的常数（如 1000）
+		// 这样位于视锥体上方或后方很高处的建筑（如塔楼）也能产生阴影
+		float zMargin = 1000.0f;
+		glm::mat4 lightOrtho = glm::orthoRH_ZO(-radius, radius, -radius, radius, -zMargin, zMargin);
+
+		// 适配 Vulkan Y 轴
+		lightOrtho[1][1] *= -1.f;
+
+		aSceneUniforms.lightVP[i] = lightOrtho * lightView;
+		lastSplit = currentSplit;
+	}
 }

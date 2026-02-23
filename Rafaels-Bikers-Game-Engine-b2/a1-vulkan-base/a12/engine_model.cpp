@@ -267,6 +267,8 @@ static glm::mat4 getNodeTransform(const tinygltf::Node& node) {
     }
 }
 
+
+
 static void processNode(
     const tinygltf::Model& gltf,
     int nodeIdx,
@@ -299,6 +301,7 @@ static void processNode(
         processNode(gltf, childIdx, globalMatrix, meshMap, outInstances);
     }
 }
+
 
 
 EngineModel load_engine_model_glb(const char* path)

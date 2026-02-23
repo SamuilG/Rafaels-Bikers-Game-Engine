@@ -4,9 +4,36 @@
 #include "../labut2/vulkan_window.hpp"
 #include "../labut2/vkobject.hpp"
 #include "../labut2/vkimage.hpp"
+#include "camera.hpp"
 
 namespace lut = labut2;
 constexpr std::uint32_t kShadowMapResolution = 2048; // 2048 for high quality; also tested with lower values
+constexpr std::uint32_t kCascadeCount = 4;
+
+
+
+
+struct ShadowMapResources {
+	lut::ImageWithView mainArray;           // 用于 Shader 采样的 2D_ARRAY 视图
+	std::vector<VkImageView> cascadeViews;  // 用于渲染的 K 个单层视图
+};
+
+
+namespace glsl {
+	struct SceneUniform {
+		glm::mat4 camera;
+		glm::mat4 projection;
+		glm::mat4 projCam;
+		glm::vec4 cameraPos;
+		glm::vec4 lightPos;
+		glm::vec4 lightColor;
+		uint32_t renderMode;
+		float _pad0[3];
+		glm::mat4 lightVP[4];      // CSM 数组
+		glm::vec4 cascadeSplits;   // CSM 分割点
+	};
+}
+
 namespace cfg
 {
 	// Compiled shader code for the graphics pipeline
