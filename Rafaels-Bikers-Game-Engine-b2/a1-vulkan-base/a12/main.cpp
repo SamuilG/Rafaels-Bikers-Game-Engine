@@ -41,6 +41,7 @@ namespace lut = labut2;
 #include "camera.hpp"
 #include "setup.hpp"
 #include "rendering.hpp"
+#include "scene_manager.hpp"
 
 namespace glsl
 {
@@ -124,6 +125,10 @@ int main() try
 	// TexturedMesh spriteMesh = create_sprite_mesh( window, allocator );
 	
 	EngineModel model = load_engine_model_glb(local_cfg::SceneModel);
+	// 实例化场景管理器并加载实体
+	SceneManager sceneManager;
+	sceneManager.load_model(model);
+	sceneManager.print_all_entities();
 
 	// textures
 	std::vector<lut::Image> modelTextures;
@@ -660,7 +665,7 @@ int main() try
 
 		
 
-
+		
 
 		if( recreateSwapchain )
 		{
@@ -789,10 +794,16 @@ int main() try
 
 		// Update state
 		auto const now = Clock_::now();
-		auto const dt = std::chrono::duration_cast<Secondsf_>(now-previousClock).count();
+		auto  dt = std::chrono::duration_cast<Secondsf_>(now-previousClock).count();
 		previousClock = now;
 
 		update_user_state( state, dt );
+		// 更新 ECS 内部系统（处理层级变换等）
+		sceneManager.update(dt);
+
+
+		auto batches = sceneManager.get_render_batches();
+
 
 		// Record and submit commands for this frame
 		assert( std::size_t(imageIndex) < window.swapImages.size() );
@@ -886,6 +897,9 @@ int main() try
 		shadowTarget.image = shadowMap.image;
 		shadowTarget.view = shadowMap.view;
 
+		
+
+
 		record_commands(
 			cbuffers[frameIndex],
 			currentOpaque,
@@ -904,7 +918,8 @@ int main() try
 			model.meshes,
 			model.materials,
 			*currentDescriptors,
-			model.scenes,
+			//model.scenes,
+			batches,
 			resolvePipeline,
 			resolveDescriptors,
 			resolveLayout,
@@ -949,6 +964,9 @@ int main() try
 	// Cleanup takes place automatically in the destructors, but we sill need
 	// to ensure that all Vulkan commands have finished before that.
 	vkDeviceWaitIdle( window.device );
+	for (auto view : shadowCascadeViews) {
+		vkDestroyImageView(window.device, view, nullptr);
+	}
 
 	return 0;
 }

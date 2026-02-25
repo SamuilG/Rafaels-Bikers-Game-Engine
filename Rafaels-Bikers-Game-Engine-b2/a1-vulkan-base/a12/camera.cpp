@@ -57,7 +57,7 @@ void glfw_callback_key_press( GLFWwindow* aWindow, int aKey, int, int aAction, i
 		if( GLFW_KEY_2 == aKey ) state->renderMode = 1; // Mipmap
 		if( GLFW_KEY_3 == aKey ) state->renderMode = 2; // Depth
 		if( GLFW_KEY_4 == aKey ) state->renderMode = 3; // Derivatives
-		if( GLFW_KEY_5 == aKey ) state->mosaicEnabled = !state->mosaicEnabled; // Mosaic Toggle
+		//if( GLFW_KEY_5 == aKey ) state->mosaicEnabled = !state->mosaicEnabled; // Mosaic Toggle
 		if( GLFW_KEY_6 == aKey ) state->renderMode = 4; // Overdraw
 		if( GLFW_KEY_7 == aKey ) state->renderMode = 5; // Overshading
 		if( GLFW_KEY_8 == aKey ) state->renderMode = 6; // Shadow Debug (Task p2_1.5)
@@ -161,7 +161,7 @@ void update_scene_uniforms(glsl::SceneUniform& aSceneUniforms, std::uint32_t aFr
 	aSceneUniforms.cameraPos = glm::vec4(aState.camera2world[3][0], aState.camera2world[3][1], aState.camera2world[3][2], 1.0f);
 
 	// 设置灯光方向 (从 lightPos 指向场景中心)
-	aSceneUniforms.lightPos = glm::vec4(0.f, 20.f, 0.f, 0.0f); // w=0 表示方向光
+	aSceneUniforms.lightPos = glm::vec4(-50.0f, 100.0f, -30.0f, 0.0f);
 	aSceneUniforms.lightColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
 	aSceneUniforms.renderMode = std::uint32_t(aState.renderMode);
 	
@@ -170,7 +170,14 @@ void update_scene_uniforms(glsl::SceneUniform& aSceneUniforms, std::uint32_t aFr
 	float const farP = cfg::kCameraFar;
 	float cascadeSplits[kCascadeCount];
 
+	// lambda 是控制级联分割在对数空间和线性空间之间的权重。0.75f 是一个常用的经验值，可以根据需要调整。
+	// 当 lambda 趋近于 1 时，分割更接近对数分割，近处细节更多；当 lambda 趋近于 0 时，分割更接近线性分割，远处细节更多。
+	
+
+
 	float lambda = 0.75f; 
+	// 下面的循环计算每个级联的分割距离，并存储在 cascadeSplits 数组中。每个分割距离都是 nearP 和 farP 之间的一点，具体位置由 lambda 控制。
+
 	for (uint32_t i = 0; i < kCascadeCount; i++) {
 		float p = (i + 1) / static_cast<float>(kCascadeCount);
 		float logSplit = nearP * std::pow(farP / nearP, p);
@@ -182,8 +189,11 @@ void update_scene_uniforms(glsl::SceneUniform& aSceneUniforms, std::uint32_t aFr
 	// --- 3. 为每个级联计算 LightVP ---
 
 	glm::vec3 lightPosWS = glm::vec3(aSceneUniforms.lightPos);
-	//::vec3 lightDir = glm::normalize(lightPosWS - glm::vec3(0.0f));
-	glm::vec3 lightDir = glm::normalize(glm::vec3(-0.3f, 1.0f, -0.3f));
+	
+	//glm::vec3 lightDir = glm::normalize(glm::vec3(-0.3f, 1.0f, -0.3f));
+	glm::vec3 lightDir = glm::normalize(lightPosWS);
+
+
 
 	float lastSplit = nearP;
 	for (uint32_t i = 0; i < kCascadeCount; i++) {
@@ -220,9 +230,7 @@ void update_scene_uniforms(glsl::SceneUniform& aSceneUniforms, std::uint32_t aFr
 		// 将灯光位置沿反方向拉得极远（例如 500.f），确保涵盖视锥体前后的遮挡物
 		glm::mat4 lightView = glm::lookAt(center + lightDir * radius * 2.0f, center, glm::vec3(0, 1, 0));
 
-		// 4. 构建对称且足够深的正交投影矩阵
-		// zMargin 是解决“裁断平面”的关键。将其设为一个很大的常数（如 1000）
-		// 这样位于视锥体上方或后方很高处的建筑（如塔楼）也能产生阴影
+
 		float zMargin = 1000.0f;
 		glm::mat4 lightOrtho = glm::orthoRH_ZO(-radius, radius, -radius, radius, -zMargin, zMargin);
 

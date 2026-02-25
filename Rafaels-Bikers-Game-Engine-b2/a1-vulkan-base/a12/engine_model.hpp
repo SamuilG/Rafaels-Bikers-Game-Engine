@@ -50,6 +50,7 @@ struct EngineMesh {
 struct EngineInstance {
     uint32_t  meshIndex; 
 	glm::mat4 transform; // world transform matrix for this instance, calculated from gltf node hierarchy
+	std::string name; //  for entity naming in SceneManager
 };
 
 struct EngineModel {

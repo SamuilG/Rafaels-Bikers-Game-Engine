@@ -78,26 +78,50 @@ dofile( "util/glslc.lua" )
 
 
 project "a12"
-	local sources = { 
-		"a12/**.cpp",
-		"a12/**.hpp",
-		"a12/**.hxx"
-	}
+    local sources = { 
+        "a12/**.cpp",
+        "a12/**.hpp",
+        "a12/**.hxx",
+        -- 1. 将 flecs.c 显式加入编译源文件列表
+        "flecs-4.1.4/distr/flecs.c", 
+        "flecs-4.1.4/distr/flecs.h"
+    }
 
-	kind "ConsoleApp"
-	location "a12"
+    kind "ConsoleApp"
+    location "a12"
+	
+    files( sources )
+    
+    -- 2. 添加 flecs 的包含目录，以便 #include "flecs.h" 能找到文件
+    includedirs { "flecs-4.1.4/include" }
 
-	files( sources )
+    -- 3. 全局定义 FLECS_STATIC，解决 __imp_ 链接错误
+    defines { "FLECS_STATIC" }
 
-	dependson "a12-shaders"
+    -- 4. 针对 C 语言文件的特殊处理（防止因为项目是 C++ 而导致的预编译头或语言冲突）
+    filter "files:flecs-4.1.4/distr/flecs.c"
+        flags { "NoPCH" } -- 确保不使用预编译头
+        compileas "C"     -- 强制作为 C 语言编译
+    filter "*"
 
-	links "labut2"
-	links "x-volk"
-	links "x-stb"
-	links "x-glfw"
-	links "x-vma"
+    filter "system:linux"
+        links { "pthread" } -- 显式链接线程库，Flecs 在 Linux 下需要它
+    
+    filter "files:flecs-4.1.4/distr/flecs.c"
+        flags { "NoPCH" }
+        -- Linux 默认编译器通常能根据扩展名识别 C 语言，但显式指定更安全
+        compileas "C" 
+    filter "*"
 
-	dependson "x-glm"
+    dependson "a12-shaders"
+
+    links "labut2"
+    links "x-volk"
+    links "x-stb"
+    links "x-glfw"
+    links "x-vma"
+
+    dependson "x-glm"
 
 project "a12-shaders"
 	local shaders = { 

@@ -9,6 +9,7 @@
 #include "../labut2/vkobject.hpp"
 #include "../labut2/vulkan_window.hpp"
 #include "../labut2/vkbuffer.hpp" 
+#include "scene_manager.hpp"
 
 namespace lut = labut2;
 
@@ -32,7 +33,8 @@ void record_commands(
 	std::vector<EngineMesh> const& aMeshInfos, 
 	std::vector<EngineMaterial> const& aMaterials,
 	std::vector<VkDescriptorSet> const& aMaterialDescriptors,
-	std::vector<EngineInstance> const& aInstances,//to render obj
+	//std::vector<EngineInstance> const& aInstances,//to render obj
+	std::vector<RenderBatch> const& aBatches,
 	VkPipeline aPostProcPipe,
 	VkDescriptorSet aPostProcDescriptors,
 	VkPipelineLayout aPostProcLayout,

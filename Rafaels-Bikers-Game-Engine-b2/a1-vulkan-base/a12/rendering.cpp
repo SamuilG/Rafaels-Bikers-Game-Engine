@@ -21,7 +21,7 @@ struct ShadowPushConstant {
 	glm::mat4 transform;
 };
 
-void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipeline aAlphaPipe, ImageAndView const& aColorAttach, ImageAndView const& aDepthAttach, VkExtent2D const& aImageExtent, VkBuffer aSceneUBO, glsl::SceneUniform const& aSceneUniform, VkPipelineLayout aGraphicsLayout, VkDescriptorSet aSceneDescriptors, std::vector<lut::Buffer> const& aMeshPositions, std::vector<lut::Buffer> const& aMeshTexCoords, std::vector<lut::Buffer> const& aMeshNormals, std::vector<lut::Buffer> const& aMeshIndices, std::vector<EngineMesh> const& aMeshInfos, std::vector<EngineMaterial> const& aMaterials, std::vector<VkDescriptorSet> const& aMaterialDescriptors, std::vector<EngineInstance> const& aInstances, VkPipeline aPostProcPipe, VkDescriptorSet aPostProcDescriptors, VkPipelineLayout aPostProcLayout, ImageAndView const& aOffscreenColor, VkClearColorValue aClearColor, VkPipeline aShadowPipe, ImageAndView const& aShadowMap, std::vector<VkImageView> const& aShadowCascadeViews)
+void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipeline aAlphaPipe, ImageAndView const& aColorAttach, ImageAndView const& aDepthAttach, VkExtent2D const& aImageExtent, VkBuffer aSceneUBO, glsl::SceneUniform const& aSceneUniform, VkPipelineLayout aGraphicsLayout, VkDescriptorSet aSceneDescriptors, std::vector<lut::Buffer> const& aMeshPositions, std::vector<lut::Buffer> const& aMeshTexCoords, std::vector<lut::Buffer> const& aMeshNormals, std::vector<lut::Buffer> const& aMeshIndices, std::vector<EngineMesh> const& aMeshInfos, std::vector<EngineMaterial> const& aMaterials, std::vector<VkDescriptorSet> const& aMaterialDescriptors, std::vector<RenderBatch> const& aBatches, VkPipeline aPostProcPipe, VkDescriptorSet aPostProcDescriptors, VkPipelineLayout aPostProcLayout, ImageAndView const& aOffscreenColor, VkClearColorValue aClearColor, VkPipeline aShadowPipe, ImageAndView const& aShadowMap, std::vector<VkImageView> const& aShadowCascadeViews)
 {
 
 	// begin recording commands
@@ -95,24 +95,18 @@ void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipel
 			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
 
 			VkDeviceSize kZeroOffset = 0;
-			for (const auto& instance : aInstances)
-			{
-				uint32_t meshIdx = instance.meshIndex;
 
-				// 打包发送级联索引和模型矩阵
+			// 关键修改：遍历 aBatches
+			for (const auto& batch : aBatches) {
+				uint32_t meshIdx = batch.meshIndex;
+				uint32_t matIdx = batch.materialIndex; // 直接从 batch 获取
+
 				ShadowPushConstant pc;
 				pc.cascadeIndex = i;
-				pc.transform = instance.transform;
-				vkCmdPushConstants(
-					aCmdBuff,
-					aGraphicsLayout,
-					VK_SHADER_STAGE_VERTEX_BIT,
-					0,
-					sizeof(ShadowPushConstant),
-					&pc
-				);
-				// 绑定材质 (为了处理树叶等 Alpha Mask 的 discard)
-				uint32_t matIdx = aMeshInfos[meshIdx].materialIndex;
+				pc.transform = batch.transform; // 使用 ECS 计算的世界矩阵
+				vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ShadowPushConstant), &pc);
+
+				// 绑定材质
 				vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
 
 				vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset);
@@ -120,6 +114,17 @@ void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipel
 				vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
 
 				vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(aMeshInfos[meshIdx].indices.size()), 1, 0, 0, 0);
+				// 临时调试代码
+				if (!aBatches.empty()) {
+					static bool printed = false;
+					if (!printed) {
+						std::printf("First Batch Matrix[3]: %f, %f, %f\n",
+							aBatches[0].transform[3][0],
+							aBatches[0].transform[3][1],
+							aBatches[0].transform[3][2]);
+						printed = true;
+					}
+				}
 			}
 			vkCmdEndRendering(aCmdBuff);
 		}
@@ -134,6 +139,7 @@ void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipel
 			VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
 			VkImageSubresourceRange{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, kCascadeCount }
 		);
+
 	}
 
 	// render scene to offscreen image
@@ -216,18 +222,21 @@ void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipel
 	VkPipeline currentPipeline = aGraphicsPipe;
 	VkDeviceSize kZeroOffset = 0;
 
-	for (const auto& instance : aInstances)
+	for (const auto& batch : aBatches) 
 	{
-		uint32_t meshIdx = instance.meshIndex;
+		uint32_t meshIdx = batch.meshIndex;
+		uint32_t matIdx = batch.materialIndex; // 获取该实例的材质
 		auto const& meshInfo = aMeshInfos[meshIdx];
+		
 
+		// 推送变换矩阵
 		vkCmdPushConstants(
 			aCmdBuff,
 			aGraphicsLayout,
 			VK_SHADER_STAGE_VERTEX_BIT,
 			0,
 			sizeof(glm::mat4),
-			&instance.transform
+			&batch.transform
 		);
 
 
@@ -245,14 +254,22 @@ void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipel
 		}
 
 		// bind object descriptor set
-		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[meshInfo.materialIndex], 0, nullptr);
+		// 绑定正确的材质描述符集 (解决灰色画面的核心)
+		vkCmdBindDescriptorSets(
+			aCmdBuff,
+			VK_PIPELINE_BIND_POINT_GRAPHICS,
+			aGraphicsLayout,
+			1, 1,
+			&aMaterialDescriptors[matIdx],
+			0, nullptr
+		);
 
 		vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset);
 		vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &kZeroOffset);
 		vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &kZeroOffset);
 		vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
 
-		vkCmdDrawIndexed(aCmdBuff, meshInfo.indices.size(), 1, 0, 0, 0);
+		vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(meshInfo.indices.size()), 1, 0, 0, 0);
 	}
 
 	vkCmdEndRendering(aCmdBuff);

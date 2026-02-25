@@ -22,8 +22,8 @@ lut::PipelineLayout create_triangle_pipeline_layout( lut::VulkanContext const& a
 	VkPushConstantRange pushConstant{};
 	pushConstant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT; 
 	pushConstant.offset = 0;
-	//pushConstant.size = 80;
-	pushConstant.size = sizeof(glm::mat4); 
+	pushConstant.size = 80;
+	//pushConstant.size = sizeof(glm::mat4); 
 
 
 	VkPipelineLayoutCreateInfo layoutInfo{};

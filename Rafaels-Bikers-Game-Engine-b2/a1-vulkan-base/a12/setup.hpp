@@ -71,6 +71,7 @@ struct ImageAndView
 	VkImageView view;
 };
 
+
 lut::DescriptorSetLayout create_scene_descriptor_layout( lut::VulkanWindow const& );
 lut::DescriptorSetLayout create_object_descriptor_layout( lut::VulkanWindow const& );
 lut::DescriptorSetLayout create_post_proc_descriptor_layout( lut::VulkanWindow const& );

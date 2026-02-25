@@ -1,0 +1,33 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="flecs-4.1.4">
+      <UniqueIdentifier>{549B8516-C050-FE0B-4945-F8E2B5F9F40F}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="flecs-4.1.4\distr">
+      <UniqueIdentifier>{A95E1960-1575-17F6-5EEC-A217CA41E87D}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\flecs-4.1.4\distr\flecs.h">
+      <Filter>flecs-4.1.4\distr</Filter>
+    </ClInclude>
+    <ClInclude Include="camera.hpp" />
+    <ClInclude Include="engine_model.hpp" />
+    <ClInclude Include="json.hpp" />
+    <ClInclude Include="rendering.hpp" />
+    <ClInclude Include="scene_manager.hpp" />
+    <ClInclude Include="setup.hpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\flecs-4.1.4\distr\flecs.c">
+      <Filter>flecs-4.1.4\distr</Filter>
+    </ClCompile>
+    <ClCompile Include="camera.cpp" />
+    <ClCompile Include="engine_model.cpp" />
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="rendering.cpp" />
+    <ClCompile Include="scene_manager.cpp" />
+    <ClCompile Include="setup.cpp" />
+  </ItemGroup>
+</Project>
