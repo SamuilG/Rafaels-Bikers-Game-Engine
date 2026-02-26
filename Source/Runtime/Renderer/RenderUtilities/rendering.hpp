@@ -9,6 +9,7 @@
 #include "../../Rhi/vkobject.hpp"
 #include "../../Rhi/vulkan_window.hpp"
 #include "../../Rhi/vkbuffer.hpp" 
+#include "../../Scene/SceneManager.hpp"
 
 namespace lut = labut2;
 
@@ -32,7 +33,8 @@ void record_commands(
 	std::vector<EngineMesh> const& aMeshInfos, 
 	std::vector<EngineMaterial> const& aMaterials,
 	std::vector<VkDescriptorSet> const& aMaterialDescriptors,
-	std::vector<EngineInstance> const& aInstances,//to render obj
+	//std::vector<EngineInstance> const& aInstances,//to render obj
+	std::vector<RenderBatch> const& aBatches,
 	VkPipeline aPostProcPipe,
 	VkDescriptorSet aPostProcDescriptors,
 	VkPipelineLayout aPostProcLayout,
@@ -40,7 +42,8 @@ void record_commands(
 	VkClearColorValue aClearColor,
 	// p2_1.5 shadow mapping
 	VkPipeline aShadowPipe,
-	ImageAndView const& aShadowMap
+	ImageAndView const& aShadowMap,
+	std::vector<VkImageView> const& aShadowCascadeViews
 );
 
 void submit_commands( 

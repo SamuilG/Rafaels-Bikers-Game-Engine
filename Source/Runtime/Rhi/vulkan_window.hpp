@@ -2,7 +2,7 @@
 #define VULKAN_WINDOW_HPP_231E888F_8BBB_4DB8_A216_7B6D795ED497
 // SOLUTION_TAGS: vulkan-(ex-[^12]|cw-.)
 
-#include "../../../ThirdParty/volk/include/volk/volk.h"
+#include <volk/volk.h>
 
 #if !defined(GLFW_INCLUDE_NONE)
 #	define GLFW_INCLUDE_NONE 1
@@ -13,9 +13,6 @@
 #include <cstdint>
 
 #include "vulkan_context.hpp"
-
-//just temporary
-namespace vkRHI = labut2;
 
 namespace labut2
 {

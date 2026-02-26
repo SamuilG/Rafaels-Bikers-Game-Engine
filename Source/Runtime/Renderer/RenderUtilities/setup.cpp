@@ -22,7 +22,8 @@ lut::PipelineLayout create_triangle_pipeline_layout( lut::VulkanContext const& a
 	VkPushConstantRange pushConstant{};
 	pushConstant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT; 
 	pushConstant.offset = 0;
-	pushConstant.size = sizeof(glm::mat4); 
+	pushConstant.size = 80;
+	//pushConstant.size = sizeof(glm::mat4); 
 
 
 	VkPipelineLayoutCreateInfo layoutInfo{};
@@ -1525,6 +1526,7 @@ lut::Sampler create_shadow_sampler( lut::VulkanWindow const& aWindow )
 	samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
 	// outside shadow map = 1.0 (lit)
 	samplerInfo.compareEnable = VK_TRUE;
+
 	samplerInfo.compareOp = VK_COMPARE_OP_LESS;
 	// shadow test: ref < texture ?
 	samplerInfo.unnormalizedCoordinates = VK_FALSE;
@@ -1540,24 +1542,23 @@ lut::Sampler create_shadow_sampler( lut::VulkanWindow const& aWindow )
 	return lut::Sampler( aWindow.device, sampler );
 }
 
-lut::ImageWithView create_shadow_map( lut::VulkanWindow const& aWindow, lut::Allocator const& aAllocator )
+lut::ImageWithView create_shadow_map(lut::VulkanWindow const& aWindow, lut::Allocator const& aAllocator)
 {
-	// p2_1.5 high resolution shadow map
+	// 1. 创建支持多层的图像
 	VkImageCreateInfo imageInfo{};
 	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	imageInfo.imageType = VK_IMAGE_TYPE_2D;
-	imageInfo.format = cfg::kShadowMapFormat; // D32_SFLOAT
-	imageInfo.extent.width = kShadowMapResolution; // resolution goes brrrr
+	imageInfo.format = cfg::kShadowMapFormat;
+	imageInfo.extent.width = kShadowMapResolution;
 	imageInfo.extent.height = kShadowMapResolution;
 	imageInfo.extent.depth = 1;
 	imageInfo.mipLevels = 1;
-	imageInfo.arrayLayers = 1;
+	imageInfo.arrayLayers = kCascadeCount; // 核心：设为 4 层级联
 	imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 	imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
 	imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 	imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-
 
 	VmaAllocationCreateInfo allocInfo{};
 	allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
@@ -1565,40 +1566,35 @@ lut::ImageWithView create_shadow_map( lut::VulkanWindow const& aWindow, lut::All
 	VkImage image = VK_NULL_HANDLE;
 	VmaAllocation allocation = VK_NULL_HANDLE;
 
-	if( auto const res = vmaCreateImage( aAllocator.allocator, &imageInfo, &allocInfo, &image, &allocation, nullptr ); VK_SUCCESS != res )
+	if (auto const res = vmaCreateImage(aAllocator.allocator, &imageInfo, &allocInfo, &image, &allocation, nullptr); VK_SUCCESS != res)
 	{
-
-		throw lut::Error( "Unable to create shadow map image\n"
-			"vmaCreateImage() returned {}", lut::to_string(res)
-		);
+		throw lut::Error("Unable to create shadow map image: {}", lut::to_string(res));
 	}
 
+	// 2. 创建主 Array View (给主着色器 default.frag 采样用)
 	VkImageViewCreateInfo viewInfo{};
 	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	viewInfo.image = image;
-	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY; // 关键：数组类型
 	viewInfo.format = cfg::kShadowMapFormat;
-	viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT; // strict depth aspect
+	viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
 	viewInfo.subresourceRange.baseMipLevel = 0;
 	viewInfo.subresourceRange.levelCount = 1;
 	viewInfo.subresourceRange.baseArrayLayer = 0;
-	viewInfo.subresourceRange.layerCount = 1;
+	viewInfo.subresourceRange.layerCount = kCascadeCount; // 覆盖所有级联层
 
-	VkImageView view = VK_NULL_HANDLE;
-	if( auto const res = vkCreateImageView( aWindow.device, &viewInfo, nullptr, &view ); VK_SUCCESS != res )
+	VkImageView mainView = VK_NULL_HANDLE;
+	if (auto const res = vkCreateImageView(aWindow.device, &viewInfo, nullptr, &mainView); VK_SUCCESS != res)
 	{
-
-		vmaDestroyImage( aAllocator.allocator, image, allocation );
-		throw lut::Error( "Unable to create shadow map view\n"
-			"vkCreateImageView() returned {}", lut::to_string(res)
-		);
+		vmaDestroyImage(aAllocator.allocator, image, allocation);
+		throw lut::Error("Unable to create main shadow map view: {}", lut::to_string(res));
 	}
 
-	return lut::ImageWithView( aAllocator.allocator, image, allocation, view );
+	// 提示：你可以在此处手动创建分层视图，或者在 main.cpp 中初始化它们
+	// 为了简化，这里返回 ImageWithView，稍后我们在 main.cpp 补充 cascadeViews 的创建
 
-
+	return lut::ImageWithView(aAllocator.allocator, image, allocation, mainView);
 }
-
 lut::Pipeline create_shadow_pipeline( lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout )
 {
 	// Load shader code

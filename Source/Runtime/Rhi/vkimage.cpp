@@ -1,8 +1,8 @@
 #include "vkimage.hpp"
 
-#include <limits>
 #include <bit>
 #include <print>
+#include <limits>
 #include <vector>
 #include <utility>
 #include <algorithm>
@@ -316,7 +316,6 @@ namespace labut2
 
 		if( auto const res = vkWaitForFences( aContext.device, 1, &uploadComplete.handle, VK_TRUE, std::numeric_limits<std::uint64_t>::max() ); VK_SUCCESS != res )
 		{
-
 			throw Error( "Waiting for upload to complete\n"
 				"vkWaitForFences() returned {}", to_string(res)
 			);

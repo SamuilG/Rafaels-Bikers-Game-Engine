@@ -267,6 +267,7 @@ static glm::mat4 getNodeTransform(const tinygltf::Node& node) {
     }
 }
 
+
 static void processNode(
     const tinygltf::Model& gltf,
     int nodeIdx,
@@ -277,28 +278,33 @@ static void processNode(
     if (nodeIdx < 0 || nodeIdx >= gltf.nodes.size()) return;
     const tinygltf::Node& node = gltf.nodes[nodeIdx];
 
-	// 1. calculate the global transform matrix for the current node
-
+    // 1. 计算当前节点的全局变换矩阵
     glm::mat4 localMatrix = getNodeTransform(node);
     glm::mat4 globalMatrix = parentMatrix * localMatrix;
 
-    // 2. Create Instances if the node has a mesh
+    // 2. 如果节点有网格，创建实例
     if (node.mesh >= 0 && node.mesh < meshMap.size()) {
         const auto& engineMeshIndices = meshMap[node.mesh];
-        // Create an instance for every primitive in the mesh
+        // 为网格中的每个 primitive 创建一个实例
         for (uint32_t meshIndex : engineMeshIndices) {
             EngineInstance instance;
-            instance.meshIndex = meshIndex; // Reference to geometry
-            instance.transform = globalMatrix;  // World position
+            instance.meshIndex = meshIndex;
+            instance.transform = globalMatrix;
+
+            // --- 关键修改：保存节点名称 ---
+            // 如果 glTF 节点没有名字，赋予一个默认值防止 lookup 失败
+            instance.name = node.name.empty() ? ("Node_" + std::to_string(nodeIdx)) : node.name;
+
             outInstances.push_back(instance);
         }
     }
 
-    // 3. Process children recursively
+    // 3. 递归处理子节点
     for (int childIdx : node.children) {
         processNode(gltf, childIdx, globalMatrix, meshMap, outInstances);
     }
 }
+
 
 
 EngineModel load_engine_model_glb(const char* path)
@@ -331,14 +337,20 @@ EngineModel load_engine_model_glb(const char* path)
         for (int nodeIdx : scene.nodes) {
             // Process all root nodes
             processNode(gltf, nodeIdx, glm::mat4(1.0f), meshMap, model.scenes);
+
         }
     }
+    // 在 load_engine_model_glb 函数约 260 行处
     else {
-        // Fallback: If no scene exists, just list all meshes at identity
+        // Fallback: 如果不存在场景，则直接以单位阵列出所有网格
         for (size_t i = 0; i < model.meshes.size(); ++i) {
             EngineInstance instance;
             instance.meshIndex = static_cast<uint32_t>(i);
             instance.transform = glm::mat4(1.0f);
+
+            // --- 关键修改：为回退模式提供名称 ---
+            instance.name = "Fallback_Mesh_" + std::to_string(i);
+
             model.scenes.push_back(instance);
         }
     }

@@ -122,6 +122,10 @@ static void pollAbsState(_GLFWjoystick* js)
 
 #define isBitSet(bit, arr) (arr[(bit) / 8] & (1 << ((bit) % 8)))
 
+#ifndef O_CLOEXEC
+#define O_CLOEXEC 02000000
+#endif
+
 // Attempt to open the specified joystick device
 //
 static GLFWbool openJoystickDevice(const char* path)

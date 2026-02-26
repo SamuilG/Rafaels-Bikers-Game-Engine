@@ -1,5 +1,7 @@
 #include "Application.hpp"
 #include "../Renderer/RenderSystem.hpp"
+#include "../Scene/SceneManager.hpp"
+#include "../Physics/PhysicsSystem.hpp"
 
 namespace engine {
 
@@ -18,13 +20,14 @@ namespace engine {
 
         //get input and calculate data
         
-        //AddSystem<PhysicsSystem>();
+        PhysicsSystem* physicsSystem = AddSystem<PhysicsSystem>();
+        SceneManager* sceneManager = AddSystem<SceneManager>(physicsSystem);
 
         //final render 
         
         //AddSystem<CameraSystem>();
         //AddSystem<UISystem>();
-        AddSystem<RenderSystem>(Running);
+        AddSystem<RenderSystem>(Running, sceneManager);
 
 
         // left or right Init

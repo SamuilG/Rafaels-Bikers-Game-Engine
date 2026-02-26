@@ -64,8 +64,8 @@ namespace engine {
     class RenderSystem final : public System
     {
     public:
-        explicit RenderSystem(bool& appRunning)
-            : mAppRunning(appRunning) {
+        explicit RenderSystem(bool& appRunning, SceneManager* sceneManager = nullptr)
+            : mAppRunning(appRunning), mSceneManager(sceneManager) {
         }
 
 
@@ -413,7 +413,7 @@ namespace engine {
                 mMeshPositions, mMeshTexCoords, mMeshNormals, mMeshIndices,
                 mModel.meshes, mModel.materials,
                 *currentDescs,
-                mModel.scenes,
+                mSceneManager ? mSceneManager->get_render_batches() : std::vector<RenderBatch>{},
                 resolvePipeline, resolveDescs, resolveLayout,
                 offscreenTarget, clearColor,
                 mShadowPipe.handle, shadowTarget
@@ -609,6 +609,7 @@ namespace engine {
         }
 
         bool& mAppRunning;
+        SceneManager* mSceneManager;
 
         lut::VulkanWindow  mWindow;
         lut::Allocator     mAllocator;

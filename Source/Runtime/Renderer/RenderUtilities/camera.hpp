@@ -9,8 +9,12 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include "../../Rhi/angle.hpp"
 
-namespace lut = labut2;
 
+
+namespace lut = labut2;
+namespace glsl {
+	struct SceneUniform; // 告诉编译器这个结构体存在，具体定义稍后再看
+}
 namespace cfg
 {
 	constexpr float kCameraNear  = 0.1f;
@@ -23,22 +27,7 @@ namespace cfg
 	constexpr float kCameraMouseSensitivity = 0.01f;
 }
 
-namespace glsl
-{
-	struct SceneUniform
-	{
-// existing members
-		glm::mat4 camera;
-		glm::mat4 projection;
-		glm::mat4 projCam;
-		glm::vec4 cameraPos;
-		glm::vec4 lightPos;
-		glm::vec4 lightColor;
-		std::uint32_t renderMode;
-		std::uint32_t _padding[3];
-		glm::mat4 lightVP; // p2_1.5
-	};
-}
+
 
 enum class EInputState
 {

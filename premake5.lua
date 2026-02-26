@@ -103,7 +103,9 @@ workspace "EngineWorkspace"
         defines {
             "GLM_ENABLE_EXPERIMENTAL",
             "GLM_FORCE_RADIANS",
-            "NOMINMAX"
+            "NOMINMAX",
+            "FLECS_STATIC",
+            "JPH_CROSS_PLATFORM_DETERMINISTIC"
         }
 
         includedirs {
@@ -119,7 +121,9 @@ workspace "EngineWorkspace"
             "ThirdParty/VulkanMemoryAllocator/include",
             "ThirdParty/zstd/include",
             "ThirdParty/tgen/include",
-            "ThirdParty/reflect/include"
+            "ThirdParty/reflect/include",
+            "ThirdParty/flecs-4.1.4/include",
+            "ThirdParty/JoltPhysics"
         }
         
         files {
@@ -130,8 +134,20 @@ workspace "EngineWorkspace"
             "ThirdParty/VulkanMemoryAllocator/src/*.cpp",
             "ThirdParty/tgen/src/*.cpp",
             "ThirdParty/zstd/src/common/*.c",
-            "ThirdParty/zstd/src/decompress/*.c"
+            "ThirdParty/zstd/src/decompress/*.c",
+            "ThirdParty/flecs-4.1.4/distr/flecs.c",
+            "ThirdParty/flecs-4.1.4/distr/flecs.h",
+
+            "ThirdParty/JoltPhysics/Jolt/**.cpp",
+            "ThirdParty/JoltPhysics/Jolt/**.h",
+            "ThirdParty/JoltPhysics/Jolt/**.inl",
+            "ThirdParty/JoltPhysics/Jolt/**.natvis"
         }
+        
+        filter "files:ThirdParty/flecs-4.1.4/distr/flecs.c"
+            flags { "NoPCH" }
+            compileas "C"
+        filter "*"
 
         links { "GLFW" }
         dependson { "Shaders" } 
@@ -141,7 +157,7 @@ workspace "EngineWorkspace"
             
         filter "system:linux"
             defines { "VK_USE_PLATFORM_XLIB_KHR" }
-            links { "vulkan", "X11" }
+            links { "vulkan", "X11", "pthread" }
         filter "*"
 
     -- ==========================================
@@ -169,7 +185,7 @@ workspace "EngineWorkspace"
             mkdir_cmd = "if not exist \"%{wks.location}\\Assets\\Shaders\\spirv\" mkdir \"%{wks.location}\\Assets\\Shaders\\spirv\""
             
         filter "system:linux"
-            glslc_path = "\"%{wks.location}/glslc\""
+            glslc_path = "glslc"
             mkdir_cmd = "mkdir -p \"%{wks.location}/Assets/Shaders/spirv\""
             
         filter "*" 
