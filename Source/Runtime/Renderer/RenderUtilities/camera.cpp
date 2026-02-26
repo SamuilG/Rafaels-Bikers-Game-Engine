@@ -57,7 +57,7 @@ void glfw_callback_key_press( GLFWwindow* aWindow, int aKey, int, int aAction, i
 		if( GLFW_KEY_2 == aKey ) state->renderMode = 1; // Mipmap
 		if( GLFW_KEY_3 == aKey ) state->renderMode = 2; // Depth
 		if( GLFW_KEY_4 == aKey ) state->renderMode = 3; // Derivatives
-		//if( GLFW_KEY_5 == aKey ) state->mosaicEnabled = !state->mosaicEnabled; // Mosaic Toggle
+		if( GLFW_KEY_5 == aKey ) state->mosaicEnabled = !state->mosaicEnabled; // Mosaic Toggle
 		if( GLFW_KEY_6 == aKey ) state->renderMode = 4; // Overdraw
 		if( GLFW_KEY_7 == aKey ) state->renderMode = 5; // Overshading
 		if( GLFW_KEY_8 == aKey ) state->renderMode = 6; // Shadow Debug (Task p2_1.5)

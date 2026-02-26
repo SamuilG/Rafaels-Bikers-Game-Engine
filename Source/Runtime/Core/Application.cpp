@@ -34,8 +34,8 @@ namespace engine {
         for (auto& sys : Systems) 
             sys->Init();
 
-        // create the ground physics body (matches visual ground at y=-0.5)
-        physicsSystem->create_ground_plane(-0.5f);
+        // create the ground physics body - top surface at y=0 matches the visible ground
+        physicsSystem->create_ground_plane(0.0f);
 
         // create falling sphere after all system Init() calls
         {
