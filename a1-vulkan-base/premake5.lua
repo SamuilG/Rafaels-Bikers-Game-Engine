@@ -120,6 +120,7 @@ project "a12"
     links "x-stb"
     links "x-glfw"
     links "x-vma"
+    links "x-jolt"
 
     dependson "x-glm"
 

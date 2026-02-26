@@ -10,12 +10,14 @@ includedirs( "glm/include" );
 includedirs( "rapidobj/include" );
 includedirs( "tgen/include" );
 includedirs( "zstd/include" );
+includedirs( "JoltPhysics" );
 
 defines( "GLM_FORCE_RADIANS=1" )
 defines( "GLM_FORCE_SIZE_T_LENGTH=1" )
 defines( "GLM_ENABLE_EXPERIMENTAL=1" )
 
 defines( "ZSTD_DISABLE_ASM=1" ) -- this makes the build simpler
+defines( "JPH_CROSS_PLATFORM_DETERMINISTIC" )
 
 filter "system:macosx"
 	-- Additional dependencies required by GLFW on MacOS.
@@ -170,6 +172,15 @@ project( "x-zstd" )
 
 	files( "zstd/src/common/*.c" )
 	files( "zstd/src/decompress/*.c" )
+
+project( "x-jolt" )
+	kind "StaticLib"
+
+	location "."
+
+	files( "JoltPhysics/Jolt/**.cpp" )
+	files( "JoltPhysics/Jolt/**.h" )
+	files( "JoltPhysics/Jolt/**.inl" )
 
 project()
 

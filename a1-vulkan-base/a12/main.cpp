@@ -42,6 +42,10 @@ namespace lut = labut2;
 #include "setup.hpp"
 #include "rendering.hpp"
 #include "scene_manager.hpp"
+#include "physics_system.hpp"
+#include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/Physics/Collision/Shape/BoxShape.h>
+#include <Jolt/Physics/Body/BodyCreationSettings.h>
 
 namespace glsl
 {
@@ -125,10 +129,54 @@ int main() try
 	// TexturedMesh spriteMesh = create_sprite_mesh( window, allocator );
 	
 	EngineModel model = load_engine_model_glb(local_cfg::SceneModel);
-	// ÊµÀı»¯³¡¾°¹ÜÀíÆ÷²¢¼ÓÔØÊµÌå
+	// å®ä¾‹åŒ–åœºæ™¯ç®¡ç†å™¨å¹¶åŠ è½½å®ä½“
 	SceneManager sceneManager;
 	sceneManager.load_model(model);
 	sceneManager.print_all_entities();
+
+	// init physics
+	PhysicsSystem physicsSystem;
+	physicsSystem.init();
+
+	// creating test physics bodies
+	JPH::BodyInterface& body_interface = physicsSystem.get_body_interface();
+	
+	// create falling sphere (test)
+	JPH::SphereShapeSettings sphere_shape_settings(1.0f);
+	JPH::ShapeSettings::ShapeResult sphere_shape_result = sphere_shape_settings.Create();
+	JPH::ShapeRefC sphere_shape = sphere_shape_result.Get();
+	
+	JPH::BodyCreationSettings sphere_settings(sphere_shape, JPH::RVec3(10.0, 200.0, 10.0), JPH::Quat::sIdentity(), JPH::EMotionType::Dynamic, Layers::MOVING);
+	JPH::BodyID sphere_id = body_interface.CreateAndAddBody(sphere_settings, JPH::EActivation::Activate);
+	
+	// create ECS entity for the falling sphere
+	sceneManager.get_world().entity("FallingSphere")
+		.add<DynamicObject>()
+		.set<LocalTransform>({ glm::translate(glm::mat4(1.0f), glm::vec3(0, 10, 0)) })
+		.set<WorldTransform>({ glm::translate(glm::mat4(1.0f), glm::vec3(0, 10, 0)) })
+		.set<MeshComponent>({ 5 }) // 5 = SM_Sphere
+		.set<MaterialComponent>({ 0 })
+		.set<PhysicsBody>({ sphere_id.GetIndexAndSequenceNumber() });
+		
+
+	// create static ground plane (box) - Jolt uses half-extents! So 50, 0.5, 50 is a 100x1x100 box
+	JPH::BoxShapeSettings ground_shape_settings(JPH::Vec3(50.0f, 0.5f, 50.0f));
+	JPH::ShapeSettings::ShapeResult ground_shape_result = ground_shape_settings.Create();
+	JPH::ShapeRefC ground_shape = ground_shape_result.Get();
+	
+	JPH::BodyCreationSettings ground_settings(ground_shape, JPH::RVec3(0.0, -1.0, 0.0), JPH::Quat::sIdentity(), JPH::EMotionType::Static, Layers::NON_MOVING);
+	JPH::BodyID ground_id = body_interface.CreateAndAddBody(ground_settings, JPH::EActivation::DontActivate);
+	
+	sceneManager.get_world().entity("GroundPlane")
+		.add<StaticObject>()
+		.set<LocalTransform>({ glm::translate(glm::mat4(1.0f), glm::vec3(0, -1, 0)) * glm::scale(glm::mat4(1.0f), glm::vec3(100, 1, 100)) })
+		.set<WorldTransform>({ glm::translate(glm::mat4(1.0f), glm::vec3(0, -1, 0)) * glm::scale(glm::mat4(1.0f), glm::vec3(100, 1, 100)) })
+		.set<MeshComponent>({ 0 }) // 0 = SM_Cube
+		.set<MaterialComponent>({ 0 })
+		.set<PhysicsBody>({ ground_id.GetIndexAndSequenceNumber() });
+
+	// optimise physics broadphase before first update
+	physicsSystem.optimize_broad_phase();
 
 	// textures
 	std::vector<lut::Image> modelTextures;
@@ -508,18 +556,18 @@ int main() try
 
 	// p2_1.5 Shadow Resources
 	lut::ImageWithView shadowMap = create_shadow_map( window, allocator );
-	// ĞÂÔö£º´´½¨ 4 ¸öµ¥²ã ImageView ÓÃÓÚäÖÈ¾Ñ­»·
+	// æ–°å¢ï¼šåˆ›å»º 4 ä¸ªå•å±‚ ImageView ç”¨äºæ¸²æŸ“å¾ªç¯
 	std::vector<VkImageView> shadowCascadeViews;
 	for (uint32_t i = 0; i < kCascadeCount; ++i) {
 		VkImageViewCreateInfo vInfo{};
 		vInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 		vInfo.image = shadowMap.image;
-		vInfo.viewType = VK_IMAGE_VIEW_TYPE_2D; // ±ØĞëÊÇ 2D ²ÅÄÜ°ó¶¨ÎªäÖÈ¾¸½¼ş
+		vInfo.viewType = VK_IMAGE_VIEW_TYPE_2D; // å¿…é¡»æ˜¯ 2D æ‰èƒ½ç»‘å®šä¸ºæ¸²æŸ“é™„ä»¶
 		vInfo.format = cfg::kShadowMapFormat;
 		vInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
 		vInfo.subresourceRange.baseMipLevel = 0;
 		vInfo.subresourceRange.levelCount = 1;
-		vInfo.subresourceRange.baseArrayLayer = i; // ¹Ø¼ü£ºÖ¸ÏòµÚ i ²ã
+		vInfo.subresourceRange.baseArrayLayer = i; // å…³é”®ï¼šæŒ‡å‘ç¬¬ i å±‚
 		vInfo.subresourceRange.layerCount = 1;
 
 		VkImageView cView = VK_NULL_HANDLE;
@@ -798,8 +846,9 @@ int main() try
 		previousClock = now;
 
 		update_user_state( state, dt );
-		// ¸üĞÂ ECS ÄÚ²¿ÏµÍ³£¨´¦Àí²ã¼¶±ä»»µÈ£©
-		sceneManager.update(dt);
+		physicsSystem.update(dt);
+		// æ›´æ–° ECS å†…éƒ¨ç³»ç»Ÿï¼ˆå¤„ç†å±‚çº§å˜æ¢ç­‰ï¼‰
+		sceneManager.update(dt, &physicsSystem);
 
 
 		auto batches = sceneManager.get_render_batches();
