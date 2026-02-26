@@ -481,12 +481,17 @@ namespace engine {
             // Upload the new mesh to GPU
             UploadSingleMesh(mesh);
 
-            // Register a default gray material descriptor for this mesh
-            BuildMaterialDescriptors(mDefaultSampler.handle, mMaterialDescriptors);
-            BuildMaterialDescriptors(mDebugSampler.handle, mDebugMaterialDescriptors);
+            // add ONE gray descriptor set for this new mesh
+            AddOneGrayDescriptor(mDefaultSampler.handle, mMaterialDescriptors);
+            AddOneGrayDescriptor(mDebugSampler.handle, mDebugMaterialDescriptors);
 
+            // Track the material index for the caller
+            mRuntimeMatIndex = static_cast<uint32_t>(mMaterialDescriptors.size() - 1);
             return meshIdx;
         }
+
+        // returns the material descriptor index assigned to the last add_runtime_mesh() call
+        uint32_t get_runtime_mat_index() const { return mRuntimeMatIndex; }
 
         uint32_t get_material_count() const
         {
@@ -527,6 +532,29 @@ namespace engine {
                 vkUpdateDescriptorSets(mWindow.device, 3, w, 0, nullptr);
                 out.emplace_back(ds);
             }
+        }
+
+        // allocate exactly one gray descriptor set (for runtime meshes)
+        void AddOneGrayDescriptor(VkSampler sampler, std::vector<VkDescriptorSet>& out)
+        {
+            VkDescriptorSet ds = lut::alloc_desc_set(
+                mWindow, mDescPool.handle, mObjectLayout.handle);
+
+            VkImageView grayView = mDefaultGrayView.handle;
+            VkDescriptorImageInfo imgs[3]{};
+            imgs[0] = { sampler, grayView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            imgs[1] = { sampler, grayView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            imgs[2] = { sampler, grayView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+
+            VkWriteDescriptorSet w[3]{};
+            for (int j = 0; j < 3; ++j) {
+                w[j].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                w[j].dstSet = ds; w[j].dstBinding = (uint32_t)j;
+                w[j].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                w[j].descriptorCount = 1; w[j].pImageInfo = &imgs[j];
+            }
+            vkUpdateDescriptorSets(mWindow.device, 3, w, 0, nullptr);
+            out.emplace_back(ds);
         }
 
         void UploadMeshes()
@@ -799,6 +827,9 @@ namespace engine {
         lut::ImageWithView mVisImage;
         lut::ImageWithView mShadowMap;
         std::vector<VkImageView> mShadowCascadeViews;
+
+        // Index of most recently added runtime mesh's material descriptor
+        uint32_t mRuntimeMatIndex = 0;
     };
 
 } // namespace engine

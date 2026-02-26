@@ -37,11 +37,11 @@ namespace engine {
         // create falling sphere after all system Init() calls
         {
             const float sphereRadius = 0.5f;
-            const glm::vec3 spawnPos{ 0.f, 100.f, 0.f }; // drop from y=100
+            const glm::vec3 spawnPos{ 0.f, 5.f, 0.f }; // drop from y=5 (camera far=100)
 
             // 1. generate a UV sphere mesh and upload it to the GPU
             EngineMesh sphereMesh = generate_uv_sphere(sphereRadius, 16, 32);
-            sphereMesh.materialIndex = 0; // use first (or default gray) material
+            sphereMesh.materialIndex = 0; // mesh-local material index (unused by renderer)
             uint32_t sphereMeshIdx = renderSystem->add_runtime_mesh(sphereMesh);
 
             // 2. create the Jolt physics body
@@ -49,8 +49,10 @@ namespace engine {
             uint32_t bodyIDRaw = bodyID.GetIndexAndSequenceNumber();
 
             // 3. register a renderable ECS entity that will be synced each frame
+            // use get_runtime_mat_index() to get the gray descriptor
+            uint32_t matIdx = renderSystem->get_runtime_mat_index();
             glm::mat4 initTransform = glm::translate(glm::mat4(1.f), spawnPos);
-            sceneManager->create_dynamic_entity("PhysicsSphere", sphereMeshIdx, 0, initTransform, bodyIDRaw);
+            sceneManager->create_dynamic_entity("PhysicsSphere", sphereMeshIdx, matIdx, initTransform, bodyIDRaw);
         }
     }
 

@@ -14,12 +14,6 @@
 // render scene to offscreen image
 // apply post processing and render to swapchain
 // function definition
-//Now change shadow map resolution in setup.hpp 
-struct ShadowPushConstant {
-	uint32_t cascadeIndex;
-	uint32_t _pad[3]; // 保持 16 字节对齐
-	glm::mat4 transform;
-};
 
 void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipeline aAlphaPipe, ImageAndView const& aColorAttach, ImageAndView const& aDepthAttach, VkExtent2D const& aImageExtent, VkBuffer aSceneUBO, glsl::SceneUniform const& aSceneUniform, VkPipelineLayout aGraphicsLayout, VkDescriptorSet aSceneDescriptors, std::vector<lut::Buffer> const& aMeshPositions, std::vector<lut::Buffer> const& aMeshTexCoords, std::vector<lut::Buffer> const& aMeshNormals, std::vector<lut::Buffer> const& aMeshIndices, std::vector<EngineMesh> const& aMeshInfos, std::vector<EngineMaterial> const& aMaterials, std::vector<VkDescriptorSet> const& aMaterialDescriptors, std::vector<RenderBatch> const& aBatches, VkPipeline aPostProcPipe, VkDescriptorSet aPostProcDescriptors, VkPipelineLayout aPostProcLayout, ImageAndView const& aOffscreenColor, VkClearColorValue aClearColor, VkPipeline aShadowPipe, ImageAndView const& aShadowMap, std::vector<VkImageView> const& aShadowCascadeViews)
 {
@@ -96,17 +90,16 @@ void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipel
 
 			VkDeviceSize kZeroOffset = 0;
 
-			// 关键修改：遍历 aBatches
+			// Shadow push constant = lightVP[i] * world - same mat4 layout as main pass
 			for (const auto& batch : aBatches) {
 				uint32_t meshIdx = batch.meshIndex;
-				uint32_t matIdx = batch.materialIndex; // 直接从 batch 获取
+				uint32_t matIdx = batch.materialIndex;
 
-				ShadowPushConstant pc;
-				pc.cascadeIndex = i;
-				pc.transform = batch.transform; // 使用 ECS 计算的世界矩阵
-				vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ShadowPushConstant), &pc);
+				// Pre-multiply on CPU: no cascadeIndex in push constant needed
+				glm::mat4 lightModel = aSceneUniform.lightVP[i] * batch.transform;
+				vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &lightModel);
 
-				// 绑定材质
+				// bind material for alpha-masking (shadow pass respects alpha cutout)
 				vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
 
 				vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset);
@@ -114,7 +107,7 @@ void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipel
 				vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
 
 				vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(aMeshInfos[meshIdx].indices.size()), 1, 0, 0, 0);
-				// 临时调试代码
+				// debug print first batch position
 				if (!aBatches.empty()) {
 					static bool printed = false;
 					if (!printed) {
