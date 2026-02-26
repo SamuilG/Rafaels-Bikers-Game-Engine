@@ -164,15 +164,13 @@ int main() try
 	JPH::ShapeSettings::ShapeResult ground_shape_result = ground_shape_settings.Create();
 	JPH::ShapeRefC ground_shape = ground_shape_result.Get();
 	
-	JPH::BodyCreationSettings ground_settings(ground_shape, JPH::RVec3(0.0, -1.0, 0.0), JPH::Quat::sIdentity(), JPH::EMotionType::Static, Layers::NON_MOVING);
+	JPH::BodyCreationSettings ground_settings(ground_shape, JPH::RVec3(0.0, -0.5, 0.0), JPH::Quat::sIdentity(), JPH::EMotionType::Static, Layers::NON_MOVING);
 	JPH::BodyID ground_id = body_interface.CreateAndAddBody(ground_settings, JPH::EActivation::DontActivate);
 	
 	sceneManager.get_world().entity("GroundPlane")
 		.add<StaticObject>()
-		.set<LocalTransform>({ glm::translate(glm::mat4(1.0f), glm::vec3(0, -1, 0)) * glm::scale(glm::mat4(1.0f), glm::vec3(100, 1, 100)) })
-		.set<WorldTransform>({ glm::translate(glm::mat4(1.0f), glm::vec3(0, -1, 0)) * glm::scale(glm::mat4(1.0f), glm::vec3(100, 1, 100)) })
-		.set<MeshComponent>({ 0 }) // 0 = SM_Cube
-		.set<MaterialComponent>({ 0 })
+		.set<LocalTransform>({ glm::translate(glm::mat4(1.0f), glm::vec3(0, -0.5, 0)) * glm::scale(glm::mat4(1.0f), glm::vec3(100, 1, 100)) })
+		.set<WorldTransform>({ glm::translate(glm::mat4(1.0f), glm::vec3(0, -0.5, 0)) * glm::scale(glm::mat4(1.0f), glm::vec3(100, 1, 100)) })
 		.set<PhysicsBody>({ ground_id.GetIndexAndSequenceNumber() });
 
 	// optimise physics broadphase before first update
