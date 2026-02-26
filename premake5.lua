@@ -3,7 +3,6 @@ workspace "EngineWorkspace"
     location "." 
     language "C++"
     cppdialect "C++23"
-    cdialect "C11" 
     platforms { "x64" }
     configurations { "Debug", "Release" }
 
@@ -88,7 +87,30 @@ workspace "EngineWorkspace"
         filter "*"
 
     -- ==========================================
-    -- Project 2: Core Engine Application
+    -- Project 2: JoltPhysics Static Library
+    -- ==========================================
+    project "JoltPhysics"
+        location "Intermediate/Projects" 
+        kind "StaticLib"
+        language "C++"
+        
+        targetdir "Intermediate/Bin/%{cfg.buildcfg}-%{cfg.platform}/%{prj.name}"
+
+        defines {
+            "JPH_CROSS_PLATFORM_DETERMINISTIC"
+        }
+
+        includedirs { "ThirdParty/JoltPhysics" }
+
+        files {
+            "ThirdParty/JoltPhysics/Jolt/**.cpp",
+            "ThirdParty/JoltPhysics/Jolt/**.h",
+            "ThirdParty/JoltPhysics/Jolt/**.inl",
+            "ThirdParty/JoltPhysics/Jolt/**.natvis"
+        }
+
+    -- ==========================================
+    -- Project 3: Core Engine Application
     -- ==========================================
     project "Engine"
         -- [Garbage] Hide the Engine project file in the Intermediate folder
@@ -105,7 +127,8 @@ workspace "EngineWorkspace"
             "GLM_FORCE_RADIANS",
             "NOMINMAX",
             "FLECS_STATIC",
-            "JPH_CROSS_PLATFORM_DETERMINISTIC"
+            "JPH_CROSS_PLATFORM_DETERMINISTIC",
+            "ZSTD_DISABLE_ASM=1"
         }
 
         includedirs {
@@ -136,12 +159,7 @@ workspace "EngineWorkspace"
             "ThirdParty/zstd/src/common/*.c",
             "ThirdParty/zstd/src/decompress/*.c",
             "ThirdParty/flecs-4.1.4/distr/flecs.c",
-            "ThirdParty/flecs-4.1.4/distr/flecs.h",
-
-            "ThirdParty/JoltPhysics/Jolt/**.cpp",
-            "ThirdParty/JoltPhysics/Jolt/**.h",
-            "ThirdParty/JoltPhysics/Jolt/**.inl",
-            "ThirdParty/JoltPhysics/Jolt/**.natvis"
+            "ThirdParty/flecs-4.1.4/distr/flecs.h"
         }
         
         filter "files:ThirdParty/flecs-4.1.4/distr/flecs.c"
@@ -149,7 +167,7 @@ workspace "EngineWorkspace"
             compileas "C"
         filter "*"
 
-        links { "GLFW" }
+        links { "GLFW", "JoltPhysics" }
         dependson { "Shaders" } 
 
         filter "system:windows"

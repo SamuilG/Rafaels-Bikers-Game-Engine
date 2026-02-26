@@ -1,5 +1,15 @@
 #pragma once
 
+#if defined(__linux__) || defined(__linux)
+#undef Convex
+#undef None
+#undef Success
+#undef Always
+#undef True
+#undef False
+#undef Status
+#endif
+
 #include <Jolt/Jolt.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Core/JobSystemThreadPool.h>

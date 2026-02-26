@@ -416,7 +416,8 @@ namespace engine {
                 mSceneManager ? mSceneManager->get_render_batches() : std::vector<RenderBatch>{},
                 resolvePipeline, resolveDescs, resolveLayout,
                 offscreenTarget, clearColor,
-                mShadowPipe.handle, shadowTarget
+                mShadowPipe.handle, shadowTarget,
+                std::vector<VkImageView>{}
             );
 
             submit_commands(mWindow,
