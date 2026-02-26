@@ -5,6 +5,8 @@
 #include "../Physics/PhysicsSystem.hpp"
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/constants.hpp>
+#include <cmath>
 
 namespace engine {
 
@@ -136,6 +138,64 @@ std::vector<RenderBatch> SceneManager::get_render_batches() {
             });
 
     return batches;
+}
+
+} // namespace engine
+
+
+
+EngineMesh generate_uv_sphere(float radius, uint32_t rings, uint32_t sectors)
+{
+    EngineMesh mesh;
+    const float pi = glm::pi<float>();
+
+    for (uint32_t r = 0; r <= rings; ++r) {
+        float const phi = pi * r / rings; // 0 .. pi
+        for (uint32_t s = 0; s <= sectors; ++s) {
+            float const theta = 2.f * pi * s / sectors; // 0 .. 2pi
+
+            float x = std::sin(phi) * std::cos(theta);
+            float y = std::cos(phi);
+            float z = std::sin(phi) * std::sin(theta);
+
+            mesh.positions.emplace_back(radius * x, radius * y, radius * z);
+            mesh.normals.emplace_back(x, y, z);
+            mesh.texcoords.emplace_back(
+                static_cast<float>(s) / sectors,
+                static_cast<float>(r) / rings);
+        }
+    }
+
+    for (uint32_t r = 0; r < rings; ++r) {
+        for (uint32_t s = 0; s < sectors; ++s) {
+            uint32_t a = r       * (sectors + 1) + s;
+            uint32_t b = (r + 1) * (sectors + 1) + s;
+            mesh.indices.push_back(a);     mesh.indices.push_back(b);     mesh.indices.push_back(a + 1);
+            mesh.indices.push_back(b);     mesh.indices.push_back(b + 1); mesh.indices.push_back(a + 1);
+        }
+    }
+
+    return mesh;
+}
+
+namespace engine {
+
+flecs::entity SceneManager::create_dynamic_entity(
+    const char* name, uint32_t meshIndex, uint32_t matIndex,
+    const glm::mat4& transform, uint32_t physicsBodyID)
+{
+    auto e = m_world->entity(name)
+        .add<DynamicObject>()
+        .set<LocalTransform>({ transform })
+        .set<WorldTransform>({ transform })
+        .set<MeshComponent>({ meshIndex })
+        .set<MaterialComponent>({ matIndex });
+
+    if (physicsBodyID != ~0u) {
+        e.set<PhysicsBody>({ physicsBodyID });
+    }
+
+    return e;
 }
 
 } // namespace engine

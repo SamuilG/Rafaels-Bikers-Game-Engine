@@ -179,4 +179,32 @@ void PhysicsSystem::Shutdown()
 	}
 }
 
+JPH::BodyID PhysicsSystem::create_sphere_body(const glm::vec3& position, float radius)
+{
+	JPH::BodyInterface& bodyInterface = m_physicsSystem->GetBodyInterface();
+
+	JPH::SphereShapeSettings sphereSettings(radius);
+	sphereSettings.mDensity = 1000.f; // kg/m³
+
+	JPH::ShapeRefC shape = sphereSettings.Create().Get();
+
+	JPH::BodyCreationSettings bodySettings(
+		shape,
+		JPH::RVec3(position.x, position.y, position.z),
+		JPH::Quat::sIdentity(),
+		JPH::EMotionType::Dynamic,
+		Layers::MOVING
+	);
+	bodySettings.mGravityFactor = 1.0f;
+
+	JPH::Body* body = bodyInterface.CreateBody(bodySettings);
+	JPH::BodyID bodyID = body->GetID();
+	bodyInterface.AddBody(bodyID, JPH::EActivation::Activate);
+
+	// ensure broad phase is optimised after adding the body
+	m_physicsSystem->OptimizeBroadPhase();
+
+	return bodyID;
+}
+
 } // namespace engine

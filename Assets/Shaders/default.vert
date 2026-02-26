@@ -18,7 +18,8 @@ layout( scalar, set = 0, binding = 0 ) uniform UScene
 	uint _pad0;
 	uint _pad1;
 	uint _pad2;
-	mat4 lightVP; // p2_1.5
+	mat4 lightVP[4];      // CSM cascade light-view-proj matrices
+	vec4 cascadeSplits;   // view-space split depths
 } uScene;
 
 layout( location = 0 ) out vec2 v2fTexCoord;
@@ -44,6 +45,6 @@ void main()
 
 	gl_Position = uScene.projCam * worldPos;
 
-	// p_1.5 position in light space
-	v2fLightProjPos = uScene.lightVP * worldPos;
+	// p_1.5 position in light space (cascade 0 used as reference; frag selects per-cascade)
+	v2fLightProjPos = uScene.lightVP[0] * worldPos;
 }

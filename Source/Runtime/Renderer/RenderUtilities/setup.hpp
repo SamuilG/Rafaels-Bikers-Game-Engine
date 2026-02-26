@@ -38,7 +38,7 @@ namespace cfg
 {
 	// Compiled shader code for the graphics pipeline
 	// See sources in a12/shaders/*. 
-#	define SHADERDIR_ "assets/a12/shaders/"
+#	define SHADERDIR_ "Assets/Shaders/spirv/"
 	constexpr char const* kVertShaderPath = SHADERDIR_ "default.vert.spv";
 	constexpr char const* kFragShaderPath = SHADERDIR_ "default.frag.spv";
 	

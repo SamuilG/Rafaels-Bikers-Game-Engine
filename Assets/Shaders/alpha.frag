@@ -22,7 +22,8 @@ layout( scalar, set = 0, binding = 0 ) uniform UScene
 	uint _pad0;
 	uint _pad1;
 	uint _pad2;
-	mat4 lightVP; // p2_1.5
+	mat4 lightVP[4];      // CSM cascade light-view-proj matrices
+	vec4 cascadeSplits;   // view-space split depths
 } uScene;
 
 layout( location = 0 ) out vec4 oColor;

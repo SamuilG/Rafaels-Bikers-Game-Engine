@@ -5,6 +5,9 @@
 #include "System.h"
 
 namespace engine {
+    class PhysicsSystem;
+    class SceneManager;
+    class RenderSystem;
 
     class Application {
     public:
@@ -32,6 +35,11 @@ namespace engine {
 
         std::chrono::steady_clock::time_point mLastTime
             = std::chrono::steady_clock::now();
+
+        // Stored for post-Init sphere setup
+        PhysicsSystem* physicsSystem = nullptr;
+        SceneManager*  sceneManager  = nullptr;
+        RenderSystem*  renderSystem  = nullptr;
     };
 
 } // namespace engine

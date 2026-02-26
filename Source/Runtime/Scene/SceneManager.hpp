@@ -1,6 +1,8 @@
 #pragma once
 #include <vector>
 #include <glm/glm.hpp>
+#include <glm/gtc/constants.hpp>
+#include <numbers>
 
 // X11 defines macros that conflict with flecs
 #ifdef Bool
@@ -47,6 +49,13 @@ struct RenderBatch {
     glm::mat4 transform;
 };
 
+// forward declare EngineModel to avoid including engine_model.hpp here
+struct EngineMesh;
+
+// generate a UV sphere mesh
+// returned mesh has positions, normals, texcoords, indices
+struct EngineMesh generate_uv_sphere(float radius, uint32_t rings, uint32_t sectors);
+
 // Forward declare flecs::world so it can be used as a pointer
 namespace flecs { class world; }
 
@@ -66,6 +75,14 @@ public:
 
     // Get render batches for the current frame
     std::vector<RenderBatch> get_render_batches();
+
+    // dynamic entity backed by a runtime mesh + optional physics body
+    // meshIndex: index returned by RenderSystem::add_runtime_mesh()
+    // matIndex:  material index (use 0 or default gray)
+    // transform: initial world transform
+    // physicsBodyID: optional Jolt BodyID (UINT32_MAX = none)
+    flecs::entity create_dynamic_entity(const char* name, uint32_t meshIndex, uint32_t matIndex,
+                                         const glm::mat4& transform, uint32_t physicsBodyID = ~0u);
 
     // 1. Find entity by name (Flecs supports entity naming)
     flecs::entity find_entity(const char* name);

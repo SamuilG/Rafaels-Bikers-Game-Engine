@@ -51,6 +51,10 @@ public:
     JPH::PhysicsSystem* get_system() { return m_physicsSystem.get(); }
     JPH::BodyInterface& get_body_interface() { return m_physicsSystem->GetBodyInterface(); }
 
+    // dynamic sphere body at 'position' with given 'radius'.
+    // returns the BodyID (use .GetIndexAndSequenceNumber() to pass to ECS).
+    JPH::BodyID create_sphere_body(const glm::vec3& position, float radius = 0.5f);
+
 private:
     std::unique_ptr<JPH::TempAllocatorImpl> m_tempAllocator;
     std::unique_ptr<JPH::JobSystemThreadPool> m_jobSystem;

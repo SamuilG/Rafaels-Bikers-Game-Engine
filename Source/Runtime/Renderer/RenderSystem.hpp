@@ -140,6 +140,14 @@ namespace engine {
                     lut::create_image_view_texture2d(mWindow, mModelTextures.back().image, fmt));
             }
 
+            if (mSceneManager) {
+                mSceneManager->load_model(mModel);
+            }
+
+            // Set initial camera position
+            // Move camera back (z+) and up (y+) to see the scene
+            mState.camera2world = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 2.0f, 10.0f));
+
             {
                 // just for objects without texture to set a default texture
                 // RGBA: 128, 128, 128, 255 (grey)
@@ -190,6 +198,27 @@ namespace engine {
             // p2_1.5 Shadow Resources
             mShadowMap = create_shadow_map(mWindow, mAllocator);
             mShadowSampler = create_shadow_sampler(mWindow);
+
+            // Create cascade views for shadow mapping
+            for (uint32_t i = 0; i < kCascadeCount; ++i) {
+                VkImageViewCreateInfo viewInfo{};
+                viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+                viewInfo.image = mShadowMap.image;
+                viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+                viewInfo.format = cfg::kShadowMapFormat;
+                viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+                viewInfo.subresourceRange.baseMipLevel = 0;
+                viewInfo.subresourceRange.levelCount = 1;
+                viewInfo.subresourceRange.baseArrayLayer = i;
+                viewInfo.subresourceRange.layerCount = 1;
+
+                VkImageView view = VK_NULL_HANDLE;
+                if (auto const res = vkCreateImageView(mWindow.device, &viewInfo, nullptr, &view); VK_SUCCESS != res) {
+                    throw lut::Error("Unable to create shadow map cascade view: {}", lut::to_string(res));
+                }
+                mShadowCascadeViews.emplace_back(view);
+            }
+
             mShadowPipe = create_shadow_pipeline(mWindow, mPipeLayout.handle);
 
             mDepthBuffer = create_depth_buffer(mWindow, mAllocator);
@@ -417,7 +446,7 @@ namespace engine {
                 resolvePipeline, resolveDescs, resolveLayout,
                 offscreenTarget, clearColor,
                 mShadowPipe.handle, shadowTarget,
-                std::vector<VkImageView>{}
+                mShadowCascadeViews
             );
 
             submit_commands(mWindow,
@@ -435,7 +464,33 @@ namespace engine {
         {
             // Cleanup takes place automatically in the destructors, but we sill need
             // to ensure that all Vulkan commands have finished before that.
+            for (auto view : mShadowCascadeViews) {
+                vkDestroyImageView(mWindow.device, view, nullptr);
+            }
             vkDeviceWaitIdle(mWindow.device);
+        }
+
+        // add runtime-generated mesh (like the sphere) after Init()
+        // returns the mesh index to pass to SceneManager::create_dynamic_entity()
+        uint32_t add_runtime_mesh(const EngineMesh& mesh)
+        {
+            // Push mesh data into the model (for index lookups in rendering)
+            mModel.meshes.emplace_back(mesh);
+            uint32_t meshIdx = static_cast<uint32_t>(mModel.meshes.size() - 1);
+
+            // Upload the new mesh to GPU
+            UploadSingleMesh(mesh);
+
+            // Register a default gray material descriptor for this mesh
+            BuildMaterialDescriptors(mDefaultSampler.handle, mMaterialDescriptors);
+            BuildMaterialDescriptors(mDebugSampler.handle, mDebugMaterialDescriptors);
+
+            return meshIdx;
+        }
+
+        uint32_t get_material_count() const
+        {
+            return static_cast<uint32_t>(mModel.materials.size());
         }
 
     private:
@@ -564,6 +619,80 @@ namespace engine {
             vkQueueWaitIdle(mWindow.graphicsQueue);
         }
 
+        // upload a single mesh to GPU, appending to the mesh buffer vectors
+        void UploadSingleMesh(const EngineMesh& mesh)
+        {
+            VkCommandBuffer uploadCmd = lut::alloc_command_buffer(mWindow, mCmdPool.handle);
+            VkCommandBufferBeginInfo bi{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+            bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            vkBeginCommandBuffer(uploadCmd, &bi);
+
+            VkDeviceSize posSz  = mesh.positions.size() * sizeof(glm::vec3);
+            VkDeviceSize texSz  = mesh.texcoords.size() * sizeof(glm::vec2);
+            VkDeviceSize normSz = mesh.normals.size()   * sizeof(glm::vec3);
+            VkDeviceSize idxSz  = mesh.indices.size()   * sizeof(std::uint32_t);
+
+            auto mkGpu = [&](VkDeviceSize sz, VkBufferUsageFlags usage) {
+                return lut::create_buffer(mAllocator, sz,
+                    usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                    VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
+            };
+            mMeshPositions.emplace_back(mkGpu(posSz, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT));
+            mMeshTexCoords.emplace_back(mkGpu(texSz, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT));
+            mMeshNormals.emplace_back(mkGpu(normSz, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT));
+            mMeshIndices.emplace_back(mkGpu(idxSz, VK_BUFFER_USAGE_INDEX_BUFFER_BIT));
+
+            auto mkStg = [&](VkDeviceSize sz) {
+                return lut::create_buffer(mAllocator, sz,
+                    VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+            };
+            lut::Buffer ps = mkStg(posSz), ts = mkStg(texSz),
+                        ns = mkStg(normSz), is = mkStg(idxSz);
+
+            auto up = [&](lut::Buffer& b, const void* src, VkDeviceSize sz) {
+                void* ptr;
+                vmaMapMemory(mAllocator.allocator, b.allocation, &ptr);
+                std::memcpy(ptr, src, static_cast<std::size_t>(sz));
+                vmaUnmapMemory(mAllocator.allocator, b.allocation);
+            };
+            up(ps, mesh.positions.data(), posSz);
+            up(ts, mesh.texcoords.data(), texSz);
+            up(ns, mesh.normals.data(),   normSz);
+            up(is, mesh.indices.data(),   idxSz);
+
+            auto cpy = [&](lut::Buffer& src, lut::Buffer& dst, VkDeviceSize sz) {
+                VkBufferCopy c{ 0, 0, sz };
+                vkCmdCopyBuffer(uploadCmd, src.buffer, dst.buffer, 1, &c);
+            };
+            cpy(ps, mMeshPositions.back(), posSz);
+            cpy(ts, mMeshTexCoords.back(), texSz);
+            cpy(ns, mMeshNormals.back(),   normSz);
+            cpy(is, mMeshIndices.back(),   idxSz);
+
+            lut::buffer_barrier(uploadCmd, mMeshPositions.back().buffer,
+                VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT, VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT);
+            lut::buffer_barrier(uploadCmd, mMeshTexCoords.back().buffer,
+                VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT, VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT);
+            lut::buffer_barrier(uploadCmd, mMeshNormals.back().buffer,
+                VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT, VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT);
+            lut::buffer_barrier(uploadCmd, mMeshIndices.back().buffer,
+                VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT, VK_ACCESS_2_INDEX_READ_BIT);
+
+            vkEndCommandBuffer(uploadCmd);
+
+            VkCommandBufferSubmitInfo ci{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO };
+            ci.commandBuffer = uploadCmd;
+            VkSubmitInfo2 si{ VK_STRUCTURE_TYPE_SUBMIT_INFO_2 };
+            si.commandBufferInfoCount = 1; si.pCommandBufferInfos = &ci;
+            vkQueueSubmit2(mWindow.graphicsQueue, 1, &si, VK_NULL_HANDLE);
+            vkQueueWaitIdle(mWindow.graphicsQueue);
+        }
+
         VkDescriptorSet BuildPostDesc(VkImageView imageView, VkBuffer mosaicBuf)
         {
             VkDescriptorSet ds = lut::alloc_desc_set(
@@ -669,6 +798,7 @@ namespace engine {
         lut::ImageWithView mOffscreenImage;
         lut::ImageWithView mVisImage;
         lut::ImageWithView mShadowMap;
+        std::vector<VkImageView> mShadowCascadeViews;
     };
 
 } // namespace engine

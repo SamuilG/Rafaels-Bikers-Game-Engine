@@ -23,10 +23,11 @@ layout( scalar, set = 0, binding = 0 ) uniform UScene
 	uint _pad0;
 	uint _pad1;
 	uint _pad2;
-	mat4 lightVP;
+	mat4 lightVP[4];      // CSM cascade light-view-proj matrices
+	vec4 cascadeSplits;   // view-space split depths
 } uScene;
 
-layout( set = 0, binding = 1 ) uniform sampler2DShadow uShadowMap;
+layout( set = 0, binding = 1 ) uniform sampler2DArrayShadow uShadowMap;
 
 layout( location = 0 ) out vec4 oColor;
 
@@ -66,11 +67,23 @@ float G_CookTorrance(float NdotL, float NdotV, float NdotH, float VdotH)
 	return min(1.0, min(g1, g2));
 }
 
-// p2_1.5 PCF
+// p2_1.5 PCF with CSM cascade selection
 float calculate_shadow()
 {
-	vec3 projCoords = v2fLightProjPos.xyz / v2fLightProjPos.w;
-	// projCoords are in [-1, 1], transform to [0, 1]
+	// Select cascade based on view-space depth of the fragment
+	// v2fPos is world-space; project to view space to get depth
+	vec4 viewPos = uScene.camera * vec4(v2fPos, 1.0);
+	float fragDepth = abs(viewPos.z);
+
+	int cascadeIdx = 3; // default: last (outermost) cascade
+	if      (fragDepth < uScene.cascadeSplits.x) cascadeIdx = 0;
+	else if (fragDepth < uScene.cascadeSplits.y) cascadeIdx = 1;
+	else if (fragDepth < uScene.cascadeSplits.z) cascadeIdx = 2;
+
+	// Project fragment into the chosen cascade's light space
+	vec4 lightSpacePos = uScene.lightVP[cascadeIdx] * vec4(v2fPos, 1.0);
+	vec3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
+	// projCoords are in [-1, 1], transform xy to [0, 1]
 	projCoords.xy = projCoords.xy * 0.5 + 0.5;
 
 	// check bounds
@@ -81,21 +94,20 @@ float calculate_shadow()
 		return 1.0;
 	}
 
-	// PCF
+	// PCF over 3x3 texel neighbourhood
+	// textureSize returns (width, height, layers); we only need xy
+	vec2 texelSize = 1.0 / vec2(textureSize(uShadowMap, 0).xy);
 	float shadow = 0.0;
-	vec2 texelSize = 1.0 / textureSize(uShadowMap, 0);
 	
-	// 3x3 PCF
+	// sampler2DArrayShadow: texture(sampler, vec4(u, v, layer, compareRef))
 	for(int x = -1; x <= 1; ++x)
 	{
 		for(int y = -1; y <= 1; ++y)
 		{
-
-			// sampler2DShadow automatic comparison
-			shadow += texture(uShadowMap, vec3(projCoords.xy + vec2(x, y) * texelSize, projCoords.z)); 
+			vec2 uv = projCoords.xy + vec2(x, y) * texelSize;
+			shadow += texture(uShadowMap, vec4(uv, float(cascadeIdx), projCoords.z)); 
 		}
 	}
-	
 	shadow /= 9.0;
 
 	return shadow;
