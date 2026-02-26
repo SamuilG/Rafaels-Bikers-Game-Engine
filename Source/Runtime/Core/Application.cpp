@@ -34,6 +34,9 @@ namespace engine {
         for (auto& sys : Systems) 
             sys->Init();
 
+        // create the ground physics body (matches visual ground at y=-0.5)
+        physicsSystem->create_ground_plane(-0.5f);
+
         // create falling sphere after all system Init() calls
         {
             const float sphereRadius = 0.5f;
@@ -53,6 +56,10 @@ namespace engine {
             uint32_t matIdx = renderSystem->get_runtime_mat_index();
             glm::mat4 initTransform = glm::translate(glm::mat4(1.f), spawnPos);
             sceneManager->create_dynamic_entity("PhysicsSphere", sphereMeshIdx, matIdx, initTransform, bodyIDRaw);
+
+            // diagnostic: confirm indices
+            std::printf("[Sphere] meshIdx=%u  matIdx=%u  numMaterials=%u  spawnY=%.1f\n",
+                sphereMeshIdx, matIdx, renderSystem->get_material_count(), spawnPos.y);
         }
     }
 
@@ -65,8 +72,11 @@ namespace engine {
     }
 
     void Application::Run() {
+        // Reset timer so init time doesn't spike the first dt.
+        mLastTime = std::chrono::steady_clock::now();
+        constexpr float kMaxDt = 0.05f; // cap at 50 ms (20 fps minimum)
         while (Running) {
-            float dt = CalcDeltaTime();
+            float dt = std::min(CalcDeltaTime(), kMaxDt);
             for (auto& sys : Systems)
                 sys->Update(dt);
         }

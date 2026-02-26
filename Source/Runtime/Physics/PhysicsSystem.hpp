@@ -55,6 +55,9 @@ public:
     // returns the BodyID (use .GetIndexAndSequenceNumber() to pass to ECS).
     JPH::BodyID create_sphere_body(const glm::vec3& position, float radius = 0.5f);
 
+    // Create a large static ground plane body at the given y elevation.
+    void create_ground_plane(float y = -0.5f);
+
 private:
     std::unique_ptr<JPH::TempAllocatorImpl> m_tempAllocator;
     std::unique_ptr<JPH::JobSystemThreadPool> m_jobSystem;

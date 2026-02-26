@@ -137,6 +137,18 @@ std::vector<RenderBatch> SceneManager::get_render_batches() {
         batches.push_back({ mc.meshIndex, matc.materialIndex, wt.matrix });
             });
 
+    // diagnostic: print once
+    static bool once = false;
+    if (!once) {
+        once = true;
+        std::printf("[RenderBatches] total=%zu\n", batches.size());
+        for (size_t i = 0; i < batches.size(); ++i) {
+            std::printf("  batch[%zu] meshIdx=%u matIdx=%u pos=(%.1f,%.1f,%.1f)\n", i,
+                batches[i].meshIndex, batches[i].materialIndex,
+                batches[i].transform[3][0], batches[i].transform[3][1], batches[i].transform[3][2]);
+        }
+    }
+
     return batches;
 }
 

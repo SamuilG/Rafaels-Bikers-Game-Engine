@@ -207,4 +207,26 @@ JPH::BodyID PhysicsSystem::create_sphere_body(const glm::vec3& position, float r
 	return bodyID;
 }
 
+void PhysicsSystem::create_ground_plane(float y)
+{
+	JPH::BodyInterface& bodyInterface = m_physicsSystem->GetBodyInterface();
+
+	// 200 x 0.1 x 200 metre flat box centred at (0, y-0.05, 0)
+	JPH::BoxShapeSettings groundSettings(JPH::Vec3(100.f, 0.05f, 100.f));
+	JPH::ShapeRefC groundShape = groundSettings.Create().Get();
+
+	JPH::BodyCreationSettings groundBodySettings(
+		groundShape,
+		JPH::RVec3(0.f, y - 0.05f, 0.f),
+		JPH::Quat::sIdentity(),
+		JPH::EMotionType::Static,
+		Layers::NON_MOVING
+	);
+
+	JPH::Body* groundBody = bodyInterface.CreateBody(groundBodySettings);
+	bodyInterface.AddBody(groundBody->GetID(), JPH::EActivation::DontActivate);
+
+	m_physicsSystem->OptimizeBroadPhase();
+}
+
 } // namespace engine
