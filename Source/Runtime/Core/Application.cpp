@@ -16,7 +16,6 @@ namespace engine {
         //world systems
  
         //AddSystem<TerrainSystem>();
-        //AddSystem<SceneManager>();
 
         //get input and calculate data
         
@@ -42,7 +41,7 @@ namespace engine {
             const float sphereRadius = 0.5f;
             const glm::vec3 spawnPos{ 0.f, 5.f, 0.f }; // drop from y=5 (camera far=100)
 
-            // 1. generate a UV sphere mesh and upload it to the GPU
+            // 1. generate a UV sphere mesh and upload it to the GPU 
             EngineMesh sphereMesh = generate_uv_sphere(sphereRadius, 16, 32);
             sphereMesh.materialIndex = 0; // mesh-local material index (unused by renderer)
             uint32_t sphereMeshIdx = renderSystem->add_runtime_mesh(sphereMesh);
@@ -60,9 +59,12 @@ namespace engine {
             // diagnostic: confirm indices
             std::printf("[Sphere] meshIdx=%u  matIdx=%u  numMaterials=%u  spawnY=%.1f\n",
                 sphereMeshIdx, matIdx, renderSystem->get_material_count(), spawnPos.y);
+            std::printf("--------------------------------------\n");
         }
-    }
 
+        sceneManager->print_all_entities();
+    }
+    
     Application::~Application() {
 		// right to left Shutdown
         for (auto it = Systems.rbegin(); it != Systems.rend(); ++it) 
@@ -81,5 +83,7 @@ namespace engine {
                 sys->Update(dt);
         }
     }
+    
 
+    
 }
