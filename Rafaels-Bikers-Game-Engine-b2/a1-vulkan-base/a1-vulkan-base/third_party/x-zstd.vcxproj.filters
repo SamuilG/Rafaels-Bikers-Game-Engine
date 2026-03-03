@@ -1,0 +1,49 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="common">
+      <UniqueIdentifier>{AEFEE3F6-9AA0-0ECD-835B-22216F9C951D}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="decompress">
+      <UniqueIdentifier>{5A154A83-46CD-8BD0-AFD4-642C9BAB26C1}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="zstd\src\common\debug.c">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="zstd\src\common\entropy_common.c">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="zstd\src\common\error_private.c">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="zstd\src\common\fse_decompress.c">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="zstd\src\common\pool.c">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="zstd\src\common\threading.c">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="zstd\src\common\xxhash.c">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="zstd\src\common\zstd_common.c">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="zstd\src\decompress\huf_decompress.c">
+      <Filter>decompress</Filter>
+    </ClCompile>
+    <ClCompile Include="zstd\src\decompress\zstd_ddict.c">
+      <Filter>decompress</Filter>
+    </ClCompile>
+    <ClCompile Include="zstd\src\decompress\zstd_decompress.c">
+      <Filter>decompress</Filter>
+    </ClCompile>
+    <ClCompile Include="zstd\src\decompress\zstd_decompress_block.c">
+      <Filter>decompress</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>

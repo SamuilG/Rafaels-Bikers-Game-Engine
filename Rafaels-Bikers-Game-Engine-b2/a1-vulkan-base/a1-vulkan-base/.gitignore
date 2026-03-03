@@ -1,0 +1,28 @@
+# --- IDE & System ---
+.vs/
+.vscode/
+*.sln
+*.vcxproj
+*.user
+.DS_Store
+
+# --- Build & Output ---
+_build_/
+bin/
+lib/
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.cache
+
+# --- Project Specific Exceptions ---
+
+!premake5.exe
+/premake5
+/third_party/shaderc/linux-x86_64/glslc
+
+!glslc.exe
+# --- Temporary Files ---
+*.log
+*.tmp
