@@ -19,6 +19,7 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include "../Core/System.h"
+#include "../Renderer/RenderUtilities/engine_model.hpp"
 
 // helper to convert GLM to Jolt
 inline JPH::Vec3 toJolt(const glm::vec3& v) { return JPH::Vec3(v.x, v.y, v.z); }
@@ -57,6 +58,12 @@ public:
 
     // Create a large static ground plane body at the given y elevation.
     void create_ground_plane(float y = -0.5f);
+
+    // Create a static triangle mesh body from EngineMesh vertices and indices
+    JPH::BodyID create_static_mesh_body(const EngineMesh& mesh, const glm::mat4& transform);
+
+    // Create a dynamic convex hull body from EngineMesh vertices
+    JPH::BodyID create_dynamic_convex_body(const EngineMesh& mesh, const glm::mat4& transform, float mass = 1.0f);
 
 private:
     std::unique_ptr<JPH::TempAllocatorImpl> m_tempAllocator;

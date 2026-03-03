@@ -48,23 +48,55 @@ void SceneManager::Shutdown() {
 }
 
 
-void SceneManager::load_model(const EngineModel& model) {
-    std::print("Loading model with {} instances\n", model.scenes.size());
-    std::print("[Debug] load_model called on SceneManager at: {}\n", (void*)this);
+void SceneManager::load_static_model(const EngineModel& model, uint32_t baseMeshIdx, uint32_t baseMatIdx) {
+    std::print("Loading static model with {} instances\n", model.scenes.size());
+    std::print("[Debug] load_static_model called on SceneManager at: {}\n", (void*)this);
     int counter = 0;
     for (const auto& instance : model.scenes) {
-        // Core modification: append a sequence number if the name is empty or to prevent duplicate names
-        std::string name = instance.name.empty() ? "Object" : instance.name;
+        std::string name = instance.name.empty() ? "StaticObject" : instance.name;
         name += "_" + std::to_string(counter++);
 
         auto e = m_world->entity(name.c_str())
             .add<StaticObject>()
             .set<LocalTransform>({ instance.transform })
             .set<WorldTransform>({ instance.transform })
-            .set<MeshComponent>({ instance.meshIndex });
+            .set<MeshComponent>({ instance.meshIndex + baseMeshIdx });
 
-        uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex;
+        uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
         e.set<MaterialComponent>({ matIdx });
+
+        if (m_physics_system) {
+            JPH::BodyID bodyID = m_physics_system->create_static_mesh_body(model.meshes[instance.meshIndex], instance.transform);
+            if (!bodyID.IsInvalid()) {
+                e.set<PhysicsBody>({ bodyID.GetIndexAndSequenceNumber() });
+            }
+        }
+    }
+}
+
+void SceneManager::load_dynamic_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx) {
+    std::print("Loading dynamic model with {} instances\n", model.scenes.size());
+    std::print("[Debug] load_dynamic_model called on SceneManager at: {}\n", (void*)this);
+    int counter = 0;
+    for (const auto& instance : model.scenes) {
+        std::string name = instance.name.empty() ? "DynamicObject" : instance.name;
+        name += "_" + std::to_string(counter++);
+
+        auto e = m_world->entity(name.c_str())
+            .add<DynamicObject>()
+            .set<LocalTransform>({ instance.transform })
+            .set<WorldTransform>({ instance.transform })
+            .set<MeshComponent>({ instance.meshIndex + baseMeshIdx });
+
+        uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
+        e.set<MaterialComponent>({ matIdx });
+
+        if (m_physics_system) {
+            JPH::BodyID bodyID = m_physics_system->create_dynamic_convex_body(model.meshes[instance.meshIndex], instance.transform, mass);
+            if (!bodyID.IsInvalid()) {
+                e.set<PhysicsBody>({ bodyID.GetIndexAndSequenceNumber() });
+            }
+        }
     }
 }
 

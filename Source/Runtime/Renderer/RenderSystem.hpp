@@ -116,34 +116,12 @@ namespace engine {
                 mRenderFinished.emplace_back(lut::create_semaphore(mWindow.device));
             }
 
-            // Load data
-            mModel = load_engine_model_glb("Assets/Models/TScene.glb");
-
-            // textures
-            for (auto const& tex : mModel.textures) {
-                glfwPollEvents();
-
-                VkFormat fmt = (tex.space == ETextureSpace::srgb)
-                    ? VK_FORMAT_R8G8B8A8_SRGB
-                    : VK_FORMAT_R8G8B8A8_UNORM;
-
-                // upload texture data to gpu memory
-                mModelTextures.emplace_back(
-                    lut::load_image_texture2d_from_memory(
-                        tex.pixels.data(),
-                        static_cast<uint32_t>(tex.width),
-                        static_cast<uint32_t>(tex.height),
-                        mWindow, mCmdPool.handle, mAllocator, fmt));
-
-                // Create an imageview so the shader samplers can interpret the image data
-                mModelTextureViews.emplace_back(
-                    lut::create_image_view_texture2d(mWindow, mModelTextures.back().image, fmt));
-            }
-
-            if (mSceneManager) {
-                mSceneManager->load_model(mModel);
-            }
-
+            // Load main structural data (defer dynamic loading to Application)
+            // mModel = load_engine_model_glb("Assets/Models/TScene.glb"); // Replaced by load_additional_model in App
+            
+            // set up initial textures and descriptor pools
+            // load actual models via load_additional_model
+            
             // Set initial camera position
             // Move camera back (z+) and up (y+) to see the scene
             mState.camera2world = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 2.0f, 10.0f));
@@ -168,13 +146,11 @@ namespace engine {
             mDefaultSampler = lut::create_default_sampler(mWindow);
             mDebugSampler = create_debug_sampler(mWindow);
             mDescPool = lut::create_descriptor_pool(mWindow);
+            // allocate an initial empty descriptor array so adding runtime models works
+            // BuildMaterialDescriptors(mDefaultSampler.handle, mMaterialDescriptors);
+            // BuildMaterialDescriptors(mDebugSampler.handle, mDebugMaterialDescriptors);
 
-            // material descriptors
-            BuildMaterialDescriptors(mDefaultSampler.handle, mMaterialDescriptors);
-            BuildMaterialDescriptors(mDebugSampler.handle, mDebugMaterialDescriptors);
-
-            // meshes
-            UploadMeshes();
+            // UploadMeshes() will be driven by load_additional_model
 
             mSceneUBO = lut::create_buffer(mAllocator,
                 sizeof(glsl::SceneUniform),
@@ -490,6 +466,66 @@ namespace engine {
             return meshIdx;
         }
 
+        // add an entire model file to the renderer and physics scene
+        void load_additional_model(const char* path, bool isStatic, float mass = 1.0f, const glm::mat4& initialTransform = glm::mat4(1.0f))
+        {
+            EngineModel newModel = load_engine_model_glb(path);
+            uint32_t baseTextureIdx = static_cast<uint32_t>(mModelTextures.size());
+            uint32_t baseMaterialIdx = static_cast<uint32_t>(mModel.materials.size());
+            uint32_t baseMeshIdx = static_cast<uint32_t>(mModel.meshes.size());
+
+            // 1. Appends textures
+            for (auto const& tex : newModel.textures) {
+                glfwPollEvents();
+                VkFormat fmt = (tex.space == ETextureSpace::srgb) ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
+                mModelTextures.emplace_back(lut::load_image_texture2d_from_memory(tex.pixels.data(), tex.width, tex.height, mWindow, mCmdPool.handle, mAllocator, fmt));
+                mModelTextureViews.emplace_back(lut::create_image_view_texture2d(mWindow, mModelTextures.back().image, fmt));
+            }
+
+            // 2. Append materials (fixing texture references)
+            for (auto mat : newModel.materials) {
+                if (mat.baseColorTexture >= 0) mat.baseColorTexture += baseTextureIdx;
+                if (mat.normalTexture >= 0) mat.normalTexture += baseTextureIdx;
+                if (mat.metalRoughTexture >= 0) mat.metalRoughTexture += baseTextureIdx;
+                if (mat.occlusionTexture >= 0) mat.occlusionTexture += baseTextureIdx;
+                if (mat.emissiveTexture >= 0) mat.emissiveTexture += baseTextureIdx;
+                if (mat.alphaMaskTexture >= 0) mat.alphaMaskTexture += baseTextureIdx;
+                
+                mModel.materials.push_back(mat);
+                
+                // Add descriptors for new materials
+                AddOneMaterialDescriptor(mDefaultSampler.handle, mMaterialDescriptors, mat);
+                AddOneMaterialDescriptor(mDebugSampler.handle, mDebugMaterialDescriptors, mat);
+            }
+
+            // 3. Append meshes (fixing material references)
+            for (auto mesh : newModel.meshes) {
+                mesh.materialIndex += baseMaterialIdx;
+                mModel.meshes.push_back(mesh);
+                UploadSingleMesh(mesh);
+            }
+
+            // 4.1 apply initial transform and create entities via SceneManager, using local mesh indices to build physics.
+            for (auto& instance : newModel.scenes) {
+                instance.transform = initialTransform * instance.transform;
+            }
+            
+            // 4.2 update the scenes to use global mesh indices for the renderer.
+            if (mSceneManager) {
+                if (isStatic) {
+                    mSceneManager->load_static_model(newModel, baseMeshIdx, baseMaterialIdx);
+                } else {
+                    mSceneManager->load_dynamic_model(newModel, mass, baseMeshIdx, baseMaterialIdx);
+                }
+            }
+
+            // 5. Update model scenes (fixing mesh references for the global renderer array)
+            for (auto& instance : newModel.scenes) {
+                instance.meshIndex += baseMeshIdx;
+                mModel.scenes.push_back(instance);
+            }
+        }
+
         // returns the material descriptor index assigned to the last add_runtime_mesh() call
         uint32_t get_runtime_mat_index() const { return mRuntimeMatIndex; }
 
@@ -499,39 +535,30 @@ namespace engine {
         }
 
     private:
-        void BuildMaterialDescriptors(VkSampler sampler,
-            std::vector<VkDescriptorSet>& out)
+        void AddOneMaterialDescriptor(VkSampler sampler, std::vector<VkDescriptorSet>& out, const EngineMaterial& mat)
         {
-            for (auto const& mat : mModel.materials) {
-                VkDescriptorSet ds = lut::alloc_desc_set(
-                    mWindow, mDescPool.handle, mObjectLayout.handle);
+            VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, mObjectLayout.handle);
 
-                // Base Color
-                VkImageView baseView = mDefaultGrayView.handle;
-                if (mat.baseColorTexture >= 0)
-                    baseView = mModelTextureViews[mat.baseColorTexture].handle;
+            VkImageView baseView = mDefaultGrayView.handle;
+            if (mat.baseColorTexture >= 0) baseView = mModelTextureViews[mat.baseColorTexture].handle;
 
-                // 2. Roughness / Metalness
-                // if roughness/metallic textures are missing, using gray (0.5 roughness/metal)
-                VkImageView mrView = mDefaultGrayView.handle;
-                if (mat.metalRoughTexture >= 0)
-                    mrView = mModelTextureViews[mat.metalRoughTexture].handle;
+            VkImageView mrView = mDefaultGrayView.handle;
+            if (mat.metalRoughTexture >= 0) mrView = mModelTextureViews[mat.metalRoughTexture].handle;
 
-                VkDescriptorImageInfo imgs[3]{};
-                imgs[0] = { sampler, baseView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-                imgs[1] = { sampler, mrView,   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-                imgs[2] = { sampler, mrView,   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            VkDescriptorImageInfo imgs[3]{};
+            imgs[0] = { sampler, baseView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            imgs[1] = { sampler, mrView,   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            imgs[2] = { sampler, mrView,   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
 
-                VkWriteDescriptorSet w[3]{};
-                for (int j = 0; j < 3; ++j) {
-                    w[j].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                    w[j].dstSet = ds; w[j].dstBinding = (uint32_t)j;
-                    w[j].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-                    w[j].descriptorCount = 1; w[j].pImageInfo = &imgs[j];
-                }
-                vkUpdateDescriptorSets(mWindow.device, 3, w, 0, nullptr);
-                out.emplace_back(ds);
+            VkWriteDescriptorSet w[3]{};
+            for (int j = 0; j < 3; ++j) {
+                w[j].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                w[j].dstSet = ds; w[j].dstBinding = (uint32_t)j;
+                w[j].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                w[j].descriptorCount = 1; w[j].pImageInfo = &imgs[j];
             }
+            vkUpdateDescriptorSets(mWindow.device, 3, w, 0, nullptr);
+            out.emplace_back(ds);
         }
 
         // allocate exactly one gray descriptor set (for runtime meshes)
@@ -555,96 +582,6 @@ namespace engine {
             }
             vkUpdateDescriptorSets(mWindow.device, 3, w, 0, nullptr);
             out.emplace_back(ds);
-        }
-
-        void UploadMeshes()
-        {
-            // Mesh upload: use a single command buffer for all uploads to avoid
-            // stalling the pipeline with hundreds of submissions.
-            VkCommandBuffer uploadCmd = lut::alloc_command_buffer(mWindow, mCmdPool.handle);
-            VkCommandBufferBeginInfo bi{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
-            bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-            vkBeginCommandBuffer(uploadCmd, &bi);
-
-            // Keep staging buffers alive until submit is complete
-            std::vector<lut::Buffer> staging;
-
-            for (auto const& mesh : mModel.meshes) {
-                // Poll events to keep window responsive
-                glfwPollEvents();
-
-                VkDeviceSize posSz = mesh.positions.size() * sizeof(glm::vec3);
-                VkDeviceSize texSz = mesh.texcoords.size() * sizeof(glm::vec2);
-                VkDeviceSize normSz = mesh.normals.size() * sizeof(glm::vec3);
-                VkDeviceSize idxSz = mesh.indices.size() * sizeof(std::uint32_t);
-
-                auto mkGpu = [&](VkDeviceSize sz, VkBufferUsageFlags usage) {
-                    return lut::create_buffer(mAllocator, sz,
-                        usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                        VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
-                    };
-                mMeshPositions.emplace_back(mkGpu(posSz, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT));
-                mMeshTexCoords.emplace_back(mkGpu(texSz, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT));
-                mMeshNormals.emplace_back(mkGpu(normSz, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT));
-                mMeshIndices.emplace_back(mkGpu(idxSz, VK_BUFFER_USAGE_INDEX_BUFFER_BIT));
-
-                // upload data (using staging buffers)
-                auto mkStg = [&](VkDeviceSize sz) {
-                    return lut::create_buffer(mAllocator, sz,
-                        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-                    };
-                lut::Buffer ps = mkStg(posSz), ts = mkStg(texSz),
-                    ns = mkStg(normSz), is = mkStg(idxSz);
-
-                auto up = [&](lut::Buffer& b, const void* src, VkDeviceSize sz) {
-                    void* ptr;
-                    vmaMapMemory(mAllocator.allocator, b.allocation, &ptr);
-                    std::memcpy(ptr, src, static_cast<std::size_t>(sz));
-                    vmaUnmapMemory(mAllocator.allocator, b.allocation);
-                    };
-                up(ps, mesh.positions.data(), posSz);
-                up(ts, mesh.texcoords.data(), texSz);
-                up(ns, mesh.normals.data(), normSz);
-                up(is, mesh.indices.data(), idxSz);
-
-                auto cpy = [&](lut::Buffer& src, lut::Buffer& dst, VkDeviceSize sz) {
-                    VkBufferCopy c{ 0, 0, sz };
-                    vkCmdCopyBuffer(uploadCmd, src.buffer, dst.buffer, 1, &c);
-                    };
-                cpy(ps, mMeshPositions.back(), posSz);
-                cpy(ts, mMeshTexCoords.back(), texSz);
-                cpy(ns, mMeshNormals.back(), normSz);
-                cpy(is, mMeshIndices.back(), idxSz);
-
-                // Add buffer barriers for vertex attributes
-                lut::buffer_barrier(uploadCmd, mMeshPositions.back().buffer,
-                    VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                    VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT, VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT);
-                lut::buffer_barrier(uploadCmd, mMeshTexCoords.back().buffer,
-                    VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                    VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT, VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT);
-                lut::buffer_barrier(uploadCmd, mMeshNormals.back().buffer,
-                    VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                    VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT, VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT);
-                lut::buffer_barrier(uploadCmd, mMeshIndices.back().buffer,
-                    VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                    VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT, VK_ACCESS_2_INDEX_READ_BIT);
-
-                staging.emplace_back(std::move(ps)); staging.emplace_back(std::move(ts));
-                staging.emplace_back(std::move(ns)); staging.emplace_back(std::move(is));
-            }
-
-            vkEndCommandBuffer(uploadCmd);
-
-            VkCommandBufferSubmitInfo ci{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO };
-            ci.commandBuffer = uploadCmd;
-            VkSubmitInfo2 si{ VK_STRUCTURE_TYPE_SUBMIT_INFO_2 };
-            si.commandBufferInfoCount = 1; si.pCommandBufferInfos = &ci;
-            vkQueueSubmit2(mWindow.graphicsQueue, 1, &si, VK_NULL_HANDLE);
-
-            // Wait for uploads to finish before destroying staging buffers
-            vkQueueWaitIdle(mWindow.graphicsQueue);
         }
 
         // upload a single mesh to GPU, appending to the mesh buffer vectors
