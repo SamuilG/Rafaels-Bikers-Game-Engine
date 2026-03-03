@@ -5,7 +5,7 @@
 
 #include "setup.hpp"
 #include "camera.hpp"
-#include "engine_model.hpp"
+//#include "engine_model.hpp"
 #include "../../Rhi/vkobject.hpp"
 #include "../../Rhi/vulkan_window.hpp"
 #include "../../Rhi/vkbuffer.hpp" 

@@ -2,11 +2,13 @@
 #include "../Renderer/RenderSystem.hpp"
 #include "../Scene/SceneManager.hpp"
 #include "../Physics/PhysicsSystem.hpp"
+#include <flecs.h>
 
 namespace engine {
 
     Application::Application() {
         
+
         //basic systems
         
         //AddSystem<WindowSystem>();
@@ -19,6 +21,8 @@ namespace engine {
 
         //get input and calculate data
         
+ 
+
         physicsSystem = AddSystem<PhysicsSystem>();
         sceneManager  = AddSystem<SceneManager>(physicsSystem);
 
@@ -28,7 +32,7 @@ namespace engine {
         //AddSystem<UISystem>();
         renderSystem = AddSystem<RenderSystem>(Running, sceneManager);
 
-
+        
         // left or right Init
         for (auto& sys : Systems) 
             sys->Init();

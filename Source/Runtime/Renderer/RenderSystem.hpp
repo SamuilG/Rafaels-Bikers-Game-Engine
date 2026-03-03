@@ -47,7 +47,6 @@ using namespace labut2::literals;
 #include "../Rhi/vulkan_window.hpp"
 namespace lut = labut2;
 
-#include "RenderUtilities/engine_model.hpp"
 #include "RenderUtilities/camera.hpp"
 #include "RenderUtilities/setup.hpp"
 #include "RenderUtilities/rendering.hpp"
@@ -116,8 +115,16 @@ namespace engine {
                 mRenderFinished.emplace_back(lut::create_semaphore(mWindow.device));
             }
 
-            // Load data
-            mModel = load_engine_model_glb("Assets/Models/TScene.glb");
+            
+            //get the cpu model from scenemanger to upload data to gpu
+            if (mSceneManager) {
+
+                mModel = mSceneManager->get_model();
+
+            }
+            else {
+                throw lut::Error("RenderSystem requires SceneManager to be initialized first!");
+            }
 
             // textures
             for (auto const& tex : mModel.textures) {
@@ -140,9 +147,6 @@ namespace engine {
                     lut::create_image_view_texture2d(mWindow, mModelTextures.back().image, fmt));
             }
 
-            if (mSceneManager) {
-                mSceneManager->load_model(mModel);
-            }
 
             // Set initial camera position
             // Move camera back (z+) and up (y+) to see the scene

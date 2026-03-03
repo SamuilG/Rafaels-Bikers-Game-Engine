@@ -14,6 +14,7 @@
 
 #include <flecs.h>
 #include "../Core/System.h"
+#include "model_loader/engine_model.hpp"
 
 // Forward declare EngineModel to avoid including engine_model.hpp here
 
@@ -21,7 +22,15 @@
 // 2. Speed up compilation: forward declaration is more lightweight than including the full header, reducing compile time
 // 3. Hide implementation details: SceneManager only needs to know EngineModel exists, without knowing its internals
 
-struct EngineModel;
+//struct EngineModel;
+
+namespace cfg
+{
+    constexpr char const* ModelPath = "Assets/Models/TScene.glb";
+
+}
+
+
 
 namespace engine {
     class PhysicsSystem; // forward declare PhysicsSystem
@@ -73,6 +82,8 @@ public:
     // Load and instantiate all entities from EngineModel
     void load_model(const EngineModel& model);
 
+	const EngineModel& get_model() const { return mModel; }//expose the cpu model to other systems (like Vulkan) to upload data to gpu
+
     // Get render batches for the current frame
     std::vector<RenderBatch> get_render_batches();
 
@@ -97,6 +108,7 @@ public:
 
 private:
     flecs::world* m_world; 
+    EngineModel mModel;//private member
     PhysicsSystem* m_physics_system; // Optional dependency
 };
 

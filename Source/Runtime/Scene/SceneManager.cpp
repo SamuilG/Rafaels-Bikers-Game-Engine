@@ -1,12 +1,19 @@
 #include "SceneManager.hpp"
-#include "../Renderer/RenderUtilities/engine_model.hpp" // Only include resource definitions here
+
 #include <flecs.h>
 #include    <print>
 #include "../Physics/PhysicsSystem.hpp"
+
+
+
+
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/constants.hpp>
 #include <cmath>
+
+
+
 
 namespace engine {
 
@@ -20,6 +27,13 @@ SceneManager::~SceneManager() {
 
 void SceneManager::Init() {
     m_world = new flecs::world();
+
+    mModel = load_engine_model_glb(cfg::ModelPath);
+    
+    
+
+    load_model(mModel);
+
 
     // Robust hierarchical transform system
     m_world->system<WorldTransform, const LocalTransform>("UpdateWorldTransform")
@@ -210,4 +224,4 @@ flecs::entity SceneManager::create_dynamic_entity(
     return e;
 }
 
-} // namespace engine
+} // namespace enginea
