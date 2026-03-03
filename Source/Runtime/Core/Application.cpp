@@ -38,8 +38,29 @@ namespace engine {
         renderSystem->load_additional_model("Assets/Models/TScene.glb", true);
         
         // specify a small mass
-        glm::mat4 spawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(10.0f, 45.0f, 10.0f));
+        glm::mat4 spawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(25.0f, 10.0f, 35.0f));
         renderSystem->load_additional_model("Assets/Models/BaseballBat.glb", false, 1.5f, spawnPos);
+        
+        glm::mat4 charSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(15.0f, 10.0f, 25.0f));
+        renderSystem->load_additional_model("Assets/Models/Animated Character Base.glb", false, 80.0f, charSpawnPos);
+
+        // Scale cars down to 0.2
+        glm::mat4 carSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(5.0f, 10.0f, 15.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(0.2f));
+        renderSystem->load_additional_model("Assets/Models/Car.glb", false, 1500.0f, carSpawnPos);
+
+        // Scale helicopter down to 0.2
+        glm::mat4 heliSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(45.0f, 10.0f, 5.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(0.2f));
+        renderSystem->load_additional_model("Assets/Models/Helicopter.glb", false, 3000.0f, heliSpawnPos);
+
+        glm::mat4 missileSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(35.0f, 10.0f, 45.0f));
+        renderSystem->load_additional_model("Assets/Models/Missile.glb", false, 50.0f, missileSpawnPos);
+
+        // Scale police car down to 0.2
+        glm::mat4 policeCarSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(25.0f, 10.0f, 15.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(0.2f));
+        renderSystem->load_additional_model("Assets/Models/Police Car.glb", false, 1600.0f, policeCarSpawnPos);
+
+        glm::mat4 romanSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(10.0f, 10.0f, 25.0f));
+        renderSystem->load_additional_model("Assets/Models/Roman Centurion.glb", false, 90.0f, romanSpawnPos);
 
         sceneManager->print_all_entities();
     }
