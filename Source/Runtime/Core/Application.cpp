@@ -32,39 +32,37 @@ namespace engine {
         //AddSystem<UISystem>();
         renderSystem = AddSystem<RenderSystem>(Running, sceneManager);
 
-        
-        // left or right Init
+        // Initialise all systems
         for (auto& sys : Systems) 
             sys->Init();
 
-        // create the ground physics body - top surface at y=0 matches the visible ground
-        physicsSystem->create_ground_plane(0.0f);
+        // load models using the API in RenderSystem
+        // TScene is completely static (ground + buildings)
+        renderSystem->load_additional_model("Assets/Models/TScene.glb", true);
+        
+        // specify a small mass
+        glm::mat4 spawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(25.0f, 100.0f, 35.0f));
+        renderSystem->load_additional_model("Assets/Models/BaseballBat.glb", false, 1.5f, spawnPos);
+        
+        glm::mat4 charSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(15.0f, 10.0f, 25.0f));
+        renderSystem->load_additional_model("Assets/Models/Animated Character Base.glb", false, 80.0f, charSpawnPos);
 
-        // create falling sphere after all system Init() calls
-        {
-            const float sphereRadius = 0.5f;
-            const glm::vec3 spawnPos{ 0.f, 5.f, 0.f }; // drop from y=5 (camera far=100)
+        // Scale cars down to 0.1
+        glm::mat4 carSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(5.0f, 10.0f, 15.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(0.1f));
+        renderSystem->load_additional_model("Assets/Models/Car.glb", false, 1500.0f, carSpawnPos);
 
-            // 1. generate a UV sphere mesh and upload it to the GPU 
-            EngineMesh sphereMesh = generate_uv_sphere(sphereRadius, 16, 32);
-            sphereMesh.materialIndex = 0; // mesh-local material index (unused by renderer)
-            uint32_t sphereMeshIdx = renderSystem->add_runtime_mesh(sphereMesh);
+        // Scale helicopter down to 0.3
+        glm::mat4 heliSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(45.0f, 10.0f, 5.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(0.3f));
+        renderSystem->load_additional_model("Assets/Models/Helicopter.glb", false, 3000.0f, heliSpawnPos);
 
-            // 2. create the Jolt physics body
-            JPH::BodyID bodyID = physicsSystem->create_sphere_body(spawnPos, sphereRadius);
-            uint32_t bodyIDRaw = bodyID.GetIndexAndSequenceNumber();
+        glm::mat4 missileSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(35.0f, 10.0f, 45.0f));
+        renderSystem->load_additional_model("Assets/Models/Missile.glb", false, 50.0f, missileSpawnPos);
 
-            // 3. register a renderable ECS entity that will be synced each frame
-            // use get_runtime_mat_index() to get the gray descriptor
-            uint32_t matIdx = renderSystem->get_runtime_mat_index();
-            glm::mat4 initTransform = glm::translate(glm::mat4(1.f), spawnPos);
-            sceneManager->create_dynamic_entity("PhysicsSphere", sphereMeshIdx, matIdx, initTransform, bodyIDRaw);
+        glm::mat4 policeCarSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(25.0f, 10.0f, 15.0f));
+        renderSystem->load_additional_model("Assets/Models/Police Car.glb", false, 1600.0f, policeCarSpawnPos);
 
-            // diagnostic: confirm indices
-            std::printf("[Sphere] meshIdx=%u  matIdx=%u  numMaterials=%u  spawnY=%.1f\n",
-                sphereMeshIdx, matIdx, renderSystem->get_material_count(), spawnPos.y);
-            std::printf("--------------------------------------\n");
-        }
+        glm::mat4 romanSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(10.0f, 10.0f, 25.0f));
+        renderSystem->load_additional_model("Assets/Models/Roman Centurion.glb", false, 90.0f, romanSpawnPos);
 
         sceneManager->print_all_entities();
     }

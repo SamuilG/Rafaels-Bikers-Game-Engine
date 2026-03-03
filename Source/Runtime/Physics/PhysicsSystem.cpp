@@ -4,7 +4,11 @@
 #include <Jolt/Physics/PhysicsSettings.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/Physics/Collision/Shape/MeshShape.h>
+#include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
+
+#include <glm/gtx/matrix_decompose.hpp>
 
 #include <iostream>
 #include <cstdarg>
@@ -227,6 +231,128 @@ void PhysicsSystem::create_ground_plane(float y)
 	bodyInterface.AddBody(groundBody->GetID(), JPH::EActivation::DontActivate);
 
 	m_physicsSystem->OptimizeBroadPhase();
+}
+
+JPH::BodyID PhysicsSystem::create_static_mesh_body(const EngineMesh& mesh, const glm::mat4& transform)
+{
+	JPH::BodyInterface& bodyInterface = m_physicsSystem->GetBodyInterface();
+
+	// 1. Build Vertex List
+	JPH::VertexList vertices;
+	vertices.reserve(mesh.positions.size());
+	for (const auto& pos : mesh.positions) {
+		vertices.push_back(JPH::Float3(pos.x, pos.y, pos.z));
+	}
+
+	// 2. Build Triangle List
+	JPH::IndexedTriangleList triangles;
+	auto numTriangles = mesh.indices.size() / 3;
+	triangles.reserve(numTriangles);
+	for (size_t i = 0; i < mesh.indices.size(); i += 3) {
+		triangles.emplace_back(
+			mesh.indices[i],
+			mesh.indices[i + 1],
+			mesh.indices[i + 2]
+		);
+	}
+
+	// 3. Create MeshShapeSettings
+	JPH::MeshShapeSettings shapeSettings(vertices, triangles);
+	JPH::ShapeSettings::ShapeResult shapeResult = shapeSettings.Create();
+	if (shapeResult.HasError()) {
+		std::cout << "Error creating MeshShape: " << shapeResult.GetError() << std::endl;
+		return JPH::BodyID(); // Invalid BodyID
+	}
+	JPH::ShapeRefC shape = shapeResult.Get();
+
+	// 4. Extract position and rotation from transform
+	glm::vec3 scale;
+	glm::quat rotation;
+	glm::vec3 translation;
+	glm::vec3 skew;
+	glm::vec4 perspective;
+	glm::decompose(transform, scale, rotation, translation, skew, perspective);
+
+
+	if (scale != glm::vec3(1.0f)) {
+		JPH::VertexList scaledVertices;
+		scaledVertices.reserve(mesh.positions.size());
+		for (const auto& pos : mesh.positions) {
+			scaledVertices.push_back(JPH::Float3(pos.x * scale.x, pos.y * scale.y, pos.z * scale.z));
+		}
+		JPH::MeshShapeSettings scaledShapeSettings(scaledVertices, triangles);
+		shape = scaledShapeSettings.Create().Get();
+	}
+
+
+	JPH::BodyCreationSettings bodySettings(
+		shape,
+		JPH::RVec3(translation.x, translation.y, translation.z),
+		toJolt(rotation),
+		JPH::EMotionType::Static,
+		Layers::NON_MOVING
+	);
+
+	JPH::Body* body = bodyInterface.CreateBody(bodySettings);
+	if (!body) {
+		std::cout << "Error creating static mesh body." << std::endl;
+		return JPH::BodyID();
+	}
+
+	bodyInterface.AddBody(body->GetID(), JPH::EActivation::DontActivate);
+	return body->GetID();
+}
+
+JPH::BodyID PhysicsSystem::create_dynamic_convex_body(const EngineMesh& mesh, const glm::mat4& transform, float mass)
+{
+	JPH::BodyInterface& bodyInterface = m_physicsSystem->GetBodyInterface();
+
+	// Extract position, rotation, scale from transform
+	glm::vec3 scale;
+	glm::quat rotation;
+	glm::vec3 translation;
+	glm::vec3 skew;
+	glm::vec4 perspective;
+	glm::decompose(transform, scale, rotation, translation, skew, perspective);
+
+	// 1. Build Vertex List (applying scale directly)
+	JPH::Array<JPH::Vec3> points;
+	points.resize(mesh.positions.size());
+	for (size_t i = 0; i < mesh.positions.size(); ++i) {
+		const auto& pos = mesh.positions[i];
+		points[i] = JPH::Vec3(pos.x * scale.x, pos.y * scale.y, pos.z * scale.z);
+	}
+
+	// 2. Create ConvexHullShapeSettings
+	JPH::ConvexHullShapeSettings shapeSettings(points);
+	shapeSettings.mDensity = mass > 0.0f ? 1000.0f : 1.0f; // Simplified density proxy
+	
+	JPH::ShapeSettings::ShapeResult shapeResult = shapeSettings.Create();
+	if (shapeResult.HasError()) {
+		std::cout << "Error creating ConvexHullShape: " << shapeResult.GetError() << std::endl;
+		return JPH::BodyID(); 
+	}
+	JPH::ShapeRefC shape = shapeResult.Get();
+
+	JPH::BodyCreationSettings bodySettings(
+		shape,
+		JPH::RVec3(translation.x, translation.y, translation.z),
+		toJolt(rotation),
+		JPH::EMotionType::Dynamic,
+		Layers::MOVING
+	);
+	
+	// Enable Continuous Collision Detection (CCD) to prevent tunneling at high speeds
+	bodySettings.mMotionQuality = JPH::EMotionQuality::LinearCast;
+
+	JPH::Body* body = bodyInterface.CreateBody(bodySettings);
+	if (!body) {
+		std::cout << "Error creating dynamic convex body." << std::endl;
+		return JPH::BodyID();
+	}
+
+	bodyInterface.AddBody(body->GetID(), JPH::EActivation::Activate);
+	return body->GetID();
 }
 
 } // namespace engine

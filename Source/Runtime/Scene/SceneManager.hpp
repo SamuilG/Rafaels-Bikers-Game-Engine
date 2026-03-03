@@ -86,8 +86,11 @@ public:
     void Update(float dt) override;
     void Shutdown() override;
 
-    // Load and instantiate all entities from EngineModel
-    void load_model(const EngineModel& model);
+    // Load and instantiate all entities from EngineModel as static
+    void load_static_model(const EngineModel& model, uint32_t baseMeshIdx = 0, uint32_t baseMatIdx = 0);
+
+    // Load and instantiate all entities from EngineModel as dynamic
+    void load_dynamic_model(const EngineModel& model, float mass = 1.0f, uint32_t baseMeshIdx = 0, uint32_t baseMatIdx = 0);
 
 	const EngineModel& get_model() const { return mModel; }//expose the cpu model to other systems (like Vulkan) to upload data to gpu
 
