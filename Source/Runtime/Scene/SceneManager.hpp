@@ -51,6 +51,13 @@ struct PhysicsBody {
 struct StaticObject {};
 struct DynamicObject {};
 
+
+// Entity status component to control rendering and physics behavior
+struct EntityStatus {
+    bool should_render = true;
+    bool has_physics = true;
+};
+
 // Render batch data
 struct RenderBatch {
     uint32_t meshIndex;

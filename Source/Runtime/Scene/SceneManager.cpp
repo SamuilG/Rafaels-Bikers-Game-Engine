@@ -73,6 +73,7 @@ void SceneManager::load_model(const EngineModel& model) {
 
         auto e = m_world->entity(name.c_str())
             .add<StaticObject>()
+            .set<EntityStatus>({ true, true })
             .set<LocalTransform>({ instance.transform })
             .set<WorldTransform>({ instance.transform })
             .set<MeshComponent>({ instance.meshIndex });
@@ -94,8 +95,11 @@ void SceneManager::set_local_transform(flecs::entity e, const glm::mat4& transfo
 
 void SceneManager::Update(float dt) {
     if (m_physics_system) {
-        m_world->query<LocalTransform, const PhysicsBody>()
-            .each([&](flecs::entity e, LocalTransform& lt, const PhysicsBody& pb) {
+        m_world->query<LocalTransform, const PhysicsBody, const EntityStatus>()
+            .each([&](flecs::entity e, LocalTransform& lt, const PhysicsBody& pb, const EntityStatus& status) {
+            // 只有 has_physics 为 true 时才同步
+            if (!status.has_physics) return;
+
                 JPH::BodyID bodyID(pb.bodyID);
                 JPH::BodyInterface& bodyInterface = m_physics_system->get_body_interface();
                 
@@ -127,11 +131,14 @@ void SceneManager::print_all_entities() {
 
     int count = 0;
     // Use each with component arguments, which is the most reliable query method
-    m_world->each([&](flecs::entity e, MeshComponent& m) {
+    m_world->each([&](flecs::entity e, MeshComponent& m, EntityStatus& status) {
         count++;
         const char* name = e.name();
-        std::print("Entity Found: {:<20} | ID: {} | MeshIdx: {}\n",
-            name ? name : "(unnamed)", e.id(), m.meshIndex);
+        std::print("Entity: {:<15}       | Render: {} | Physics: {} | MeshIdx: {}\n",
+            name ? name : "unnamed",
+            status.should_render ? "ON" : "OFF",
+            status.has_physics ? "ON" : "OFF",
+            m.meshIndex);
         });
 
     if (count == 0) {
@@ -146,22 +153,25 @@ std::vector<RenderBatch> SceneManager::get_render_batches() {
     std::vector<RenderBatch> batches;
 
     // Query all entities with WorldTransform, MeshComponent, and MaterialComponent
-    m_world->query<const WorldTransform, const MeshComponent, const MaterialComponent>()
-        .each([&](const WorldTransform& wt, const MeshComponent& mc, const MaterialComponent& matc) {
-        batches.push_back({ mc.meshIndex, matc.materialIndex, wt.matrix });
+    m_world->query<const WorldTransform, const MeshComponent, const MaterialComponent, const EntityStatus>()
+        .each([&](const WorldTransform& wt, const MeshComponent& mc, const MaterialComponent& matc, const EntityStatus& status) {
+        // 只有 should_render 为 true 时才加入渲染批次
+        if (status.should_render) {
+            batches.push_back({ mc.meshIndex, matc.materialIndex, wt.matrix });
+        }
             });
 
     // diagnostic: print once
-    static bool once = false;
-    if (!once) {
-        once = true;
-        std::printf("[RenderBatches] total=%zu\n", batches.size());
-        for (size_t i = 0; i < batches.size(); ++i) {
-            std::printf("  batch[%zu] meshIdx=%u matIdx=%u pos=(%.1f,%.1f,%.1f)\n", i,
-                batches[i].meshIndex, batches[i].materialIndex,
-                batches[i].transform[3][0], batches[i].transform[3][1], batches[i].transform[3][2]);
-        }
-    }
+    //static bool once = false;
+    //if (!once) {
+    //    once = true;
+    //    std::printf("[RenderBatches] total=%zu\n", batches.size());
+    //    for (size_t i = 0; i < batches.size(); ++i) {
+    //        std::printf("  batch[%zu] meshIdx=%u matIdx=%u pos=(%.1f,%.1f,%.1f)\n", i,
+    //            batches[i].meshIndex, batches[i].materialIndex,
+    //            batches[i].transform[3][0], batches[i].transform[3][1], batches[i].transform[3][2]);
+    //    }
+    //}
 
     return batches;
 }
@@ -206,12 +216,14 @@ EngineMesh generate_uv_sphere(float radius, uint32_t rings, uint32_t sectors)
 
 namespace engine {
 
+	
 flecs::entity SceneManager::create_dynamic_entity(
     const char* name, uint32_t meshIndex, uint32_t matIndex,
     const glm::mat4& transform, uint32_t physicsBodyID)
 {
     auto e = m_world->entity(name)
         .add<DynamicObject>()
+        .set<EntityStatus>({ true, false })
         .set<LocalTransform>({ transform })
         .set<WorldTransform>({ transform })
         .set<MeshComponent>({ meshIndex })
