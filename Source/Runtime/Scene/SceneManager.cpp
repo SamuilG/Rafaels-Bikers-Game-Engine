@@ -93,6 +93,7 @@ void SceneManager::load_dynamic_model(const EngineModel& model, float mass, uint
 
         auto e = m_world->entity(name.c_str())
             .add<DynamicObject>()
+            .set<EntityStatus>({ true, true })
             .set<LocalTransform>({ instance.transform })
             .set<WorldTransform>({ instance.transform })
             .set<MeshComponent>({ instance.meshIndex + baseMeshIdx });
@@ -249,7 +250,7 @@ flecs::entity SceneManager::create_dynamic_entity(
 {
     auto e = m_world->entity(name)
         .add<DynamicObject>()
-        .set<EntityStatus>({ true, false })
+        .set<EntityStatus>({ true, true })
         .set<LocalTransform>({ transform })
         .set<WorldTransform>({ transform })
         .set<MeshComponent>({ meshIndex })
