@@ -19,7 +19,7 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include "../Core/System.h"
-#include "../Renderer/RenderUtilities/engine_model.hpp"
+#include "../Scene/model_loader/engine_model.hpp"
 
 // helper to convert GLM to Jolt
 inline JPH::Vec3 toJolt(const glm::vec3& v) { return JPH::Vec3(v.x, v.y, v.z); }

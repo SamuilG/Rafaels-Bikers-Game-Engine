@@ -28,12 +28,6 @@ SceneManager::~SceneManager() {
 void SceneManager::Init() {
     m_world = new flecs::world();
 
-    mModel = load_engine_model_glb(cfg::ModelPath);
-    
-    
-
-    load_model(mModel);
-
 
     // Robust hierarchical transform system
     m_world->system<WorldTransform, const LocalTransform>("UpdateWorldTransform")
@@ -129,7 +123,7 @@ void SceneManager::Update(float dt) {
     if (m_physics_system) {
         m_world->query<LocalTransform, const PhysicsBody, const EntityStatus>()
             .each([&](flecs::entity e, LocalTransform& lt, const PhysicsBody& pb, const EntityStatus& status) {
-            // Ö»ÓĞ has_physics Îª true Ê±²ÅÍ¬²½
+            // åªæœ‰ has_physics ä¸º true æ—¶æ‰åŒæ­¥
             if (!status.has_physics) return;
 
                 JPH::BodyID bodyID(pb.bodyID);
@@ -187,7 +181,7 @@ std::vector<RenderBatch> SceneManager::get_render_batches() {
     // Query all entities with WorldTransform, MeshComponent, and MaterialComponent
     m_world->query<const WorldTransform, const MeshComponent, const MaterialComponent, const EntityStatus>()
         .each([&](const WorldTransform& wt, const MeshComponent& mc, const MaterialComponent& matc, const EntityStatus& status) {
-        // Ö»ÓĞ should_render Îª true Ê±²Å¼ÓÈëäÖÈ¾Åú´Î
+        // åªæœ‰ should_render ä¸º true æ—¶æ‰åŠ å…¥æ¸²æŸ“æ‰¹æ¬¡
         if (status.should_render) {
             batches.push_back({ mc.meshIndex, matc.materialIndex, wt.matrix });
         }
