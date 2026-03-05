@@ -22,6 +22,7 @@ namespace engine {
             return static_cast<T*>(ref.get());
         }
 
+
     private:
         float CalcDeltaTime() {
             auto now = std::chrono::steady_clock::now();
