@@ -8,7 +8,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-
+#include <cstddef>
+#include "../Particle/ParticleSystem.hpp"
 
 lut::PipelineLayout create_triangle_pipeline_layout( lut::VulkanContext const& aContext, VkDescriptorSetLayout aSceneLayout, VkDescriptorSetLayout aObjectLayout )
 {
@@ -1746,4 +1747,159 @@ lut::Pipeline create_shadow_pipeline( lut::VulkanWindow const& aWindow, VkPipeli
 	return lut::Pipeline( aWindow.device, pipe );
 }
 
+//================particle system===================================================
+lut::Pipeline create_particle_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, VkFormat aColorFormat)
+{
+	auto const vertSpirV = lut::load_file_u32(cfg::kParticleVertShaderPath);
+	auto const fragSpirV = lut::load_file_u32(cfg::kParticleFragShaderPath);
+
+	VkShaderModuleCreateInfo code[2]{};
+	code[0].sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	code[0].codeSize = vertSpirV.size() * sizeof(uint32_t);
+	code[0].pCode = vertSpirV.data();
+
+	code[1].sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	code[1].codeSize = fragSpirV.size() * sizeof(uint32_t);
+	code[1].pCode = fragSpirV.data();
+
+	VkPipelineShaderStageCreateInfo stages[2]{};
+	stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+	stages[0].pName = "main";
+	stages[0].pNext = &code[0];
+
+	stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	stages[1].pName = "main";
+	stages[1].pNext = &code[1];
+
+	VkVertexInputBindingDescription binding{};
+	binding.binding = 0;
+	binding.stride = sizeof(ParticleVertex);
+	binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+	VkVertexInputAttributeDescription attrs[5]{};
+
+	// 1. 位置
+	attrs[0].location = 0;
+	attrs[0].binding = 0;
+	attrs[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+	attrs[0].offset = offsetof(ParticleVertex, pos);
+
+	// 2. 大小
+	attrs[1].location = 1;
+	attrs[1].binding = 0;
+	attrs[1].format = VK_FORMAT_R32_SFLOAT;
+	attrs[1].offset = offsetof(ParticleVertex, size);
+
+	// 3. 颜色
+	attrs[2].location = 2;
+	attrs[2].binding = 0;
+	attrs[2].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+	attrs[2].offset = offsetof(ParticleVertex, color);
+
+	// 4.UV Rect
+	attrs[3].location = 3;
+	attrs[3].binding = 0;
+	attrs[3].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+	attrs[3].offset = offsetof(ParticleVertex, uvRect);
+
+	// 5 .旋转
+	attrs[4].location = 4;
+	attrs[4].binding = 0;
+	attrs[4].format = VK_FORMAT_R32_SFLOAT;
+	attrs[4].offset = offsetof(ParticleVertex, rotation);
+
+	VkPipelineVertexInputStateCreateInfo vi{};
+	vi.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	vi.vertexBindingDescriptionCount = 1;
+	vi.pVertexBindingDescriptions = &binding;
+	vi.vertexAttributeDescriptionCount = 5;
+	vi.pVertexAttributeDescriptions = attrs;
+
+	VkPipelineInputAssemblyStateCreateInfo ia{};
+	ia.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	ia.topology = VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+	ia.primitiveRestartEnable = VK_FALSE;
+
+	VkViewport viewport{};
+	VkRect2D scissor{};
+	VkPipelineViewportStateCreateInfo vp{};
+	vp.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	vp.viewportCount = 1;
+	vp.pViewports = &viewport;
+	vp.scissorCount = 1;
+	vp.pScissors = &scissor;
+
+	VkPipelineRasterizationStateCreateInfo rs{};
+	rs.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rs.polygonMode = VK_POLYGON_MODE_FILL;
+	rs.cullMode = VK_CULL_MODE_NONE;
+	rs.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	rs.lineWidth = 1.f;
+
+	VkPipelineMultisampleStateCreateInfo ms{};
+	ms.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+	//加法混合Additive Blending
+	VkPipelineColorBlendAttachmentState cbAtt{};
+	cbAtt.blendEnable = VK_TRUE;
+	cbAtt.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+	cbAtt.dstColorBlendFactor = VK_BLEND_FACTOR_ONE; //  ON为实现色彩相加
+	cbAtt.colorBlendOp = VK_BLEND_OP_ADD;
+	cbAtt.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	cbAtt.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	cbAtt.alphaBlendOp = VK_BLEND_OP_ADD;
+	cbAtt.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+		VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
+	VkPipelineColorBlendStateCreateInfo cb{};
+	cb.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	cb.attachmentCount = 1;
+	cb.pAttachments = &cbAtt;
+
+	VkPipelineDepthStencilStateCreateInfo ds{};
+	ds.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	ds.depthTestEnable = VK_TRUE;
+	ds.depthWriteEnable = VK_FALSE; // 不写入深度，会有黑边
+	ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+
+	VkDynamicState dynStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+	VkPipelineDynamicStateCreateInfo dyn{};
+	dyn.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dyn.dynamicStateCount = 2;
+	dyn.pDynamicStates = dynStates;
+
+	VkPipelineRenderingCreateInfo renderingInfo{};
+	renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+	renderingInfo.colorAttachmentCount = 1;
+	renderingInfo.pColorAttachmentFormats = &aColorFormat;
+	renderingInfo.depthAttachmentFormat = cfg::kDepthFormat;
+
+	VkGraphicsPipelineCreateInfo pi{};
+	pi.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pi.pNext = &renderingInfo;
+	pi.stageCount = 2;
+	pi.pStages = stages;
+	pi.pVertexInputState = &vi;
+	pi.pInputAssemblyState = &ia;
+	pi.pViewportState = &vp;
+	pi.pRasterizationState = &rs;
+	pi.pMultisampleState = &ms;
+	pi.pDepthStencilState = &ds;
+	pi.pColorBlendState = &cb;
+	pi.pDynamicState = &dyn;
+	pi.layout = aPipelineLayout;
+
+	VkPipeline pipe = VK_NULL_HANDLE;
+	if (auto const res = vkCreateGraphicsPipelines(aWindow.device, VK_NULL_HANDLE, 1, &pi, nullptr, &pipe);
+		VK_SUCCESS != res)
+	{
+		throw lut::Error("Unable to create particle pipeline\n"
+			"vkCreateGraphicsPipelines() returned {}", lut::to_string(res));
+	}
+
+	return lut::Pipeline(aWindow.device, pipe);
+}
 
