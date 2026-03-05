@@ -15,7 +15,7 @@
 // apply post processing and render to swapchain
 // function definition
 
-void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipeline aAlphaPipe, ImageAndView const& aColorAttach, ImageAndView const& aDepthAttach, VkExtent2D const& aImageExtent, VkBuffer aSceneUBO, glsl::SceneUniform const& aSceneUniform, VkPipelineLayout aGraphicsLayout, VkDescriptorSet aSceneDescriptors, std::vector<lut::Buffer> const& aMeshPositions, std::vector<lut::Buffer> const& aMeshTexCoords, std::vector<lut::Buffer> const& aMeshNormals, std::vector<lut::Buffer> const& aMeshIndices, std::vector<EngineMesh> const& aMeshInfos, std::vector<EngineMaterial> const& aMaterials, std::vector<VkDescriptorSet> const& aMaterialDescriptors, std::vector<RenderBatch> const& aBatches, VkPipeline aPostProcPipe, VkDescriptorSet aPostProcDescriptors, VkPipelineLayout aPostProcLayout, ImageAndView const& aOffscreenColor, VkClearColorValue aClearColor, VkPipeline aShadowPipe, ImageAndView const& aShadowMap, std::vector<VkImageView> const& aShadowCascadeViews)
+void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipeline aAlphaPipe, ImageAndView const& aColorAttach, ImageAndView const& aDepthAttach, VkExtent2D const& aImageExtent, VkBuffer aSceneUBO, glsl::SceneUniform const& aSceneUniform, VkPipelineLayout aGraphicsLayout, VkDescriptorSet aSceneDescriptors, std::vector<lut::Buffer> const& aMeshPositions, std::vector<lut::Buffer> const& aMeshTexCoords, std::vector<lut::Buffer> const& aMeshNormals, std::vector<lut::Buffer> const& aMeshIndices, std::vector<EngineMesh> const& aMeshInfos, std::vector<EngineMaterial> const& aMaterials, std::vector<VkDescriptorSet> const& aMaterialDescriptors, std::vector<RenderBatch> const& aBatches, VkPipeline aPostProcPipe, VkDescriptorSet aPostProcDescriptors, VkPipelineLayout aPostProcLayout, ImageAndView const& aOffscreenColor, VkClearColorValue aClearColor, VkPipeline aShadowPipe, ImageAndView const& aShadowMap, std::vector<VkImageView> const& aShadowCascadeViews, bool particlesEnabled, VkPipeline particlePipe, const std::vector<std::unique_ptr<ParticleSystem>>& allParticles/*, VkDescriptorSet particleDescSet, VkBuffer particleVB, uint32_t particleCount*/)
 {
 
 	// begin recording commands
@@ -263,6 +263,58 @@ void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipel
 		vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
 
 		vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(meshInfo.indices.size()), 1, 0, 0, 0);
+	}
+
+	if (particlesEnabled)
+	{
+		// ==========================================
+		// 第一部分：循环外（所有粒子共用的全局状态）
+		// ==========================================
+
+		// 1. 绑定粒子的 Pipeline（只绑一次，效率最高）
+		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, particlePipe);
+
+		// 2. 绑定 Scene UBO (相机矩阵，所有粒子共用同一个相机，绑一次即可)
+		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
+
+		// ==========================================
+		// 第二部分：循环内（每个粒子系统专属的状态）
+		// ==========================================
+
+		// 推送常量结构体声明放在外面比较干净
+		struct ParticlePC {
+			int useTexture;
+			int debugMode;      // 0 = 关闭红框，1 = 开启红框
+			int _pad[2];        // 填充对齐
+			glm::mat4 transform; // 占位，凑满 80 字节
+		};
+
+		// 遍历所有的粒子系统
+		for (const auto& ps : allParticles)
+		{
+			ParticlePC pc{};
+
+			// 1. 绑定该粒子专属的贴图 DescriptorSet (Set 1)
+			if (ps->config.textureDescriptor != VK_NULL_HANDLE) {
+				vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &ps->config.textureDescriptor, 0, nullptr);
+				pc.useTexture = ps->config.useTexture; // 根据配置决定是否使用贴图
+			}
+			else {
+				pc.useTexture = 0; // 【安全保护】：如果没有分配贴图，强制关闭贴图模式，防止 Vulkan 崩溃
+			}
+
+			// 2. 读取该粒子的 Debug 配置
+			pc.debugMode = ps->config.particleDebug ? 1 : 0;
+
+			// 3. 上传推送常量
+			vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ParticlePC), &pc);
+
+			// 4. 绘制真实的粒子
+			ps->draw(aCmdBuff);
+
+			// 5. 绘制该粒子的 Debug 发射器线框
+			ps->drawDebug(aCmdBuff, aGraphicsLayout);
+		}
 	}
 
 	vkCmdEndRendering(aCmdBuff);

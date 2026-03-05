@@ -62,7 +62,18 @@ namespace cfg
 	constexpr char const* kShadowFragShaderPath = SHADERDIR_ "shadowmap.frag.spv";
 	constexpr VkFormat kShadowMapFormat = VK_FORMAT_D32_SFLOAT;
 	
+	//Particle shaders
+	constexpr char const* kParticleVertShaderPath = SHADERDIR_"particles.vert.spv";
+	constexpr char const* kParticleFragShaderPath = SHADERDIR_"particles.frag.spv";
+
 #	undef SHADERDIR_
+
+	//particle textures
+	constexpr char const* ParticleTextures[] = {
+	"assets/models/fire.png",
+	"assets/models/aa.png"
+	};
+
 }
 
 struct ImageAndView
@@ -98,6 +109,8 @@ lut::Pipeline create_vis_resolve_pipeline( lut::VulkanWindow const&, VkPipelineL
 
 // p2_1.5 shadow mapping
 lut::Pipeline create_shadow_pipeline( lut::VulkanWindow const&, VkPipelineLayout );
+
+lut::Pipeline create_particle_pipeline(lut::VulkanWindow const&, VkPipelineLayout, VkFormat);
 
 lut::Sampler create_debug_sampler( lut::VulkanWindow const& );
 lut::Sampler create_post_proc_sampler( lut::VulkanWindow const& );

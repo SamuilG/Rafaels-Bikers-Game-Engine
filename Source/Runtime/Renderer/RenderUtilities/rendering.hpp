@@ -2,6 +2,7 @@
 
 #include <volk/volk.h>
 #include <vector>
+#include <memory>
 
 #include "setup.hpp"
 #include "camera.hpp"
@@ -10,6 +11,7 @@
 #include "../../Rhi/vulkan_window.hpp"
 #include "../../Rhi/vkbuffer.hpp" 
 #include "../../Scene/SceneManager.hpp"
+#include "../../Particle/ParticleSystem.hpp"
 
 namespace lut = labut2;
 
@@ -43,7 +45,11 @@ void record_commands(
 	// p2_1.5 shadow mapping
 	VkPipeline aShadowPipe,
 	ImageAndView const& aShadowMap,
-	std::vector<VkImageView> const& aShadowCascadeViews
+	std::vector<VkImageView> const& aShadowCascadeViews,
+	//================particle system========================================
+	bool particlesEnabled,
+	VkPipeline particlePipe,
+	const std::vector<std::unique_ptr<ParticleSystem>>& allParticles
 );
 
 void submit_commands( 
