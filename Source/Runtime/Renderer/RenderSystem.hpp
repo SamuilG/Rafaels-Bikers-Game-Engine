@@ -21,6 +21,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 
 #define GLFW_INCLUDE_NONE
 
@@ -45,6 +46,9 @@ using namespace labut2::literals;
 #include "../Rhi/to_string.hpp"
 #include "../Rhi/descriptors.hpp"
 #include "../Rhi/vulkan_window.hpp"
+
+#include "../Particle/ParticleSystem.hpp"
+
 namespace lut = labut2;
 
 #include "RenderUtilities/camera.hpp"
@@ -104,6 +108,9 @@ namespace engine {
             // resolve pass
             mVisResolvePipe = create_vis_resolve_pipeline(mWindow, mPostPipeLayout.handle, mPostLayout.handle);
 
+            //particle pipeline
+            mParticlePipe = create_particle_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+
             mCmdPool = lut::create_command_pool(mWindow,
                 VK_COMMAND_POOL_CREATE_TRANSIENT_BIT |
                 VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
@@ -115,8 +122,9 @@ namespace engine {
                 mRenderFinished.emplace_back(lut::create_semaphore(mWindow.device));
             }
 
-            // Load main structural data (defer dynamic loading to Application)
-            // mModel = load_engine_model_glb("Assets/Models/TScene.glb"); // Replaced by load_additional_model in App
+        
+
+
             
             // set up initial textures and descriptor pools
             // load actual models via load_additional_model
@@ -150,6 +158,204 @@ namespace engine {
             // BuildMaterialDescriptors(mDebugSampler.handle, mDebugMaterialDescriptors);
 
             // UploadMeshes() will be driven by load_additional_model
+
+
+            //================particle system===================================================
+    // 粒子系统
+           
+
+            //particle textures
+            for (const auto& path : cfg::ParticleTextures) {
+                //load Image
+                lut::Image img = lut::load_image_texture2d(path, mWindow, mCmdPool.handle, mAllocator, VK_FORMAT_R8G8B8A8_UNORM);
+
+                //View
+                lut::ImageView view = lut::create_image_view_texture2d(mWindow, img.image, VK_FORMAT_R8G8B8A8_UNORM);
+
+                //Descriptor Set
+                VkDescriptorSet descSet = lut::alloc_desc_set(mWindow, mDescPool.handle, mObjectLayout.handle);
+
+                VkDescriptorImageInfo mainImgInfo{};
+                mainImgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                mainImgInfo.imageView = view.handle;
+                mainImgInfo.sampler = mDefaultSampler.handle;
+
+                VkDescriptorImageInfo dummyImgInfo{};
+                dummyImgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                dummyImgInfo.imageView = mDefaultGrayView.handle;
+                dummyImgInfo.sampler = mDefaultSampler.handle;
+
+                VkWriteDescriptorSet writes[3]{};
+                writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; writes[0].dstSet = descSet; writes[0].dstBinding = 0;
+                writes[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; writes[0].descriptorCount = 1; writes[0].pImageInfo = &mainImgInfo;
+
+                writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; writes[1].dstSet = descSet; writes[1].dstBinding = 1;
+                writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; writes[1].descriptorCount = 1; writes[1].pImageInfo = &dummyImgInfo;
+
+                writes[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; writes[2].dstSet = descSet; writes[2].dstBinding = 2;
+                writes[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; writes[2].descriptorCount = 1; writes[2].pImageInfo = &dummyImgInfo;
+
+                vkUpdateDescriptorSets(mWindow.device, 3, writes, 0, nullptr);
+
+                particleTextureDict[path] = descSet;
+
+                particleImages.push_back(std::move(img));
+                particleImageViews.push_back(std::move(view));
+            }
+            //================particle system===================================================
+
+
+
+
+             //================particle system===================================================
+            //emitter pos;
+            glm::vec3 emitterPos1(2, 0.5, 2);
+            glm::vec3 emitterPos2(3, 0.5, 2);
+            glm::vec3 emitterPos3(4, 0.5, 2);
+            glm::vec3 emitterPos4(2, 0.8, 2);
+
+            // 創建第 1 組：火焰
+            {
+                auto fire = std::make_unique<ParticleSystem>();
+                //發射器形狀
+                fire->setEmitterShape(EmitterShape::Cone);
+                fire->config.coneSpread = 0.1f;// 控制锥形的开口大小
+                //debug
+                fire->config.particleDebug = false; // 开启粒子调试输出
+                //貼圖設定
+                fire->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // 綁定貼圖
+                fire->config.useTexture = 1;
+                fire->config.atlasCols = 4;   // 贴图切成 4 列
+                fire->config.atlasRows = 4;   // 贴图切成 4 行
+                fire->config.animateAtlas = true;
+                //顔色
+                fire->config.startColor = glm::vec4(255.0f, 125.8f, 0.3f, .05f);
+                fire->config.endColor = glm::vec4(0.05f, 0.05f, 0.05f, 0.1f);
+                //旋轉
+                fire->config.rotationMin = -360.0f;
+                fire->config.rotationMax = 360.0f;
+                //重力
+                fire->config.gravity = glm::vec3(0.0f, 0.01f, 0.0f);
+                //持续时间
+                fire->config.lifeMin = 1.f;  // 最短存活时间
+                fire->config.lifeMax = 3.0f;  // 最长存活时间
+                //粒子尺寸
+                fire->config.sizeMin = 50.0f;
+                fire->config.sizeMax = 130.0f;
+                //粒子尺寸缩放：出生时和死亡时的放大倍数
+                fire->config.startSizeScale = 3.0f;
+                fire->config.endSizeScale = 0.f;
+                //初始速度
+                fire->config.speedMin = 0.1f; // 最小初速度
+                fire->config.speedMax = 0.5f; // 最大初速度
+                //位置
+                fire->config.emitterPos = emitterPos1;;
+                fire->init(mAllocator, 300, emitterPos1);
+                allParticles.push_back(std::move(fire)); 
+            }
+            //創建第 2組：灰煙
+            {
+                auto smoke = std::make_unique<ParticleSystem>();
+                //發射器形狀
+                smoke->setEmitterShape(EmitterShape::Cone);
+                smoke->config.coneSpread = 0.1f;// 控制锥形的开口大小
+                //debug
+                smoke->config.particleDebug = false; // 开启粒子调试输出
+                //貼圖設定
+                smoke->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // 綁定貼圖
+                smoke->config.useTexture = 1;
+                smoke->config.atlasCols = 4;   // 贴图切成 4 列
+                smoke->config.atlasRows = 4;   // 贴图切成 4 行
+                smoke->config.animateAtlas = true;
+                //顔色
+                smoke->config.startColor = glm::vec4(.5f, .5f, .5f, .01f);
+                smoke->config.endColor = glm::vec4(0.05f, 0.05f, 0.05f, .08f);
+                //旋轉
+                smoke->config.rotationMin = -2.0f;
+                smoke->config.rotationMax = 2.0f;
+                //重力
+                smoke->config.gravity = glm::vec3(0.0f, 0.01f, 0.0f);
+                //持续时间
+                smoke->config.lifeMin = 1.f;  // 最短存活时间
+                smoke->config.lifeMax = 3.0f;  // 最长存活时间
+                //粒子尺寸（像素
+                smoke->config.sizeMin = 80.0f;
+                smoke->config.sizeMax = 200.0f;
+                //粒子尺寸缩放：出生时和死亡时的放大倍数
+                smoke->config.startSizeScale = 3.0f;
+                smoke->config.endSizeScale = 0.f;
+                //初始速度
+                smoke->config.speedMin = 0.1f; // 最小初速度
+                smoke->config.speedMax = 0.5f; // 最大初速度
+                //位置
+                smoke->config.emitterPos = emitterPos4;;
+                smoke->init(mAllocator, 800, emitterPos4);
+                allParticles.push_back(std::move(smoke));
+            }
+
+            // 創建第 3組：火花
+            {
+				auto magic = std::make_unique<ParticleSystem>();
+                magic->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[1]];// 綁定貼圖
+                magic->config.useTexture = 1;
+                magic->config.sizeMin = 500.0f;
+                magic->config.sizeMax = 500.0f;
+                magic->config.emitterPos = emitterPos2;
+                magic->init(mAllocator, 1, emitterPos2);
+                allParticles.push_back(std::move(magic));
+            }
+
+            // 創建第 4組：火焰黑
+            {
+				auto c = std::make_unique<ParticleSystem>();
+                //c->config.textureDescriptor = particleDescSet; // 綁定星星貼圖
+                c->config.emitterPos = emitterPos3;
+                c->init(mAllocator, 1000, emitterPos3);
+                allParticles.push_back(std::move(c));
+            }
+
+            // 創建第 五 組：爆炸火焰
+            {
+                auto boom = std::make_unique<ParticleSystem>();
+                //發射器形狀
+                boom->setEmitterShape(EmitterShape::Sphere);
+                boom->config.sphereRadius = 0.3f;// 控制锥形的开口大小
+                //debug
+                boom->config.particleDebug = false; // 开启粒子调试输出
+                //貼圖設定
+                boom->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // 綁定貼圖
+                boom->config.useTexture = 1;
+                boom->config.atlasCols = 4;   // 贴图切成 4 列
+                boom->config.atlasRows = 4;   // 贴图切成 4 行
+                boom->config.animateAtlas = true;
+                //顔色
+                boom->config.startColor = glm::vec4(255.0f, 125.8f, 0.3f, .05f);
+                boom->config.endColor = glm::vec4(0.05f, 0.05f, 0.05f, 0.1f);
+                //旋轉
+                boom->config.rotationMin = -360.0f;
+                boom->config.rotationMax = 360.0f;
+                //重力
+                boom->config.gravity = glm::vec3(0.0f, 0.01f, 0.0f);
+                //持续时间
+                boom->config.lifeMin = 1.f;  // 最短存活时间
+                boom->config.lifeMax = 3.0f;  // 最长存活时间
+                //粒子尺寸
+                boom->config.sizeMin = 50.0f;
+                boom->config.sizeMax = 130.0f;
+                //粒子尺寸缩放：出生时和死亡时的放大倍数
+                boom->config.startSizeScale = 3.0f;
+                boom->config.endSizeScale = 0.f;
+                //初始速度
+                boom->config.speedMin = 0.1f; // 最小初速度
+                boom->config.speedMax = 0.5f; // 最大初速度
+                //位置
+                boom->config.emitterPos = emitterPos1;;
+                boom->init(mAllocator, 600, emitterPos1);
+                allParticles.push_back(std::move(boom));
+            }
+            //================particle system===================================================
+
+ 
 
             mSceneUBO = lut::create_buffer(mAllocator,
                 sizeof(glsl::SceneUniform),
@@ -393,6 +599,41 @@ namespace engine {
                 offscreenTarget = { mOffscreenImage.image, mOffscreenImage.view };
             }
 
+            
+            //================   system===================================================
+            if (mState.particlesEnabled)
+            {
+                for (const auto& ps  : allParticles)
+                {
+                   
+                    if (ps->getEmitterShape() == EmitterShape::Sphere)
+                    {
+
+                        auto bat = mSceneManager->find_entity("BaseballBat.nails_0");
+                        if (bat.is_valid() && bat.has<LocalTransform>()) 
+                        {
+                            
+                            const LocalTransform& lt = bat.get<LocalTransform>();
+
+                            glm::vec3 localPos = glm::vec3(lt.matrix[3]);
+                            ps->update(dt, localPos);
+                            ps->upload(mAllocator);
+                            ps->uploadDebug(mAllocator, ps->config.emitterPos);
+                         }
+                    }
+                    else 
+                    {
+                        //直接讀取它自己身上存的位置！
+                         ps->update(dt, ps->config.emitterPos);
+                        ps->upload(mAllocator);
+                        ps->uploadDebug(mAllocator, ps->config.emitterPos);
+                    }
+
+                }
+            }
+            
+            //================particle system===================================================
+
             // update mosaic ubo
             {
                 glsl::MosaicUniform mu{ mState.mosaicEnabled ? 1 : 0, {} };
@@ -421,7 +662,10 @@ namespace engine {
                 resolvePipeline, resolveDescs, resolveLayout,
                 offscreenTarget, clearColor,
                 mShadowPipe.handle, shadowTarget,
-                mShadowCascadeViews
+                mShadowCascadeViews,
+                mState.particlesEnabled,
+                mParticlePipe.handle,
+                allParticles
             );
 
             submit_commands(mWindow,
@@ -437,12 +681,15 @@ namespace engine {
 
         void Shutdown() override
         {
-            // Cleanup takes place automatically in the destructors, but we sill need
-            // to ensure that all Vulkan commands have finished before that.
             for (auto view : mShadowCascadeViews) {
                 vkDestroyImageView(mWindow.device, view, nullptr);
             }
+
+            // 【新增】：强制 CPU 等待 GPU 完成所有工作
             vkDeviceWaitIdle(mWindow.device);
+
+            // 【新增】：清空 vector，这会自动触发所有 ParticleSystem 的析构函数！
+            allParticles.clear();
         }
 
         // add runtime-generated mesh (like the sphere) after Init()
@@ -728,6 +975,8 @@ namespace engine {
         lut::Pipeline mOverdrawPipe, mOvershadingPipe;
         lut::Pipeline mPostProcPipe, mVisResolvePipe;
         lut::Pipeline mShadowPipe;
+        lut::Pipeline mParticlePipe;
+
 
         EngineModel                    mModel;
         std::vector<lut::Image>        mModelTextures;
@@ -763,6 +1012,12 @@ namespace engine {
         lut::ImageWithView mVisImage;
         lut::ImageWithView mShadowMap;
         std::vector<VkImageView> mShadowCascadeViews;
+
+        // Particles
+        std::vector<std::unique_ptr<ParticleSystem>> allParticles;
+        std::vector<lut::Image> particleImages;
+        std::vector<lut::ImageView> particleImageViews;
+        std::unordered_map<std::string, VkDescriptorSet> particleTextureDict;
 
         // Index of most recently added runtime mesh's material descriptor
         uint32_t mRuntimeMatIndex = 0;

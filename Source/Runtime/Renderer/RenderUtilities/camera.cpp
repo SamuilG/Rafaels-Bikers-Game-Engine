@@ -70,6 +70,12 @@ void glfw_callback_key_press( GLFWwindow* aWindow, int aKey, int, int aAction, i
 			auto const pos = state->camera2world[3];
 			std::printf("Camera Pos: %.4f, %.4f, %.4f\n", pos.x, pos.y, pos.z);
 		}
+
+		if (GLFW_KEY_R == aKey)//particle system toggle 粒子系统开关
+		{
+			state->particlesEnabled = !state->particlesEnabled;
+			std::printf("Particles: %s\n", state->particlesEnabled ? "ON" : "OFF");
+		}
 	}
 }
 

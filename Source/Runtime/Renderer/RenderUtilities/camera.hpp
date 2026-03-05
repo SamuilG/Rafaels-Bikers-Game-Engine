@@ -60,6 +60,8 @@ struct UserState
 	int renderMode = 0; // 0=Default, 1=Mip, 2=Depth, 3=Deriv
 	
 	bool mosaicEnabled = false; // key 5 toggle
+
+	bool particlesEnabled = true;//particle system toggle with key R
 };
 
 // GLFW callbacks
