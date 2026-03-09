@@ -89,6 +89,14 @@ void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipel
 			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
 
 			VkDeviceSize kZeroOffset = 0;
+			
+			static bool once = false;
+			if (!once) {
+				once = true;
+				for (size_t i = 0; i < aMaterialDescriptors.size(); ++i) {
+					std::printf("MatDesc[%zu] = %p\n", i, (void*)aMaterialDescriptors[i]);
+				}
+			}
 
 			// Shadow push constant = lightVP[i] * world - same mat4 layout as main pass
 			for (const auto& batch : aBatches) {
@@ -235,7 +243,7 @@ void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipel
 
 		// task 1.6: select pipeline based on material
 		VkPipeline targetPipeline = aGraphicsPipe;
-		if (meshInfo.materialIndex < aMaterials.size() && aMaterials[meshInfo.materialIndex].alphaMaskTexture >= 0)
+		if (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0)
 		{
 			targetPipeline = aAlphaPipe;
 		}
@@ -270,6 +278,7 @@ void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipel
 		// ==========================================
 		// 第一部分：循环外（所有粒子共用的全局状态）
 		// ==========================================
+
 
 		// 1. 绑定粒子的 Pipeline（只绑一次，效率最高）
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, particlePipe);
