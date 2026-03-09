@@ -21,6 +21,7 @@
 
 
 
+
 namespace lut = labut2;
 
 void glfw_callback_key_press( GLFWwindow* aWindow, int aKey, int, int aAction, int )
@@ -76,6 +77,12 @@ void glfw_callback_key_press( GLFWwindow* aWindow, int aKey, int, int aAction, i
 			state->particlesEnabled = !state->particlesEnabled;
 			std::printf("Particles: %s\n", state->particlesEnabled ? "ON" : "OFF");
 		}
+
+		if (GLFW_KEY_T == aKey) {
+			state->thirdPersonMode = !state->thirdPersonMode;
+			std::printf("Camera: %s\n", state->thirdPersonMode ? "Third Person" : "Free Fly");
+		}
+
 	}
 }
 
@@ -133,24 +140,44 @@ void update_user_state( UserState& aState, float aElapsedTime )
 		aState.wasMousing = false;
 	}
 
-	auto const move = aElapsedTime * cfg::kCameraBaseSpeed *
-		(aState.inputMap[std::size_t(EInputState::fast)] ? cfg::kCameraFastMult : 1.f) *
-		(aState.inputMap[std::size_t(EInputState::slow)] ? cfg::kCameraSlowMult : 1.f);
+	//auto const move = aElapsedTime * cfg::kCameraBaseSpeed *
+	//	(aState.inputMap[std::size_t(EInputState::fast)] ? cfg::kCameraFastMult : 1.f) *
+	//	(aState.inputMap[std::size_t(EInputState::slow)] ? cfg::kCameraSlowMult : 1.f);
 
-	if( aState.inputMap[std::size_t(EInputState::forward)] )
-		cam = cam * glm::translate( glm::vec3( 0.f, 0.f, -move ) );
-	if( aState.inputMap[std::size_t(EInputState::backward)] )
-		cam = cam * glm::translate( glm::vec3( 0.f, 0.f, +move ) );
-	
-	if( aState.inputMap[std::size_t(EInputState::strafeLeft)] )
-		cam = cam * glm::translate( glm::vec3( -move, 0.f, 0.f ) );
-	if( aState.inputMap[std::size_t(EInputState::strafeRight)] )
-		cam = cam * glm::translate( glm::vec3( +move, 0.f, 0.f ) );
+	//if( aState.inputMap[std::size_t(EInputState::forward)] )
+	//	cam = cam * glm::translate( glm::vec3( 0.f, 0.f, -move ) );
+	//if( aState.inputMap[std::size_t(EInputState::backward)] )
+	//	cam = cam * glm::translate( glm::vec3( 0.f, 0.f, +move ) );
+	//
+	//if( aState.inputMap[std::size_t(EInputState::strafeLeft)] )
+	//	cam = cam * glm::translate( glm::vec3( -move, 0.f, 0.f ) );
+	//if( aState.inputMap[std::size_t(EInputState::strafeRight)] )
+	//	cam = cam * glm::translate( glm::vec3( +move, 0.f, 0.f ) );
 
-	if( aState.inputMap[std::size_t(EInputState::levitate)] )
-		cam = cam * glm::translate( glm::vec3( 0.f, +move, 0.f ) );
-	if( aState.inputMap[std::size_t(EInputState::sink)] )
-		cam = cam * glm::translate( glm::vec3( 0.f, -move, 0.f ) );
+	//if( aState.inputMap[std::size_t(EInputState::levitate)] )
+	//	cam = cam * glm::translate( glm::vec3( 0.f, +move, 0.f ) );
+	//if( aState.inputMap[std::size_t(EInputState::sink)] )
+	//	cam = cam * glm::translate( glm::vec3( 0.f, -move, 0.f ) );
+
+
+
+
+	glm::vec3 char_pos = aState.followTargetPos;
+	glm::vec3 eye_offset(0.f, 1.6f, 0.f);
+
+	// 从相机矩阵提取前方向（水平化）
+	glm::vec3 cam_forward = -glm::normalize(glm::vec3(cam[2]));
+	cam_forward.y = 0.f;
+	if (glm::length(cam_forward) > 0.001f)
+		cam_forward = glm::normalize(cam_forward);
+
+	glm::vec3 cam_offset = -cam_forward * 5.0f + glm::vec3(0.f, 2.5f, 0.f);
+	glm::vec3 cam_pos = char_pos + eye_offset + cam_offset;
+
+	cam[3] = glm::vec4(cam_pos, 1.0f);
+
+
+
 }
 
 

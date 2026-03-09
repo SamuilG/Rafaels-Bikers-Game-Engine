@@ -115,6 +115,7 @@ public:
     // 3. Utility: Get Flecs world handle for low-level operations
     flecs::world& get_world() { return *m_world; }
 
+
     void print_all_entities();
 
 private:
