@@ -46,6 +46,8 @@ using namespace labut2::literals;
 #include "../Rhi/to_string.hpp"
 #include "../Rhi/descriptors.hpp"
 #include "../Rhi/vulkan_window.hpp"
+#include "../Scene/model_loader/stb_image.h"
+
 
 #include "../Particle/ParticleSystem.hpp"
 
@@ -147,12 +149,21 @@ namespace engine {
                 // create grey imageview
                 mDefaultGrayView = lut::create_image_view_texture2d(
                     mWindow, mDefaultGrayTex.image, VK_FORMAT_R8G8B8A8_UNORM);
+
+
+                // 2. 【新增】标准的蓝色法线图 (朝向 Z 轴)
+                std::uint8_t normalBlue[4] = { 128, 128, 255, 255 };
+                mDefaultNormalTex = lut::load_image_texture2d_from_memory(
+                    normalBlue, 1, 1, mWindow, mCmdPool.handle, mAllocator, VK_FORMAT_R8G8B8A8_UNORM);
+                mDefaultNormalView = lut::create_image_view_texture2d(
+                    mWindow, mDefaultNormalTex.image, VK_FORMAT_R8G8B8A8_UNORM);
             }
 
             // sampler
             mDefaultSampler = lut::create_default_sampler(mWindow);
             mDebugSampler = create_debug_sampler(mWindow);
             mDescPool = lut::create_descriptor_pool(mWindow);
+            mParticleDescPool = lut::create_descriptor_pool(mWindow);
             // allocate an initial empty descriptor array so adding runtime models works
             // BuildMaterialDescriptors(mDefaultSampler.handle, mMaterialDescriptors);
             // BuildMaterialDescriptors(mDebugSampler.handle, mDebugMaterialDescriptors);
@@ -161,19 +172,32 @@ namespace engine {
 
 
             //================particle system===================================================
-    // 粒子系统
+            // 粒子系统
            
 
             //particle textures
             for (const auto& path : cfg::ParticleTextures) {
+
+                // BAD: load_image_texture2d() may set stbi flip flag as a side effect.
+                // TinyGLTF shares the same stb_image instance (STB_IMAGE_IMPLEMENTATION
+                // is defined in engine_model.cpp), so any leftover flip state will corrupt
+                // subsequent GLB texture decoding.
+
+                // FIX: Always load particle textures AFTER all load_additional_model() calls,
+                // or explicitly reset the flag with stbi_set_flip_vertically_on_load(0)
+                // before and after loading particle textures from disk.
+                stbi_set_flip_vertically_on_load(0);
+
                 //load Image
+                
                 lut::Image img = lut::load_image_texture2d(path, mWindow, mCmdPool.handle, mAllocator, VK_FORMAT_R8G8B8A8_UNORM);
 
+                stbi_set_flip_vertically_on_load(0);
                 //View
                 lut::ImageView view = lut::create_image_view_texture2d(mWindow, img.image, VK_FORMAT_R8G8B8A8_UNORM);
 
                 //Descriptor Set
-                VkDescriptorSet descSet = lut::alloc_desc_set(mWindow, mDescPool.handle, mObjectLayout.handle);
+                VkDescriptorSet descSet = lut::alloc_desc_set(mWindow, mParticleDescPool.handle, mObjectLayout.handle);
 
                 VkDescriptorImageInfo mainImgInfo{};
                 mainImgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -308,7 +332,7 @@ namespace engine {
             // 創建第 4組：火焰黑
             {
 				auto c = std::make_unique<ParticleSystem>();
-                //c->config.textureDescriptor = particleDescSet; // 綁定星星貼圖
+                c->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // TODO:綁定星星貼圖 这里是错的
                 c->config.emitterPos = emitterPos3;
                 c->init(mAllocator, 1000, emitterPos3);
                 allParticles.push_back(std::move(c));
@@ -446,6 +470,9 @@ namespace engine {
                 mVisDescriptors.emplace_back(
                     BuildPostDesc(mVisImage.view, mMosaicUBOs[i].buffer));
             }
+
+            //for (auto& [path, ds] : particleTextureDict)
+                //std::printf("ParticleTex [%s] descSet=%p\n", path.c_str(), (void*)ds);
         }
 
         void Update(float dt) override
@@ -624,7 +651,7 @@ namespace engine {
                     else 
                     {
                         //直接讀取它自己身上存的位置！
-                         ps->update(dt, ps->config.emitterPos);
+                        ps->update(dt, ps->config.emitterPos);
                         ps->upload(mAllocator);
                         ps->uploadDebug(mAllocator, ps->config.emitterPos);
                     }
@@ -663,7 +690,7 @@ namespace engine {
                 offscreenTarget, clearColor,
                 mShadowPipe.handle, shadowTarget,
                 mShadowCascadeViews,
-                mState.particlesEnabled,
+                mState.particlesEnabled&& mState.renderMode == 0,
                 mParticlePipe.handle,
                 allParticles
             );
@@ -672,10 +699,10 @@ namespace engine {
                 mCmdBuffers[mFrameIndex],
                 mFrameDone[mFrameIndex].handle,
                 mImageAvailable[mFrameIndex].handle,
-                mRenderFinished[mFrameIndex].handle);
+                mRenderFinished[imageIndex].handle);
 
             present_results(mWindow.presentQueue, mWindow.swapchain,
-                imageIndex, mRenderFinished[mFrameIndex].handle,
+                imageIndex, mRenderFinished[imageIndex].handle,
                 mRecreateSwapchain);
         }
 
@@ -685,10 +712,9 @@ namespace engine {
                 vkDestroyImageView(mWindow.device, view, nullptr);
             }
 
-            // 【新增】：强制 CPU 等待 GPU 完成所有工作
+
             vkDeviceWaitIdle(mWindow.device);
 
-            // 【新增】：清空 vector，这会自动触发所有 ParticleSystem 的析构函数！
             allParticles.clear();
         }
 
@@ -707,6 +733,7 @@ namespace engine {
             AddOneGrayDescriptor(mDefaultSampler.handle, mMaterialDescriptors);
             AddOneGrayDescriptor(mDebugSampler.handle, mDebugMaterialDescriptors);
 
+
             // Track the material index for the caller
             mRuntimeMatIndex = static_cast<uint32_t>(mMaterialDescriptors.size() - 1);
             return meshIdx;
@@ -722,10 +749,21 @@ namespace engine {
 
             // 1. Appends textures
             for (auto const& tex : newModel.textures) {
+
+
+
                 glfwPollEvents();
                 VkFormat fmt = (tex.space == ETextureSpace::srgb) ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
                 mModelTextures.emplace_back(lut::load_image_texture2d_from_memory(tex.pixels.data(), tex.width, tex.height, mWindow, mCmdPool.handle, mAllocator, fmt));
                 mModelTextureViews.emplace_back(lut::create_image_view_texture2d(mWindow, mModelTextures.back().image, fmt));
+            }
+
+            for (size_t i = 0; i < newModel.textures.size(); ++i) {
+                std::printf("[Tex %zu] name='%s' %dx%d\n",
+                    i + baseTextureIdx,
+                    newModel.textures[i].name.c_str(),
+                    newModel.textures[i].width,
+                    newModel.textures[i].height);
             }
 
             // 2. Append materials (fixing texture references)
@@ -744,12 +782,20 @@ namespace engine {
                 AddOneMaterialDescriptor(mDebugSampler.handle, mDebugMaterialDescriptors, mat);
             }
 
+            std::printf("[LoadModel] %s -> baseMat=%u, added %zu mats, total mats=%zu, total descs=%zu\n",
+                path, baseMaterialIdx,
+                newModel.materials.size(),
+                mModel.materials.size(),
+                mMaterialDescriptors.size());
+
             // 3. Append meshes (fixing material references)
             for (auto mesh : newModel.meshes) {
                 mesh.materialIndex += baseMaterialIdx;
                 mModel.meshes.push_back(mesh);
                 UploadSingleMesh(mesh);
             }
+
+
 
             // 4.1 apply initial transform and create entities via SceneManager, using local mesh indices to build physics.
             for (auto& instance : newModel.scenes) {
@@ -764,6 +810,7 @@ namespace engine {
                     mSceneManager->load_dynamic_model(newModel, mass, baseMeshIdx, baseMaterialIdx);
                 }
             }
+
 
             // 5. Update model scenes (fixing mesh references for the global renderer array)
             for (auto& instance : newModel.scenes) {
@@ -783,6 +830,9 @@ namespace engine {
     private:
         void AddOneMaterialDescriptor(VkSampler sampler, std::vector<VkDescriptorSet>& out, const EngineMaterial& mat)
         {
+
+
+
             VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, mObjectLayout.handle);
 
             VkImageView baseView = mDefaultGrayView.handle;
@@ -791,10 +841,16 @@ namespace engine {
             VkImageView mrView = mDefaultGrayView.handle;
             if (mat.metalRoughTexture >= 0) mrView = mModelTextureViews[mat.metalRoughTexture].handle;
 
+			//exract normal map
+            VkImageView normView = mDefaultNormalView.handle;
+            if (mat.normalTexture >= 0) normView = mModelTextureViews[mat.normalTexture].handle;
+
             VkDescriptorImageInfo imgs[3]{};
             imgs[0] = { sampler, baseView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
             imgs[1] = { sampler, mrView,   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-            imgs[2] = { sampler, mrView,   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+
+            //bind normal map
+            imgs[2] = { sampler, normView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
 
             VkWriteDescriptorSet w[3]{};
             for (int j = 0; j < 3; ++j) {
@@ -817,7 +873,7 @@ namespace engine {
             VkDescriptorImageInfo imgs[3]{};
             imgs[0] = { sampler, grayView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
             imgs[1] = { sampler, grayView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-            imgs[2] = { sampler, grayView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            imgs[2] = { sampler, mDefaultNormalView.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
 
             VkWriteDescriptorSet w[3]{};
             for (int j = 0; j < 3; ++j) {
@@ -961,6 +1017,7 @@ namespace engine {
 
         lut::CommandPool    mCmdPool;
         lut::DescriptorPool mDescPool;
+        lut::DescriptorPool mParticleDescPool;
 
         std::vector<VkCommandBuffer>  mCmdBuffers;
         std::vector<lut::Fence>       mFrameDone;
@@ -984,6 +1041,9 @@ namespace engine {
 
         lut::Image     mDefaultGrayTex;
         lut::ImageView mDefaultGrayView;
+
+        lut::Image     mDefaultNormalTex;  // 【新增】：正确的法线占位图
+        lut::ImageView mDefaultNormalView; // 【新增】
 
         // Samplers
         lut::Sampler mDefaultSampler, mDebugSampler;
