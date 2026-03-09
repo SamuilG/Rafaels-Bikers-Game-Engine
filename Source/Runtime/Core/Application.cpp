@@ -64,7 +64,39 @@ namespace engine {
         glm::mat4 romanSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(10.0f, 10.0f, 25.0f));
         renderSystem->load_additional_model("Assets/Models/Roman Centurion.glb", false, 90.0f, romanSpawnPos);
 
+
+        glm::mat4 LampSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(40.0f, 2.0f, 15.0f));
+        renderSystem->load_additional_model("Assets/Models/Lamp post.glb", false, 90.0f, LampSpawnPos);
+        // 在 Application.cpp 的构造函数末尾，print_all_entities 之前添加：
+
+
+        //add Lights Here
+        // 定义方向：从右上方向左下方照射
+        glm::vec3 sunDir = glm::normalize(glm::vec3(-0.5f, 1.0f, -0.3f));
+        // 将方向存入矩阵的平移列（我们的 SceneManager 会提取它作为光源方向）
+        glm::mat4 sunTransform = glm::mat4(1.0f);
+        sunTransform[3] = glm::vec4(sunDir, 0.0f);
+
+        sceneManager->create_light_entity(
+            "MainSun",
+            engine::LightType::Directional,
+            glm::vec3(1.0f, 0.95f, 0.8f), //color
+			1.5f,//intensity     
+            sunTransform
+        );
+
+        glm::mat4 light1SpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(40.0f, 18.0f, 15.0f));
+        sceneManager->create_light_entity(
+            "lampLight",
+            engine::LightType::Point,
+            glm::vec3(0.5f, 1.0f, 2.0f), //color
+            1,//intensity     
+
+			light1SpawnPos 
+        );
+        // 最后再打印实体列表，确认灯光实体已创建
         sceneManager->print_all_entities();
+       // sceneManager->print_all_entities();
     }
     
     Application::~Application() {

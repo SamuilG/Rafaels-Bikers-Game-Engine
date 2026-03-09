@@ -15,6 +15,7 @@
 #include <flecs.h>
 #include "../Core/System.h"
 #include "model_loader/engine_model.hpp"
+#include"../Renderer/RenderUtilities/light.hpp"
 
 // Forward declare EngineModel to avoid including engine_model.hpp here
 
@@ -116,7 +117,14 @@ public:
     flecs::world& get_world() { return *m_world; }
 
     void print_all_entities();
+    flecs::entity create_light_entity(
+        const char* name,
+        LightType type,
+        glm::vec3 color,
+        float intensity,
+        const glm::mat4& transform);
 
+    void get_light_data(std::vector<GpuLight>& outLights);
 private:
     flecs::world* m_world; 
     EngineModel mModel;//private member

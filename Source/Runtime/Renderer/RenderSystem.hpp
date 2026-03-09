@@ -646,7 +646,14 @@ namespace engine {
             ImageAndView colorTarget = { mWindow.swapImages[imageIndex], mWindow.swapViews[imageIndex] };
             ImageAndView depthTarget = { mDepthBuffer.image, mDepthBuffer.view };
             ImageAndView shadowTarget = { mShadowMap.image,   mShadowMap.view };
-
+            std::vector<engine::GpuLight> lights;
+            if (mSceneManager) {
+                mSceneManager->get_light_data(lights);
+                sceneUniforms.lightCount = static_cast<uint32_t>(lights.size());
+                for (size_t i = 0; i < lights.size() && i < 16; ++i) {
+                    sceneUniforms.lights[i] = lights[i];
+                }
+            }
             // Record and submit commands for this frame
             record_commands(
                 mCmdBuffers[mFrameIndex],

@@ -5,12 +5,17 @@
 #include "../../Rhi/vkobject.hpp"
 #include "../../Rhi/vkimage.hpp"
 #include "camera.hpp"
+#include "light.hpp"
+
 
 namespace lut = labut2;
 constexpr std::uint32_t kShadowMapResolution = 2048; // 2048 for high quality; also tested with lower values
 constexpr std::uint32_t kCascadeCount = 4;
 
+namespace engine {
+	enum class LightType : uint32_t;
 
+}
 
 
 struct ShadowMapResources {
@@ -25,6 +30,11 @@ namespace glsl {
 		glm::mat4 projection;
 		glm::mat4 projCam;
 		glm::vec4 cameraPos;
+
+		
+		engine::GpuLight lights[16];
+		uint32_t lightCount;
+
 		glm::vec4 lightPos;
 		glm::vec4 lightColor;
 		uint32_t renderMode;
