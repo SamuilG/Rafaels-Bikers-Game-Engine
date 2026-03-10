@@ -80,20 +80,21 @@ namespace engine {
         sceneManager->create_light_entity(
             "MainSun",
             engine::LightType::Directional,
-            glm::vec3(1.0f, 0.95f, 0.8f), //color
-			1.5f,//intensity     
+            glm::vec3(1.2f, 0.95f, 0.8f), //color
+			2.0f,//intensity     
             sunTransform
         );
 
-        glm::mat4 light1SpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(40.0f, 18.0f, 15.0f));
-        sceneManager->create_light_entity(
-            "lampLight",
-            engine::LightType::Point,
-            glm::vec3(0.5f, 1.0f, 2.0f), //color
-            1,//intensity     
+		// 定义点光源位置
+   //     glm::mat4 light1SpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(40.0f, 18.0f, 15.0f));
+   //     sceneManager->create_light_entity(
+   //         "lampLight",
+   //         engine::LightType::Point,
+   //         glm::vec3(0.5f, 1.0f, 2.0f), //color
+   //         1,//intensity     
 
-			light1SpawnPos 
-        );
+			//light1SpawnPos 
+   //     );
         // 最后再打印实体列表，确认灯光实体已创建
         sceneManager->print_all_entities();
        // sceneManager->print_all_entities();
