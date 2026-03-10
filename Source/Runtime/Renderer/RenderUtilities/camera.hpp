@@ -10,7 +10,6 @@
 #include "../../Rhi/angle.hpp"
 
 
-
 namespace lut = labut2;
 namespace glsl {
 	struct SceneUniform; // 告诉编译器这个结构体存在，具体定义稍后再看
@@ -28,7 +27,6 @@ namespace cfg
 }
 
 
-
 enum class EInputState
 {
 	forward,
@@ -42,6 +40,8 @@ enum class EInputState
 	max
 };
 
+
+
 struct UserState
 {
 	bool inputMap[std::size_t(EInputState::max)] = {};
@@ -51,6 +51,12 @@ struct UserState
 	
 	float mouseLastX = 0.f;
 	float mouseLastY = 0.f;
+
+
+	//Spherical Coordinates
+	float Yaw = 0.f;
+	float Pitch = 0.f;
+	float Distance = 0.f;
 
 	bool previousMouseState = false; // true = right button held
 	bool wasMousing = false; // true = camera active
@@ -62,7 +68,13 @@ struct UserState
 	bool mosaicEnabled = false; // key 5 toggle
 
 	bool particlesEnabled = true;//particle system toggle with key R
+
+	glm::vec3 followTargetPos = glm::vec3(10.f);
+	bool      thirdPersonMode = true;
+
 };
+
+
 
 // GLFW callbacks
 void glfw_callback_key_press( GLFWwindow* aWindow, int aKey, int, int aAction, int );
@@ -75,5 +87,9 @@ void update_scene_uniforms(
 	glsl::SceneUniform& aSceneUniforms,
 	std::uint32_t aFramebufferWidth,
 	std::uint32_t aFramebufferHeight,
+	
 	UserState const& aState
 );
+
+
+
