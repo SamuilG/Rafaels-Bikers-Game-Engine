@@ -11,6 +11,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/constants.hpp>
 #include <cmath>
+#include"../Renderer/RenderUtilities/light.hpp"
 
 
 
@@ -154,27 +155,70 @@ void SceneManager::Update(float dt) {
 
 void SceneManager::print_all_entities() {
     std::print("\n--- [Entity List] ---\n");
-    std::print("[Debug] SceneManager Address: {}\n", (void*)this);
 
-    int count = 0;
-    // Use each with component arguments, which is the most reliable query method
-    m_world->each([&](flecs::entity e, MeshComponent& m, EntityStatus& status) {
-        count++;
-        const char* name = e.name();
-        std::print("Entity: {:<15}       | Render: {} | Physics: {} | MeshIdx: {}\n",
-            name ? name : "unnamed",
+    m_world->each([&](flecs::entity e, EntityStatus& status) {
+        const char* name = e.name() ? e.name() : "unnamed";
+        std::string typeStr = "Unknown";
+
+        if (e.has<MeshComponent>()) {
+           
+            typeStr = "Mesh [" + std::to_string(e.get<MeshComponent>().meshIndex) + "]";
+        }
+        else if (e.has<LightComponent>()) {
+            
+            auto& lc = e.get<LightComponent>();
+            typeStr = (lc.type == LightType::Directional) ? "DirLight" : "PointLight";
+        }
+
+        std::print("Entity: {:<15} | Type: {:<10} | Render: {} | Physics: {}\n",
+            name, typeStr,
             status.should_render ? "ON" : "OFF",
-            status.has_physics ? "ON" : "OFF",
-            m.meshIndex);
+            status.has_physics ? "ON" : "OFF");
         });
-
-    if (count == 0) {
-        std::print("Warning: No entities with MeshComponent found!\n");
-    }
-    std::print("Total Renderable Entities Found: {}\n", count);
     std::print("--------------------------------------\n\n");
 }
 
+flecs::entity SceneManager::create_light_entity(
+    const char* name,
+    LightType type,
+    glm::vec3 color,
+    float intensity,
+    const glm::mat4& transform)
+{
+    return m_world->entity(name)
+        .set<EntityStatus>({ true, false }) // 光源通常不需要参与物理同步
+        .set<LocalTransform>({ transform })
+        .set<WorldTransform>({ transform })
+        .set<LightComponent>({ color, intensity, type, 10.0f }); // 默认范围 100
+}
+
+
+
+
+void SceneManager::get_light_data(std::vector<GpuLight>& outLights) {
+    outLights.clear();
+
+    // 查询所有具有 LightComponent 和 WorldTransform 的实体
+    m_world->query<const WorldTransform, const LightComponent, const EntityStatus>()
+        .each([&](const WorldTransform& wt, const LightComponent& lc, const EntityStatus& status) {
+        if (!status.should_render) return; // 如果关闭了渲染，则不贡献光照
+        if (outLights.size() >= 16) return; // 假设 Shader 最大支持 16 个光源
+
+        GpuLight gpuLight{};
+
+        // 提取世界坐标：矩阵第4列 (wt.matrix[3])
+        // 对于定向光，w 存类型(0)；对于点光源，w 存类型(1)
+        gpuLight.position = glm::vec4(glm::vec3(wt.matrix[3]), static_cast<float>(lc.type));
+
+        // 颜色与强度
+        gpuLight.color = glm::vec4(lc.color, lc.intensity);
+
+        // 范围系数
+        gpuLight.params = glm::vec4(lc.range, 0.0f, 0.0f, 0.0f);
+
+        outLights.push_back(gpuLight);
+            });
+}
 
 std::vector<RenderBatch> SceneManager::get_render_batches() {
     std::vector<RenderBatch> batches;
@@ -187,19 +231,6 @@ std::vector<RenderBatch> SceneManager::get_render_batches() {
             batches.push_back({ mc.meshIndex, matc.materialIndex, wt.matrix });
         }
             });
-
-    //diagnostic: print once
-   static bool once = false;
-    if (!once) {
-        once = true;
-        std::printf("[RenderBatches] total=%zu\n", batches.size());
-        for (size_t i = 0; i < batches.size(); ++i) {
-            std::printf("  batch[%zu] meshIdx=%u matIdx=%u pos=(%.1f,%.1f,%.1f)\n", i,
-                batches[i].meshIndex, batches[i].materialIndex,
-                batches[i].transform[3][0], batches[i].transform[3][1], batches[i].transform[3][2]);
-        }
-    }
-
     return batches;
 }
 
@@ -262,5 +293,8 @@ flecs::entity SceneManager::create_dynamic_entity(
 
     return e;
 }
+
+
+
 
 } // namespace enginea

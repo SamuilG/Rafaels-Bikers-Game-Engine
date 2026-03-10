@@ -10,21 +10,27 @@ layout( location = 3 ) in vec4 v2fLightProjPos;
 layout( set = 1, binding = 0 ) uniform sampler2D uTexColor;
 layout( set = 1, binding = 1 ) uniform sampler2D uTexRoughness;
 layout( set = 1, binding = 2 ) uniform sampler2D uTexMetalness;
-
+struct GpuLight {
+    vec4 position;  // xyz: position/direction, w: type (0:Dir, 1:Point)
+    vec4 color;     // rgb: color, a: intensity
+    vec4 params;    // x: range
+};
 layout( scalar, set = 0, binding = 0 ) uniform UScene
 {
-	mat4 camera;
-	mat4 projection;
-	mat4 projCam;
-	vec4 cameraPos;
-	vec4 lightPos;
-	vec4 lightColor;
-	uint renderMode;
-	uint _pad0;
-	uint _pad1;
-	uint _pad2;
-	mat4 lightVP[4];      // CSM cascade light-view-proj matrices
-	vec4 cascadeSplits;   // view-space split depths
+    mat4 camera;
+    mat4 projection;
+    mat4 projCam;
+    vec4 cameraPos;
+    GpuLight lights[16]; // 新增光源数组
+    uint lightCount;     // 当前有效光源数
+    vec4 lightPos;       // 保留旧变量以兼容原有逻辑（或将其废弃）
+    vec4 lightColor;
+    uint renderMode;
+    uint _pad0;          // 匹配 C++ 中的 float _pad0[3]
+    uint _pad1;
+    uint _pad2;
+    mat4 lightVP[4];      
+    vec4 cascadeSplits;   
 } uScene;
 
 layout( set = 0, binding = 1 ) uniform sampler2DArrayShadow uShadowMap;
@@ -122,65 +128,64 @@ void main()
 
 	// geometric vectors
 	vec3 N = normalize(v2fNormal);
-	vec3 V = normalize(uScene.cameraPos.xyz - v2fPos); 
-	
-	// light vector
-	vec3 L_dir = LIGHT_POS - v2fPos;
-	float dist = length(L_dir);
-	vec3 L = normalize(L_dir);
-	vec3 H = normalize(L + V);
+    vec3 V = normalize(uScene.cameraPos.xyz - v2fPos); 
+    
+    float shadow = calculate_shadow(); // 假设阴影仍只关联主定向光 (lights[0])
+    
+    vec3 totalLo = vec3(0.0);
 
-	// dot products
-	float NdotL = max(dot(N, L), 0.0);
-	float NdotV = max(dot(N, V), 0.0001); // avoid div by zero
-	float NdotH = max(dot(N, H), 0.0);
-	float VdotH = max(dot(V, H), 0.0);
-	float LdotH = max(dot(L, H), 0.0); // same as VdotH
-	const float LIGHT_INTENSITY = 1.2; // no falloff
+    for (uint i = 0; i < uScene.lightCount; ++i)
+    {
+        GpuLight light = uScene.lights[i];
+        vec3 L_dir;
+        float attenuation = 1.0;
 
-	float shadow = calculate_shadow();
+        if (light.position.w == 0.0) // 定向光 (Directional Light)
+        {
+            L_dir = light.position.xyz; // 此时 xyz 通常存储的是反向方向
+        }
+        else // 点光源 (Point Light)
+        {
+            L_dir = light.position.xyz - v2fPos;
+            float dist = length(L_dir);
+            // 简单的距离衰减：(1 - d/range)^2
+            attenuation = clamp(1.0 - dist / light.params.x, 0.0, 1.0);
+            attenuation *= attenuation;
+        }
 
-	// light radiance (no falloff)
-	vec3 Li = LIGHT_COLOR * LIGHT_INTENSITY * shadow; 
-	vec3 Lambient = vec3(0.02) * baseColor; // weak ambient
+        vec3 L = normalize(L_dir);
+        vec3 H = normalize(L + V);
 
-	// PBR
-	// Diffuse (Lambertian)
-	// Dielectrics have diffuse, metals do not (multiplied by 1-M)
-	
-	// Fresnel (Schlick)
-	// F0 = mix(0.04, baseColor, metalness)
-	vec3 F0 = mix(vec3(0.04), baseColor, metalness);
-	vec3 F = F0 + (1.0 - F0) * pow(1.0 - VdotH, 5.0);
-	
-	vec3 Ldiffuse = (baseColor / PI) * (vec3(1.0) - F) * (1.0 - metalness);
+        // 点积计算
+        float NdotL = max(dot(N, L), 0.0);
+        float NdotV = max(dot(N, V), 0.0001);
+        float NdotH = max(dot(N, H), 0.0);
+        float VdotH = max(dot(V, H), 0.0);
 
-	// Specular (Cook-Torrance)
-	// Lspecular = (D * G * F) / (4 * NdotL * NdotV)
-	
-	// Alpha from roughness
-	float alpha = roughness * roughness;
-	if( alpha < 0.001 ) alpha = 0.001; 
-	
-	float D = D_Beckmann(alpha, NdotH);
-	float G = G_CookTorrance(NdotL, NdotV, NdotH, VdotH);
-	
-	vec3 num = D * G * F;
-	float den = 4.0 * NdotL * NdotV;
-	
-	vec3 Lspecular = num / max(den, 0.0001);
-	
-	vec3 Lo = (Ldiffuse + Lspecular) * Li * NdotL;
-	
-	vec3 color = Lambient + Lo;
+        // 只对第一个光源应用阴影（通常是定向太阳光）
+        float currentShadow = (i == 0) ? shadow : 1.0;
+        
+        // 入射光能量
+        vec3 Li = light.color.rgb * light.color.a * attenuation * currentShadow;
+
+        // PBR 计算 (BRDF)
+        vec3 F0 = mix(vec3(0.04), baseColor, metalness);
+        vec3 F = F0 + (1.0 - F0) * pow(1.0 - VdotH, 5.0);
+        vec3 Ldiffuse = (baseColor / PI) * (vec3(1.0) - F) * (1.0 - metalness);
+
+        float alpha = max(roughness * roughness, 0.001);
+        float D = D_Beckmann(alpha, NdotH);
+        float G = G_CookTorrance(NdotL, NdotV, NdotH, VdotH);
+        vec3 Lspecular = (D * G * F) / max(4.0 * NdotL * NdotV, 0.0001);
+
+        totalLo += (Ldiffuse + Lspecular) * Li * NdotL;
+    }
+
+    vec3 Lambient = vec3(0.02) * baseColor;
+    vec3 color = Lambient + totalLo;
 
 	// debug modes
-	if( uScene.renderMode == 6 )
-	{
-		// shadow map debug
-		// 1.0 = lit (white), 0.0 = shadow (black)
-		color = vec3(shadow); 
-	}
-	
-	oColor = vec4(color, 1.0);
+	if( uScene.renderMode == 6 ) color = vec3(shadow); 
+    
+    oColor = vec4(color, 1.0);
 }

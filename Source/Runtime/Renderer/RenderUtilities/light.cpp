@@ -47,10 +47,11 @@ namespace engine {
             
             // 计算半径（稳定化）
             float radius = 0.0f;
+			float stability = 32.0f; 
             for (int j = 0; j < 8; j++) {
                 radius = glm::max(radius, glm::length(glm::vec3(frustumCorners[j]) - center));
             }
-            radius = std::ceil(radius * 16.0f) / 16.0f;
+            radius = std::ceil(radius * stability) / stability;
 
             // 构建 View & Ortho
           
