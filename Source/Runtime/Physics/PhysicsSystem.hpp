@@ -14,6 +14,9 @@
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Core/JobSystemThreadPool.h>
 #include <Jolt/Core/TempAllocator.h>
+#include <Jolt/Physics/Character/CharacterVirtual.h>
+
+
 #include <memory>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -65,6 +68,8 @@ public:
     // Create a dynamic convex hull body from EngineMesh vertices
     JPH::BodyID create_dynamic_convex_body(const EngineMesh& mesh, const glm::mat4& transform, float mass = 1.0f);
 
+
+
 private:
     std::unique_ptr<JPH::TempAllocatorImpl> m_tempAllocator;
     std::unique_ptr<JPH::JobSystemThreadPool> m_jobSystem;
@@ -78,6 +83,10 @@ private:
     std::unique_ptr<BPLayerInterfaceImpl> m_bpLayerInterface;
     std::unique_ptr<ObjectVsBroadPhaseLayerFilterImpl> m_objectVsBroadphaseFilter;
     std::unique_ptr<ObjectLayerPairFilterImpl> m_objectVsObjectFilter;
+
+
+
+
 };
 
 } // namespace engine
