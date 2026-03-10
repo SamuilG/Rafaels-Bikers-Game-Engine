@@ -52,6 +52,12 @@ struct UserState
 	float mouseLastX = 0.f;
 	float mouseLastY = 0.f;
 
+
+	//Spherical Coordinates
+	float Yaw = 0.f;
+	float Pitch = 0.f;
+	float Distance = 0.f;
+
 	bool previousMouseState = false; // true = right button held
 	bool wasMousing = false; // true = camera active
 
@@ -63,7 +69,7 @@ struct UserState
 
 	bool particlesEnabled = true;//particle system toggle with key R
 
-	glm::vec3 followTargetPos = glm::vec3(0.f);
+	glm::vec3 followTargetPos = glm::vec3(10.f);
 	bool      thirdPersonMode = true;
 
 };
