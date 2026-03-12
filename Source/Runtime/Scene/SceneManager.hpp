@@ -123,7 +123,9 @@ public:
         LightType type,
         glm::vec3 color,
         float intensity,
-        const glm::mat4& transform);
+        const glm::mat4& transform,
+		float range
+    );
 
     void get_light_data(std::vector<GpuLight>& outLights);
 private:

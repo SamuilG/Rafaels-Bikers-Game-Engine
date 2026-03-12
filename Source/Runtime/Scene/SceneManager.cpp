@@ -183,13 +183,16 @@ flecs::entity SceneManager::create_light_entity(
     LightType type,
     glm::vec3 color,
     float intensity,
-    const glm::mat4& transform)
+    const glm::mat4& transform,
+    float range)
 {
     return m_world->entity(name)
         .set<EntityStatus>({ true, false }) // 光源通常不需要参与物理同步
         .set<LocalTransform>({ transform })
         .set<WorldTransform>({ transform })
-        .set<LightComponent>({ color, intensity, type, 10.0f }); // 默认范围 100
+        .set<LightComponent>({ color, intensity, type, range }); // 默认范围 100
+ 
+
 }
 
 

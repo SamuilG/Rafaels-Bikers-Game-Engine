@@ -9,7 +9,7 @@
 
 
 namespace lut = labut2;
-constexpr std::uint32_t kShadowMapResolution = 2080; // 2048 for high quality; also tested with lower values
+constexpr std::uint32_t kShadowMapResolution = 2048; // 2048 for high quality; also tested with lower values
 constexpr std::uint32_t kCascadeCount = 4;
 
 namespace engine {
