@@ -27,25 +27,8 @@ namespace cfg
 }
 
 
-enum class EInputState
-{
-	forward,
-	backward,
-	strafeLeft,
-	strafeRight,
-	levitate,
-	sink,
-	fast,
-	slow,
-	max
-};
-
-
-
 struct UserState
 {
-	bool inputMap[std::size_t(EInputState::max)] = {};
-
 	float mouseX = 0.f;
 	float mouseY = 0.f;
 	
@@ -77,11 +60,13 @@ struct UserState
 
 
 // GLFW callbacks
-void glfw_callback_key_press( GLFWwindow* aWindow, int aKey, int, int aAction, int );
+// yo! Key presses are now handled by engine::InputSystem
 void glfw_callback_button( GLFWwindow* aWindow, int aButton, int aAction, int );
 void glfw_callback_motion( GLFWwindow* aWindow, double aPosX, double aPosY );
 
-void update_user_state( UserState& aState, float aElapsedTime );
+namespace engine { class InputSystem; }
+
+void update_user_state( UserState& aState, float aElapsedTime, const engine::InputSystem* inputSys );
 
 void update_scene_uniforms(
 	glsl::SceneUniform& aSceneUniforms,

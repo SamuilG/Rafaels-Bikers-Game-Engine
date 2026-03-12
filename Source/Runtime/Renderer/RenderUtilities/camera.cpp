@@ -23,67 +23,9 @@
 
 namespace lut = labut2;
 
-void glfw_callback_key_press( GLFWwindow* aWindow, int aKey, int, int aAction, int )
-{
-	auto* state = static_cast<UserState*>( glfwGetWindowUserPointer( aWindow ) );
-	if( !state ) return;
+#include "../../Input/InputSystem.hpp"
 
-	bool const isAns = (GLFW_PRESS == aAction || GLFW_REPEAT == aAction);
-	
-	if( GLFW_KEY_ESCAPE == aKey && GLFW_PRESS == aAction )
-		glfwSetWindowShouldClose( aWindow, GLFW_TRUE );
-
-	// WSAD and E/Q
-	if( GLFW_KEY_W == aKey ) state->inputMap[std::size_t(EInputState::forward)] = isAns;
-	if( GLFW_KEY_S == aKey ) state->inputMap[std::size_t(EInputState::backward)] = isAns;
-	if( GLFW_KEY_A == aKey ) state->inputMap[std::size_t(EInputState::strafeLeft)] = isAns;
-	if( GLFW_KEY_D == aKey ) state->inputMap[std::size_t(EInputState::strafeRight)] = isAns;
-	if( GLFW_KEY_E == aKey ) state->inputMap[std::size_t(EInputState::levitate)] = isAns;
-	if( GLFW_KEY_Q == aKey ) state->inputMap[std::size_t(EInputState::sink)] = isAns;
-
-	// Fast
-	if( GLFW_KEY_LEFT_SHIFT == aKey || GLFW_KEY_RIGHT_SHIFT == aKey )
-		state->inputMap[std::size_t(EInputState::fast)] = isAns;
-	if( GLFW_KEY_LEFT_CONTROL == aKey || GLFW_KEY_RIGHT_CONTROL == aKey )
-		state->inputMap[std::size_t(EInputState::slow)] = isAns;
-
-	// Task 1.4
-	// Debug Modes
-	// keys 1-4: switch the pipeline used for drawing
-	// 1: default (textured)
-	// 2: mipmap visualization (blocky/colored levels)
-	// 3: linearized depth
-	// 4: partial derivatives of depth (edges)
-	if( GLFW_PRESS == aAction )
-	{
-		if( GLFW_KEY_1 == aKey ) state->renderMode = 0; // Default
-		if( GLFW_KEY_2 == aKey ) state->renderMode = 1; // Mipmap
-		if( GLFW_KEY_3 == aKey ) state->renderMode = 2; // Depth
-		if( GLFW_KEY_4 == aKey ) state->renderMode = 3; // Derivatives
-		if( GLFW_KEY_5 == aKey ) state->mosaicEnabled = !state->mosaicEnabled; // Mosaic Toggle
-		if( GLFW_KEY_6 == aKey ) state->renderMode = 4; // Overdraw
-		if( GLFW_KEY_7 == aKey ) state->renderMode = 5; // Overshading
-		if( GLFW_KEY_8 == aKey ) state->renderMode = 6; // Shadow Debug (Task p2_1.5)
-		
-		if( GLFW_KEY_P == aKey )
-		{												// Print camera position
-			auto const pos = state->camera2world[3];
-			std::printf("Camera Pos: %.4f, %.4f, %.4f\n", pos.x, pos.y, pos.z);
-		}
-
-		if (GLFW_KEY_R == aKey)//particle system toggle 粒子系统开关
-		{
-			state->particlesEnabled = !state->particlesEnabled;
-			std::printf("Particles: %s\n", state->particlesEnabled ? "ON" : "OFF");
-		}
-
-		if (GLFW_KEY_T == aKey) {
-			state->thirdPersonMode = !state->thirdPersonMode;
-			std::printf("Camera: %s\n", state->thirdPersonMode ? "Third Person" : "Free Fly");
-		}
-
-	}
-}
+// Removed glfw_callback_key_press - inputs are now handled system-wide by engine::InputSystem
 
 void glfw_callback_button( GLFWwindow* aWindow, int aButton, int aAction, int )
 {
@@ -109,7 +51,7 @@ void glfw_callback_motion( GLFWwindow* aWindow, double aPosX, double aPosY )
 	state->mouseY = float(aPosY);
 }
 
-void update_user_state(UserState& aState, float aElapsedTime)
+void update_user_state(UserState& aState, float aElapsedTime, const engine::InputSystem* inputSys)
 {
 	auto& cam = aState.camera2world;
 
@@ -176,22 +118,22 @@ void update_user_state(UserState& aState, float aElapsedTime)
 	else
 	{
 		auto const move = aElapsedTime * cfg::kCameraBaseSpeed *
-			(aState.inputMap[std::size_t(EInputState::fast)] ? cfg::kCameraFastMult : 1.f) *
-			(aState.inputMap[std::size_t(EInputState::slow)] ? cfg::kCameraSlowMult : 1.f);
+			(inputSys->IsActionHeld("Fast") ? cfg::kCameraFastMult : 1.f) *
+			(inputSys->IsActionHeld("Slow") ? cfg::kCameraSlowMult : 1.f);
 
-		if (aState.inputMap[std::size_t(EInputState::forward)])
+		if (inputSys->IsActionHeld("MoveForward"))
 			cam = cam * glm::translate(glm::vec3(0.f, 0.f, -move));
-		if (aState.inputMap[std::size_t(EInputState::backward)])
+		if (inputSys->IsActionHeld("MoveBackward"))
 			cam = cam * glm::translate(glm::vec3(0.f, 0.f, +move));
 
-		if (aState.inputMap[std::size_t(EInputState::strafeLeft)])
+		if (inputSys->IsActionHeld("StrafeLeft"))
 			cam = cam * glm::translate(glm::vec3(-move, 0.f, 0.f));
-		if (aState.inputMap[std::size_t(EInputState::strafeRight)])
+		if (inputSys->IsActionHeld("StrafeRight"))
 			cam = cam * glm::translate(glm::vec3(+move, 0.f, 0.f));
 
-		if (aState.inputMap[std::size_t(EInputState::levitate)])
+		if (inputSys->IsActionHeld("Upward"))
 			cam = cam * glm::translate(glm::vec3(0.f, +move, 0.f));
-		if (aState.inputMap[std::size_t(EInputState::sink)])
+		if (inputSys->IsActionHeld("Downward"))
 			cam = cam * glm::translate(glm::vec3(0.f, -move, 0.f));
 	}
 }
