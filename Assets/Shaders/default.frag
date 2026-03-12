@@ -74,49 +74,52 @@ float G_CookTorrance(float NdotL, float NdotV, float NdotH, float VdotH)
 }
 
 // p2_1.5 PCF with CSM cascade selection
+
+// 1. 在函数外部定义泊松圆盘常量
+const vec2 poissonDisk[16] = vec2[]( 
+   vec2( -0.94201624, -0.39906216 ), vec2( 0.94558609, -0.76890725 ), 
+   vec2( -0.094184101, -0.92938870 ), vec2( 0.34495938, 0.29387760 ), 
+   vec2( -0.91588581, 0.45771432 ), vec2( -0.81544232, -0.87912464 ), 
+   vec2( -0.38277543, 0.27676845 ), vec2( 0.97484398, 0.75648379 ), 
+   vec2( 0.44323325, -0.97511554 ), vec2( 0.53742981, -0.47373420 ), 
+   vec2( -0.26496911, -0.41893023 ), vec2( 0.79197514, 0.19090188 ), 
+   vec2( -0.24188840, 0.99706507 ), vec2( -0.81409955, 0.91437590 ), 
+   vec2( 0.19984126, 0.78641367 ), vec2( 0.14383161, -0.14100790 ) 
+);
+
 float calculate_shadow()
 {
-	// Select cascade based on view-space depth of the fragment
-	// v2fPos is world-space; project to view space to get depth
+	// --- 级联选择逻辑保持不变 ---
 	vec4 viewPos = uScene.camera * vec4(v2fPos, 1.0);
 	float fragDepth = abs(viewPos.z);
 
-	int cascadeIdx = 3; // default: last (outermost) cascade
-	if      (fragDepth < uScene.cascadeSplits.x) cascadeIdx = 0;
+	int cascadeIdx = 3; 
+	if (fragDepth < uScene.cascadeSplits.x) cascadeIdx = 0;
 	else if (fragDepth < uScene.cascadeSplits.y) cascadeIdx = 1;
 	else if (fragDepth < uScene.cascadeSplits.z) cascadeIdx = 2;
 
-	// Project fragment into the chosen cascade's light space
 	vec4 lightSpacePos = uScene.lightVP[cascadeIdx] * vec4(v2fPos, 1.0);
 	vec3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
-	// projCoords are in [-1, 1], transform xy to [0, 1]
 	projCoords.xy = projCoords.xy * 0.5 + 0.5;
 
-	// check bounds
-	if (projCoords.x < 0.0 || projCoords.x > 1.0 || 
-		projCoords.y < 0.0 || projCoords.y > 1.0 || 
-		projCoords.z < 0.0 || projCoords.z > 1.0) 
-	{
-		return 1.0;
-	}
+	if (projCoords.z > 1.0) return 1.0;
 
-	// PCF over 3x3 texel neighbourhood
-	// textureSize returns (width, height, layers); we only need xy
+	// --- 升级后的 PCF 逻辑 ---
 	vec2 texelSize = 1.0 / vec2(textureSize(uShadowMap, 0).xy);
 	float shadow = 0.0;
 	
-	// sampler2DArrayShadow: texture(sampler, vec4(u, v, layer, compareRef))
-	for(int x = -1; x <= 1; ++x)
-	{
-		for(int y = -1; y <= 1; ++y)
-		{
-			vec2 uv = projCoords.xy + vec2(x, y) * texelSize;
-			shadow += texture(uShadowMap, vec4(uv, float(cascadeIdx), projCoords.z)); 
-		}
-	}
-	shadow /= 9.0;
+	// 采样扩散系数：值越大阴影越软，但过大会导致阴影断裂
+	// 建议值：1.0 - 2.0
+	float filterSize =5; 
 
-	return shadow;
+	for(int i = 0; i < 16; ++i)
+	{
+		// 使用泊松圆盘偏移坐标
+		vec2 offset = poissonDisk[i] * texelSize * filterSize;
+		shadow += texture(uShadowMap, vec4(projCoords.xy + offset, float(cascadeIdx), projCoords.z));
+	}
+	
+	return shadow / 16.0;
 }
 
 void main()

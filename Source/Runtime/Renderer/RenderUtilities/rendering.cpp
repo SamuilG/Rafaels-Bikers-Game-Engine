@@ -83,7 +83,7 @@ void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipel
 			VkRect2D scissor{ {0,0}, {kShadowMapResolution, kShadowMapResolution} };
 			vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
 
-			vkCmdSetDepthBias(aCmdBuff, 1.25f, 0.f, 1.75f);
+			vkCmdSetDepthBias(aCmdBuff, 1.5f, 0.f, 1.85f);
 
 			// 绑定 Set 0 (包含 lightVP 数组的 UBO)
 			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
@@ -255,7 +255,6 @@ void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipel
 		}
 
 		// bind object descriptor set
-		// 绑定正确的材质描述符集 (解决灰色画面的核心)
 		vkCmdBindDescriptorSets(
 			aCmdBuff,
 			VK_PIPELINE_BIND_POINT_GRAPHICS,
