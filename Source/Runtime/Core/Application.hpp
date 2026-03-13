@@ -8,6 +8,7 @@ namespace engine {
     class PhysicsSystem;
     class SceneManager;
     class RenderSystem;
+    class InputSystem;
 
     class Application {
     public:
@@ -41,6 +42,7 @@ namespace engine {
         PhysicsSystem* physicsSystem = nullptr;
         SceneManager*  sceneManager  = nullptr;
         RenderSystem*  renderSystem  = nullptr;
+        InputSystem*   inputSystem   = nullptr;
     };
 
 } // namespace engine

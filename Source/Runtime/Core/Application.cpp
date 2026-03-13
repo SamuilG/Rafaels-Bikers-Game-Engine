@@ -2,6 +2,7 @@
 #include "../Renderer/RenderSystem.hpp"
 #include "../Scene/SceneManager.hpp"
 #include "../Physics/PhysicsSystem.hpp"
+#include "../Input/InputSystem.hpp"
 #include <flecs.h>
 
 namespace engine {
@@ -12,7 +13,7 @@ namespace engine {
         //basic systems
         
         //AddSystem<WindowSystem>();
-        //AddSystem<InputSystem>();
+        inputSystem = AddSystem<InputSystem>();
         //AddSystem<SoundSystem>();
 
         //world systems
@@ -33,8 +34,14 @@ namespace engine {
         renderSystem = AddSystem<RenderSystem>(Running, sceneManager);
 
         // Initialise all systems
-        for (auto& sys : Systems) 
+        for (auto& sys : Systems) {
             sys->Init();
+        }
+
+        if (inputSystem && renderSystem) {
+            inputSystem->SetWindow(renderSystem->GetGLFWWindow());
+            renderSystem->SetInputSystem(inputSystem);
+        }
 
         // load models using the API in RenderSystem
         // TScene is completely static (ground + buildings)

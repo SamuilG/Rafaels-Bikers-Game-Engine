@@ -57,6 +57,8 @@ namespace lut = labut2;
 #include "RenderUtilities/setup.hpp"
 #include "RenderUtilities/rendering.hpp"
 
+#include "../Input/InputSystem.hpp"
+
 namespace glsl {
     struct MosaicUniform {
         int   mosaicOn;
@@ -74,6 +76,11 @@ namespace engine {
         }
 
 
+        GLFWwindow* GetGLFWWindow() const {
+            if (mWindow.window) return mWindow.window;
+            return nullptr;
+        }
+
         void Init() override
         {
             // Create Vulkan Window
@@ -81,7 +88,7 @@ namespace engine {
 
             // Initialize state
             glfwSetWindowUserPointer(mWindow.window, &mState);
-            glfwSetKeyCallback(mWindow.window, &glfw_callback_key_press);
+            // Key callbacks handled entirely by the centralised engine::InputSystem
             glfwSetMouseButtonCallback(mWindow.window, &glfw_callback_button);
             glfwSetCursorPosCallback(mWindow.window, &glfw_callback_motion);
 
@@ -151,7 +158,7 @@ namespace engine {
                     mWindow, mDefaultGrayTex.image, VK_FORMAT_R8G8B8A8_UNORM);
 
 
-                // 2. ¡¾ĞÂÔö¡¿±ê×¼µÄÀ¶É«·¨ÏßÍ¼ (³¯Ïò Z Öá)
+                // 2. ã€æ–°å¢ã€‘æ ‡å‡†çš„è“è‰²æ³•çº¿å›¾ (æœå‘ Z è½´)
                 std::uint8_t normalBlue[4] = { 128, 128, 255, 255 };
                 mDefaultNormalTex = lut::load_image_texture2d_from_memory(
                     normalBlue, 1, 1, mWindow, mCmdPool.handle, mAllocator, VK_FORMAT_R8G8B8A8_UNORM);
@@ -172,7 +179,7 @@ namespace engine {
 
 
             //================particle system===================================================
-            // Á£×ÓÏµÍ³
+            // ç²’å­ç³»ç»Ÿ
            
 
             //particle textures
@@ -238,89 +245,89 @@ namespace engine {
             glm::vec3 emitterPos3(4, 0.5, 2);
             glm::vec3 emitterPos4(2, 0.8, 2);
 
-            // „“½¨µÚ 1 ½M£º»ğÑæ
+            // å‰µå»ºç¬¬ 1 çµ„ï¼šç«ç„°
             {
                 auto fire = std::make_unique<ParticleSystem>();
-                //°lÉäÆ÷ĞÎ î
+                //ç™¼å°„å™¨å½¢ç‹€
                 fire->setEmitterShape(EmitterShape::Cone);
-                fire->config.coneSpread = 0.1f;// ¿ØÖÆ×¶ĞÎµÄ¿ª¿Ú´óĞ¡
+                fire->config.coneSpread = 0.1f;// æ§åˆ¶é”¥å½¢çš„å¼€å£å¤§å°
                 //debug
-                fire->config.particleDebug = false; // ¿ªÆôÁ£×Óµ÷ÊÔÊä³ö
-                //ÙNˆDÔO¶¨
-                fire->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // ½‰¶¨ÙNˆD
+                fire->config.particleDebug = false; // å¼€å¯ç²’å­è°ƒè¯•è¾“å‡º
+                //è²¼åœ–è¨­å®š
+                fire->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // ç¶å®šè²¼åœ–
                 fire->config.useTexture = 1;
-                fire->config.atlasCols = 4;   // ÌùÍ¼ÇĞ³É 4 ÁĞ
-                fire->config.atlasRows = 4;   // ÌùÍ¼ÇĞ³É 4 ĞĞ
+                fire->config.atlasCols = 4;   // è´´å›¾åˆ‡æˆ 4 åˆ—
+                fire->config.atlasRows = 4;   // è´´å›¾åˆ‡æˆ 4 è¡Œ
                 fire->config.animateAtlas = true;
-                //î†É«
+                //é¡”è‰²
                 fire->config.startColor = glm::vec4(255.0f, 125.8f, 0.3f, .05f);
                 fire->config.endColor = glm::vec4(0.05f, 0.05f, 0.05f, 0.1f);
-                //ĞıŞD
+                //æ—‹è½‰
                 fire->config.rotationMin = -360.0f;
                 fire->config.rotationMax = 360.0f;
-                //ÖØÁ¦
+                //é‡åŠ›
                 fire->config.gravity = glm::vec3(0.0f, 0.01f, 0.0f);
-                //³ÖĞøÊ±¼ä
-                fire->config.lifeMin = 1.f;  // ×î¶Ì´æ»îÊ±¼ä
-                fire->config.lifeMax = 3.0f;  // ×î³¤´æ»îÊ±¼ä
-                //Á£×Ó³ß´ç
+                //æŒç»­æ—¶é—´
+                fire->config.lifeMin = 1.f;  // æœ€çŸ­å­˜æ´»æ—¶é—´
+                fire->config.lifeMax = 3.0f;  // æœ€é•¿å­˜æ´»æ—¶é—´
+                //ç²’å­å°ºå¯¸
                 fire->config.sizeMin = 50.0f;
                 fire->config.sizeMax = 130.0f;
-                //Á£×Ó³ß´çËõ·Å£º³öÉúÊ±ºÍËÀÍöÊ±µÄ·Å´ó±¶Êı
+                //ç²’å­å°ºå¯¸ç¼©æ”¾ï¼šå‡ºç”Ÿæ—¶å’Œæ­»äº¡æ—¶çš„æ”¾å¤§å€æ•°
                 fire->config.startSizeScale = 3.0f;
                 fire->config.endSizeScale = 0.f;
-                //³õÊ¼ËÙ¶È
-                fire->config.speedMin = 0.1f; // ×îĞ¡³õËÙ¶È
-                fire->config.speedMax = 0.5f; // ×î´ó³õËÙ¶È
-                //Î»ÖÃ
+                //åˆå§‹é€Ÿåº¦
+                fire->config.speedMin = 0.1f; // æœ€å°åˆé€Ÿåº¦
+                fire->config.speedMax = 0.5f; // æœ€å¤§åˆé€Ÿåº¦
+                //ä½ç½®
                 fire->config.emitterPos = emitterPos1;;
                 fire->init(mAllocator, 300, emitterPos1);
                 allParticles.push_back(std::move(fire)); 
             }
-            //„“½¨µÚ 2½M£º»ÒŸŸ
+            //å‰µå»ºç¬¬ 2çµ„ï¼šç°ç…™
             {
                 auto smoke = std::make_unique<ParticleSystem>();
-                //°lÉäÆ÷ĞÎ î
+                //ç™¼å°„å™¨å½¢ç‹€
                 smoke->setEmitterShape(EmitterShape::Cone);
-                smoke->config.coneSpread = 0.1f;// ¿ØÖÆ×¶ĞÎµÄ¿ª¿Ú´óĞ¡
+                smoke->config.coneSpread = 0.1f;// æ§åˆ¶é”¥å½¢çš„å¼€å£å¤§å°
                 //debug
-                smoke->config.particleDebug = false; // ¿ªÆôÁ£×Óµ÷ÊÔÊä³ö
-                //ÙNˆDÔO¶¨
-                smoke->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // ½‰¶¨ÙNˆD
+                smoke->config.particleDebug = false; // å¼€å¯ç²’å­è°ƒè¯•è¾“å‡º
+                //è²¼åœ–è¨­å®š
+                smoke->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // ç¶å®šè²¼åœ–
                 smoke->config.useTexture = 1;
-                smoke->config.atlasCols = 4;   // ÌùÍ¼ÇĞ³É 4 ÁĞ
-                smoke->config.atlasRows = 4;   // ÌùÍ¼ÇĞ³É 4 ĞĞ
+                smoke->config.atlasCols = 4;   // è´´å›¾åˆ‡æˆ 4 åˆ—
+                smoke->config.atlasRows = 4;   // è´´å›¾åˆ‡æˆ 4 è¡Œ
                 smoke->config.animateAtlas = true;
-                //î†É«
+                //é¡”è‰²
                 smoke->config.startColor = glm::vec4(.5f, .5f, .5f, .01f);
                 smoke->config.endColor = glm::vec4(0.05f, 0.05f, 0.05f, .08f);
-                //ĞıŞD
+                //æ—‹è½‰
                 smoke->config.rotationMin = -2.0f;
                 smoke->config.rotationMax = 2.0f;
-                //ÖØÁ¦
+                //é‡åŠ›
                 smoke->config.gravity = glm::vec3(0.0f, 0.01f, 0.0f);
-                //³ÖĞøÊ±¼ä
-                smoke->config.lifeMin = 1.f;  // ×î¶Ì´æ»îÊ±¼ä
-                smoke->config.lifeMax = 3.0f;  // ×î³¤´æ»îÊ±¼ä
-                //Á£×Ó³ß´ç£¨ÏñËØ
+                //æŒç»­æ—¶é—´
+                smoke->config.lifeMin = 1.f;  // æœ€çŸ­å­˜æ´»æ—¶é—´
+                smoke->config.lifeMax = 3.0f;  // æœ€é•¿å­˜æ´»æ—¶é—´
+                //ç²’å­å°ºå¯¸ï¼ˆåƒç´ 
                 smoke->config.sizeMin = 80.0f;
                 smoke->config.sizeMax = 200.0f;
-                //Á£×Ó³ß´çËõ·Å£º³öÉúÊ±ºÍËÀÍöÊ±µÄ·Å´ó±¶Êı
+                //ç²’å­å°ºå¯¸ç¼©æ”¾ï¼šå‡ºç”Ÿæ—¶å’Œæ­»äº¡æ—¶çš„æ”¾å¤§å€æ•°
                 smoke->config.startSizeScale = 3.0f;
                 smoke->config.endSizeScale = 0.f;
-                //³õÊ¼ËÙ¶È
-                smoke->config.speedMin = 0.1f; // ×îĞ¡³õËÙ¶È
-                smoke->config.speedMax = 0.5f; // ×î´ó³õËÙ¶È
-                //Î»ÖÃ
+                //åˆå§‹é€Ÿåº¦
+                smoke->config.speedMin = 0.1f; // æœ€å°åˆé€Ÿåº¦
+                smoke->config.speedMax = 0.5f; // æœ€å¤§åˆé€Ÿåº¦
+                //ä½ç½®
                 smoke->config.emitterPos = emitterPos4;;
                 smoke->init(mAllocator, 800, emitterPos4);
                 allParticles.push_back(std::move(smoke));
             }
 
-            // „“½¨µÚ 3½M£º»ğ»¨
+            // å‰µå»ºç¬¬ 3çµ„ï¼šç«èŠ±
             {
 				auto magic = std::make_unique<ParticleSystem>();
-                magic->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[1]];// ½‰¶¨ÙNˆD
+                magic->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[1]];// ç¶å®šè²¼åœ–
                 magic->config.useTexture = 1;
                 magic->config.sizeMin = 500.0f;
                 magic->config.sizeMax = 500.0f;
@@ -329,50 +336,50 @@ namespace engine {
                 allParticles.push_back(std::move(magic));
             }
 
-            // „“½¨µÚ 4½M£º»ğÑæºÚ
+            // å‰µå»ºç¬¬ 4çµ„ï¼šç«ç„°é»‘
             {
 				auto c = std::make_unique<ParticleSystem>();
-                c->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // TODO:½‰¶¨ĞÇĞÇÙNˆD ÕâÀïÊÇ´íµÄ
+                c->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // TODO:ç¶å®šæ˜Ÿæ˜Ÿè²¼åœ– è¿™é‡Œæ˜¯é”™çš„
                 c->config.emitterPos = emitterPos3;
                 c->init(mAllocator, 1000, emitterPos3);
                 allParticles.push_back(std::move(c));
             }
 
-            // „“½¨µÚ Îå ½M£º±¬Õ¨»ğÑæ
+            // å‰µå»ºç¬¬ äº” çµ„ï¼šçˆ†ç‚¸ç«ç„°
             {
                 auto boom = std::make_unique<ParticleSystem>();
-                //°lÉäÆ÷ĞÎ î
+                //ç™¼å°„å™¨å½¢ç‹€
                 boom->setEmitterShape(EmitterShape::Sphere);
-                boom->config.sphereRadius = 0.3f;// ¿ØÖÆ×¶ĞÎµÄ¿ª¿Ú´óĞ¡
+                boom->config.sphereRadius = 0.3f;// æ§åˆ¶é”¥å½¢çš„å¼€å£å¤§å°
                 //debug
-                boom->config.particleDebug = false; // ¿ªÆôÁ£×Óµ÷ÊÔÊä³ö
-                //ÙNˆDÔO¶¨
-                boom->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // ½‰¶¨ÙNˆD
+                boom->config.particleDebug = false; // å¼€å¯ç²’å­è°ƒè¯•è¾“å‡º
+                //è²¼åœ–è¨­å®š
+                boom->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // ç¶å®šè²¼åœ–
                 boom->config.useTexture = 1;
-                boom->config.atlasCols = 4;   // ÌùÍ¼ÇĞ³É 4 ÁĞ
-                boom->config.atlasRows = 4;   // ÌùÍ¼ÇĞ³É 4 ĞĞ
+                boom->config.atlasCols = 4;   // è´´å›¾åˆ‡æˆ 4 åˆ—
+                boom->config.atlasRows = 4;   // è´´å›¾åˆ‡æˆ 4 è¡Œ
                 boom->config.animateAtlas = true;
-                //î†É«
+                //é¡”è‰²
                 boom->config.startColor = glm::vec4(255.0f, 125.8f, 0.3f, .05f);
                 boom->config.endColor = glm::vec4(0.05f, 0.05f, 0.05f, 0.1f);
-                //ĞıŞD
+                //æ—‹è½‰
                 boom->config.rotationMin = -360.0f;
                 boom->config.rotationMax = 360.0f;
-                //ÖØÁ¦
+                //é‡åŠ›
                 boom->config.gravity = glm::vec3(0.0f, 0.01f, 0.0f);
-                //³ÖĞøÊ±¼ä
-                boom->config.lifeMin = 1.f;  // ×î¶Ì´æ»îÊ±¼ä
-                boom->config.lifeMax = 3.0f;  // ×î³¤´æ»îÊ±¼ä
-                //Á£×Ó³ß´ç
+                //æŒç»­æ—¶é—´
+                boom->config.lifeMin = 1.f;  // æœ€çŸ­å­˜æ´»æ—¶é—´
+                boom->config.lifeMax = 3.0f;  // æœ€é•¿å­˜æ´»æ—¶é—´
+                //ç²’å­å°ºå¯¸
                 boom->config.sizeMin = 50.0f;
                 boom->config.sizeMax = 130.0f;
-                //Á£×Ó³ß´çËõ·Å£º³öÉúÊ±ºÍËÀÍöÊ±µÄ·Å´ó±¶Êı
+                //ç²’å­å°ºå¯¸ç¼©æ”¾ï¼šå‡ºç”Ÿæ—¶å’Œæ­»äº¡æ—¶çš„æ”¾å¤§å€æ•°
                 boom->config.startSizeScale = 3.0f;
                 boom->config.endSizeScale = 0.f;
-                //³õÊ¼ËÙ¶È
-                boom->config.speedMin = 0.1f; // ×îĞ¡³õËÙ¶È
-                boom->config.speedMax = 0.5f; // ×î´ó³õËÙ¶È
-                //Î»ÖÃ
+                //åˆå§‹é€Ÿåº¦
+                boom->config.speedMin = 0.1f; // æœ€å°åˆé€Ÿåº¦
+                boom->config.speedMax = 0.5f; // æœ€å¤§åˆé€Ÿåº¦
+                //ä½ç½®
                 boom->config.emitterPos = emitterPos1;;
                 boom->init(mAllocator, 600, emitterPos1);
                 allParticles.push_back(std::move(boom));
@@ -487,6 +494,10 @@ namespace engine {
             // reaction to user input (or similar).
             glfwPollEvents(); // or: glfwWaitEvents()
 
+            if (mInputSystem && mInputSystem->IsActionPressed("Quit")) {
+                glfwSetWindowShouldClose(mWindow.window, GLFW_TRUE);
+            }
+
             if (glfwWindowShouldClose(mWindow.window)) {
                 mAppRunning = false;
                 return;
@@ -561,18 +572,45 @@ namespace engine {
 
             //find character pos
             if (mSceneManager && mState.thirdPersonMode) {
-                // ÓÃÄãÏë¸úËæµÄÊµÌåÃû×Ö
+                // ç”¨ä½ æƒ³è·Ÿéšçš„å®ä½“åå­—
                 auto target = mSceneManager->find_entity("Body_Cylinder_0");
                 if (target.is_valid() && target.has<WorldTransform>()) {
                     const auto& wt = target.get<WorldTransform>();
                     mState.followTargetPos = glm::vec3(wt.matrix[3]);
-					printf("Follow Target Pos: (%.2f, %.2f, %.2f)\n", mState.followTargetPos.x, mState.followTargetPos.y, mState.followTargetPos.z);
+					// printf("Follow Target Pos: (%.2f, %.2f, %.2f)\n", mState.followTargetPos.x, mState.followTargetPos.y, mState.followTargetPos.z);
                 }
             }
 
+            // --- Toggle Inputs via InputSystem ---
+            if (mInputSystem) {
+                if (mInputSystem->IsActionPressed("ToggleParticles")) {
+                    mState.particlesEnabled = !mState.particlesEnabled;
+                    std::printf("Particles: %s\n", mState.particlesEnabled ? "ON" : "OFF");
+                }
+                if (mInputSystem->IsActionPressed("CameraThirdPersonToggle")) {
+                    mState.thirdPersonMode = !mState.thirdPersonMode;
+                    std::printf("Camera: %s\n", mState.thirdPersonMode ? "Third Person" : "Free Fly");
+                }
+                
+                // Debug Render Modes
+                if (mInputSystem->IsActionPressed("Default")) mState.renderMode = 0;
+                if (mInputSystem->IsActionPressed("DebugMipmap")) mState.renderMode = 1;
+                if (mInputSystem->IsActionPressed("DebugDepth")) mState.renderMode = 2;
+                if (mInputSystem->IsActionPressed("DebugDerivatives")) mState.renderMode = 3;
+                if (mInputSystem->IsActionPressed("DebugMosaic")) mState.mosaicEnabled = !mState.mosaicEnabled;
+                if (mInputSystem->IsActionPressed("DebugOverdraw")) mState.renderMode = 4;
+                if (mInputSystem->IsActionPressed("DebugOvershading")) mState.renderMode = 5;
+                if (mInputSystem->IsActionPressed("DebugShadows")) mState.renderMode = 6;
+                
+                if (mInputSystem->IsActionPressed("PrintCameraPos")) {
+                    auto const pos = mState.camera2world[3];
+                    std::printf("Camera Pos: %.4f, %.4f, %.4f\n", pos.x, pos.y, pos.z);
+                }
+            }
+            //
 
             // Update state
-            update_user_state(mState, dt);
+            update_user_state(mState, dt, mInputSystem);
 
             // Prepare data for this frame
             glsl::SceneUniform sceneUniforms{};
@@ -662,7 +700,7 @@ namespace engine {
                     }
                     else 
                     {
-                        //Ö±½Ó×xÈ¡Ëü×Ô¼ºÉíÉÏ´æµÄÎ»ÖÃ£¡
+                        //ç›´æ¥è®€å–å®ƒè‡ªå·±èº«ä¸Šå­˜çš„ä½ç½®ï¼
                         ps->update(dt, ps->config.emitterPos);
                         ps->upload(mAllocator);
                         ps->uploadDebug(mAllocator, ps->config.emitterPos);
@@ -846,7 +884,12 @@ namespace engine {
             return static_cast<uint32_t>(mModel.materials.size());
         }
 
+        // Allow application to pass in the input system
+        void SetInputSystem(engine::InputSystem* sys) { mInputSystem = sys; }
+
     private:
+        engine::InputSystem* mInputSystem = nullptr;
+
         void AddOneMaterialDescriptor(VkSampler sampler, std::vector<VkDescriptorSet>& out, const EngineMaterial& mat)
         {
 
@@ -1061,8 +1104,8 @@ namespace engine {
         lut::Image     mDefaultGrayTex;
         lut::ImageView mDefaultGrayView;
 
-        lut::Image     mDefaultNormalTex;  // ¡¾ĞÂÔö¡¿£ºÕıÈ·µÄ·¨ÏßÕ¼Î»Í¼
-        lut::ImageView mDefaultNormalView; // ¡¾ĞÂÔö¡¿
+        lut::Image     mDefaultNormalTex;  // ã€æ–°å¢ã€‘ï¼šæ­£ç¡®çš„æ³•çº¿å ä½å›¾
+        lut::ImageView mDefaultNormalView; // ã€æ–°å¢ã€‘
 
         // Samplers
         lut::Sampler mDefaultSampler, mDebugSampler;
