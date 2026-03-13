@@ -1,4 +1,4 @@
-﻿#include "Application.hpp"
+#include "Application.hpp"
 #include "../Renderer/RenderSystem.hpp"
 #include "../Scene/SceneManager.hpp"
 #include "../Physics/PhysicsSystem.hpp"
