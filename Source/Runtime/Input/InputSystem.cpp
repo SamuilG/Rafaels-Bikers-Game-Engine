@@ -63,6 +63,9 @@ namespace engine {
         MapKeyboardAction("DebugShadows", GLFW_KEY_8);; // Shadow Debug
         MapKeyboardAction("PrintCameraPos", GLFW_KEY_P); // Print Camera Position
 
+
+        MapKeyboardAction("BloomToggle", GLFW_KEY_B);
+
         // --- Application Control ---
         MapKeyboardAction("Quit", GLFW_KEY_ESCAPE);
         MapGamepadButtonAction("Quit", GLFW_GAMEPAD_BUTTON_BACK);

@@ -30,17 +30,18 @@ namespace glsl {
 		glm::mat4 projection;
 		glm::mat4 projCam;
 		glm::vec4 cameraPos;
-
-		
 		engine::GpuLight lights[16];
-		uint32_t lightCount;
 
 		glm::vec4 lightPos;
 		glm::vec4 lightColor;
+
+		uint32_t lightCount;
 		uint32_t renderMode;
-		float _pad0[3];
-		glm::mat4 lightVP[4];      // CSM 数组
-		glm::vec4 cascadeSplits;   // CSM 分割点
+		uint32_t _pad0;
+		uint32_t _pad1;
+
+		glm::mat4 lightVP[4];
+		glm::vec4 cascadeSplits;
 	};
 }
 
@@ -76,6 +77,10 @@ namespace cfg
 	constexpr char const* kParticleVertShaderPath = SHADERDIR_"particles.vert.spv";
 	constexpr char const* kParticleFragShaderPath = SHADERDIR_"particles.frag.spv";
 
+	//
+
+	constexpr char const* kBlurShaderPath = SHADERDIR_ "blur.frag.spv";
+	constexpr char const* kComShaderPath = SHADERDIR_ "composite.frag.spv";
 #	undef SHADERDIR_
 
 	//particle textures
@@ -107,12 +112,16 @@ lut::Sampler create_shadow_sampler( lut::VulkanWindow const& );
 
 lut::PipelineLayout create_triangle_pipeline_layout( lut::VulkanContext const&, VkDescriptorSetLayout, VkDescriptorSetLayout );
 lut::PipelineLayout create_post_proc_pipeline_layout( lut::VulkanContext const&, VkDescriptorSetLayout );
+lut::PipelineLayout create_blur_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aDescriptorLayout);
+lut::DescriptorSetLayout create_composite_descriptor_layout(lut::VulkanWindow const& aWindow);
+lut::DescriptorSetLayout create_blur_descriptor_layout(lut::VulkanContext const& aContext);
 
 lut::Pipeline create_triangle_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_B8G8R8A8_SRGB );
 lut::Pipeline create_debug_pipeline( lut::VulkanWindow const&, VkPipelineLayout, char const* aVertPath, char const* aFragPath, VkFormat = VK_FORMAT_B8G8R8A8_SRGB );
 lut::Pipeline create_alpha_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_B8G8R8A8_SRGB );
 lut::Pipeline create_post_proc_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkDescriptorSetLayout );
-
+lut::Pipeline create_blur_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout);
+lut::Pipeline create_composite_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout);
 lut::Pipeline create_overdraw_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_R8G8B8A8_UNORM );
 lut::Pipeline create_overshading_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_R8G8B8A8_UNORM );
 lut::Pipeline create_vis_resolve_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkDescriptorSetLayout );

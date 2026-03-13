@@ -17,40 +17,52 @@ namespace lut = labut2;
 
 
 
-void record_commands( 
-	VkCommandBuffer aCmdBuff, 
-	VkPipeline aGraphicsPipe, 
-	VkPipeline aAlphaPipe, 
-	ImageAndView const& aColorAttach, 
-	ImageAndView const& aDepthAttach, 
-	VkExtent2D const& aImageExtent, 
-	VkBuffer aSceneUBO, 
-	glsl::SceneUniform const& aSceneUniform, 
-	VkPipelineLayout aGraphicsLayout, 
-	VkDescriptorSet aSceneDescriptors, 
-	std::vector<lut::Buffer> const& aMeshPositions, 
-	std::vector<lut::Buffer> const& aMeshTexCoords, 
+// 必须与 .cpp 中的签名完全匹配
+void record_commands(
+	VkCommandBuffer aCmdBuff,
+	VkPipeline aGraphicsPipe,
+	VkPipeline aAlphaPipe,
+	ImageAndView const& aSwapchainAttach,
+	ImageAndView const& aDepthAttach,
+	VkExtent2D const& aImageExtent,
+	VkBuffer aSceneUBO,
+	glsl::SceneUniform const& aSceneUniform,
+	VkPipelineLayout aGraphicsLayout,
+	VkDescriptorSet aSceneDescriptors,
+	std::vector<lut::Buffer> const& aMeshPositions,
+	std::vector<lut::Buffer> const& aMeshTexCoords,
 	std::vector<lut::Buffer> const& aMeshNormals,
-	std::vector<lut::Buffer> const& aMeshIndices, 
-	std::vector<EngineMesh> const& aMeshInfos, 
+	std::vector<lut::Buffer> const& aMeshIndices,
+	std::vector<EngineMesh> const& aMeshInfos,
 	std::vector<EngineMaterial> const& aMaterials,
 	std::vector<VkDescriptorSet> const& aMaterialDescriptors,
-	//std::vector<EngineInstance> const& aInstances,//to render obj
 	std::vector<RenderBatch> const& aBatches,
+	// --- Bloom / blur / composite 新增参数 ---
+	VkPipeline aBlurPipe,
+	VkPipelineLayout aBlurLayout,
+	VkPipeline aCompositePipe,
+	VkPipelineLayout aCompositeLayout,
+	VkDescriptorSet aBlurHorizDS,
+	VkDescriptorSet aBlurVertDS,
+	VkDescriptorSet aCompositeDS,
+	ImageAndView const& aOffscreenColor,
+	ImageAndView const& aBrightColor,
+	ImageAndView const& aBlurTemp,
+	ImageAndView const& aFinalBloom,
+	VkClearColorValue aClearColor,
+	float aBloomStrength,
+	// --- 原有后处理与阴影/粒子参数保留 ---
 	VkPipeline aPostProcPipe,
 	VkDescriptorSet aPostProcDescriptors,
 	VkPipelineLayout aPostProcLayout,
-	ImageAndView const& aOffscreenColor,
-	VkClearColorValue aClearColor,
-	// p2_1.5 shadow mapping
 	VkPipeline aShadowPipe,
 	ImageAndView const& aShadowMap,
 	std::vector<VkImageView> const& aShadowCascadeViews,
-	//================particle system========================================
 	bool particlesEnabled,
 	VkPipeline particlePipe,
 	const std::vector<std::unique_ptr<ParticleSystem>>& allParticles
 );
+
 
 void submit_commands( 
 	lut::VulkanContext const& aContext, 

@@ -58,6 +58,7 @@ namespace lut = labut2;
 #include "RenderUtilities/rendering.hpp"
 
 #include "../Input/InputSystem.hpp"
+#include <chrono> // 确保顶部包含了这个
 
 namespace glsl {
     struct MosaicUniform {
@@ -70,6 +71,7 @@ namespace engine {
 
     class RenderSystem final : public System
     {
+ 
     public:
         explicit RenderSystem(bool& appRunning, SceneManager* sceneManager = nullptr)
             : mAppRunning(appRunning), mSceneManager(sceneManager) {
@@ -83,6 +85,10 @@ namespace engine {
 
         void Init() override
         {
+
+            
+
+
             // Create Vulkan Window
             mWindow = lut::make_vulkan_window();
 
@@ -130,8 +136,7 @@ namespace engine {
                 mImageAvailable.emplace_back(lut::create_semaphore(mWindow.device));
                 mRenderFinished.emplace_back(lut::create_semaphore(mWindow.device));
             }
-
-        
+           
 
 
             
@@ -165,6 +170,10 @@ namespace engine {
                 mDefaultNormalView = lut::create_image_view_texture2d(
                     mWindow, mDefaultNormalTex.image, VK_FORMAT_R8G8B8A8_UNORM);
             }
+
+
+
+
 
             // sampler
             mDefaultSampler = lut::create_default_sampler(mWindow);
@@ -480,8 +489,91 @@ namespace engine {
 
             //for (auto& [path, ds] : particleTextureDict)
                 //std::printf("ParticleTex [%s] descSet=%p\n", path.c_str(), (void*)ds);
+
+
+
+            // --- 1. 创建专用布局 ---
+            mBlurDescLayout = create_blur_descriptor_layout(mWindow);
+            mCompDescLayout = create_composite_descriptor_layout(mWindow);
+
+
+
+            mCompPipeLayout = create_post_proc_pipeline_layout(mWindow, mCompDescLayout.handle);
+            // --- 2. 创建图像资源 (HDR 格式) ---
+            mBrightImage = create_offscreen_buffer(mWindow, mAllocator);
+            mBlurTempImage = create_offscreen_buffer(mWindow, mAllocator);
+            mFinalBloomImage = create_offscreen_buffer(mWindow, mAllocator);
+
+            // --- 3. 创建管线布局与管线 ---
+
+            mBlurPipeLayout = create_blur_pipeline_layout(mWindow, mBlurDescLayout.handle);
+            mBlurPipe = create_blur_pipeline(mWindow, mBlurPipeLayout.handle);
+            mCompositePipe = create_composite_pipeline(mWindow, mCompPipeLayout.handle);
+            // --- 4. 填充描述符集 ---
+            for (size_t i = 0; i < mCmdBuffers.size(); ++i) {
+                mBlurHorizDescriptors.push_back(BuildBlurDesc(mBlurDescLayout.handle, mBrightImage.view));
+                mBlurVertDescriptors.push_back(BuildBlurDesc(mBlurDescLayout.handle, mBlurTempImage.view));
+                mCompositeDescriptors.push_back(BuildCompositeDesc(mCompDescLayout.handle, mOffscreenImage.view, mFinalBloomImage.view));
+            }
+
+
+            // 在 Init() 里面：
+            auto t_start = std::chrono::high_resolution_clock::now();
+            auto print_time = [&](const char* name) {
+                auto t_now = std::chrono::high_resolution_clock::now();
+                float ms = std::chrono::duration<float, std::milli>(t_now - t_start).count();
+                std::printf("[Pipeline] %s took %.2f ms\n", name, ms);
+                t_start = t_now;
+                };
+
+            // 挨个测试：
+            mPipe = create_triangle_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+            print_time("Main Triangle Pipe");
+
+            mBlurPipe = create_blur_pipeline(mWindow, mBlurPipeLayout.handle);
+            print_time("Blur Pipe");
+
+            mCompositePipe = create_composite_pipeline(mWindow, mCompPipeLayout.handle);
+            print_time("Composite Pipe");
+
+       
+        }
+        // 辅助函数：构建模糊阶段的描述符集
+        VkDescriptorSet BuildBlurDesc(VkDescriptorSetLayout layout, VkImageView inputView) {
+            VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, layout);
+            VkDescriptorImageInfo ii{ mPostSampler.handle, inputView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+
+            VkWriteDescriptorSet w{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+            w.dstSet = ds; w.dstBinding = 0;
+            w.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            w.descriptorCount = 1; w.pImageInfo = &ii;
+
+            vkUpdateDescriptorSets(mWindow.device, 1, &w, 0, nullptr);
+            return ds;
         }
 
+        VkDescriptorSet BuildCompositeDesc(VkDescriptorSetLayout layout, VkImageView sceneView, VkImageView bloomView) {
+            // 确保直接 alloc 并返回，不要在函数内部操作成员 vector
+            VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, layout);
+
+            VkDescriptorImageInfo imgs[2]{};
+            imgs[0] = { mPostSampler.handle, sceneView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            imgs[1] = { mPostSampler.handle, bloomView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+
+            VkWriteDescriptorSet w[2]{};
+            w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            w[0].dstSet = ds; w[0].dstBinding = 0;
+            w[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            w[0].descriptorCount = 1; w[0].pImageInfo = &imgs[0];
+
+            w[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            w[1].dstSet = ds; w[1].dstBinding = 1;
+            w[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            w[1].descriptorCount = 1; w[1].pImageInfo = &imgs[1];
+
+            vkUpdateDescriptorSets(mWindow.device, 2, w, 0, nullptr);
+            return ds;
+        }
         void Update(float dt) override
         {
             // Let GLFW process events.
@@ -496,6 +588,11 @@ namespace engine {
 
             if (mInputSystem && mInputSystem->IsActionPressed("Quit")) {
                 glfwSetWindowShouldClose(mWindow.window, GLFW_TRUE);
+            }
+
+            if (mInputSystem->IsActionPressed("BloomToggle")) {
+                mState.bloomEnabled = !mState.bloomEnabled;
+                std::printf("Bloom Effect: %s\n", mState.bloomEnabled ? "ON" : "OFF");
             }
 
             if (glfwWindowShouldClose(mWindow.window)) {
@@ -731,21 +828,50 @@ namespace engine {
                     sceneUniforms.lights[i] = lights[i];
                 }
             }
+
+
+            float currentBloomStrength = mState.bloomEnabled ? 0.0f : 1.2f;
             // Record and submit commands for this frame
+            // 在 Update 函数末尾找到 record_commands 调用，修改如下：
             record_commands(
                 mCmdBuffers[mFrameIndex],
-                currentOpaque, currentAlpha,
-                colorTarget, depthTarget,
+                currentOpaque,
+                currentAlpha,
+                colorTarget,           // 现在的 Swapchain 目标
+                depthTarget,
                 mWindow.swapchainExtent,
-                mSceneUBO.buffer, sceneUniforms,
-                mPipeLayout.handle, mSceneDescriptors,
-                mMeshPositions, mMeshTexCoords, mMeshNormals, mMeshIndices,
-                mModel.meshes, mModel.materials,
+                mSceneUBO.buffer,
+                sceneUniforms,
+                mPipeLayout.handle,
+                mSceneDescriptors,
+                mMeshPositions,
+                mMeshTexCoords,
+                mMeshNormals,
+                mMeshIndices,
+                mModel.meshes,
+                mModel.materials,
                 *currentDescs,
                 mSceneManager ? mSceneManager->get_render_batches() : std::vector<RenderBatch>{},
-                resolvePipeline, resolveDescs, resolveLayout,
-                offscreenTarget, clearColor,
-                mShadowPipe.handle, shadowTarget,
+                // --- 新增 Bloom 参数 (必须与 rendering.cpp 顺序一致) ---
+                mBlurPipe.handle,              // VkPipeline aBlurPipe
+                mBlurPipeLayout.handle,        // VkPipelineLayout aBlurLayout
+                mCompositePipe.handle,         // VkPipeline aCompositePipe
+                mCompPipeLayout.handle,
+                mBlurHorizDescriptors[mFrameIndex], // VkDescriptorSet aBlurHorizDS
+                mBlurVertDescriptors[mFrameIndex],  // VkDescriptorSet aBlurVertDS
+                mCompositeDescriptors[mFrameIndex], // VkDescriptorSet aCompositeDS
+                ImageAndView{ mOffscreenImage.image, mOffscreenImage.view },
+                ImageAndView{ mBrightImage.image, mBrightImage.view },
+                ImageAndView{ mBlurTempImage.image, mBlurTempImage.view },
+                ImageAndView{ mFinalBloomImage.image, mFinalBloomImage.view },
+                clearColor,                    // VkClearColorValue aClearColor
+                currentBloomStrength,
+                // --- 剩下的原有参数 ---
+                mPostProcPipe.handle,          // 这里的顺序要核对你的 rendering.cpp
+                mPostDescriptors[mFrameIndex],
+                mPostPipeLayout.handle,
+                mShadowPipe.handle,
+                shadowTarget,
                 mShadowCascadeViews,
                 mState.particlesEnabled&& mState.renderMode == 0,
                 mParticlePipe.handle,
@@ -765,12 +891,36 @@ namespace engine {
 
         void Shutdown() override
         {
+            // 1. 确保 GPU 已经完全停下，再开始拆除资源
+            vkDeviceWaitIdle(mWindow.device);
+
+            // ================= 新增：销毁 Bloom 相关的管线和布局 =================
+            if (mBlurPipe.handle) vkDestroyPipeline(mWindow.device, mBlurPipe.handle, nullptr);
+            if (mCompositePipe.handle) vkDestroyPipeline(mWindow.device, mCompositePipe.handle, nullptr);
+
+            if (mBlurPipeLayout.handle) vkDestroyPipelineLayout(mWindow.device, mBlurPipeLayout.handle, nullptr);
+            if (mCompPipeLayout.handle) vkDestroyPipelineLayout(mWindow.device, mCompPipeLayout.handle, nullptr);
+
+            if (mBlurDescLayout.handle) vkDestroyDescriptorSetLayout(mWindow.device, mBlurDescLayout.handle, nullptr);
+            if (mCompDescLayout.handle) vkDestroyDescriptorSetLayout(mWindow.device, mCompDescLayout.handle, nullptr);
+
+            // ================= 新增：销毁 Bloom 相关的图像和视图 =================
+            // 销毁 Bright Image
+            if (mBrightImage.view) vkDestroyImageView(mWindow.device, mBrightImage.view, nullptr);
+            if (mBrightImage.image) vmaDestroyImage(mAllocator.allocator, mBrightImage.image, mBrightImage.allocation);
+
+            // 销毁 Blur Temp Image
+            if (mBlurTempImage.view) vkDestroyImageView(mWindow.device, mBlurTempImage.view, nullptr);
+            if (mBlurTempImage.image) vmaDestroyImage(mAllocator.allocator, mBlurTempImage.image, mBlurTempImage.allocation);
+
+            // 销毁 Final Bloom Image
+            if (mFinalBloomImage.view) vkDestroyImageView(mWindow.device, mFinalBloomImage.view, nullptr);
+            if (mFinalBloomImage.image) vmaDestroyImage(mAllocator.allocator, mFinalBloomImage.image, mFinalBloomImage.allocation);
+
+            // ================= 原有逻辑保持不变 =================
             for (auto view : mShadowCascadeViews) {
                 vkDestroyImageView(mWindow.device, view, nullptr);
             }
-
-
-            vkDeviceWaitIdle(mWindow.device);
 
             allParticles.clear();
         }
@@ -850,6 +1000,7 @@ namespace engine {
                 mesh.materialIndex += baseMaterialIdx;
                 mModel.meshes.push_back(mesh);
                 UploadSingleMesh(mesh);
+                  
             }
 
 
@@ -888,8 +1039,71 @@ namespace engine {
         void SetInputSystem(engine::InputSystem* sys) { mInputSystem = sys; }
 
     private:
+
         engine::InputSystem* mInputSystem = nullptr;
 
+        // --- 核心：必须定义为类成员，否则 Init 结束后 handle 会失效 ---
+        lut::ImageWithView mBrightImage;
+        lut::ImageWithView mBlurTempImage;
+        lut::ImageWithView mFinalBloomImage;
+
+        lut::Pipeline mBlurPipe;
+        lut::Pipeline mCompositePipe;
+        lut::PipelineLayout mBlurPipeLayout;
+        lut::PipelineLayout mCompPipeLayout;
+
+        lut::DescriptorSetLayout mBlurDescLayout;
+        lut::DescriptorSetLayout mCompDescLayout;
+
+        std::vector<VkDescriptorSet> mBlurHorizDescriptors;
+        std::vector<VkDescriptorSet> mBlurVertDescriptors;
+        std::vector<VkDescriptorSet> mCompositeDescriptors;
+        
+        VkDescriptorSet BuildBlurDesc(VkImageView inputView) {
+            // 模糊阶段只需要 1 个输入纹理 (binding 0)
+            // 我们可以复用 mPostLayout，但如果报错，建议创建一个专用的单纹理 Layout
+            VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, mPostLayout.handle);
+
+            VkDescriptorImageInfo ii{};
+            ii.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            ii.imageView = inputView;
+            ii.sampler = mPostSampler.handle;
+
+            VkWriteDescriptorSet w{};
+            w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            w.dstSet = ds;
+            w.dstBinding = 0;
+            w.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            w.descriptorCount = 1;
+            w.pImageInfo = &ii;
+
+            vkUpdateDescriptorSets(mWindow.device, 1, &w, 0, nullptr);
+            return ds;
+        }
+
+        VkDescriptorSet BuildCompositeDesc(VkImageView sceneView, VkImageView bloomView) {
+            // 合成阶段需要 2 个输入纹理 (binding 0: 场景, binding 1: 模糊结果)
+            // 这里必须确保你的 mPostLayout 支持至少 2 个 CombinedImageSampler
+            VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, mPostLayout.handle);
+
+            VkDescriptorImageInfo imgs[2]{};
+            imgs[0] = { mPostSampler.handle, sceneView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            imgs[1] = { mPostSampler.handle, bloomView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+
+            VkWriteDescriptorSet w[2]{};
+            w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            w[0].dstSet = ds; w[0].dstBinding = 0;
+            w[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            w[0].descriptorCount = 1; w[0].pImageInfo = &imgs[0];
+
+            w[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            w[1].dstSet = ds; w[1].dstBinding = 1;
+            w[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            w[1].descriptorCount = 1; w[1].pImageInfo = &imgs[1];
+
+            vkUpdateDescriptorSets(mWindow.device, 2, w, 0, nullptr);
+            return ds;
+        }
         void AddOneMaterialDescriptor(VkSampler sampler, std::vector<VkDescriptorSet>& out, const EngineMaterial& mat)
         {
 
@@ -1019,8 +1233,11 @@ namespace engine {
             VkSubmitInfo2 si{ VK_STRUCTURE_TYPE_SUBMIT_INFO_2 };
             si.commandBufferInfoCount = 1; si.pCommandBufferInfos = &ci;
             vkQueueSubmit2(mWindow.graphicsQueue, 1, &si, VK_NULL_HANDLE);
+
             vkQueueWaitIdle(mWindow.graphicsQueue);
-        }
+
+            glfwPollEvents(); // 保持窗口心跳
+        } // 函数结束，旧的 ps, ts 等变成空壳被安全销毁，真正的显存已经归 vector 管了
 
         VkDescriptorSet BuildPostDesc(VkImageView imageView, VkBuffer mosaicBuf)
         {

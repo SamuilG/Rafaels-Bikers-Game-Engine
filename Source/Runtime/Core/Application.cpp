@@ -94,17 +94,17 @@ namespace engine {
             0
         );
 
-		// 定义点光源位置
-        glm::mat4 light1SpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(40.0f, 18.0f, 15.0f));
-        sceneManager->create_light_entity(
-            "lampLight",
-            engine::LightType::Point,
-            glm::vec3(0.5f, 1.0f, 2.0f), //color
-            1,//intensity     
+		//// 定义点光源位置
+  //      glm::mat4 light1SpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(40.0f, 18.0f, 15.0f));
+  //      sceneManager->create_light_entity(
+  //          "lampLight",
+  //          engine::LightType::Point,
+  //          glm::vec3(0.5f, 1.0f, 2.0f), //color
+  //          3,//intensity     
 
-			light1SpawnPos ,
-			40.0f // range
-        );
+		//	light1SpawnPos ,
+		//	40.0f // range
+  //      );
 
         // 定义点光源位置
         glm::mat4 light2SpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(20.0f, 3.0f, 30.0f));
@@ -112,14 +112,16 @@ namespace engine {
             "voidLight",
             engine::LightType::Point,
             glm::vec3(0.5f, 0.0f, 3.0f), //color
-            1,//intensity     
+             5,//intensity     
 
             light2SpawnPos,
 			20.0f // range
         );
         // 最后再打印实体列表，确认灯光实体已创建
         sceneManager->print_all_entities();
-       // sceneManager->print_all_entities();
+      
+
+
     }
     
     Application::~Application() {

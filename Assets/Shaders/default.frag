@@ -2,6 +2,11 @@
 
 #extension GL_EXT_scalar_block_layout : require
 
+
+
+layout( location = 0 ) out vec4 oColor;       // 正常场景颜色
+layout( location = 1 ) out vec4 oBrightColor; // 提取的亮度颜
+
 layout( location = 0 ) in vec2 v2fTexCoord;
 layout( location = 1 ) in vec3 v2fNormal;
 layout( location = 2 ) in vec3 v2fPos;
@@ -17,25 +22,30 @@ struct GpuLight {
 };
 layout( scalar, set = 0, binding = 0 ) uniform UScene
 {
-    mat4 camera;
-    mat4 projection;
-    mat4 projCam;
-    vec4 cameraPos;
-    GpuLight lights[16]; // 新增光源数组
-    uint lightCount;     // 当前有效光源数
-    vec4 lightPos;       // 保留旧变量以兼容原有逻辑（或将其废弃）
-    vec4 lightColor;
+    mat4 camera;      // Offset: 0
+    mat4 projection;  // Offset: 64
+    mat4 projCam;     // Offset: 128
+    vec4 cameraPos;   // Offset: 192
+    GpuLight lights[16]; // Offset: 208, Size: 16 * 48 = 768. End: 976
+    
+    // 关键修复：976 是 16 的倍数 (976 / 16 = 61)
+    // 所以紧跟在 lights 后面的 vec4 必须从 976 开始
+    vec4 lightPos;    // Offset: 976
+    vec4 lightColor;  // Offset: 992
+    
+    // 把 uint 放在最后，它们不需要 16 字节对齐
+    uint lightCount;  
     uint renderMode;
-    uint _pad0;          // 匹配 C++ 中的 float _pad0[3]
+    uint _pad0; 
     uint _pad1;
-    uint _pad2;
+
     mat4 lightVP[4];      
     vec4 cascadeSplits;   
 } uScene;
 
 layout( set = 0, binding = 1 ) uniform sampler2DArrayShadow uShadowMap;
 
-layout( location = 0 ) out vec4 oColor;
+
 
 const float PI = 3.14159265359;
 
@@ -130,17 +140,19 @@ float calculate_shadow()
 }
 void main()
 {
-	// material properties
-	vec3 baseColor = texture(uTexColor, v2fTexCoord).rgb;
-	float roughness = texture(uTexRoughness, v2fTexCoord).r;
-	float metalness = texture(uTexMetalness, v2fTexCoord).r;
+    // --- 1. 材质属性采样 ---
+    vec3 baseColor = texture(uTexColor, v2fTexCoord).rgb;
+    float roughness = texture(uTexRoughness, v2fTexCoord).r;
+    float metalness = texture(uTexMetalness, v2fTexCoord).r;
 
-	// geometric vectors
-	vec3 N = normalize(v2fNormal);
+    // --- 2. 几何向量计算 ---
+    vec3 N = normalize(v2fNormal);
     vec3 V = normalize(uScene.cameraPos.xyz - v2fPos); 
     
-    float shadow = calculate_shadow(); // 假设阴影仍只关联主定向光 (lights[0])
+    // --- 3. 阴影计算 ---
+    float shadow = calculate_shadow(); 
     
+    // --- 4. 多光源光照累加 ---
     vec3 totalLo = vec3(0.0);
 
     for (uint i = 0; i < uScene.lightCount; ++i)
@@ -149,15 +161,14 @@ void main()
         vec3 L_dir;
         float attenuation = 1.0;
 
-        if (light.position.w == 0.0) // 定向光 (Directional Light)
+        if (light.position.w == 0.0) // 定向光
         {
-            L_dir = light.position.xyz; // 此时 xyz 通常存储的是反向方向
+            L_dir = light.position.xyz; 
         }
-        else // 点光源 (Point Light)
+        else // 点光源
         {
             L_dir = light.position.xyz - v2fPos;
             float dist = length(L_dir);
-            // 简单的距离衰减：(1 - d/range)^2
             attenuation = clamp(1.0 - dist / light.params.x, 0.0, 1.0);
             attenuation *= attenuation;
         }
@@ -165,19 +176,15 @@ void main()
         vec3 L = normalize(L_dir);
         vec3 H = normalize(L + V);
 
-        // 点积计算
         float NdotL = max(dot(N, L), 0.0);
         float NdotV = max(dot(N, V), 0.0001);
         float NdotH = max(dot(N, H), 0.0);
         float VdotH = max(dot(V, H), 0.0);
 
-        // 只对第一个光源应用阴影（通常是定向太阳光）
         float currentShadow = (i == 0) ? shadow : 1.0;
-        
-        // 入射光能量
         vec3 Li = light.color.rgb * light.color.a * attenuation * currentShadow;
 
-        // PBR 计算 (BRDF)
+        // BRDF 计算
         vec3 F0 = mix(vec3(0.04), baseColor, metalness);
         vec3 F = F0 + (1.0 - F0) * pow(1.0 - VdotH, 5.0);
         vec3 Ldiffuse = (baseColor / PI) * (vec3(1.0) - F) * (1.0 - metalness);
@@ -190,11 +197,28 @@ void main()
         totalLo += (Ldiffuse + Lspecular) * Li * NdotL;
     }
 
+    // --- 5. 环境光与最终颜色合成 ---
     vec3 Lambient = vec3(0.02) * baseColor;
-    vec3 color = Lambient + totalLo;
+    vec3 finalColor = Lambient + totalLo;
 
-	// debug modes
-	if( uScene.renderMode == 6 ) color = vec3(shadow); 
+    // 调试模式覆盖
+    if( uScene.renderMode == 6 ) finalColor = vec3(shadow); 
     
-    oColor = vec4(color, 1.0);
+    // 输出到 Attachment 0 (正常渲染图)
+    oColor = vec4(finalColor, 1.0);
+
+    // --- 6. Bloom 亮度提取输出到 Attachment 1 ---
+    // 使用亮度系数计算
+float threshold = 0.0; // 设定你的 HDR 阈值
+float brightness = dot(finalColor, vec3(0.2126, 0.7152, 0.0722));
+
+if(brightness > threshold) {
+    // 关键：不要原样输出，而是减去阈值，只让“溢出”的光参与 Bloom
+    oBrightColor = vec4(finalColor - vec3(threshold), 1.0); 
+} else {
+    oBrightColor = vec4(0.0, 0.0, 0.0, 1.0);
+}
+
+ 
+
 }
