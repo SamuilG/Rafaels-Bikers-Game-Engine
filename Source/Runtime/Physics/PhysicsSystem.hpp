@@ -41,6 +41,7 @@ namespace Layers
 };
 
 namespace engine {
+class EventSystem;
 
 class PhysicsSystem final : public System {
 public:
@@ -51,6 +52,8 @@ public:
     void optimize_broad_phase();
     void Update(float dt) override;
     void Shutdown() override;
+
+    void SetEventSystem(EventSystem* sys) { m_eventSystem = sys; }
 
     JPH::PhysicsSystem* get_system() { return m_physicsSystem.get(); }
     JPH::BodyInterface& get_body_interface() { return m_physicsSystem->GetBodyInterface(); }
@@ -83,6 +86,12 @@ private:
     std::unique_ptr<BPLayerInterfaceImpl> m_bpLayerInterface;
     std::unique_ptr<ObjectVsBroadPhaseLayerFilterImpl> m_objectVsBroadphaseFilter;
     std::unique_ptr<ObjectLayerPairFilterImpl> m_objectVsObjectFilter;
+
+    // Optional Event System Link
+    EventSystem* m_eventSystem = nullptr;
+
+    class ContactListenerImpl;
+    std::unique_ptr<ContactListenerImpl> m_contactListener;
 
 
 
