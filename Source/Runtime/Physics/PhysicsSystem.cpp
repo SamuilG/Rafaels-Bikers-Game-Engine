@@ -130,8 +130,8 @@ public:
 	{
 		// only broadcast intersection events if the game attached an active EventSystem
 		if (m_sys->m_eventSystem) {
-			std::string nameA = "Body " + std::to_string(inBody1.GetID().GetIndex());
-			std::string nameB = "Body " + std::to_string(inBody2.GetID().GetIndex());
+			std::string nameA = std::to_string(inBody1.GetID().GetIndexAndSequenceNumber());
+			std::string nameB = std::to_string(inBody2.GetID().GetIndexAndSequenceNumber());
 			CollisionEvent event(nameA, nameB);
 			m_sys->m_eventSystem->Dispatch(event);
 		}

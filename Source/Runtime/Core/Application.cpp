@@ -139,11 +139,18 @@ namespace engine {
         eventSystem->QueueEvent(std::move(testEvent));
         
         // Physics Collision Verification
-        eventSystem->Subscribe(EventType::Collision, [](Event& e) {
+        eventSystem->Subscribe(EventType::Collision, [this](Event& e) {
             auto& collisionE = static_cast<CollisionEvent&>(e);
+            
+            uint32_t idA = std::stoul(collisionE.GetEntityA());
+            uint32_t idB = std::stoul(collisionE.GetEntityB());
+            
+            std::string nameA = this->sceneManager->get_entity_name_from_body_id(idA);
+            std::string nameB = this->sceneManager->get_entity_name_from_body_id(idB);
+
             std::printf("[PhysicsSystem] CRASH: %s hit %s.\n", 
-                collisionE.GetEntityA().c_str(), 
-                collisionE.GetEntityB().c_str());
+                nameA.c_str(), 
+                nameB.c_str());
         });
 
     }
