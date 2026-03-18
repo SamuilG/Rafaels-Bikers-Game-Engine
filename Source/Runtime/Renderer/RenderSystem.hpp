@@ -1021,22 +1021,7 @@ namespace engine {
 
         engine::InputSystem* mInputSystem = nullptr;
 
-        // --- 核心：必须定义为类成员，否则 Init 结束后 handle 会失效 ---
-        lut::ImageWithView mBrightImage;
-        lut::ImageWithView mBlurTempImage;
-        lut::ImageWithView mFinalBloomImage;
-
-        lut::Pipeline mBlurPipe;
-        lut::Pipeline mCompositePipe;
-        lut::PipelineLayout mBlurPipeLayout;
-        lut::PipelineLayout mCompPipeLayout;
-
-        lut::DescriptorSetLayout mBlurDescLayout;
-        lut::DescriptorSetLayout mCompDescLayout;
-
-        std::vector<VkDescriptorSet> mBlurHorizDescriptors;
-        std::vector<VkDescriptorSet> mBlurVertDescriptors;
-        std::vector<VkDescriptorSet> mCompositeDescriptors;
+        // (Bloom/Composite members moved below mAllocator for correct RAII destruction order)
         
         VkDescriptorSet BuildBlurDesc(VkImageView inputView) {
             // 模糊阶段只需要 1 个输入纹理 (binding 0)
@@ -1339,6 +1324,26 @@ namespace engine {
 
         // Index of most recently added runtime mesh's material descriptor
         uint32_t mRuntimeMatIndex = 0;
+
+        //
+        // Bloom/Composite Handle Members
+        //
+        // inserted here (bottom of class) so they correctly destruct BEFORE mAllocator
+        lut::ImageWithView mBrightImage;
+        lut::ImageWithView mBlurTempImage;
+        lut::ImageWithView mFinalBloomImage;
+
+        lut::Pipeline mBlurPipe;
+        lut::Pipeline mCompositePipe;
+        lut::PipelineLayout mBlurPipeLayout;
+        lut::PipelineLayout mCompPipeLayout;
+
+        lut::DescriptorSetLayout mBlurDescLayout;
+        lut::DescriptorSetLayout mCompDescLayout;
+
+        std::vector<VkDescriptorSet> mBlurHorizDescriptors;
+        std::vector<VkDescriptorSet> mBlurVertDescriptors;
+        std::vector<VkDescriptorSet> mCompositeDescriptors;
     };
 
 } // namespace engine
