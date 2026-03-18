@@ -124,20 +124,6 @@ namespace engine {
         sceneManager->print_all_entities();
 
         
-        
-        // Event System Verification
-        eventSystem->Subscribe(EventType::Custom, [](Event& e) {
-            auto& customE = static_cast<CustomEvent&>(e);
-            if(customE.GetCustomName() == "EngineInitDone") {
-                std::printf("\n==========================================\n");
-                std::printf("[EventSystem] Engine Initialisation Complete. Event Payload: %d\n", customE.GetPayloadAs<int>());
-                std::printf("==========================================\n\n");
-            }
-        });
-
-        auto testEvent = std::make_unique<CustomEvent>("EngineInitDone", 42);
-        eventSystem->QueueEvent(std::move(testEvent));
-        
         // Physics Collision Verification
         eventSystem->Subscribe(EventType::Collision, [this](Event& e) {
             auto& collisionE = static_cast<CollisionEvent&>(e);
