@@ -498,7 +498,7 @@ namespace engine {
 
 
 
-            mCompPipeLayout = create_post_proc_pipeline_layout(mWindow, mCompDescLayout.handle);
+            mCompPipeLayout = create_composite_pipeline_layout(mWindow, mCompDescLayout.handle);
             // --- 2. 创建图像资源 (HDR 格式) ---
             mBrightImage = create_offscreen_buffer(mWindow, mAllocator);
             mBlurTempImage = create_offscreen_buffer(mWindow, mAllocator);
@@ -894,28 +894,7 @@ namespace engine {
             // 1. 确保 GPU 已经完全停下，再开始拆除资源
             vkDeviceWaitIdle(mWindow.device);
 
-            // ================= 新增：销毁 Bloom 相关的管线和布局 =================
-            if (mBlurPipe.handle) vkDestroyPipeline(mWindow.device, mBlurPipe.handle, nullptr);
-            if (mCompositePipe.handle) vkDestroyPipeline(mWindow.device, mCompositePipe.handle, nullptr);
-
-            if (mBlurPipeLayout.handle) vkDestroyPipelineLayout(mWindow.device, mBlurPipeLayout.handle, nullptr);
-            if (mCompPipeLayout.handle) vkDestroyPipelineLayout(mWindow.device, mCompPipeLayout.handle, nullptr);
-
-            if (mBlurDescLayout.handle) vkDestroyDescriptorSetLayout(mWindow.device, mBlurDescLayout.handle, nullptr);
-            if (mCompDescLayout.handle) vkDestroyDescriptorSetLayout(mWindow.device, mCompDescLayout.handle, nullptr);
-
-            // ================= 新增：销毁 Bloom 相关的图像和视图 =================
-            // 销毁 Bright Image
-            if (mBrightImage.view) vkDestroyImageView(mWindow.device, mBrightImage.view, nullptr);
-            if (mBrightImage.image) vmaDestroyImage(mAllocator.allocator, mBrightImage.image, mBrightImage.allocation);
-
-            // 销毁 Blur Temp Image
-            if (mBlurTempImage.view) vkDestroyImageView(mWindow.device, mBlurTempImage.view, nullptr);
-            if (mBlurTempImage.image) vmaDestroyImage(mAllocator.allocator, mBlurTempImage.image, mBlurTempImage.allocation);
-
-            // 销毁 Final Bloom Image
-            if (mFinalBloomImage.view) vkDestroyImageView(mWindow.device, mFinalBloomImage.view, nullptr);
-            if (mFinalBloomImage.image) vmaDestroyImage(mAllocator.allocator, mFinalBloomImage.image, mFinalBloomImage.allocation);
+            // (Removed redundant RAII wrapper destructions)
 
             // ================= 原有逻辑保持不变 =================
             for (auto view : mShadowCascadeViews) {

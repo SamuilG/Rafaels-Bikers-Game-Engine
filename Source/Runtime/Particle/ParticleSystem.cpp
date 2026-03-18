@@ -15,19 +15,19 @@ static float clamp01(float x) { return std::clamp(x, 0.0f, 1.0f); }
 Particle ParticleSystem::spawn(const glm::vec3& emitterPos)
 {
     Particle p{};
-    p.randomSeed = rand01(); // ¡û ²¹ÉÏÕâĞĞ
-    // ³ÖĞøÊ±¼äºÍ´óĞ¡µÄËæ»úÖµ
+    p.randomSeed = rand01(); // â† è¡¥ä¸Šè¿™è¡Œ
+    // æŒç»­æ—¶é—´å’Œå¤§å°çš„éšæœºå€¼
     p.maxLife = config.lifeMin + rand01() * (config.lifeMax - config.lifeMin);
     p.life = p.maxLife;
     p.baseSize = config.sizeMin + rand01() * (config.sizeMax - config.sizeMin);
 
     float speed = config.speedMin + rand01() * (config.speedMax - config.speedMin);
 
-    // Ëæ»ú½Ç¶È
+    // éšæœºè§’åº¦
     float rotDegrees = config.rotationMin + rand01() * (config.rotationMax - config.rotationMin);
     p.rotation = glm::radians(rotDegrees);
 
-    ////·¢ÉäÆ÷ĞÎ×´Ñ¡Ôñ
+    ////å‘å°„å™¨å½¢çŠ¶é€‰æ‹©
     switch (m_shape)
     {
         
@@ -51,7 +51,7 @@ Particle ParticleSystem::spawn(const glm::vec3& emitterPos)
             (rand01() * 2.f - 1.f) * config.boxArea.y,
             (rand01() * 2.f - 1.f) * config.boxArea.z
         );
-        // ¼ÙÉèºĞĞÎÊÇÏÂÓê/Ñ©£¬¸øÒ»¸öÄ¬ÈÏÏòÏÂµÄËÙ¶ÈÏòÁ¿
+        // å‡è®¾ç›’å½¢æ˜¯ä¸‹é›¨/é›ªï¼Œç»™ä¸€ä¸ªé»˜è®¤å‘ä¸‹çš„é€Ÿåº¦å‘é‡
         p.vel = glm::vec3(0.5f, -1.0f, 0.0f) * speed;
         break;
     }
@@ -61,14 +61,14 @@ Particle ParticleSystem::spawn(const glm::vec3& emitterPos)
 
 void ParticleSystem::init(labut2::Allocator const& alloc, uint32_t maxParticles, const glm::vec3& initialEmitterPos)
 {
-    // ¼ÇÂ¼·ÖÅäÆ÷
+    // è®°å½•åˆ†é…å™¨
     m_vmaAllocator = alloc.allocator;
 
     m_maxParticles = maxParticles;
     m_particles.resize(m_maxParticles);
     m_vertices.resize(m_maxParticles);
 
-	for (auto& p : m_particles) p = spawn(initialEmitterPos);//³õÊ¼·¢ÉäÆ÷Î»ÖÃ
+	for (auto& p : m_particles) p = spawn(initialEmitterPos);//åˆå§‹å‘å°„å™¨ä½ç½®
     
 
     VkBufferCreateInfo bi{ VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
@@ -81,7 +81,7 @@ void ParticleSystem::init(labut2::Allocator const& alloc, uint32_t maxParticles,
     VmaAllocator vma = alloc.allocator;
     VkResult res = vmaCreateBuffer(vma, &bi, &ai, &m_vb, &m_vbAlloc, nullptr);
 
-    //debugÏß¿ò
+    //debugçº¿æ¡†
     VkBufferCreateInfo dbgBi{ VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
     dbgBi.size = sizeof(ParticleVertex) * 8000;
     dbgBi.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
@@ -102,7 +102,7 @@ void ParticleSystem::update(float dt, const glm::vec3& emitterPos)
             p = spawn(emitterPos);
             continue;
         }
-        // Ó¦ÓÃÅäÖÃÖĞµÄÖØÁ¦
+        // åº”ç”¨é…ç½®ä¸­çš„é‡åŠ›
         p.vel += config.gravity * dt;
         p.pos += p.vel * dt;
     }
@@ -125,15 +125,15 @@ void ParticleSystem::upload(labut2::Allocator const& alloc)
 
         v.pos = p.pos;
 
-        v.rotation = p.rotation; // Ğı×ª
+        v.rotation = p.rotation; // æ—‹è½¬
 
-        // ¼ÆËãÉúÃüÖÜÆÚ±ÈÀı
+        // è®¡ç®—ç”Ÿå‘½å‘¨æœŸæ¯”ä¾‹
         float t = std::clamp(p.life / p.maxLife, 0.0f, 1.0f);
 
-        // 1. ´óĞ¡
+        // 1. å¤§å°
         float currentScale = config.startSizeScale * t + config.endSizeScale * (1.0f - t);
         v.size = p.baseSize * currentScale;
-        // 2. ÑÕÉ«
+        // 2. é¢œè‰²
         v.color = config.startColor * t + config.endColor * (1.0f - t);
 
         
@@ -142,13 +142,13 @@ void ParticleSystem::upload(labut2::Allocator const& alloc)
 
         if (totalFrames > 1) {
             if (config.animateAtlas) {
-                // Ä£Ê½ A£ºËæÉúÃüÖÜÆÚ²¥·Å¶¯»­ (´Ó³öÉúµ½ËÀÍö²¥·ÅÒ»ÂÖ)
+                // æ¨¡å¼ Aï¼šéšç”Ÿå‘½å‘¨æœŸæ’­æ”¾åŠ¨ç”» (ä»å‡ºç”Ÿåˆ°æ­»äº¡æ’­æ”¾ä¸€è½®)
                 float ageProgress = 1.0f - t; 
                 currentFrame = (int)(ageProgress * totalFrames);
                 currentFrame = std::clamp(currentFrame, 0, totalFrames - 1);
             }
             else {
-                // Ä£Ê½ B£º¾²Ì¬³éÑ¡£¨Ëæ»úÒ»ÕÅ£©
+                // æ¨¡å¼ Bï¼šé™æ€æŠ½é€‰ï¼ˆéšæœºä¸€å¼ ï¼‰
                 currentFrame = (int)(p.randomSeed * totalFrames);
                 currentFrame = std::clamp(currentFrame, 0, totalFrames - 1);
             }
@@ -185,7 +185,7 @@ void ParticleSystem::uploadDebug(labut2::Allocator const& alloc, const glm::vec3
 
     auto addLine = [&](glm::vec3 p1, glm::vec3 p2) {
         float dist = glm::length(p2 - p1);
-		int steps = std::max(2, (int)(dist * 20.0f));// Ã¿µ¥Î»³¤¶È20¸öµã
+		int steps = std::max(2, (int)(dist * 20.0f));// æ¯å•ä½é•¿åº¦20ä¸ªç‚¹
 
         for (int i = 0; i < steps; ++i) {
             float t = (float)i / (steps - 1);
@@ -200,7 +200,7 @@ void ParticleSystem::uploadDebug(labut2::Allocator const& alloc, const glm::vec3
         };
 
     const int segments = 24;
-    // ¸ù¾İ·¢ÉäÆ÷ĞÎ×´Éú³ÉµãÕó
+    // æ ¹æ®å‘å°„å™¨å½¢çŠ¶ç”Ÿæˆç‚¹é˜µ
     if (m_shape == EmitterShape::Cone) {
         float h = 5.0f;
         float r = h * config.coneSpread;
@@ -209,8 +209,8 @@ void ParticleSystem::uploadDebug(labut2::Allocator const& alloc, const glm::vec3
         for (int i = 1; i <= segments; ++i) {
             float angle = (float)i / segments * 2.0f * 3.1415926f;
             glm::vec3 pt = tip + glm::vec3(cos(angle) * r, h, sin(angle) * r);
-            addLine(prevPt, pt); // »­¶¥²¿µÄÈ¦
-            if (i % (segments / 4) == 0) addLine(tip, pt); // »­ËÄÌõ±ß
+            addLine(prevPt, pt); // ç”»é¡¶éƒ¨çš„åœˆ
+            if (i % (segments / 4) == 0) addLine(tip, pt); // ç”»å››æ¡è¾¹
             prevPt = pt;
         }
     }
@@ -226,25 +226,25 @@ void ParticleSystem::uploadDebug(labut2::Allocator const& alloc, const glm::vec3
     }
     else if (m_shape == EmitterShape::Box) {
         float hx = config.boxArea.x, hy = config.boxArea.y, hz = config.boxArea.z;
-        glm::vec3 center = emitterPos; // ÏÖÔÚµÄÖĞĞÄµã¾ÍÊÇ·¢ÉäÆ÷µÄÔ­µã
+        glm::vec3 center = emitterPos; // ç°åœ¨çš„ä¸­å¿ƒç‚¹å°±æ˜¯å‘å°„å™¨çš„åŸç‚¹
 
-        // ¶¨Òå¶¥ÃæµÄ 4 ¸ö½Ç
+        // å®šä¹‰é¡¶é¢çš„ 4 ä¸ªè§’
         glm::vec3 t1 = center + glm::vec3(-hx, hy, -hz);
         glm::vec3 t2 = center + glm::vec3(hx, hy, -hz);
         glm::vec3 t3 = center + glm::vec3(hx, hy, hz);
         glm::vec3 t4 = center + glm::vec3(-hx, hy, hz);
 
-        // ¶¨Òåµ×ÃæµÄ 4 ¸ö½Ç
+        // å®šä¹‰åº•é¢çš„ 4 ä¸ªè§’
         glm::vec3 b1 = center + glm::vec3(-hx, -hy, -hz);
         glm::vec3 b2 = center + glm::vec3(hx, -hy, -hz);
         glm::vec3 b3 = center + glm::vec3(hx, -hy, hz);
         glm::vec3 b4 = center + glm::vec3(-hx, -hy, hz);
 
-        // 1. »­¶¥ÃæµÄ 4 Ìõ±ß
+        // 1. ç”»é¡¶é¢çš„ 4 æ¡è¾¹
         addLine(t1, t2); addLine(t2, t3); addLine(t3, t4); addLine(t4, t1);
-        // 2. »­µ×ÃæµÄ 4 Ìõ±ß
+        // 2. ç”»åº•é¢çš„ 4 æ¡è¾¹
         addLine(b1, b2); addLine(b2, b3); addLine(b3, b4); addLine(b4, b1);
-        // 3. »­Á¬½ÓÉÏÏÂµÄ 4 ÌõÊú±ß
+        // 3. ç”»è¿æ¥ä¸Šä¸‹çš„ 4 æ¡ç«–è¾¹
         addLine(t1, b1); addLine(t2, b2); addLine(t3, b3); addLine(t4, b4);
     }
 
@@ -265,7 +265,7 @@ void ParticleSystem::drawDebug(VkCommandBuffer cmd, VkPipelineLayout layout) con
     struct ParticlePC { int useTex; int dbg; int pad[2]; glm::mat4 transform; } pc{};
     pc.useTex = 0; 
     pc.dbg = 0;
-    vkCmdPushConstants(cmd, layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ParticlePC), &pc);
+    vkCmdPushConstants(cmd, layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ParticlePC), &pc);
 
     VkDeviceSize offset = 0;
     vkCmdBindVertexBuffers(cmd, 0, 1, &m_debugVb, &offset);
@@ -283,7 +283,7 @@ void ParticleSystem::shutdown(labut2::Allocator const& alloc)
         m_vbAlloc = VK_NULL_HANDLE;
     }
    
-    // Ïú»Ù DebugÏß¿ò
+    // é”€æ¯ Debugçº¿æ¡†
     if (m_debugVb != VK_NULL_HANDLE) {
         vmaDestroyBuffer(vma, m_debugVb, m_debugVbAlloc);
         m_debugVb = VK_NULL_HANDLE;
