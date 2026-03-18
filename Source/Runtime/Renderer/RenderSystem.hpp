@@ -118,8 +118,8 @@ namespace engine {
 
             // overdraw/overshading pipelines
             // pipelines for part 2 task 1
-            mOverdrawPipe = create_overdraw_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R8G8B8A8_UNORM);
-            mOvershadingPipe = create_overshading_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R8G8B8A8_UNORM);
+            mOverdrawPipe = create_overdraw_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+            mOvershadingPipe = create_overshading_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
             // resolve pass
             mVisResolvePipe = create_vis_resolve_pipeline(mWindow, mPostPipeLayout.handle, mPostLayout.handle);
 
@@ -513,7 +513,7 @@ namespace engine {
             for (size_t i = 0; i < mCmdBuffers.size(); ++i) {
                 mBlurHorizDescriptors.push_back(BuildBlurDesc(mBlurDescLayout.handle, mBrightImage.view));
                 mBlurVertDescriptors.push_back(BuildBlurDesc(mBlurDescLayout.handle, mBlurTempImage.view));
-                mCompositeDescriptors.push_back(BuildCompositeDesc(mCompDescLayout.handle, mOffscreenImage.view, mFinalBloomImage.view));
+                mCompositeDescriptors.push_back(BuildCompositeDesc(mOffscreenImage.view, mFinalBloomImage.view, mMosaicUBOs[i].buffer));
             }
 
 
@@ -616,8 +616,8 @@ namespace engine {
                     mPostProcPipe = create_post_proc_pipeline(mWindow, mPostPipeLayout.handle, mPostLayout.handle);
 
                     // Recreate (p2_1.1)
-                    mOverdrawPipe = create_overdraw_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R8G8B8A8_UNORM);
-                    mOvershadingPipe = create_overshading_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R8G8B8A8_UNORM);
+                    mOverdrawPipe = create_overdraw_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+                    mOvershadingPipe = create_overshading_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
                     mVisResolvePipe = create_vis_resolve_pipeline(mWindow, mPostPipeLayout.handle, mPostLayout.handle);
                 }
 
