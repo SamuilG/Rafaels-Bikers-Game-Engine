@@ -70,8 +70,11 @@ namespace cfg
 
 	//particle textures
 	constexpr char const* ParticleTextures[] = {
-	"assets/models/fire.png",
-	"assets/models/aa.png"
+	"assets/Textures/MainMenu_Bg.png",
+	"assets/Textures/fire.png",
+	"assets/Textures/aa.png",
+	"assets/Textures/fire5.png",
+	"assets/Textures/ww.png"
 	};
 
 }

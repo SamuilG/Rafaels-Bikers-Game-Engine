@@ -60,8 +60,15 @@ struct UserState
 	int renderMode = 0; // 0=Default, 1=Mip, 2=Depth, 3=Deriv
 	
 	bool mosaicEnabled = false; // key 5 toggle
-
+	//================UI System================================
 	bool particlesEnabled = true;//particle system toggle with key R
+
+	bool isGameStarted = false;//game start toggle
+
+	bool isGameOver = false;//game over toggle
+
+	bool isGamePause = false;//game Pause toggle
+	//================UI System================================
 };
 
 // GLFW callbacks

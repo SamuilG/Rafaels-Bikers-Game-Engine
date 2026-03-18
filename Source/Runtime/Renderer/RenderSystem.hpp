@@ -11,7 +11,7 @@
 #include "../Core/System.h"
 
 #include <volk/volk.h>
-
+#include <flecs.h>
 #include <print>
 #include <chrono>
 #include <limits>
@@ -55,6 +55,17 @@ namespace lut = labut2;
 #include "RenderUtilities/setup.hpp"
 #include "RenderUtilities/rendering.hpp"
 
+//UI system
+#include "../UI/ui.hpp"
+#include "../UI/EngineUi.hpp"
+#include <imgui.h>
+#include <backends/imgui_impl_vulkan.h>
+#include "../UI/MousePicker.hpp"
+#include "..\..\ThirdParty\imgui\ImGuizmo\ImGuizmo.h"
+#include "../Physics/PhysicsSystem.hpp"
+#include <glm/gtx/matrix_decompose.hpp>
+//UI system
+
 namespace glsl {
     struct MosaicUniform {
         int   mosaicOn;
@@ -70,8 +81,114 @@ namespace engine {
         explicit RenderSystem(bool& appRunning, SceneManager* sceneManager = nullptr)
             : mAppRunning(appRunning), mSceneManager(sceneManager) {
         }
+		//==============UI System========= Draw the main menu UI
+        void DrawMainMenuUI() {
+            // 只有当游戏还没开始时才绘制
+            if (!mState.isGameStarted) {
+                // 调用我们刚才讨论的 UI 绘制函数
+                // 这里的 mAppRunning 是你构造函数里传进来的引用
+                EngineUi::DrawMainMenu(this, mAppRunning, mState.isGameStarted);
+            }
+        }
+        //==============UI System========= Draw the main menu UI
+        
+        //==========UI System（particle）======================
+        // 存储 ImGui 专用的贴图描述符
+        std::unordered_map<std::string, VkDescriptorSet> particleImGuiTextureDict;
 
+        // 获取 ImGui 专用的渲染句柄
+		// Get the rendering handle for ImGui-specific textures
+        VkDescriptorSet GetImGuiTextureDescriptor(const std::string& name) {
+            if (particleImGuiTextureDict.count(name)) {
+                return particleImGuiTextureDict[name];
+            }
+            return VK_NULL_HANDLE;
+        }
 
+        //获取所有粒子贴图的路径/名字
+		// Get the paths/names of all particle textures
+        std::vector<std::string> GetParticleTextureNames() const {
+            std::vector<std::string> names;
+            for (const auto& pair : particleTextureDict) {
+                names.push_back(pair.first);
+            }
+            return names;
+        }
+
+        //根据名字获取对应的贴图描述符
+		// Get the corresponding texture descriptor based on the name
+        VkDescriptorSet GetParticleTextureDescriptor(const std::string& name) {
+            if (particleTextureDict.count(name)) {
+                return particleTextureDict[name];
+            }
+            return VK_NULL_HANDLE;
+        }
+		//调整最大粒子数量（重建粒子系统）
+		//adjust the maximum number of particles (rebuild the particle system)
+        void ResizeParticleGroup(size_t index, uint32_t newMaxParticles) {
+            if (index < allParticles.size()) {
+                vkDeviceWaitIdle(mWindow.device);
+
+                auto& ps = allParticles[index];
+
+                //备份参数
+				//backup parameters
+                ParticleConfig savedConfig = ps->config;
+                EmitterShape savedShape = ps->getEmitterShape();
+                glm::vec3 savedPos = savedConfig.emitterPos;
+
+                ps->shutdown(mAllocator);
+
+                //重新分配显存并初始化
+				//reallocate GPU memory and initialize
+                ps->init(mAllocator, newMaxParticles, savedPos);
+
+                //还原参数
+				//restore parameters
+                ps->config = savedConfig;
+                ps->setEmitterShape(savedShape);
+            }
+        }
+
+		//UI System get particle system reference
+        std::vector<std::unique_ptr<ParticleSystem>>& GetParticles() { return allParticles; }
+        //动态安全创建粒子组
+		//create particle group
+        void AddParticleGroup() {
+            vkDeviceWaitIdle(mWindow.device);
+
+            auto ps = std::make_unique<ParticleSystem>();
+			ps->setEmitterShape(EmitterShape::Sphere); // default to sphere emitter
+
+            // 绑定默认贴图
+			//blind default texture
+            if (particleTextureDict.count(cfg::ParticleTextures[0])) {
+                ps->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]];
+                ps->config.useTexture = 1;
+                ps->config.atlasCols = 4;
+                ps->config.atlasRows = 4;
+                ps->config.animateAtlas = true;
+            }
+
+            ps->config.emitterPos = glm::vec3(0.0f, 5.0f, 0.0f);
+
+			//generate a default name based on the current number of particle groups
+            std::string defaultName = "Group " + std::to_string(allParticles.size() + 1);
+            strcpy_s(ps->config.name, sizeof(ps->config.name), defaultName.c_str());
+
+            ps->init(mAllocator, 500, ps->config.emitterPos);
+            allParticles.push_back(std::move(ps));
+        }
+
+        //删除粒子组
+		//delete particle group
+        void RemoveParticleGroup(size_t index) {
+            if (index < allParticles.size()) {
+                vkDeviceWaitIdle(mWindow.device);
+                allParticles.erase(allParticles.begin() + index);
+            }
+        }
+        //==========UI System（particle）======================
         void Init() override
         {
             // Create Vulkan Window
@@ -123,9 +240,6 @@ namespace engine {
             }
 
         
-
-
-            
             // set up initial textures and descriptor pools
             // load actual models via load_additional_model
             
@@ -161,8 +275,8 @@ namespace engine {
 
 
             //================particle system===================================================
-    // 粒子系统
-           
+            // 粒子系统
+            {
 
             //particle textures
             for (const auto& path : cfg::ParticleTextures) {
@@ -203,155 +317,156 @@ namespace engine {
                 particleImageViews.push_back(std::move(view));
             }
             //================particle system===================================================
+            
 
 
 
+                //================particle system===================================================
+               //emitter pos;
+                glm::vec3 emitterPos1(2, 0.5, 2);
+                glm::vec3 emitterPos2(3, 0.5, 2);
+                glm::vec3 emitterPos3(4, 0.5, 2);
+                glm::vec3 emitterPos4(2, 0.8, 2);
 
-             //================particle system===================================================
-            //emitter pos;
-            glm::vec3 emitterPos1(2, 0.5, 2);
-            glm::vec3 emitterPos2(3, 0.5, 2);
-            glm::vec3 emitterPos3(4, 0.5, 2);
-            glm::vec3 emitterPos4(2, 0.8, 2);
+                // 創建第 1 組：火焰
+                {
+                    auto fire = std::make_unique<ParticleSystem>();
+                    //發射器形狀
+                    fire->setEmitterShape(EmitterShape::Cone);
+                    fire->config.coneSpread = 0.1f;// 控制锥形的开口大小
+                    //debug
+                    fire->config.particleDebug = false; // 开启粒子调试输出
+                    //貼圖設定
+                    fire->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // 綁定貼圖
+                    fire->config.useTexture = 1;
+                    fire->config.atlasCols = 4;   // 贴图切成 4 列
+                    fire->config.atlasRows = 4;   // 贴图切成 4 行
+                    fire->config.animateAtlas = true;
+                    //顔色
+                    fire->config.startColor = glm::vec4(255.0f, 125.8f, 0.3f, .05f);
+                    fire->config.endColor = glm::vec4(0.05f, 0.05f, 0.05f, 0.1f);
+                    //旋轉
+                    fire->config.rotationMin = -360.0f;
+                    fire->config.rotationMax = 360.0f;
+                    //重力
+                    fire->config.gravity = glm::vec3(0.0f, 0.01f, 0.0f);
+                    //持续时间
+                    fire->config.lifeMin = 1.f;  // 最短存活时间
+                    fire->config.lifeMax = 3.0f;  // 最长存活时间
+                    //粒子尺寸
+                    fire->config.sizeMin = 50.0f;
+                    fire->config.sizeMax = 130.0f;
+                    //粒子尺寸缩放：出生时和死亡时的放大倍数
+                    fire->config.startSizeScale = 3.0f;
+                    fire->config.endSizeScale = 0.f;
+                    //初始速度
+                    fire->config.speedMin = 0.1f; // 最小初速度
+                    fire->config.speedMax = 0.5f; // 最大初速度
+                    //位置
+                    fire->config.emitterPos = emitterPos1;;
+                    fire->init(mAllocator, 300, emitterPos1);
+                    allParticles.push_back(std::move(fire));
+                }
+                //創建第 2組：灰煙
+                {
+                    auto smoke = std::make_unique<ParticleSystem>();
+                    //發射器形狀
+                    smoke->setEmitterShape(EmitterShape::Cone);
+                    smoke->config.coneSpread = 0.1f;// 控制锥形的开口大小
+                    //debug
+                    smoke->config.particleDebug = false; // 开启粒子调试输出
+                    //貼圖設定
+                    smoke->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // 綁定貼圖
+                    smoke->config.useTexture = 1;
+                    smoke->config.atlasCols = 4;   // 贴图切成 4 列
+                    smoke->config.atlasRows = 4;   // 贴图切成 4 行
+                    smoke->config.animateAtlas = true;
+                    //顔色
+                    smoke->config.startColor = glm::vec4(.5f, .5f, .5f, .01f);
+                    smoke->config.endColor = glm::vec4(0.05f, 0.05f, 0.05f, .08f);
+                    //旋轉
+                    smoke->config.rotationMin = -2.0f;
+                    smoke->config.rotationMax = 2.0f;
+                    //重力
+                    smoke->config.gravity = glm::vec3(0.0f, 0.01f, 0.0f);
+                    //持续时间
+                    smoke->config.lifeMin = 1.f;  // 最短存活时间
+                    smoke->config.lifeMax = 3.0f;  // 最长存活时间
+                    //粒子尺寸（像素
+                    smoke->config.sizeMin = 80.0f;
+                    smoke->config.sizeMax = 200.0f;
+                    //粒子尺寸缩放：出生时和死亡时的放大倍数
+                    smoke->config.startSizeScale = 3.0f;
+                    smoke->config.endSizeScale = 0.f;
+                    //初始速度
+                    smoke->config.speedMin = 0.1f; // 最小初速度
+                    smoke->config.speedMax = 0.5f; // 最大初速度
+                    //位置
+                    smoke->config.emitterPos = emitterPos4;;
+                    smoke->init(mAllocator, 800, emitterPos4);
+                    allParticles.push_back(std::move(smoke));
+                }
 
-            // 創建第 1 組：火焰
-            {
-                auto fire = std::make_unique<ParticleSystem>();
-                //發射器形狀
-                fire->setEmitterShape(EmitterShape::Cone);
-                fire->config.coneSpread = 0.1f;// 控制锥形的开口大小
-                //debug
-                fire->config.particleDebug = false; // 开启粒子调试输出
-                //貼圖設定
-                fire->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // 綁定貼圖
-                fire->config.useTexture = 1;
-                fire->config.atlasCols = 4;   // 贴图切成 4 列
-                fire->config.atlasRows = 4;   // 贴图切成 4 行
-                fire->config.animateAtlas = true;
-                //顔色
-                fire->config.startColor = glm::vec4(255.0f, 125.8f, 0.3f, .05f);
-                fire->config.endColor = glm::vec4(0.05f, 0.05f, 0.05f, 0.1f);
-                //旋轉
-                fire->config.rotationMin = -360.0f;
-                fire->config.rotationMax = 360.0f;
-                //重力
-                fire->config.gravity = glm::vec3(0.0f, 0.01f, 0.0f);
-                //持续时间
-                fire->config.lifeMin = 1.f;  // 最短存活时间
-                fire->config.lifeMax = 3.0f;  // 最长存活时间
-                //粒子尺寸
-                fire->config.sizeMin = 50.0f;
-                fire->config.sizeMax = 130.0f;
-                //粒子尺寸缩放：出生时和死亡时的放大倍数
-                fire->config.startSizeScale = 3.0f;
-                fire->config.endSizeScale = 0.f;
-                //初始速度
-                fire->config.speedMin = 0.1f; // 最小初速度
-                fire->config.speedMax = 0.5f; // 最大初速度
-                //位置
-                fire->config.emitterPos = emitterPos1;;
-                fire->init(mAllocator, 300, emitterPos1);
-                allParticles.push_back(std::move(fire)); 
-            }
-            //創建第 2組：灰煙
-            {
-                auto smoke = std::make_unique<ParticleSystem>();
-                //發射器形狀
-                smoke->setEmitterShape(EmitterShape::Cone);
-                smoke->config.coneSpread = 0.1f;// 控制锥形的开口大小
-                //debug
-                smoke->config.particleDebug = false; // 开启粒子调试输出
-                //貼圖設定
-                smoke->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // 綁定貼圖
-                smoke->config.useTexture = 1;
-                smoke->config.atlasCols = 4;   // 贴图切成 4 列
-                smoke->config.atlasRows = 4;   // 贴图切成 4 行
-                smoke->config.animateAtlas = true;
-                //顔色
-                smoke->config.startColor = glm::vec4(.5f, .5f, .5f, .01f);
-                smoke->config.endColor = glm::vec4(0.05f, 0.05f, 0.05f, .08f);
-                //旋轉
-                smoke->config.rotationMin = -2.0f;
-                smoke->config.rotationMax = 2.0f;
-                //重力
-                smoke->config.gravity = glm::vec3(0.0f, 0.01f, 0.0f);
-                //持续时间
-                smoke->config.lifeMin = 1.f;  // 最短存活时间
-                smoke->config.lifeMax = 3.0f;  // 最长存活时间
-                //粒子尺寸（像素
-                smoke->config.sizeMin = 80.0f;
-                smoke->config.sizeMax = 200.0f;
-                //粒子尺寸缩放：出生时和死亡时的放大倍数
-                smoke->config.startSizeScale = 3.0f;
-                smoke->config.endSizeScale = 0.f;
-                //初始速度
-                smoke->config.speedMin = 0.1f; // 最小初速度
-                smoke->config.speedMax = 0.5f; // 最大初速度
-                //位置
-                smoke->config.emitterPos = emitterPos4;;
-                smoke->init(mAllocator, 800, emitterPos4);
-                allParticles.push_back(std::move(smoke));
-            }
+                // 創建第 3組：火花
+                {
+                    auto magic = std::make_unique<ParticleSystem>();
+                    magic->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[1]];// 綁定貼圖
+                    magic->config.useTexture = 1;
+                    magic->config.sizeMin = 500.0f;
+                    magic->config.sizeMax = 500.0f;
+                    magic->config.emitterPos = emitterPos2;
+                    magic->init(mAllocator, 1, emitterPos2);
+                    allParticles.push_back(std::move(magic));
+                }
 
-            // 創建第 3組：火花
-            {
-				auto magic = std::make_unique<ParticleSystem>();
-                magic->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[1]];// 綁定貼圖
-                magic->config.useTexture = 1;
-                magic->config.sizeMin = 500.0f;
-                magic->config.sizeMax = 500.0f;
-                magic->config.emitterPos = emitterPos2;
-                magic->init(mAllocator, 1, emitterPos2);
-                allParticles.push_back(std::move(magic));
-            }
+                // 創建第 4組：火焰黑
+                {
+                    auto c = std::make_unique<ParticleSystem>();
+                    //c->config.textureDescriptor = particleDescSet; // 綁定星星貼圖
+                    c->config.emitterPos = emitterPos3;
+                    c->init(mAllocator, 1000, emitterPos3);
+                    allParticles.push_back(std::move(c));
+                }
 
-            // 創建第 4組：火焰黑
-            {
-				auto c = std::make_unique<ParticleSystem>();
-                //c->config.textureDescriptor = particleDescSet; // 綁定星星貼圖
-                c->config.emitterPos = emitterPos3;
-                c->init(mAllocator, 1000, emitterPos3);
-                allParticles.push_back(std::move(c));
-            }
-
-            // 創建第 五 組：爆炸火焰
-            {
-                auto boom = std::make_unique<ParticleSystem>();
-                //發射器形狀
-                boom->setEmitterShape(EmitterShape::Sphere);
-                boom->config.sphereRadius = 0.3f;// 控制锥形的开口大小
-                //debug
-                boom->config.particleDebug = false; // 开启粒子调试输出
-                //貼圖設定
-                boom->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // 綁定貼圖
-                boom->config.useTexture = 1;
-                boom->config.atlasCols = 4;   // 贴图切成 4 列
-                boom->config.atlasRows = 4;   // 贴图切成 4 行
-                boom->config.animateAtlas = true;
-                //顔色
-                boom->config.startColor = glm::vec4(255.0f, 125.8f, 0.3f, .05f);
-                boom->config.endColor = glm::vec4(0.05f, 0.05f, 0.05f, 0.1f);
-                //旋轉
-                boom->config.rotationMin = -360.0f;
-                boom->config.rotationMax = 360.0f;
-                //重力
-                boom->config.gravity = glm::vec3(0.0f, 0.01f, 0.0f);
-                //持续时间
-                boom->config.lifeMin = 1.f;  // 最短存活时间
-                boom->config.lifeMax = 3.0f;  // 最长存活时间
-                //粒子尺寸
-                boom->config.sizeMin = 50.0f;
-                boom->config.sizeMax = 130.0f;
-                //粒子尺寸缩放：出生时和死亡时的放大倍数
-                boom->config.startSizeScale = 3.0f;
-                boom->config.endSizeScale = 0.f;
-                //初始速度
-                boom->config.speedMin = 0.1f; // 最小初速度
-                boom->config.speedMax = 0.5f; // 最大初速度
-                //位置
-                boom->config.emitterPos = emitterPos1;;
-                boom->init(mAllocator, 600, emitterPos1);
-                allParticles.push_back(std::move(boom));
+                // 創建第 五 組：爆炸火焰
+                {
+                    auto boom = std::make_unique<ParticleSystem>();
+                    //發射器形狀
+                    boom->setEmitterShape(EmitterShape::Sphere);
+                    boom->config.sphereRadius = 0.3f;// 控制锥形的开口大小
+                    //debug
+                    boom->config.particleDebug = false; // 开启粒子调试输出
+                    //貼圖設定
+                    boom->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // 綁定貼圖
+                    boom->config.useTexture = 1;
+                    boom->config.atlasCols = 4;   // 贴图切成 4 列
+                    boom->config.atlasRows = 4;   // 贴图切成 4 行
+                    boom->config.animateAtlas = true;
+                    //顔色
+                    boom->config.startColor = glm::vec4(255.0f, 125.8f, 0.3f, .05f);
+                    boom->config.endColor = glm::vec4(0.05f, 0.05f, 0.05f, 0.1f);
+                    //旋轉
+                    boom->config.rotationMin = -360.0f;
+                    boom->config.rotationMax = 360.0f;
+                    //重力
+                    boom->config.gravity = glm::vec3(0.0f, 0.01f, 0.0f);
+                    //持续时间
+                    boom->config.lifeMin = 1.f;  // 最短存活时间
+                    boom->config.lifeMax = 3.0f;  // 最长存活时间
+                    //粒子尺寸
+                    boom->config.sizeMin = 50.0f;
+                    boom->config.sizeMax = 130.0f;
+                    //粒子尺寸缩放：出生时和死亡时的放大倍数
+                    boom->config.startSizeScale = 3.0f;
+                    boom->config.endSizeScale = 0.f;
+                    //初始速度
+                    boom->config.speedMin = 0.1f; // 最小初速度
+                    boom->config.speedMax = 0.5f; // 最大初速度
+                    //位置
+                    boom->config.emitterPos = emitterPos1;;
+                    boom->init(mAllocator, 600, emitterPos1);
+                    allParticles.push_back(std::move(boom));
+                }
             }
             //================particle system===================================================
 
@@ -446,6 +561,42 @@ namespace engine {
                 mVisDescriptors.emplace_back(
                     BuildPostDesc(mVisImage.view, mMosaicUBOs[i].buffer));
             }
+
+            //===========================UI System================================
+            ImGuiRenderer::InitInfo uiInfo{};
+            uiInfo.window = mWindow.window;
+            uiInfo.instance = mWindow.instance;
+            uiInfo.physicalDevice = mWindow.physicalDevice;
+            uiInfo.device = mWindow.device;
+            uiInfo.queue = mWindow.graphicsQueue;
+            uiInfo.queueFamily = mWindow.graphicsFamilyIndex;
+            uiInfo.colorFormat = mWindow.swapchainFormat;
+            uiInfo.depthFormat = cfg::kDepthFormat;
+            uiInfo.imageCount = (uint32_t)mWindow.swapImages.size();
+
+            imguiRenderer.Init(uiInfo);
+            //ImGui_ImplVulkan_CreateFontsTexture();
+
+			//为粒子系统的贴图创建 ImGui 专用的描述符// Create ImGui-specific descriptors for particle system textures
+            for (size_t i = 0; i < particleImageViews.size(); ++i) {
+                std::string path = cfg::ParticleTextures[i];
+                VkImageView view = particleImageViews[i].handle;
+                VkDescriptorSet imguiTexId = ImGui_ImplVulkan_AddTexture(
+                    mDefaultSampler.handle,
+                    view,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                );
+                particleImGuiTextureDict[path] = imguiTexId;
+            }
+			//===========================UI System================================
+			// debug: 选中替换材质
+           /* EngineMaterial highlightMat{};
+            highlightMat.baseColorFactor = glm::vec4(1.0f, 1.0f, 0.0f, 1.0f);
+            highlightMat.emissiveFactor = glm::vec3(2.0f, 2.0f, 0.0f);
+            mModel.materials.push_back(highlightMat);
+            AddOneMaterialDescriptor(mDefaultSampler.handle, mMaterialDescriptors, highlightMat);
+            AddOneMaterialDescriptor(mDebugSampler.handle, mDebugMaterialDescriptors, highlightMat);*/
+            //===========================UI System================================
         }
 
         void Update(float dt) override
@@ -460,8 +611,206 @@ namespace engine {
             // reaction to user input (or similar).
             glfwPollEvents(); // or: glfwWaitEvents()
 
+            //===========================UI System================================
+			// game over debug
+            if (ImGui::IsKeyPressed(ImGuiKey_G)) 
+            {
+				mState.isGameOver = !mState.isGameOver; // 切换死亡状态进行测试// Toggle game over state for testing
+
+                if (mState.isGameOver) 
+                {
+                    std::printf("Test: Game Over triggered via 'G' key.\n");
+                }
+                else 
+                {
+                    std::printf("Test: Back to Game/Menu.\n");
+                }
+            }// game over debug
+			// game pause debug
+            if (ImGui::IsKeyPressed(ImGuiKey_H))
+            {
+				mState.isGamePause = !mState.isGamePause; // 切换死亡状态进行测试// Toggle game pause state for testing
+
+                if (mState.isGamePause)
+                {
+                    std::printf("Test: Game pause triggered via 'H' key.\n");
+                }
+                else
+                {
+                    std::printf("Test: Back to Game/Menu.\n");
+                }
+            }
+            
+            // 
+            
+			//启动 ImGui 帧// Start ImGui frame
+            imguiRenderer.BeginFrame();
+			//start gmae menu
+           // 如果游戏还没开始，只画主菜单
+            if (!mState.isGameStarted) {
+                EngineUi::DrawMainMenu(this, mAppRunning, mState.isGameStarted);
+            }
+            else if (mState.isGameOver) {
+				// gameover UI
+                EngineUi::DrawGameOver(this, mState, mAppRunning);
+            }
+            else if (mState.isGamePause) {
+                // gameover UI
+                EngineUi::DrawGamePause(this, mState, mAppRunning);
+            }
+            else 
+            {
+
+                EngineUi::DrawControlPanel(mState, this, mSceneManager);
+
+                //View 矩阵
+                glm::mat4 view = glm::inverse(mState.camera2world);
+                //Aspect Ratio
+                float aspect = (float)mWindow.swapchainExtent.width / (float)mWindow.swapchainExtent.height;
+                //FOV
+                float fovRadians = lut::Radians(cfg::kCameraFov).value();
+                //gizmoProj
+                glm::mat4 gizmoProj = glm::perspective(
+                    fovRadians,
+                    aspect,
+                    cfg::kCameraNear,
+                    cfg::kCameraFar
+                );
+
+                static flecs::entity_t lastSelectedId = 0;
+                static uint32_t originalMaterialIdx = 0;
+
+                // debug: 选中更换材质方便观察==============
+                //if (mSelectedEntityId != lastSelectedId) {
+                //    auto& world = mSceneManager->get_world();
+
+                //    // 1. 恢复材质
+                //    if (lastSelectedId != 0) {
+                //        flecs::entity lastEntity = world.entity(lastSelectedId);
+                //        if (lastEntity.is_alive() && lastEntity.has<MaterialComponent>()) {
+                //            lastEntity.set<MaterialComponent>({ originalMaterialIdx });
+                //        }
+                //    }
+
+                //    // 2. 选中高亮
+                //    if (mSelectedEntityId != 0) {
+                //        flecs::entity currentEntity = world.entity(mSelectedEntityId);
+                //        if (currentEntity.is_alive() && currentEntity.has<MaterialComponent>()) {
+                //            const MaterialComponent& matComp = currentEntity.get<MaterialComponent>();
+
+                //            
+                //            originalMaterialIdx = matComp.materialIndex;
+
+                //            uint32_t highlightIdx = static_cast<uint32_t>(mMaterialDescriptors.size() - 1);
+                //            currentEntity.set<MaterialComponent>({ highlightIdx });
+                //        }
+                //    }
+                //    lastSelectedId = mSelectedEntityId;
+                //}
+            // debug: 选中更换材质（方便观察==============
+
+                if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+                    !ImGui::GetIO().WantCaptureMouse &&
+                    !ImGuizmo::IsOver())
+                {
+                    // MousePicker进行射线计算与查询
+                    flecs::entity hitEntity = MousePicker::PickEntity(
+                        ImGui::GetMousePos().x, ImGui::GetMousePos().y,
+                        (float)mWindow.swapchainExtent.width, (float)mWindow.swapchainExtent.height,
+                        mState.camera2world, gizmoProj, mSceneManager
+                    );
+
+                    // 更新 UI 选中的 ID
+                    //print hit info
+                    if (hitEntity.is_alive()) {
+                        mSelectedEntityId = hitEntity.id();
+                        const char* entityName = hitEntity.name();
+                        if (!entityName) entityName = "Unnamed Entity";
+                        std::print("[Raycast] Hit Object: {} | ID: {}\n", entityName, hitEntity.id());
+                    }
+                    else {
+                        std::print("[Raycast] Hit Nothing\n");
+                        mSelectedEntityId = 0; // 点到空气取消选中
+                    }
+                }
+
+                EngineUi::DrawSceneHierarchy(mSceneManager, view, gizmoProj, mSelectedEntityId);
+                // EngineUi::DrawSceneHierarchy(mSceneManager);
+                if (mSelectedEntityId != 0 && mSceneManager) {
+                    auto& world = mSceneManager->get_world();
+                    flecs::entity selectedEntity = world.entity(mSelectedEntityId);
+
+                    if (selectedEntity.is_alive() && ImGuizmo::IsUsing()) {
+                        const auto& lt = selectedEntity.get<LocalTransform>();
+                        auto pb = selectedEntity.get<PhysicsBody>();
+                        auto* physics = mSceneManager->get_physics_system();
+
+                        JPH::BodyInterface& bodyInterface = physics->get_body_interface();
+                        JPH::BodyID joltBodyID(pb.bodyID);
+
+                        //获取包围盒
+                        //get AABB from Jolt
+                        JPH::TransformedShape ts = bodyInterface.GetTransformedShape(joltBodyID);
+                        JPH::AABox aabb = ts.GetWorldSpaceBounds();
+                        JPH::Vec3 size = aabb.GetExtent() * 2.0f;
+
+                        //debug
+                        std::print("[Physics Debug] Entity: {} | Size: ({:.2f}, {:.2f}, {:.2f})\n",
+                            selectedEntity.name() ? selectedEntity.name() : "Unknown",
+                            size.GetX(), size.GetY(), size.GetZ());
+
+                        if (physics) {
+                            physics->set_body_transform(pb.bodyID, lt.matrix);//transform同步synchronous
+
+                            // SCALE缩放同步
+                            glm::vec3 currentScale, translation, skew;
+                            glm::quat rotation;
+                            glm::vec4 perspective;
+
+                            if (glm::decompose(lt.matrix, currentScale, rotation, translation, skew, perspective)) {
+
+                                static std::unordered_map<flecs::entity_t, glm::vec3> scaleCache;
+                                if (scaleCache.find(mSelectedEntityId) == scaleCache.end()) {
+                                    scaleCache[mSelectedEntityId] = currentScale;
+                                }
+
+                                glm::vec3& lastSyncedScale = scaleCache[mSelectedEntityId];
+                                float delta = glm::distance(currentScale, lastSyncedScale);
+                                if (delta > 0.001f) {
+                                    glm::vec3 safeScale = currentScale;
+                                    //negative or zero scale can cause Jolt to break, so clamp it to a small positive value
+                                    for (int i = 0; i < 3; ++i) {
+                                        if (std::abs(safeScale[i]) < 0.001f) {
+                                            safeScale[i] = (safeScale[i] >= 0.0f) ? 0.001f : -0.001f;
+                                        }
+                                    }
+
+                                    physics->set_body_scale(pb.bodyID, safeScale, translation, rotation);
+                                    lastSyncedScale = safeScale;
+                                }
+                            }
+
+                            if (bodyInterface.GetMotionType(joltBodyID) != JPH::EMotionType::Static) {
+                                bodyInterface.SetLinearAndAngularVelocity(
+                                    joltBodyID, JPH::Vec3::sZero(), JPH::Vec3::sZero()
+                                );
+                            }
+
+                            selectedEntity.modified<LocalTransform>();
+                        }
+                    }
+                }
+
+                // //官方 Demo
+                // //imguiRenderer.BuildDemoUI();
+                // //===========================UI System================================
+            }
+
             if (glfwWindowShouldClose(mWindow.window)) {
                 mAppRunning = false;
+                //===========================UI System================================
+                ImGui::EndFrame(); // 结束 ImGui 帧
+                //===========================UI System================================
                 return;
             }
 
@@ -499,6 +848,9 @@ namespace engine {
                 }
 
                 mRecreateSwapchain = false;
+                //===========================UI System================================
+                ImGui::EndFrame(); // 结束 ImGui 帧
+                //===========================UI System================================
                 return;
             }
 
@@ -522,6 +874,9 @@ namespace engine {
             if (acquireRes == VK_SUBOPTIMAL_KHR || acquireRes == VK_ERROR_OUT_OF_DATE_KHR) {
                 mRecreateSwapchain = true;
                 mFrameIndex = (mFrameIndex + mCmdBuffers.size() - 1) % mCmdBuffers.size();
+                //===========================UI System================================
+                ImGui::EndFrame(); // 结束 ImGui 帧
+                //===========================UI System================================
                 return;
             }
             if (acquireRes != VK_SUCCESS)
@@ -534,6 +889,8 @@ namespace engine {
 
             // Update state
             update_user_state(mState, dt);
+
+            
 
             // Prepare data for this frame
             glsl::SceneUniform sceneUniforms{};
@@ -1021,6 +1378,11 @@ namespace engine {
 
         // Index of most recently added runtime mesh's material descriptor
         uint32_t mRuntimeMatIndex = 0;
+
+        //===========================UI System================================
+		// UI System 保存当前选中的实体 ID saved selected entity ID for UI system
+        flecs::entity_t mSelectedEntityId = 0;
+        //===========================UI System================================
     };
 
 } // namespace engine

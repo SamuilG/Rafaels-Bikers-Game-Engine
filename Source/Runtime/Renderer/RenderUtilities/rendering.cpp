@@ -9,6 +9,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+//UI system
+#include "../../UI/ui.hpp"
 
 // multi-pass rendering
 // render scene to offscreen image
@@ -370,6 +372,9 @@ void record_commands(VkCommandBuffer aCmdBuff, VkPipeline aGraphicsPipe, VkPipel
 
 	// draw full screen triangle
 	vkCmdDraw(aCmdBuff, 3, 1, 0, 0);
+	//==========UI system rendering===========
+	imguiRenderer.Render(aCmdBuff);
+	//==========UI system rendering===========
 
 	vkCmdEndRendering(aCmdBuff);
 

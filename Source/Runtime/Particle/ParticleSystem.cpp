@@ -61,6 +61,12 @@ Particle ParticleSystem::spawn(const glm::vec3& emitterPos)
 
 void ParticleSystem::init(labut2::Allocator const& alloc, uint32_t maxParticles, const glm::vec3& initialEmitterPos)
 {
+
+    if (m_vb != VK_NULL_HANDLE) {
+        vmaDestroyBuffer(alloc.allocator, m_vb, m_vbAlloc);
+        m_vb = VK_NULL_HANDLE;
+    }
+
     // ¼ÇÂ¼·ÖÅäÆ÷
     m_vmaAllocator = alloc.allocator;
 
@@ -96,6 +102,7 @@ void ParticleSystem::init(labut2::Allocator const& alloc, uint32_t maxParticles,
 
 void ParticleSystem::update(float dt, const glm::vec3& emitterPos)
 {
+	if (!config.isVisible)return;
     for (auto& p : m_particles) {
         p.life -= dt;
         if (p.life <= 0.0f) {
@@ -172,6 +179,7 @@ void ParticleSystem::upload(labut2::Allocator const& alloc)
 
 void ParticleSystem::draw(VkCommandBuffer cmd) const
 {
+    if (!config.isVisible)return;
     VkDeviceSize offset = 0;
     vkCmdBindVertexBuffers(cmd, 0, 1, &m_vb, &offset);
     vkCmdDraw(cmd, (uint32_t)m_particles.size(), 1, 0, 0);
