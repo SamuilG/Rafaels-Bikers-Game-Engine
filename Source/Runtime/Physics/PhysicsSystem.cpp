@@ -132,8 +132,9 @@ public:
 		if (m_sys->m_eventSystem) {
 			std::string nameA = std::to_string(inBody1.GetID().GetIndexAndSequenceNumber());
 			std::string nameB = std::to_string(inBody2.GetID().GetIndexAndSequenceNumber());
-			CollisionEvent event(nameA, nameB);
-			m_sys->m_eventSystem->Dispatch(event);
+			
+			auto event = std::make_unique<CollisionEvent>(nameA, nameB);
+			m_sys->m_eventSystem->QueueEvent(std::move(event));
 		}
 	}
 private:
