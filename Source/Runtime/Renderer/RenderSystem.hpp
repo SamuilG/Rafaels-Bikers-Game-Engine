@@ -1045,16 +1045,20 @@ namespace engine {
             return ds;
         }
 
-        VkDescriptorSet BuildCompositeDesc(VkImageView sceneView, VkImageView bloomView) {
-            // 合成阶段需要 2 个输入纹理 (binding 0: 场景, binding 1: 模糊结果)
-            // 这里必须确保你的 mPostLayout 支持至少 2 个 CombinedImageSampler
-            VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, mPostLayout.handle);
+        VkDescriptorSet BuildCompositeDesc(VkImageView sceneView, VkImageView bloomView, VkBuffer mosaicUbo) {
+            // The compositing stage requires 2 input textures (binding 0: scene, binding 1: blur result) + 1 UniformBuffer (binding 2: Mosaic)
+            VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, mCompDescLayout.handle);
 
             VkDescriptorImageInfo imgs[2]{};
             imgs[0] = { mPostSampler.handle, sceneView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
             imgs[1] = { mPostSampler.handle, bloomView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
 
-            VkWriteDescriptorSet w[2]{};
+            VkDescriptorBufferInfo bi{};
+            bi.buffer = mosaicUbo;
+            bi.offset = 0;
+            bi.range = VK_WHOLE_SIZE;
+
+            VkWriteDescriptorSet w[3]{};
             w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             w[0].dstSet = ds; w[0].dstBinding = 0;
             w[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -1065,7 +1069,12 @@ namespace engine {
             w[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             w[1].descriptorCount = 1; w[1].pImageInfo = &imgs[1];
 
-            vkUpdateDescriptorSets(mWindow.device, 2, w, 0, nullptr);
+            w[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            w[2].dstSet = ds; w[2].dstBinding = 2;
+            w[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            w[2].descriptorCount = 1; w[2].pBufferInfo = &bi;
+
+            vkUpdateDescriptorSets(mWindow.device, 3, w, 0, nullptr);
             return ds;
         }
         void AddOneMaterialDescriptor(VkSampler sampler, std::vector<VkDescriptorSet>& out, const EngineMaterial& mat)

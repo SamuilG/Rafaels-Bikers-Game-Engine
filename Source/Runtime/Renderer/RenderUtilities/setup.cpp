@@ -604,7 +604,7 @@ lut::DescriptorSetLayout create_post_proc_descriptor_layout( lut::VulkanWindow c
 }
 lut::DescriptorSetLayout create_composite_descriptor_layout(lut::VulkanWindow const& aWindow)
 {
-	VkDescriptorSetLayoutBinding bindings[2]{};
+	VkDescriptorSetLayoutBinding bindings[3]{};
 
 	// Binding 0: 原始场景纹理 (Main Scene Color)
 	bindings[0].binding = 0;
@@ -618,9 +618,15 @@ lut::DescriptorSetLayout create_composite_descriptor_layout(lut::VulkanWindow co
 	bindings[1].descriptorCount = 1;
 	bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
+	// Binding 2: Mosaic Uniform Buffer
+	bindings[2].binding = 2;
+	bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	bindings[2].descriptorCount = 1;
+	bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
 	VkDescriptorSetLayoutCreateInfo layoutInfo{};
 	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	layoutInfo.bindingCount = 2;
+	layoutInfo.bindingCount = 3;
 	layoutInfo.pBindings = bindings;
 
 	VkDescriptorSetLayout layout = VK_NULL_HANDLE;
@@ -1548,18 +1554,20 @@ lut::Pipeline create_overdraw_pipeline( lut::VulkanWindow const& aWindow, VkPipe
 	samplingInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
 	// Overdraw blend state
-	VkPipelineColorBlendAttachmentState blendStates[1]{};
+	VkPipelineColorBlendAttachmentState blendStates[2]{};
 	blendStates[0].blendEnable = VK_TRUE; 
 	blendStates[0].colorBlendOp = VK_BLEND_OP_ADD;
 	blendStates[0].srcColorBlendFactor = VK_BLEND_FACTOR_ONE; 
 	blendStates[0].dstColorBlendFactor = VK_BLEND_FACTOR_ONE; 
-	// no alpha write
-	blendStates[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT;
+	// enable alpha write to keep structural integrity with layout
+	blendStates[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	
+	blendStates[1] = blendStates[0];
 
 	VkPipelineColorBlendStateCreateInfo blendInfo{};
 	blendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
 	blendInfo.logicOpEnable = VK_FALSE;
-	blendInfo.attachmentCount = 1;
+	blendInfo.attachmentCount = 2;
 	blendInfo.pAttachments = blendStates;
 
 	// Overdraw depth state: test off, write off
@@ -1578,10 +1586,15 @@ lut::Pipeline create_overdraw_pipeline( lut::VulkanWindow const& aWindow, VkPipe
 	dynamicInfo.dynamicStateCount = 2;
 	dynamicInfo.pDynamicStates = dynamicStates;
 
+	VkFormat colorFormats[] = {
+		aColorFormat,                    
+		VK_FORMAT_R16G16B16A16_SFLOAT 
+	};
+
 	VkPipelineRenderingCreateInfo renderingInfo{};
 	renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-	renderingInfo.colorAttachmentCount = 1;
-	renderingInfo.pColorAttachmentFormats = &aColorFormat;
+	renderingInfo.colorAttachmentCount = 2;
+	renderingInfo.pColorAttachmentFormats = colorFormats;
 	// no depth attachment for overdraw calculation
 	// binding for safety
 	// pass D32 format
@@ -1718,18 +1731,20 @@ lut::Pipeline create_overshading_pipeline( lut::VulkanWindow const& aWindow, VkP
 	samplingInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
 	// Overshading blend state
-	VkPipelineColorBlendAttachmentState blendStates[1]{};
+	VkPipelineColorBlendAttachmentState blendStates[2]{};
 	blendStates[0].blendEnable = VK_TRUE; 
 	blendStates[0].colorBlendOp = VK_BLEND_OP_ADD;
 	blendStates[0].srcColorBlendFactor = VK_BLEND_FACTOR_ONE; 
 	blendStates[0].dstColorBlendFactor = VK_BLEND_FACTOR_ONE; 
-	// No alpha write
-	blendStates[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT;
+	// enable alpha write to keep structural integrity with layout
+	blendStates[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	
+	blendStates[1] = blendStates[0];
 
 	VkPipelineColorBlendStateCreateInfo blendInfo{};
 	blendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
 	blendInfo.logicOpEnable = VK_FALSE;
-	blendInfo.attachmentCount = 1;
+	blendInfo.attachmentCount = 2;
 	blendInfo.pAttachments = blendStates;
 
 	// Overshading depth state: test On (LESS), write On
@@ -1748,10 +1763,15 @@ lut::Pipeline create_overshading_pipeline( lut::VulkanWindow const& aWindow, VkP
 	dynamicInfo.dynamicStateCount = 2;
 	dynamicInfo.pDynamicStates = dynamicStates;
 
+	VkFormat colorFormats[] = {
+		aColorFormat,                    
+		VK_FORMAT_R16G16B16A16_SFLOAT 
+	};
+
 	VkPipelineRenderingCreateInfo renderingInfo{};
 	renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-	renderingInfo.colorAttachmentCount = 1;
-	renderingInfo.pColorAttachmentFormats = &aColorFormat;
+	renderingInfo.colorAttachmentCount = 2;
+	renderingInfo.pColorAttachmentFormats = colorFormats;
 	renderingInfo.depthAttachmentFormat = cfg::kDepthFormat;
 
 	VkGraphicsPipelineCreateInfo pipeInfo{};
