@@ -3,6 +3,7 @@
 #include "../Scene/SceneManager.hpp"
 #include "../Physics/PhysicsSystem.hpp"
 #include "../Input/InputSystem.hpp"
+#include "../Event/EventSystem.hpp"
 #include <flecs.h>
 
 namespace engine {
@@ -14,6 +15,7 @@ namespace engine {
         
         //AddSystem<WindowSystem>();
         inputSystem = AddSystem<InputSystem>();
+        eventSystem = AddSystem<EventSystem>();
         //AddSystem<SoundSystem>();
 
         //world systems
@@ -119,8 +121,22 @@ namespace engine {
         );
         // 最后再打印实体列表，确认灯光实体已创建
         sceneManager->print_all_entities();
-      
 
+        
+        
+        // Event System Verification
+        eventSystem->Subscribe(EventType::Custom, [](Event& e) {
+            auto& customE = static_cast<CustomEvent&>(e);
+            if(customE.GetCustomName() == "EngineInitDone") {
+                std::printf("\n==========================================\n");
+                std::printf("[EventSystem] Engine Initialisation Complete. Event Payload: %d\n", customE.GetPayloadAs<int>());
+                std::printf("==========================================\n\n");
+            }
+        });
+
+        auto testEvent = std::make_unique<CustomEvent>("EngineInitDone", 42);
+        eventSystem->QueueEvent(std::move(testEvent));
+        
 
     }
     
