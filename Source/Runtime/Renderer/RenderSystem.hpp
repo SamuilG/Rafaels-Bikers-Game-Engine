@@ -118,8 +118,8 @@ namespace engine {
 
             // overdraw/overshading pipelines
             // pipelines for part 2 task 1
-            mOverdrawPipe = create_overdraw_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R8G8B8A8_UNORM);
-            mOvershadingPipe = create_overshading_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R8G8B8A8_UNORM);
+            mOverdrawPipe = create_overdraw_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+            mOvershadingPipe = create_overshading_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
             // resolve pass
             mVisResolvePipe = create_vis_resolve_pipeline(mWindow, mPostPipeLayout.handle, mPostLayout.handle);
 
@@ -498,7 +498,7 @@ namespace engine {
 
 
 
-            mCompPipeLayout = create_post_proc_pipeline_layout(mWindow, mCompDescLayout.handle);
+            mCompPipeLayout = create_composite_pipeline_layout(mWindow, mCompDescLayout.handle);
             // --- 2. 创建图像资源 (HDR 格式) ---
             mBrightImage = create_offscreen_buffer(mWindow, mAllocator);
             mBlurTempImage = create_offscreen_buffer(mWindow, mAllocator);
@@ -513,7 +513,7 @@ namespace engine {
             for (size_t i = 0; i < mCmdBuffers.size(); ++i) {
                 mBlurHorizDescriptors.push_back(BuildBlurDesc(mBlurDescLayout.handle, mBrightImage.view));
                 mBlurVertDescriptors.push_back(BuildBlurDesc(mBlurDescLayout.handle, mBlurTempImage.view));
-                mCompositeDescriptors.push_back(BuildCompositeDesc(mCompDescLayout.handle, mOffscreenImage.view, mFinalBloomImage.view));
+                mCompositeDescriptors.push_back(BuildCompositeDesc(mOffscreenImage.view, mFinalBloomImage.view, mMosaicUBOs[i].buffer));
             }
 
 
@@ -616,8 +616,8 @@ namespace engine {
                     mPostProcPipe = create_post_proc_pipeline(mWindow, mPostPipeLayout.handle, mPostLayout.handle);
 
                     // Recreate (p2_1.1)
-                    mOverdrawPipe = create_overdraw_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R8G8B8A8_UNORM);
-                    mOvershadingPipe = create_overshading_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R8G8B8A8_UNORM);
+                    mOverdrawPipe = create_overdraw_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+                    mOvershadingPipe = create_overshading_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
                     mVisResolvePipe = create_vis_resolve_pipeline(mWindow, mPostPipeLayout.handle, mPostLayout.handle);
                 }
 
@@ -894,28 +894,7 @@ namespace engine {
             // 1. 确保 GPU 已经完全停下，再开始拆除资源
             vkDeviceWaitIdle(mWindow.device);
 
-            // ================= 新增：销毁 Bloom 相关的管线和布局 =================
-            if (mBlurPipe.handle) vkDestroyPipeline(mWindow.device, mBlurPipe.handle, nullptr);
-            if (mCompositePipe.handle) vkDestroyPipeline(mWindow.device, mCompositePipe.handle, nullptr);
-
-            if (mBlurPipeLayout.handle) vkDestroyPipelineLayout(mWindow.device, mBlurPipeLayout.handle, nullptr);
-            if (mCompPipeLayout.handle) vkDestroyPipelineLayout(mWindow.device, mCompPipeLayout.handle, nullptr);
-
-            if (mBlurDescLayout.handle) vkDestroyDescriptorSetLayout(mWindow.device, mBlurDescLayout.handle, nullptr);
-            if (mCompDescLayout.handle) vkDestroyDescriptorSetLayout(mWindow.device, mCompDescLayout.handle, nullptr);
-
-            // ================= 新增：销毁 Bloom 相关的图像和视图 =================
-            // 销毁 Bright Image
-            if (mBrightImage.view) vkDestroyImageView(mWindow.device, mBrightImage.view, nullptr);
-            if (mBrightImage.image) vmaDestroyImage(mAllocator.allocator, mBrightImage.image, mBrightImage.allocation);
-
-            // 销毁 Blur Temp Image
-            if (mBlurTempImage.view) vkDestroyImageView(mWindow.device, mBlurTempImage.view, nullptr);
-            if (mBlurTempImage.image) vmaDestroyImage(mAllocator.allocator, mBlurTempImage.image, mBlurTempImage.allocation);
-
-            // 销毁 Final Bloom Image
-            if (mFinalBloomImage.view) vkDestroyImageView(mWindow.device, mFinalBloomImage.view, nullptr);
-            if (mFinalBloomImage.image) vmaDestroyImage(mAllocator.allocator, mFinalBloomImage.image, mFinalBloomImage.allocation);
+            // (Removed redundant RAII wrapper destructions)
 
             // ================= 原有逻辑保持不变 =================
             for (auto view : mShadowCascadeViews) {
@@ -1042,22 +1021,7 @@ namespace engine {
 
         engine::InputSystem* mInputSystem = nullptr;
 
-        // --- 核心：必须定义为类成员，否则 Init 结束后 handle 会失效 ---
-        lut::ImageWithView mBrightImage;
-        lut::ImageWithView mBlurTempImage;
-        lut::ImageWithView mFinalBloomImage;
-
-        lut::Pipeline mBlurPipe;
-        lut::Pipeline mCompositePipe;
-        lut::PipelineLayout mBlurPipeLayout;
-        lut::PipelineLayout mCompPipeLayout;
-
-        lut::DescriptorSetLayout mBlurDescLayout;
-        lut::DescriptorSetLayout mCompDescLayout;
-
-        std::vector<VkDescriptorSet> mBlurHorizDescriptors;
-        std::vector<VkDescriptorSet> mBlurVertDescriptors;
-        std::vector<VkDescriptorSet> mCompositeDescriptors;
+        // (Bloom/Composite members moved below mAllocator for correct RAII destruction order)
         
         VkDescriptorSet BuildBlurDesc(VkImageView inputView) {
             // 模糊阶段只需要 1 个输入纹理 (binding 0)
@@ -1081,16 +1045,20 @@ namespace engine {
             return ds;
         }
 
-        VkDescriptorSet BuildCompositeDesc(VkImageView sceneView, VkImageView bloomView) {
-            // 合成阶段需要 2 个输入纹理 (binding 0: 场景, binding 1: 模糊结果)
-            // 这里必须确保你的 mPostLayout 支持至少 2 个 CombinedImageSampler
-            VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, mPostLayout.handle);
+        VkDescriptorSet BuildCompositeDesc(VkImageView sceneView, VkImageView bloomView, VkBuffer mosaicUbo) {
+            // The compositing stage requires 2 input textures (binding 0: scene, binding 1: blur result) + 1 UniformBuffer (binding 2: Mosaic)
+            VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, mCompDescLayout.handle);
 
             VkDescriptorImageInfo imgs[2]{};
             imgs[0] = { mPostSampler.handle, sceneView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
             imgs[1] = { mPostSampler.handle, bloomView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
 
-            VkWriteDescriptorSet w[2]{};
+            VkDescriptorBufferInfo bi{};
+            bi.buffer = mosaicUbo;
+            bi.offset = 0;
+            bi.range = VK_WHOLE_SIZE;
+
+            VkWriteDescriptorSet w[3]{};
             w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             w[0].dstSet = ds; w[0].dstBinding = 0;
             w[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -1101,7 +1069,12 @@ namespace engine {
             w[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             w[1].descriptorCount = 1; w[1].pImageInfo = &imgs[1];
 
-            vkUpdateDescriptorSets(mWindow.device, 2, w, 0, nullptr);
+            w[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            w[2].dstSet = ds; w[2].dstBinding = 2;
+            w[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            w[2].descriptorCount = 1; w[2].pBufferInfo = &bi;
+
+            vkUpdateDescriptorSets(mWindow.device, 3, w, 0, nullptr);
             return ds;
         }
         void AddOneMaterialDescriptor(VkSampler sampler, std::vector<VkDescriptorSet>& out, const EngineMaterial& mat)
@@ -1360,6 +1333,26 @@ namespace engine {
 
         // Index of most recently added runtime mesh's material descriptor
         uint32_t mRuntimeMatIndex = 0;
+
+        //
+        // Bloom/Composite Handle Members
+        //
+        // inserted here (bottom of class) so they correctly destruct BEFORE mAllocator
+        lut::ImageWithView mBrightImage;
+        lut::ImageWithView mBlurTempImage;
+        lut::ImageWithView mFinalBloomImage;
+
+        lut::Pipeline mBlurPipe;
+        lut::Pipeline mCompositePipe;
+        lut::PipelineLayout mBlurPipeLayout;
+        lut::PipelineLayout mCompPipeLayout;
+
+        lut::DescriptorSetLayout mBlurDescLayout;
+        lut::DescriptorSetLayout mCompDescLayout;
+
+        std::vector<VkDescriptorSet> mBlurHorizDescriptors;
+        std::vector<VkDescriptorSet> mBlurVertDescriptors;
+        std::vector<VkDescriptorSet> mCompositeDescriptors;
     };
 
 } // namespace engine

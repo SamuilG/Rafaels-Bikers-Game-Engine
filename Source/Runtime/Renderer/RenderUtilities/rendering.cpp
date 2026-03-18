@@ -129,7 +129,7 @@ void record_commands(
 				uint32_t matIdx = batch.materialIndex;
 
 				glm::mat4 lightModel = aSceneUniform.lightVP[i] * batch.transform;
-				vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &lightModel);
+				vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(glm::mat4), &lightModel);
 
 				vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
 
@@ -236,7 +236,7 @@ void record_commands(
 		uint32_t matIdx = batch.materialIndex;
 		auto const& meshInfo = aMeshInfos[meshIdx];
 
-		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &batch.transform);
+		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(glm::mat4), &batch.transform);
 
 		VkPipeline targetPipeline = aGraphicsPipe;
 		if (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0)
@@ -276,7 +276,7 @@ void record_commands(
 				pc.useTexture = 0;
 			}
 			pc.debugMode = ps->config.particleDebug ? 1 : 0;
-			vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ParticlePC), &pc);
+			vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ParticlePC), &pc);
 			ps->draw(aCmdBuff);
 			ps->drawDebug(aCmdBuff, aGraphicsLayout);
 		}
