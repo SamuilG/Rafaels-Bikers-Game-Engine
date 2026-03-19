@@ -464,7 +464,7 @@ JPH::BodyID PhysicsSystem::create_dynamic_compound_body(
 	JPH::ShapeRefC compoundShape = compoundResult.Get();
 
 
-	// 3. Create body (跟原来 create_dynamic_convex_body 一样)
+	// 3. Create body 
 	JPH::BodyCreationSettings bodySettings(
 		compoundShape,
 		JPH::RVec3(translation.x, translation.y, translation.z),

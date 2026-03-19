@@ -48,10 +48,9 @@ struct PhysicsBody {
     uint32_t bodyID;
 };
 
-// 新组件
 struct CompoundParent {
-    uint32_t bodyID;        // 所属的 compound body
-    glm::mat4 localOffset;  // 该部件相对于 body 原点的偏移
+    uint32_t bodyID;        
+    glm::mat4 localOffset;  
 };
 
 // Tag components
