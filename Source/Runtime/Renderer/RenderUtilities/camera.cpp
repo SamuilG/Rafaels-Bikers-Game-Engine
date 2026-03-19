@@ -67,8 +67,8 @@ void update_user_state(UserState& aState, float aElapsedTime, const engine::Inpu
 			if (aState.thirdPersonMode)
 			{
 
-				aState.Yaw += dx;
-				aState.Pitch -= dy; 
+				aState.Yaw -= dx;
+				aState.Pitch += dy; 
 
 				//limitation for pitch to prevent flipping
 				float const max_pitch = glm::radians(85.0f);

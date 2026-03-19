@@ -48,6 +48,12 @@ struct PhysicsBody {
     uint32_t bodyID;
 };
 
+// 新组件
+struct CompoundParent {
+    uint32_t bodyID;        // 所属的 compound body
+    glm::mat4 localOffset;  // 该部件相对于 body 原点的偏移
+};
+
 // Tag components
 
 struct StaticObject {};
@@ -93,6 +99,8 @@ public:
 
     // Load and instantiate all entities from EngineModel as dynamic
     void load_dynamic_model(const EngineModel& model, float mass = 1.0f, uint32_t baseMeshIdx = 0, uint32_t baseMatIdx = 0);
+
+    void load_compound_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx);
 
 	const EngineModel& get_model() const { return mModel; }//expose the cpu model to other systems (like Vulkan) to upload data to gpu
 

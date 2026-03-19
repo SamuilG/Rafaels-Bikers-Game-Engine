@@ -8,6 +8,7 @@
 #include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Collision/ContactListener.h>
+#include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include "../Event/EventSystem.hpp"
 #include "../Event/Event.hpp"
 
@@ -304,7 +305,7 @@ JPH::BodyID PhysicsSystem::create_static_mesh_body(const EngineMesh& mesh, const
 	glm::vec3 skew;
 	glm::vec4 perspective;
 	glm::decompose(transform, scale, rotation, translation, skew, perspective);
-
+	rotation = glm::normalize(rotation);
 
 	if (scale != glm::vec3(1.0f)) {
 		JPH::VertexList scaledVertices;
@@ -346,7 +347,7 @@ JPH::BodyID PhysicsSystem::create_dynamic_convex_body(const EngineMesh& mesh, co
 	glm::vec3 skew;
 	glm::vec4 perspective;
 	glm::decompose(transform, scale, rotation, translation, skew, perspective);
-
+	rotation = glm::normalize(rotation);
 	// 1. Build Vertex List (applying scale directly)
 	JPH::Array<JPH::Vec3> points;
 	points.resize(mesh.positions.size());
@@ -387,7 +388,113 @@ JPH::BodyID PhysicsSystem::create_dynamic_convex_body(const EngineMesh& mesh, co
 	return body->GetID();
 }
 
+JPH::BodyID PhysicsSystem::create_dynamic_compound_body(
+	const std::vector<EngineMesh>& meshes,
+	const std::vector<glm::mat4>& meshTransforms,
+	const glm::mat4& transform,
+	float mass)
+{
+	JPH::BodyInterface& bodyInterface = m_physicsSystem->GetBodyInterface();
 
+
+
+	// Extract position, rotation, scale from world transform
+	glm::vec3 scale;
+	glm::quat rotation;
+	glm::vec3 translation;
+	glm::vec3 skew;
+	glm::vec4 perspective;
+	glm::decompose(transform, scale, rotation, translation, skew, perspective);
+	rotation = glm::normalize(rotation);
+	// 1. Build one ConvexHull per mesh, add to compound
+	JPH::StaticCompoundShapeSettings compoundSettings;
+	int partCount = 0;
+
+	for (size_t i = 0; i < meshes.size(); ++i) {
+		const auto& mesh = meshes[i];
+
+		// Extract part-local transform
+		glm::vec3 partScale, partTranslation, partSkew;
+		glm::quat partRotation;
+		glm::vec4 partPersp;
+		glm::decompose(meshTransforms[i], partScale, partRotation, partTranslation, partSkew, partPersp);
+		partRotation = glm::normalize(partRotation);
+		glm::vec3 finalScale = scale * partScale;
+
+		// Build Vertex List (applying combined scale directly)
+		JPH::Array<JPH::Vec3> points;
+		points.resize(mesh.positions.size());
+		for (size_t v = 0; v < mesh.positions.size(); ++v) {
+			const auto& pos = mesh.positions[v];
+			points[v] = JPH::Vec3(pos.x * finalScale.x, pos.y * finalScale.y, pos.z * finalScale.z);
+		}
+
+		if (points.empty()) continue;
+
+		// Create ConvexHullShape for this part
+		JPH::ConvexHullShapeSettings hullSettings(points);
+		JPH::ShapeSettings::ShapeResult hullResult = hullSettings.Create();
+		if (hullResult.HasError()) {
+			std::cout << "Error creating ConvexHullShape for part " << i
+				<< ": " << hullResult.GetError() << std::endl;
+			continue;
+		}
+
+		// Part offset relative to body origin (scaled)
+		JPH::Vec3 partOffset(
+			(partTranslation.x - translation.x) * scale.x,
+			(partTranslation.y - translation.y) * scale.y,
+			(partTranslation.z - translation.z) * scale.z
+		);
+		compoundSettings.AddShape(partOffset, toJolt(partRotation), hullResult.Get());
+		partCount++;
+	}
+
+	if (partCount == 0) {
+		std::cout << "Error: no valid convex hulls for compound body." << std::endl;
+		return JPH::BodyID();
+	}
+
+	// 2. Create compound shape
+	JPH::ShapeSettings::ShapeResult compoundResult = compoundSettings.Create();
+	if (compoundResult.HasError()) {
+		std::cout << "Error creating CompoundShape: " << compoundResult.GetError() << std::endl;
+		return JPH::BodyID();
+	}
+	JPH::ShapeRefC compoundShape = compoundResult.Get();
+
+
+	// 3. Create body (跟原来 create_dynamic_convex_body 一样)
+	JPH::BodyCreationSettings bodySettings(
+		compoundShape,
+		JPH::RVec3(translation.x, translation.y, translation.z),
+		toJolt(rotation),
+		JPH::EMotionType::Dynamic,
+		Layers::MOVING
+	);
+	bodySettings.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
+	bodySettings.mMassPropertiesOverride.mMass = mass;
+	bodySettings.mMotionQuality = JPH::EMotionQuality::LinearCast;
+
+	//let bike not falling down (just be used to test)
+	bodySettings.mAllowedDOFs =
+		JPH::EAllowedDOFs::TranslationX |
+		JPH::EAllowedDOFs::TranslationY |
+		JPH::EAllowedDOFs::TranslationZ |
+		JPH::EAllowedDOFs::RotationY;
+
+	JPH::Body* body = bodyInterface.CreateBody(bodySettings);
+	if (!body) {
+		std::cout << "Error creating dynamic compound body." << std::endl;
+		return JPH::BodyID();
+	}
+
+	bodyInterface.AddBody(body->GetID(), JPH::EActivation::Activate);
+	std::cout << "[Compound] Created body with " << partCount << " sub-shapes." << std::endl;
+
+
+	return body->GetID();
+}
 
 
 } // namespace engine

@@ -670,7 +670,7 @@ namespace engine {
             //find character pos
             if (mSceneManager && mState.thirdPersonMode) {
                 // 用你想跟随的实体名字
-                auto target = mSceneManager->find_entity("Body_Cylinder_0");
+                auto target = mSceneManager->find_entity("Object_10_0");
                 if (target.is_valid() && target.has<WorldTransform>()) {
                     const auto& wt = target.get<WorldTransform>();
                     mState.followTargetPos = glm::vec3(wt.matrix[3]);
@@ -926,7 +926,7 @@ namespace engine {
         }
 
         // add an entire model file to the renderer and physics scene
-        void load_additional_model(const char* path, bool isStatic, float mass = 1.0f, const glm::mat4& initialTransform = glm::mat4(1.0f))
+        void load_additional_model(const char* path, bool isStatic, float mass = 1.0f, const glm::mat4& initialTransform = glm::mat4(1.0f), bool isCompound = false)
         {
             EngineModel newModel = load_engine_model_glb(path);
             uint32_t baseTextureIdx = static_cast<uint32_t>(mModelTextures.size());
@@ -991,7 +991,10 @@ namespace engine {
             
             // 4.2 update the scenes to use global mesh indices for the renderer.
             if (mSceneManager) {
-                if (isStatic) {
+                if (isCompound) {
+                    mSceneManager->load_compound_model(newModel, mass, baseMeshIdx, baseMaterialIdx);
+				}
+                else if (isStatic) {
                     mSceneManager->load_static_model(newModel, baseMeshIdx, baseMaterialIdx);
                 } else {
                     mSceneManager->load_dynamic_model(newModel, mass, baseMeshIdx, baseMaterialIdx);
