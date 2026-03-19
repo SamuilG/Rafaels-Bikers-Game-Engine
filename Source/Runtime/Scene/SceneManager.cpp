@@ -121,6 +121,17 @@ void SceneManager::set_local_transform(flecs::entity e, const glm::mat4& transfo
     }
 }
 
+std::string SceneManager::get_entity_name_from_body_id(uint32_t bodyID) {
+    std::string result = "Unknown Entity";
+    m_world->query<const PhysicsBody>()
+        .each([&](flecs::entity e, const PhysicsBody& pb) {
+            if (pb.bodyID == bodyID) {
+                result = e.name() ? e.name() : "unnamed";
+            }
+        });
+    return result;
+}
+
 void SceneManager::Update(float dt) {
     if (m_physics_system) {
         m_world->query<LocalTransform, const PhysicsBody, const EntityStatus>()

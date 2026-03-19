@@ -113,6 +113,7 @@ lut::Sampler create_shadow_sampler( lut::VulkanWindow const& );
 lut::PipelineLayout create_triangle_pipeline_layout( lut::VulkanContext const&, VkDescriptorSetLayout, VkDescriptorSetLayout );
 lut::PipelineLayout create_post_proc_pipeline_layout( lut::VulkanContext const&, VkDescriptorSetLayout );
 lut::PipelineLayout create_blur_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aDescriptorLayout);
+lut::PipelineLayout create_composite_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aDescriptorLayout);
 lut::DescriptorSetLayout create_composite_descriptor_layout(lut::VulkanWindow const& aWindow);
 lut::DescriptorSetLayout create_blur_descriptor_layout(lut::VulkanContext const& aContext);
 

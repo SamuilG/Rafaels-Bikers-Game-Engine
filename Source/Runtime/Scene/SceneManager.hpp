@@ -113,8 +113,12 @@ public:
     // 2. Update entity's local transform (position, rotation, scale)
     void set_local_transform(flecs::entity e, const glm::mat4& transform);
 
+
     // 3. Utility: Get Flecs world handle for low-level operations
     flecs::world& get_world() { return *m_world; }
+
+    // 4. Utility: Get entity name from physics body ID
+    std::string get_entity_name_from_body_id(uint32_t bodyID);
 
 
     void print_all_entities();

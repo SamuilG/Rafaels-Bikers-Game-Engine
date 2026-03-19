@@ -7,6 +7,9 @@
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
+#include <Jolt/Physics/Collision/ContactListener.h>
+#include "../Event/EventSystem.hpp"
+#include "../Event/Event.hpp"
 
 #include <glm/gtx/matrix_decompose.hpp>
 
@@ -113,6 +116,31 @@ public:
 	}
 };
 
+class PhysicsSystem::ContactListenerImpl final : public JPH::ContactListener
+{
+public:
+	ContactListenerImpl(PhysicsSystem* sys) : m_sys(sys) {}
+
+	virtual JPH::ValidateResult OnContactValidate(const JPH::Body& inBody1, const JPH::Body& inBody2, JPH::RVec3Arg inBaseOffset, const JPH::CollideShapeResult& inCollisionResult) override
+	{
+		return JPH::ValidateResult::AcceptAllContactsForThisBodyPair;
+	}
+
+	virtual void OnContactAdded(const JPH::Body& inBody1, const JPH::Body& inBody2, const JPH::ContactManifold& inManifold, JPH::ContactSettings& ioSettings) override
+	{
+		// only broadcast intersection events if the game attached an active EventSystem
+		if (m_sys->m_eventSystem) {
+			std::string nameA = std::to_string(inBody1.GetID().GetIndexAndSequenceNumber());
+			std::string nameB = std::to_string(inBody2.GetID().GetIndexAndSequenceNumber());
+			
+			auto event = std::make_unique<CollisionEvent>(nameA, nameB);
+			m_sys->m_eventSystem->QueueEvent(std::move(event));
+		}
+	}
+private:
+	PhysicsSystem* m_sys;
+};
+
 PhysicsSystem::PhysicsSystem()
 {
 }
@@ -146,6 +174,10 @@ void PhysicsSystem::Init()
 
 	m_physicsSystem = std::make_unique<JPH::PhysicsSystem>();
 	m_physicsSystem->Init(cMaxBodies, cNumBodyMutexes, cMaxBodyPairs, cMaxContactConstraints, *m_bpLayerInterface, *m_objectVsBroadphaseFilter, *m_objectVsObjectFilter);
+	
+	// register the contact listener to listen to collisions
+	m_contactListener = std::make_unique<ContactListenerImpl>(this);
+	m_physicsSystem->SetContactListener(m_contactListener.get());
 }
 
 void PhysicsSystem::optimize_broad_phase()

@@ -2,15 +2,20 @@
 
 layout(location = 0) in vec2 v2fTexCoord;
 
-layout(set = 0, binding = 0) uniform sampler2D uSceneTexture; // 原始场景图
-layout(set = 0, binding = 1) uniform sampler2D uBloomBlur;    // 模糊后的高亮图
+layout(set = 0, binding = 0) uniform sampler2D uSceneTexture; // Original scene color
+layout(set = 0, binding = 1) uniform sampler2D uBloomBlur;    // Blurred bloom color
+
+layout(set = 0, binding = 2) uniform UMosaic {
+    int mosaicOn;
+    float mosaicSize;
+} uMosaic;
 
 layout(location = 0) out vec4 oColor;
 
-// 建议通过 Push Constant 传入曝光度，方便实时调整
+// Dynamic Bloom Params
 layout(push_constant) uniform BloomParams {
-    float exposure;   // 曝光度，默认 1.0
-    float bloomStrength; // Bloom 强度，默认 1.0
+    float exposure;
+    float bloomStrength;
 } params;
 
 void main() {

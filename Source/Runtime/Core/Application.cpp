@@ -3,6 +3,7 @@
 #include "../Scene/SceneManager.hpp"
 #include "../Physics/PhysicsSystem.hpp"
 #include "../Input/InputSystem.hpp"
+#include "../Event/EventSystem.hpp"
 #include <flecs.h>
 
 namespace engine {
@@ -14,6 +15,7 @@ namespace engine {
         
         //AddSystem<WindowSystem>();
         inputSystem = AddSystem<InputSystem>();
+        eventSystem = AddSystem<EventSystem>();
         //AddSystem<SoundSystem>();
 
         //world systems
@@ -25,6 +27,7 @@ namespace engine {
  
 
         physicsSystem = AddSystem<PhysicsSystem>();
+        physicsSystem->SetEventSystem(eventSystem);
         sceneManager  = AddSystem<SceneManager>(physicsSystem);
 
         //final render 
@@ -127,8 +130,22 @@ namespace engine {
         );
         // 最后再打印实体列表，确认灯光实体已创建
         sceneManager->print_all_entities();
-      
 
+        
+        // Physics Collision Verification
+        eventSystem->Subscribe(EventType::Collision, [this](Event& e) {
+            auto& collisionE = static_cast<CollisionEvent&>(e);
+            
+            uint32_t idA = std::stoul(collisionE.GetEntityA());
+            uint32_t idB = std::stoul(collisionE.GetEntityB());
+            
+            std::string nameA = this->sceneManager->get_entity_name_from_body_id(idA);
+            std::string nameB = this->sceneManager->get_entity_name_from_body_id(idB);
+
+            std::printf("[PhysicsSystem] CRASH: %s and %s collided.\n", 
+                nameA.c_str(), 
+                nameB.c_str());
+        });
 
     }
     
