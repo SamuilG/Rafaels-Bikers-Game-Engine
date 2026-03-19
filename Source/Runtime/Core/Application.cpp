@@ -75,6 +75,14 @@ namespace engine {
 
         glm::mat4 LampSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(40.0f, 2.0f, 15.0f));
         renderSystem->load_additional_model("Assets/Models/Lamp post.glb", false, 90.0f, LampSpawnPos);
+
+        glm::mat4 CubeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(25.0f, 3.0f, 20.0f));
+        renderSystem->load_additional_model("Assets/Models/comCube.glb", false, 90.0f, CubeSpawnPos);
+
+
+
+
+
         // 在 Application.cpp 的构造函数末尾，print_all_entities 之前添加：
 
 

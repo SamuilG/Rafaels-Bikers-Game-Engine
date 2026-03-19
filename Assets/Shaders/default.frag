@@ -207,17 +207,13 @@ void main()
     // 输出到 Attachment 0 (正常渲染图)
     oColor = vec4(finalColor, 1.0);
 
-    // --- 6. Bloom 亮度提取输出到 Attachment 1 ---
-    // 使用亮度系数计算
-float threshold = 0.0; // 设定你的 HDR 阈值
-float brightness = dot(finalColor, vec3(0.2126, 0.7152, 0.0722));
-
-if(brightness > threshold) {
-    // 关键：不要原样输出，而是减去阈值，只让“溢出”的光参与 Bloom
-    oBrightColor = vec4(finalColor - vec3(threshold), 1.0); 
-} else {
-    oBrightColor = vec4(0.0, 0.0, 0.0, 1.0);
-}
+   // --- 6. Bloom 亮度提取 ---
+    float threshold = 0.5; // 阈值可以根据你的光源强度调整
+    
+    // 只保留超过阈值的部分（这样光晕边缘会像羽化一样柔和）
+    vec3 bloomContrib = max(finalColor - vec3(threshold), vec3(0.0));
+    
+    oBrightColor = vec4(bloomContrib, 1.0);
 
  
 

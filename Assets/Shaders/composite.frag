@@ -14,16 +14,20 @@ layout(push_constant) uniform BloomParams {
 } params;
 
 void main() {
+    const float gamma = 2.2;
     vec3 sceneColor = texture(uSceneTexture, v2fTexCoord).rgb;      
     vec3 bloomColor = texture(uBloomBlur, v2fTexCoord).rgb;
 
-    // 1. 简单的加法混合
-    vec3 result = sceneColor + bloomColor * params.bloomStrength; 
+    // 1. 加法叠加 Bloom
+    vec3 hdrColor = sceneColor + bloomColor * params.bloomStrength; 
 
-    // 2. 暂时注释掉复杂的色调映射和 Gamma，只用最原生的输出看看效果
-    // vec3 mapped = vec3(1.0) - exp(-result * params.exposure);
-    // mapped = pow(mapped, vec3(1.0 / 2.2));
+    // 2. Reinhard 色调映射 (非常适合让高光变得柔和通透，解决死白)
+    // 它能把无限大的亮度值平滑地压缩到 0.0 ~ 1.0 之间
+    vec3 mapped = hdrColor / (hdrColor + vec3(1.0));
 
-    // 直接输出线性叠加的结果
-    oColor = vec4(result, 1.0);
+    // 3. Gamma 校正 (还原正确的显示器对比度)
+    //mapped = pow(mapped, vec3(1.0 / gamma));
+
+    // 最终输出
+    oColor = vec4(mapped, 1.0);
 }
