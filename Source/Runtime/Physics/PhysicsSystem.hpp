@@ -71,6 +71,11 @@ public:
     // Create a dynamic convex hull body from EngineMesh vertices
     JPH::BodyID create_dynamic_convex_body(const EngineMesh& mesh, const glm::mat4& transform, float mass = 1.0f);
 
+    JPH::BodyID create_dynamic_compound_body(
+        const std::vector<EngineMesh>& meshes,
+        const std::vector<glm::mat4>& meshTransforms,
+        const glm::mat4& transform,
+        float mass);
 
 
 private:

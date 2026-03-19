@@ -17,7 +17,7 @@
 
 
 namespace engine {
-
+    
 SceneManager::SceneManager(PhysicsSystem* physics_system) 
     : m_physics_system(physics_system) {
 }
@@ -111,6 +111,49 @@ void SceneManager::load_dynamic_model(const EngineModel& model, float mass, uint
     }
 }
 
+void SceneManager::load_compound_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx) {
+    std::print("Loading compound model with {} instances\n", model.scenes.size());
+
+    // 1. Create compound body
+    JPH::BodyID compoundBodyID;
+    glm::mat4 bodyWorldTransform = model.scenes.empty() ? glm::mat4(1.0f) : model.scenes[0].transform;
+
+    if (m_physics_system && !model.scenes.empty()) {
+        std::vector<EngineMesh> meshes;
+        std::vector<glm::mat4> meshTransforms;
+        for (const auto& instance : model.scenes) {
+            meshes.push_back(model.meshes[instance.meshIndex]);
+            meshTransforms.push_back(instance.transform);
+        }
+        compoundBodyID = m_physics_system->create_dynamic_compound_body(
+            meshes, meshTransforms, bodyWorldTransform, mass);
+    }
+
+    // Inverse of initial body transform, to compute each part's local offset
+    glm::mat4 invBody = glm::inverse(bodyWorldTransform);
+
+    // 2. Create render entities
+    int counter = 0;
+    for (const auto& instance : model.scenes) {
+        std::string name = instance.name.empty() ? "CompoundPart" : instance.name;
+        name += "_" + std::to_string(counter++);
+
+        // This part's offset relative to the body origin
+        glm::mat4 localOffset = invBody * instance.transform;
+
+        auto e = m_world->entity(name.c_str())
+            .add<DynamicObject>()
+            .set<EntityStatus>({ true, false })  // No individual physics
+            .set<LocalTransform>({ instance.transform })
+            .set<WorldTransform>({ instance.transform })
+            .set<MeshComponent>({ instance.meshIndex + baseMeshIdx })
+            .set<CompoundParent>({ compoundBodyID.GetIndexAndSequenceNumber(), localOffset });
+
+        uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
+        e.set<MaterialComponent>({ matIdx });
+    }
+}
+
 flecs::entity SceneManager::find_entity(const char* name) {
     return m_world->lookup(name); // Flecs' efficient lookup interface
 }
@@ -134,32 +177,40 @@ std::string SceneManager::get_entity_name_from_body_id(uint32_t bodyID) {
 
 void SceneManager::Update(float dt) {
     if (m_physics_system) {
+        JPH::BodyInterface& bodyInterface = m_physics_system->get_body_interface();
+
+
         m_world->query<LocalTransform, const PhysicsBody, const EntityStatus>()
             .each([&](flecs::entity e, LocalTransform& lt, const PhysicsBody& pb, const EntityStatus& status) {
-            // 只有 has_physics 为 true 时才同步
             if (!status.has_physics) return;
+            JPH::BodyID bodyID(pb.bodyID);
+            if (bodyInterface.IsActive(bodyID)) {
+                JPH::Vec3 pos = bodyInterface.GetPosition(bodyID);
+                JPH::Quat rot = bodyInterface.GetRotation(bodyID);
+                glm::mat4 translation = glm::translate(glm::mat4(1.0f), toGlm(pos));
+                glm::mat4 rotation = glm::mat4_cast(toGlm(rot));
+                glm::vec3 scale(
+                    glm::length(glm::vec3(lt.matrix[0])),
+                    glm::length(glm::vec3(lt.matrix[1])),
+                    glm::length(glm::vec3(lt.matrix[2]))
+                );
+                lt.matrix = translation * rotation * glm::scale(glm::mat4(1.0f), scale);
+            }
+                });
 
-                JPH::BodyID bodyID(pb.bodyID);
-                JPH::BodyInterface& bodyInterface = m_physics_system->get_body_interface();
-                
-                // read from body whether it is active or asleep
-                if (bodyInterface.IsActive(bodyID)) {
-                    JPH::Vec3 pos = bodyInterface.GetPosition(bodyID);
-                    JPH::Quat rot = bodyInterface.GetRotation(bodyID);
-                    
-                    glm::mat4 translation = glm::translate(glm::mat4(1.0f), toGlm(pos));
-                    glm::mat4 rotation = glm::mat4_cast(toGlm(rot));
-                    
-                    // extract original scale using column vectors instead of rows
-                    glm::vec3 scale(
-                        glm::length(glm::vec3(lt.matrix[0])),
-                        glm::length(glm::vec3(lt.matrix[1])),
-                        glm::length(glm::vec3(lt.matrix[2]))
-                    );
-                    
-                    lt.matrix = translation * rotation * glm::scale(glm::mat4(1.0f), scale);
-                }
-            });
+
+        m_world->query<LocalTransform, const CompoundParent>()
+            .each([&](flecs::entity e, LocalTransform& lt, const CompoundParent& cp) {
+            JPH::BodyID bodyID(cp.bodyID);
+            if (bodyInterface.IsActive(bodyID)) {
+                JPH::Vec3 pos = bodyInterface.GetPosition(bodyID);
+                JPH::Quat rot = bodyInterface.GetRotation(bodyID);
+                glm::mat4 bodyWorld = glm::translate(glm::mat4(1.0f), toGlm(pos))
+                    * glm::mat4_cast(toGlm(rot));
+ 
+                lt.matrix = bodyWorld * cp.localOffset;
+            }
+                });
     }
     m_world->progress(dt);
 }
