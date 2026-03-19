@@ -313,11 +313,24 @@ EngineModel load_engine_model_glb(const char* path)
     tinygltf::TinyGLTF loader;
     std::string err, warn;
 
-    if (!loader.LoadBinaryFromFile(&gltf, &err, &warn, path))
-        throw std::runtime_error(std::string("tinygltf: ") + err);
+    // --- 关键修改：根据文件后缀名选择加载方式 ---
+    std::string filePath(path);
+    bool ret = false;
+
+    // 检查后缀名是不是 .gltf
+    if (filePath.length() >= 5 && filePath.substr(filePath.length() - 5) == ".gltf") {
+        ret = loader.LoadASCIIFromFile(&gltf, &err, &warn, path);
+    }
+    // 否则默认按 .glb (二进制) 处理
+    else {
+        ret = loader.LoadBinaryFromFile(&gltf, &err, &warn, path);
+    }
+
+    if (!ret)
+        throw std::runtime_error(std::string("tinygltf failed to load ") + path + ": " + err);
+
     if (!warn.empty())
         fprintf(stderr, "[tinygltf warn] %s\n", warn.c_str());
-
     EngineModel model;
 
     // 1. Parse Resources (Textures, Materials, Meshes)

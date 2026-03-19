@@ -80,7 +80,7 @@ namespace engine {
         renderSystem->load_additional_model("Assets/Models/Lamp post.glb", false, 90.0f, LampSpawnPos);
 
         glm::mat4 CubeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(25.0f, 3.0f, 20.0f));
-        renderSystem->load_additional_model("Assets/Models/comCube.glb", false, 90.0f, CubeSpawnPos);
+        renderSystem->load_additional_model("Assets/Models/em1.gltf", false, 90.0f, CubeSpawnPos);
 
 
 

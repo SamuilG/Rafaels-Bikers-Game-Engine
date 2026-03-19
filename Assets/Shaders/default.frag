@@ -15,6 +15,7 @@ layout( location = 3 ) in vec4 v2fLightProjPos;
 layout( set = 1, binding = 0 ) uniform sampler2D uTexColor;
 layout( set = 1, binding = 1 ) uniform sampler2D uTexRoughness;
 layout( set = 1, binding = 2 ) uniform sampler2D uTexMetalness;
+layout( set = 1, binding = 3 ) uniform sampler2D uTexEmissive;
 struct GpuLight {
     vec4 position;  // xyz: position/direction, w: type (0:Dir, 1:Point)
     vec4 color;     // rgb: color, a: intensity
@@ -201,11 +202,18 @@ void main()
     vec3 Lambient = vec3(0.02) * baseColor;
     vec3 finalColor = Lambient + totalLo;
 
+    // emissive
+    vec3 emissiveColor = texture(uTexEmissive, v2fTexCoord).rgb;
+    
+    finalColor += emissiveColor * 5.0; 
+ 
+
     // 调试模式覆盖
     if( uScene.renderMode == 6 ) finalColor = vec3(shadow); 
     
     // 输出到 Attachment 0 (正常渲染图)
     oColor = vec4(finalColor, 1.0);
+
 
    // --- 6. Bloom 亮度提取 ---
     float threshold = 0.5; // 阈值可以根据你的光源强度调整

@@ -82,7 +82,7 @@ namespace engine {
             if (mWindow.window) return mWindow.window;
             return nullptr;
         }
-
+        
         void Init() override
         {
 
@@ -1077,11 +1077,11 @@ namespace engine {
             vkUpdateDescriptorSets(mWindow.device, 3, w, 0, nullptr);
             return ds;
         }
+        
+        lut::Image     mDefaultBlackTex;
+        lut::ImageView mDefaultBlackView;
         void AddOneMaterialDescriptor(VkSampler sampler, std::vector<VkDescriptorSet>& out, const EngineMaterial& mat)
         {
-
-
-
             VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, mObjectLayout.handle);
 
             VkImageView baseView = mDefaultGrayView.handle;
@@ -1090,25 +1090,30 @@ namespace engine {
             VkImageView mrView = mDefaultGrayView.handle;
             if (mat.metalRoughTexture >= 0) mrView = mModelTextureViews[mat.metalRoughTexture].handle;
 
-			//exract normal map
             VkImageView normView = mDefaultNormalView.handle;
             if (mat.normalTexture >= 0) normView = mModelTextureViews[mat.normalTexture].handle;
 
-            VkDescriptorImageInfo imgs[3]{};
+            // --- 【关键1：提取自发光图】 ---
+            VkImageView emissiveView = mDefaultBlackView.handle;
+            if (mat.emissiveTexture >= 0) emissiveView = mModelTextureViews[mat.emissiveTexture].handle;
+
+            // --- 【关键2：数组大小必须是 4 ！！！】 ---
+            VkDescriptorImageInfo imgs[4]{};
             imgs[0] = { sampler, baseView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
             imgs[1] = { sampler, mrView,   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-
-            //bind normal map
             imgs[2] = { sampler, normView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            imgs[3] = { sampler, emissiveView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL }; // 绑定第 4 张
 
-            VkWriteDescriptorSet w[3]{};
-            for (int j = 0; j < 3; ++j) {
+            VkWriteDescriptorSet w[4]{}; // --- 【关键3：数组大小必须是 4 ！！！】 ---
+            for (int j = 0; j < 4; ++j) { // --- 【关键4：循环条件改成 j < 4 ！！！】 ---
                 w[j].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                 w[j].dstSet = ds; w[j].dstBinding = (uint32_t)j;
                 w[j].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
                 w[j].descriptorCount = 1; w[j].pImageInfo = &imgs[j];
             }
-            vkUpdateDescriptorSets(mWindow.device, 3, w, 0, nullptr);
+
+            // --- 【关键5：更新数量改成 4 ！！！】 ---
+            vkUpdateDescriptorSets(mWindow.device, 4, w, 0, nullptr);
             out.emplace_back(ds);
         }
 

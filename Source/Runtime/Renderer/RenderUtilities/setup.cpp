@@ -538,7 +538,7 @@ lut::DescriptorSetLayout create_scene_descriptor_layout( lut::VulkanWindow const
 lut::DescriptorSetLayout create_object_descriptor_layout( lut::VulkanWindow const& aWindow )
 {
 	// bindings for base color, roughness, and metalness
-	VkDescriptorSetLayoutBinding bindings[3]{};
+	VkDescriptorSetLayoutBinding bindings[4]{};
 	
 	bindings[0].binding = 0; 
 	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -555,9 +555,16 @@ lut::DescriptorSetLayout create_object_descriptor_layout( lut::VulkanWindow cons
 	bindings[2].descriptorCount = 1;
 	bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
+	// 3: Emissive 
+	bindings[3].binding = 3;
+	bindings[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[3].descriptorCount = 1;
+	bindings[3].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+
 	VkDescriptorSetLayoutCreateInfo layoutInfo{};
 	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	layoutInfo.bindingCount = sizeof(bindings)/sizeof(bindings[0]);
+	layoutInfo.bindingCount = 4;
 	layoutInfo.pBindings = bindings;
 
 	VkDescriptorSetLayout layout = VK_NULL_HANDLE;
