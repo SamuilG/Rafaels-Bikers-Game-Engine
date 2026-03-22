@@ -5,7 +5,7 @@
 
 
 namespace engine {
-    constexpr uint32_t kCascadeCount = 4;
+    constexpr uint32_t count = 4;
 
     enum class LightType : uint32_t {
         Directional = 0,
@@ -42,7 +42,7 @@ namespace engine {
 	//compute data for cascaded shadow mapping HERE！！
     struct ShadowData {
         glm::vec4 cascadeSplits;
-        glm::mat4 lightVP[kCascadeCount];
+        glm::mat4 lightVP[count];
 		//glm::mat4 lightVP[4]; // CSM 数组
     };
    
@@ -54,4 +54,18 @@ namespace engine {
         float nearP, float farP
     );
 
+    ShadowData compute_csm_matrices(
+        const glm::vec3& lightDir,
+        const glm::mat4& cameraView,
+        float fov, float aspect,
+        float nearP, float farP
+    );
+
+    // --- 【新增】专门计算聚光灯阴影矩阵的函数 ---
+    glm::mat4 compute_spotlight_matrix(
+        const glm::vec3& pos,
+        const glm::vec3& dir,
+        float outerCutOff,
+        float range
+    );
 } // namespace engine

@@ -80,7 +80,7 @@ namespace engine {
         glm::mat4 LampSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(40.0f, 2.0f, 15.0f));
         renderSystem->load_additional_model("Assets/Models/Lamp post.glb", false, 90.0f, LampSpawnPos);
 
-        glm::mat4 CubeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(25.0f, 3.0f, 20.0f));
+        glm::mat4 CubeSpawnPos = glm::translate( BikeSpawnPos, glm::vec3(0.0f, -7.0f, 8.0f));
         renderSystem->load_additional_model("Assets/Models/em1.gltf", false, 90.0f, CubeSpawnPos);
 
 
@@ -93,7 +93,7 @@ namespace engine {
 
         // --- 【修改】计算车头灯的初始位置 ---
 // 假设车头在 Y轴偏上(1.0米)，Z轴偏前(1.2米) 的位置
-        glm::vec3 headlightOffset = glm::vec3(0.0f, -5.5f, 0.0f);
+        glm::vec3 headlightOffset = glm::vec3(0.0f, -7.0f, 0.0f);
         glm::mat4 LightTransform = glm::translate(BikeSpawnPos, headlightOffset);
 
         // --- 【修改】创建聚光灯 (车头灯) ---
@@ -104,7 +104,7 @@ namespace engine {
             15.0f,                          // 强度 (intensity)：稍微调亮一点
             LightTransform,                // 初始位置矩阵
             40.0f,                         // 照射范围 (range)：车灯能照亮前方 40 米
-            glm::vec3(0.0f, -0.15f, 1.0f), // 照射方向 (direction)：正前方，微微向下倾斜 15% 照亮路面
+            glm::vec3(0.0f, 0, 1.0f), // 照射方向 (direction)：正前方，微微向下倾斜 15% 照亮路面
             15.0f,                         // 内锥角 (innerCutOff)：中心 15度 范围内是最亮的
             25.0f                          // 外锥角 (outerCutOff)：边缘衰减到 25度 彻底变暗
         );

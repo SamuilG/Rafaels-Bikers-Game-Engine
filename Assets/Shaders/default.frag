@@ -176,7 +176,7 @@ void main()
             attenuation = clamp(1.0 - dist / light.direction.w, 0.0, 1.0);
             attenuation *= attenuation;
         }
-        else // 3. 聚光灯/车头灯 (Spotlight - w == 2.0)
+       else // 3. 聚光灯/车头灯 (Spotlight - w == 2.0)
         {
             L_dir = light.position.xyz - v2fPos;
             float dist = length(L_dir);
@@ -193,9 +193,32 @@ void main()
             float theta = dot(L, -SpotDir); 
             float epsilon = light.params.x - light.params.y; // cosInner - cosOuter
             float spotAtten = clamp((theta - light.params.y) / epsilon, 0.0, 1.0);
+
+            // ==========================================
+            // c. 【新增】车头灯阴影采样
+            float spotShadow = 1.0;
             
-            // 综合衰减 = 距离衰减 * 边缘平滑衰减
-            attenuation = distAtten * spotAtten;
+            // 将当前像素转换到车灯的投影空间 (使用第 4 个矩阵)
+            vec4 lightSpacePos = uScene.lightVP[3] * vec4(v2fPos, 1.0);
+            
+            // 透视除法
+            vec3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
+            projCoords.xy = projCoords.xy * 0.5 + 0.5; // 映射到 [0, 1] 纹理坐标
+            
+            // 确保像素在车灯的前方，并且在阴影视锥体内
+            if (lightSpacePos.w > 0.0 && 
+                projCoords.z >= 0.0 && projCoords.z <= 1.0 &&
+                projCoords.x >= 0.0 && projCoords.x <= 1.0 &&
+                projCoords.y >= 0.0 && projCoords.y <= 1.0) 
+            {
+                float bias = 0.002; // 防止阴影失真的偏移值
+                // 去第 4 层 (数组索引为 3.0) 采样深度，并与当前深度比较
+                spotShadow = texture(uShadowMap, vec4(projCoords.xy, 3.0, projCoords.z - bias));
+            }
+
+            // 综合所有衰减：距离 * 边缘平滑 * 阴影遮挡
+            attenuation = distAtten * spotAtten * spotShadow;
+            // ==========================================
         }
 
      

@@ -421,7 +421,7 @@ namespace engine {
             mShadowSampler = create_shadow_sampler(mWindow);
 
             // Create cascade views for shadow mapping
-            for (uint32_t i = 0; i < kCascadeCount; ++i) {
+            for (uint32_t i = 0; i < count; ++i) {
                 VkImageViewCreateInfo viewInfo{};
                 viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
                 viewInfo.image = mShadowMap.image;
@@ -828,6 +828,22 @@ namespace engine {
                     sceneUniforms.lights[i] = lights[i];
                 }
             }
+            // --- 【新增】：为车头灯计算独有的 Shadow 矩阵，并塞进第 4 个槽位 (索引 3) ---
+            for (size_t i = 0; i < sceneUniforms.lightCount; ++i) {
+                if (sceneUniforms.lights[i].position.w == 2.0f) { // 2.0 代表聚光灯
+                    // 我们之前把 outerCutOff 的 cos 值存在了 params.y，现在反算回角度
+                    float outerCutOff = glm::degrees(glm::acos(sceneUniforms.lights[i].params.y));
+
+                    sceneUniforms.lightVP[3] = engine::compute_spotlight_matrix(
+                        glm::vec3(sceneUniforms.lights[i].position), // 光源位置
+                        glm::vec3(sceneUniforms.lights[i].direction), // 光源朝向
+                        outerCutOff,                                 // 外锥角
+                        sceneUniforms.lights[i].direction.w          // 范围 (Range)
+                    );
+                    break; // 假设场景目前只有一个车灯投射阴影
+                }
+            }
+
 
 
             float currentBloomStrength = mState.bloomEnabled ? 0.0f : 1.2f;
