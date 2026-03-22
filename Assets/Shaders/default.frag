@@ -17,9 +17,10 @@ layout( set = 1, binding = 1 ) uniform sampler2D uTexRoughness;
 layout( set = 1, binding = 2 ) uniform sampler2D uTexMetalness;
 layout( set = 1, binding = 3 ) uniform sampler2D uTexEmissive;
 struct GpuLight {
-    vec4 position;  // xyz: position/direction, w: type (0:Dir, 1:Point)
+    vec4 position;  // xyz: position/direction, w: type (0:Dir, 1:Point, 2:Spot)
     vec4 color;     // rgb: color, a: intensity
-    vec4 params;    // x: range
+    vec4 direction; // 【新增】xyz: direction, w: range
+    vec4 params;    // 【新增】x: cosInner, y: cosOuter, z: pad, w: pad
 };
 layout( scalar, set = 0, binding = 0 ) uniform UScene
 {
@@ -160,20 +161,44 @@ void main()
     {
         GpuLight light = uScene.lights[i];
         vec3 L_dir;
+
         float attenuation = 1.0;
 
-        if (light.position.w == 0.0) // 定向光
+        if (light.position.w == 0.0) // 1. 定向光 (Directional)
         {
             L_dir = light.position.xyz; 
         }
-        else // 点光源
+        else if (light.position.w == 1.0) // 2. 点光源 (Point)
         {
             L_dir = light.position.xyz - v2fPos;
             float dist = length(L_dir);
-            attenuation = clamp(1.0 - dist / light.params.x, 0.0, 1.0);
+            // 距离衰减 (Range 存在 direction.w 里)
+            attenuation = clamp(1.0 - dist / light.direction.w, 0.0, 1.0);
             attenuation *= attenuation;
         }
+        else // 3. 聚光灯/车头灯 (Spotlight - w == 2.0)
+        {
+            L_dir = light.position.xyz - v2fPos;
+            float dist = length(L_dir);
+            
+            // a. 距离衰减
+            float distAtten = clamp(1.0 - dist / light.direction.w, 0.0, 1.0);
+            distAtten *= distAtten;
 
+            // b. 聚光灯边缘衰减 (Spotlight Cone)
+            vec3 L = normalize(L_dir); // 当前像素到光源的方向
+            vec3 SpotDir = normalize(light.direction.xyz); // 聚光灯的物理朝向
+            
+            // 计算夹角的 cos 值 (反向点乘)
+            float theta = dot(L, -SpotDir); 
+            float epsilon = light.params.x - light.params.y; // cosInner - cosOuter
+            float spotAtten = clamp((theta - light.params.y) / epsilon, 0.0, 1.0);
+            
+            // 综合衰减 = 距离衰减 * 边缘平滑衰减
+            attenuation = distAtten * spotAtten;
+        }
+
+     
         vec3 L = normalize(L_dir);
         vec3 H = normalize(L + V);
 
@@ -182,9 +207,14 @@ void main()
         float NdotH = max(dot(N, H), 0.0);
         float VdotH = max(dot(V, H), 0.0);
 
-        float currentShadow = (i == 0) ? shadow : 1.0;
+      
+        float currentShadow = 1.0;
+        // 只有当这个灯是平行光时，才给它应用级联阴影！
+        if (light.position.w == 0.0) { 
+            currentShadow = shadow; // shadow 是你在循环外用 calculate_shadow() 算好的
+        }
+        
         vec3 Li = light.color.rgb * light.color.a * attenuation * currentShadow;
-
         // BRDF 计算
         vec3 F0 = mix(vec3(0.04), baseColor, metalness);
         vec3 F = F0 + (1.0 - F0) * pow(1.0 - VdotH, 5.0);

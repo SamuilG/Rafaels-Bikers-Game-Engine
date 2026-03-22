@@ -240,24 +240,26 @@ void SceneManager::print_all_entities() {
     std::print("--------------------------------------\n\n");
 }
 
+// 在 SceneManager.cpp 中：
 flecs::entity SceneManager::create_light_entity(
     const char* name,
     LightType type,
     glm::vec3 color,
     float intensity,
     const glm::mat4& transform,
-    float range)
+    float range,
+    // --- 【新增参数】 ---
+    glm::vec3 direction,
+    float innerCutOff,
+    float outerCutOff)
 {
     return m_world->entity(name)
         .set<EntityStatus>({ true, false }) // 光源通常不需要参与物理同步
         .set<LocalTransform>({ transform })
         .set<WorldTransform>({ transform })
-        .set<LightComponent>({ color, intensity, type, range }); // 默认范围 100
- 
-
+        // --- 【关键修改】：按顺序把新参数全部塞进去 ---
+        .set<LightComponent>({ color, intensity, type, range, direction, innerCutOff, outerCutOff });
 }
-
-
 
 
 void SceneManager::get_light_data(std::vector<GpuLight>& outLights) {
@@ -272,19 +274,28 @@ void SceneManager::get_light_data(std::vector<GpuLight>& outLights) {
         GpuLight gpuLight{};
 
         // 提取世界坐标：矩阵第4列 (wt.matrix[3])
-        // 对于定向光，w 存类型(0)；对于点光源，w 存类型(1)
+        // 对于定向光，w=0；点光源，w=1；聚光灯，w=2
         gpuLight.position = glm::vec4(glm::vec3(wt.matrix[3]), static_cast<float>(lc.type));
 
         // 颜色与强度
         gpuLight.color = glm::vec4(lc.color, lc.intensity);
 
-        // 范围系数
-        gpuLight.params = glm::vec4(lc.range, 0.0f, 0.0f, 0.0f);
+        // --- 【新增计算】光照方向与范围 ---
+        // 使用矩阵将局部朝向 (lc.direction) 转换到世界空间（忽略平移，只取旋转，所以 w=0.0f）
+        glm::vec3 worldDir = glm::normalize(glm::vec3(wt.matrix * glm::vec4(lc.direction, 0.0f)));
+
+        // 把 range 移到了 direction 的 w 通道
+        gpuLight.direction = glm::vec4(worldDir, lc.range);
+
+        // --- 【新增计算】预计算光锥角度的 cos 值 ---
+        // 这样 Shader 里就不用算昂贵的三角函数了
+        float cosInner = glm::cos(glm::radians(lc.innerCutOff));
+        float cosOuter = glm::cos(glm::radians(lc.outerCutOff));
+        gpuLight.params = glm::vec4(cosInner, cosOuter, 0.0f, 0.0f);
 
         outLights.push_back(gpuLight);
             });
 }
-
 std::vector<RenderBatch> SceneManager::get_render_batches() {
     std::vector<RenderBatch> batches;
 

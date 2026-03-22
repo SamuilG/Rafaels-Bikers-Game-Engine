@@ -317,11 +317,11 @@ EngineModel load_engine_model_glb(const char* path)
     std::string filePath(path);
     bool ret = false;
 
-    // 检查后缀名是不是 .gltf
+    
     if (filePath.length() >= 5 && filePath.substr(filePath.length() - 5) == ".gltf") {
         ret = loader.LoadASCIIFromFile(&gltf, &err, &warn, path);
     }
-    // 否则默认按 .glb (二进制) 处理
+    
     else {
         ret = loader.LoadBinaryFromFile(&gltf, &err, &warn, path);
     }

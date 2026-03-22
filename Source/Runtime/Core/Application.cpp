@@ -90,6 +90,26 @@ namespace engine {
         // 在 Application.cpp 的构造函数末尾，print_all_entities 之前添加：
 
 
+
+        // --- 【修改】计算车头灯的初始位置 ---
+// 假设车头在 Y轴偏上(1.0米)，Z轴偏前(1.2米) 的位置
+        glm::vec3 headlightOffset = glm::vec3(0.0f, -5.5f, 0.0f);
+        glm::mat4 LightTransform = glm::translate(BikeSpawnPos, headlightOffset);
+
+        // --- 【修改】创建聚光灯 (车头灯) ---
+        sceneManager->create_light_entity(
+            "headlight",
+            engine::LightType::Spot,
+            glm::vec3(1.0f, 0.95f, 0.85f), // 车灯颜色：微微偏暖黄色的卤素/LED灯感觉
+            15.0f,                          // 强度 (intensity)：稍微调亮一点
+            LightTransform,                // 初始位置矩阵
+            40.0f,                         // 照射范围 (range)：车灯能照亮前方 40 米
+            glm::vec3(0.0f, -0.15f, 1.0f), // 照射方向 (direction)：正前方，微微向下倾斜 15% 照亮路面
+            15.0f,                         // 内锥角 (innerCutOff)：中心 15度 范围内是最亮的
+            25.0f                          // 外锥角 (outerCutOff)：边缘衰减到 25度 彻底变暗
+        );
+
+
         //add Lights Here
         // 定义方向：从右上方向左下方照射
         glm::vec3 sunDir = glm::normalize(glm::vec3(-0.5f, 1.0f, -0.3f));
@@ -105,6 +125,8 @@ namespace engine {
             sunTransform,
             0
         );
+
+
 
 		//// 定义点光源位置
   //      glm::mat4 light1SpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(40.0f, 18.0f, 15.0f));

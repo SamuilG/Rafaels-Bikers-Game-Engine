@@ -129,13 +129,18 @@ public:
 
 
     void print_all_entities();
+    // 在 SceneManager.hpp 中：
     flecs::entity create_light_entity(
         const char* name,
         LightType type,
         glm::vec3 color,
         float intensity,
         const glm::mat4& transform,
-		float range
+        float range = 10.0f,
+        // --- 【新增】聚光灯专属参数（带默认值，不影响以前的代码） ---
+        glm::vec3 direction = glm::vec3(0.0f, 0.0f, -1.0f),
+        float innerCutOff = 12.5f,
+        float outerCutOff = 17.5f
     );
 
     void get_light_data(std::vector<GpuLight>& outLights);
