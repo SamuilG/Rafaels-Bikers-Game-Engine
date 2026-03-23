@@ -49,6 +49,7 @@ void record_commands(
 	ImageAndView const& aBrightColor,
 	ImageAndView const& aBlurTemp,
 	ImageAndView const& aFinalBloom,
+	ImageAndView const& aFinalSceneColor,//secen view port
 	VkClearColorValue aClearColor,
 	float aBloomStrength,
 	// --- 原有后处理与阴影/粒子参数保留 ---

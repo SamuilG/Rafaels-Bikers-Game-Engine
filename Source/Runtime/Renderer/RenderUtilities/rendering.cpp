@@ -10,6 +10,8 @@
 #include <glm/gtx/transform.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "../../UI/ui.hpp"
+
 // multi-pass rendering
 // render scene to offscreen image
 // apply post processing and render to swapchain
@@ -46,6 +48,7 @@ void record_commands(
 	ImageAndView const& aBrightColor,
 	ImageAndView const& aBlurTemp,
 	ImageAndView const& aFinalBloom,
+	ImageAndView const& aFinalSceneColor,//secen view port
 	VkClearColorValue aClearColor,
 	float aBloomStrength,
 	// --- 原有后处理与阴影/粒子参数保留 ---
@@ -189,7 +192,8 @@ void record_commands(
 
 	// 显式配置附件 0
 	colorAtts[0].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-	colorAtts[0].imageView = aOffscreenColor.view;
+	//colorAtts[0].imageView = aOffscreenColor.view;
+	colorAtts[0].imageView = aFinalSceneColor.view;
 	colorAtts[0].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	colorAtts[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	colorAtts[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -394,7 +398,8 @@ void record_commands(
 
 	VkRenderingAttachmentInfo compAtt{};
 	compAtt.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-	compAtt.imageView = aSwapchainAttach.view;
+	//compAtt.imageView = aSwapchainAttach.view;
+	compAtt.imageView = aOffscreenColor.view;
 	compAtt.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	compAtt.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	compAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -420,6 +425,53 @@ void record_commands(
 	vkCmdSetViewport(aCmdBuff, 0, 1, &vp);
 	vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
 	vkCmdDraw(aCmdBuff, 3, 1, 0, 0);
+	vkCmdEndRendering(aCmdBuff);
+
+	//// Transition swapchain for present
+	//lut::image_barrier(aCmdBuff, aSwapchainAttach.image,
+	//	VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+	//	VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+	//	VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+	//	VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
+	//	VK_ACCESS_2_NONE,
+	//	VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+	//	VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1 }
+	//);
+	// ==========================================================
+	// UI Render Pass: Render everything onto the actual Swapchain
+	// ==========================================================
+	VkImageSubresourceRange range{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+
+	// 1.转换 aFinalSceneColor 的状态，因为它现在是 3D 场景的载体
+	lut::image_barrier(aCmdBuff, aFinalSceneColor.image,
+		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
+
+	// 2. 准备物理屏幕 (Swapchain) 接收 UI 渲染
+	lut::image_barrier(aCmdBuff, aSwapchainAttach.image,
+		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
+
+	VkRenderingAttachmentInfo uiColorAttach{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+	uiColorAttach.imageView = aSwapchainAttach.view; // 真正绘制到屏幕
+	uiColorAttach.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	uiColorAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	uiColorAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	uiColorAttach.clearValue.color = { 0.12f, 0.12f, 0.12f, 1.0f }; // UI 背景板的底色，可改
+
+	VkRenderingInfo uiRenderInfo{ VK_STRUCTURE_TYPE_RENDERING_INFO };
+	uiRenderInfo.renderArea.offset = { 0, 0 };
+	uiRenderInfo.renderArea.extent = aImageExtent;
+	uiRenderInfo.layerCount = 1;
+	uiRenderInfo.colorAttachmentCount = 1;
+	uiRenderInfo.pColorAttachments = &uiColorAttach;
+
+	vkCmdBeginRendering(aCmdBuff, &uiRenderInfo);
+
+	// 3. 真正触发 ImGui 的渲染！(解决断言失败的核心)
+	extern ImGuiRenderer imguiRenderer;
+	imguiRenderer.Render(aCmdBuff);
+
 	vkCmdEndRendering(aCmdBuff);
 
 	// Transition swapchain for present

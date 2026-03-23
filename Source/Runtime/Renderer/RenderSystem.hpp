@@ -60,6 +60,21 @@ namespace lut = labut2;
 #include "../Input/InputSystem.hpp"
 #include <chrono> // 确保顶部包含了这个
 
+// ================= UI System =================
+#include "../UI/ui.hpp"
+#include "../UI/EngineUi.hpp"
+#include <imgui.h>
+#include <backends/imgui_impl_vulkan.h>
+#include "../UI/MousePicker.hpp"
+#include "..\..\ThirdParty\imgui\ImGuizmo\ImGuizmo.h"
+#include "..\Physics\PhysicsSystem.hpp"
+#include <glm/gtx/matrix_decompose.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <filesystem>
+#include <algorithm>
+#include <flecs.h>
+
+
 namespace glsl {
     struct MosaicUniform {
         int   mosaicOn;
@@ -83,6 +98,117 @@ namespace engine {
             return nullptr;
         }
         
+
+        //==============UI System========= Draw the main menu UI
+        void DrawMainMenuUI() {
+            // 游戏未开始// Game not started
+            if (!mState.isGameStarted) {
+                // Draw the main menu UI主菜单
+                EngineUi::DrawMainMenu(this, mAppRunning, mState.isGameStarted);
+            }
+        }
+
+        //==========UI System（particle）======================
+        // 存储 ImGui 专用的贴图描述符// Store ImGui-specific texture descriptors
+        std::unordered_map<std::string, VkDescriptorSet> particleImGuiTextureDict;
+
+        // 获取 ImGui 专用的渲染句柄
+        // Get the rendering handle for ImGui-specific textures
+        VkDescriptorSet GetImGuiTextureDescriptor(const std::string& name) {
+            if (particleImGuiTextureDict.count(name)) {
+                return particleImGuiTextureDict[name];
+            }
+            return VK_NULL_HANDLE;
+        }
+
+        //获取所有粒子贴图的路径/名字
+        // Get the paths/names of all particle textures
+        std::vector<std::string> GetParticleTextureNames() const {
+            std::vector<std::string> names;
+            for (const auto& pair : particleTextureDict) {
+                names.push_back(pair.first);
+            }
+            return names;
+        }
+
+        //根据名字获取对应的贴图描述符
+        // Get the corresponding texture descriptor based on the name
+        VkDescriptorSet GetParticleTextureDescriptor(const std::string& name) {
+            if (particleTextureDict.count(name)) {
+                return particleTextureDict[name];
+            }
+            return VK_NULL_HANDLE;
+        }
+        //调整最大粒子数量（重建粒子系统）
+        //adjust the maximum number of particles (rebuild the particle system)
+        void ResizeParticleGroup(size_t index, uint32_t newMaxParticles) {
+            if (index < allParticles.size()) {
+                vkDeviceWaitIdle(mWindow.device);
+
+                auto& ps = allParticles[index];
+
+                //备份参数
+                //backup parameters
+                ParticleConfig savedConfig = ps->config;
+                EmitterShape savedShape = ps->getEmitterShape();
+                glm::vec3 savedPos = savedConfig.emitterPos;
+
+                ps->shutdown(mAllocator);
+
+                //重新分配显存并初始化
+                //reallocate GPU memory and initialize
+                ps->init(mAllocator, newMaxParticles, savedPos);
+
+                //还原参数
+                //restore parameters
+                ps->config = savedConfig;
+                ps->setEmitterShape(savedShape);
+            }
+        }
+
+        //UI System get particle system reference
+        std::vector<std::unique_ptr<ParticleSystem>>& GetParticles() { return allParticles; }
+        //动态安全创建粒子组
+        //create particle group
+        void AddParticleGroup() {
+            vkDeviceWaitIdle(mWindow.device);
+
+            auto ps = std::make_unique<ParticleSystem>();
+            ps->setEmitterShape(EmitterShape::Sphere); // default to sphere emitter
+
+            // 绑定默认贴图
+            //blind default texture
+            if (particleTextureDict.count(cfg::ParticleTextures[0])) {
+                ps->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]];
+                // 新增：同时绑定 UI 专用的贴图！
+                ps->config.uiIconDescriptor = particleImGuiTextureDict[cfg::ParticleTextures[5]];
+                ps->config.useTexture = 1;
+                ps->config.atlasCols = 4;
+                ps->config.atlasRows = 4;
+                ps->config.animateAtlas = true;
+            }
+
+            ps->config.emitterPos = glm::vec3(0.0f, 5.0f, 0.0f);
+
+            //generate a default name based on the current number of particle groups
+            std::string defaultName = "Group " + std::to_string(allParticles.size() + 1);
+            strcpy_s(ps->config.name, sizeof(ps->config.name), defaultName.c_str());
+
+            ps->init(mAllocator, 500, ps->config.emitterPos);
+            allParticles.push_back(std::move(ps));
+        }
+
+        //删除粒子组
+        //delete particle group
+        void RemoveParticleGroup(size_t index) {
+            if (index < allParticles.size()) {
+                vkDeviceWaitIdle(mWindow.device);
+                allParticles.erase(allParticles.begin() + index);
+            }
+        }
+        //==========UI System（particle）======================
+
+
         void Init() override
         {
 
@@ -536,7 +662,103 @@ namespace engine {
             mCompositePipe = create_composite_pipeline(mWindow, mCompPipeLayout.handle);
             print_time("Composite Pipe");
 
-       
+            //===========================UI System================================
+            ImGuiRenderer::InitInfo uiInfo{};
+            uiInfo.window = mWindow.window;
+            uiInfo.instance = mWindow.instance;
+            uiInfo.physicalDevice = mWindow.physicalDevice;
+            uiInfo.device = mWindow.device;
+            uiInfo.queue = mWindow.graphicsQueue;
+            uiInfo.queueFamily = mWindow.graphicsFamilyIndex;
+            uiInfo.colorFormat = mWindow.swapchainFormat;
+            uiInfo.depthFormat = cfg::kDepthFormat;
+            uiInfo.imageCount = (uint32_t)mWindow.swapImages.size();
+
+            imguiRenderer.Init(uiInfo);
+
+
+            //1.为最终view scene port创建一个专用的单层 Image// Create a dedicated single-layer image for the final view scene port
+            VkImageCreateInfo imageInfo{};
+            imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+            imageInfo.imageType = VK_IMAGE_TYPE_2D;
+            imageInfo.format = mWindow.swapchainFormat;
+            imageInfo.extent = { mWindow.swapchainExtent.width, mWindow.swapchainExtent.height, 1 };
+            imageInfo.mipLevels = 1; //强制只有 1 层
+            imageInfo.arrayLayers = 1;
+            imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+            imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+            imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+            imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+            VmaAllocationCreateInfo allocInfo{};
+            allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+            VkImage rawImage = VK_NULL_HANDLE;
+            VmaAllocation rawAlloc = VK_NULL_HANDLE;
+            vmaCreateImage(mAllocator.allocator, &imageInfo, &allocInfo, &rawImage, &rawAlloc, nullptr);
+            mFinalSceneImg = lut::Image(mAllocator.allocator, rawImage, rawAlloc);
+
+            // 2. 创建配套的单层 ImageView
+            VkImageViewCreateInfo viewInfo{};
+            viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            viewInfo.image = mFinalSceneImg.image;
+            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            viewInfo.format = mWindow.swapchainFormat;
+            viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            viewInfo.subresourceRange.baseMipLevel = 0;
+            viewInfo.subresourceRange.levelCount = 1; //强制 1 层
+            viewInfo.subresourceRange.baseArrayLayer = 0;
+            viewInfo.subresourceRange.layerCount = 1;
+
+            VkImageView rawView = VK_NULL_HANDLE;
+            vkCreateImageView(mWindow.device, &viewInfo, nullptr, &rawView);
+            mFinalSceneView = lut::ImageView(mWindow.device, rawView);
+
+            // 3.注册给 ImGui，拿到 ID
+            m_sceneViewportTexId = ImGui_ImplVulkan_AddTexture(mDefaultSampler.handle, mFinalSceneView.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            
+//为粒子系统的贴图创建 ImGui 专用的描述符// Create ImGui-specific descriptors for particle system textures
+            for (size_t i = 0; i < particleImageViews.size(); ++i) {
+                std::string path = cfg::ParticleTextures[i];
+                VkImageView view = particleImageViews[i].handle;
+                VkDescriptorSet imguiTexId = ImGui_ImplVulkan_AddTexture(
+                    mDefaultSampler.handle,
+                    view,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                );
+                particleImGuiTextureDict[path] = imguiTexId;
+            }
+
+            // ImGui 贴图 ID 补发给已经建好的粒子！
+            for (auto& ps : allParticles) {
+                // 通过粒子系统当前绑定的 3D 贴图描述符找到对应的 ImGui 贴图描述符
+                for (const auto& pair : particleTextureDict) {
+                    if (ps->config.textureDescriptor == pair.second) {
+                        ps->config.uiIconDescriptor = particleImGuiTextureDict[pair.first];
+                        break;
+                    }
+                }
+            }
+
+            ImGuiIO& io = ImGui::GetIO();
+            io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; //开启停靠功能核心开关
+
+            //初始化缩略图管线
+            InitThumbnailPipeline();
+
+            //扫描 Assets/Models 生成缩略图
+            namespace fs = std::filesystem;
+            std::string modelFolder = "Assets/Models";
+            if (fs::exists(modelFolder)) {
+                for (const auto& entry : fs::directory_iterator(modelFolder)) {
+                    if (entry.path().extension() == ".glb") {
+                        std::string p = entry.path().string();
+                        std::replace(p.begin(), p.end(), '\\', '/');
+                        PreloadModelForPreview(p);
+                    }
+                }
+            }
         }
         // 辅助函数：构建模糊阶段的描述符集
         VkDescriptorSet BuildBlurDesc(VkDescriptorSetLayout layout, VkImageView inputView) {
@@ -574,6 +796,7 @@ namespace engine {
             vkUpdateDescriptorSets(mWindow.device, 2, w, 0, nullptr);
             return ds;
         }
+
         void Update(float dt) override
         {
             // Let GLFW process events.
@@ -586,6 +809,265 @@ namespace engine {
             // reaction to user input (or similar).
             glfwPollEvents(); // or: glfwWaitEvents()
 
+            //===========================UI System================================
+            // game over debug
+            if (ImGui::IsKeyPressed(ImGuiKey_G))
+            {
+                mState.isGameOver = !mState.isGameOver; // 切换死亡状态进行测试// Toggle game over state for testing
+
+                if (mState.isGameOver)
+                {
+                    engine::EngineUi::LogPrintf("Test: Game Over triggered via 'G' key.\n");
+
+                }
+                else
+                {
+                    engine::EngineUi::LogPrintf("Test: Back to Game/Menu.\n");
+                }
+            }// game over debug
+            // game pause debug
+            if (ImGui::IsKeyPressed(ImGuiKey_H))
+            {
+                mState.isGamePause = !mState.isGamePause; // 切换死亡状态进行测试// Toggle game pause state for testing
+
+                if (mState.isGamePause)
+                {
+                    engine::EngineUi::LogPrintf("Test: Game pause triggered via 'H' key.\n");
+                }
+                else
+                {
+                    engine::EngineUi::LogPrintf("Test: Back to Game/Menu.\n");
+                }
+            }
+
+
+            // 1. Ctrl + S 保存项目
+            // io.KeyCtrl 会在左 Ctrl 或右 Ctrl 按下时为 true
+            if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S)) {
+                // 调用我们刚刚写好的高精度 JSON 保存函数
+                EngineUi::SaveProject(mSceneManager, this, "Assets/MySceneSave.json");
+                EngineUi::ShowToast("[ Project Saved Successfully ]");
+                engine::EngineUi::LogPrintf("Project Saved \n");
+            }
+
+
+
+            // 
+
+            //启动 ImGui 帧// Start ImGui frame
+            imguiRenderer.BeginFrame();
+
+            //铺设全屏底层 DockSpace
+            // 必须在绘制任何其他 ImGui 窗口（如 MainMenu, ContentBrowser）之前调用！传 0 表示让 ImGui 自动为我们生成主窗口的 ID
+            ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
+
+            //ImGui::DockSpace(ImGui::GetID("MyDockSpace"), ImVec2(0, 0), ImGuiDockNodeFlags_PassthruCentralNode);
+            //调用顶部菜单栏！
+            EngineUi::DrawMainMenuBar(this, mSceneManager, mState, mAppRunning);
+            //start gmae menu
+           // 如果游戏还没开始，只画主菜单
+            if (!mState.isGameStarted) {
+                EngineUi::DrawMainMenu(this, mAppRunning, mState.isGameStarted);
+            }
+            else if (mState.isGameOver) {
+                // gameover UI
+                EngineUi::DrawGameOver(this, mState, mAppRunning);
+            }
+            else if (mState.isGamePause) {
+                // gameover UI
+                EngineUi::DrawGamePause(this, mState, mAppRunning);
+            }
+            else
+            {
+                // Prepare data for this frame
+                glsl::SceneUniform sceneUniforms{};
+                // 1. 获取真实的 UI 视口大小
+                ImVec2 vpSize = EngineUi::GetSceneViewportSize();
+                float width = std::abs(vpSize.x);
+                float height = std::abs(vpSize.y);
+
+                // 确保高度不为 0
+                if (height < 0.1f) height = 0.1f;
+                // 2. 替换掉原来的 mWindow.swapchainExtent
+                update_scene_uniforms(sceneUniforms,
+                    (uint32_t)vpSize.x,  // 使用 UI 宽度
+                    (uint32_t)vpSize.y,  // 使用 UI 高度
+                    mState);
+
+                //View 矩阵
+                glm::mat4 view = glm::inverse(mState.camera2world);
+                //Aspect Ratio
+                //float aspect = (float)mWindow.swapchainExtent.width / (float)mWindow.swapchainExtent.height;
+                float aspect = width / height;
+                //FOV
+                float fovRadians = lut::Radians(cfg::kCameraFov).value();
+                glm::mat4 gizmoProj = glm::perspective(
+                    fovRadians,
+                    aspect, // 用算好的 aspect 替换原来的计算
+                    cfg::kCameraNear,
+                    cfg::kCameraFar
+                );
+                //3D 场景拖放接收器绘制视口上的拖放目标
+                //EngineUi::DrawViewportDropTarget(this, mSceneManager, view, gizmoProj);
+
+                static flecs::entity_t lastSelectedId = 0;
+                static uint32_t originalMaterialIdx = 0;
+
+                // debug: 选中更换材质方便观察==============
+                //if (mSelectedEntityId != lastSelectedId) {
+                //    auto& world = mSceneManager->get_world();
+
+                //    // 1. 恢复材质
+                //    if (lastSelectedId != 0) {
+                //        flecs::entity lastEntity = world.entity(lastSelectedId);
+                //        if (lastEntity.is_alive() && lastEntity.has<MaterialComponent>()) {
+                //            lastEntity.set<MaterialComponent>({ originalMaterialIdx });
+                //        }
+                //    }
+
+                //    // 2. 选中高亮
+                //    if (mSelectedEntityId != 0) {
+                //        flecs::entity currentEntity = world.entity(mSelectedEntityId);
+                //        if (currentEntity.is_alive() && currentEntity.has<MaterialComponent>()) {
+                //            const MaterialComponent& matComp = currentEntity.get<MaterialComponent>();
+
+                //            
+                //            originalMaterialIdx = matComp.materialIndex;
+
+                //            uint32_t highlightIdx = static_cast<uint32_t>(mMaterialDescriptors.size() - 1);
+                //            currentEntity.set<MaterialComponent>({ highlightIdx });
+                //        }
+                //    }
+                //    lastSelectedId = mSelectedEntityId;
+                //}
+            // debug: 选中更换材质（方便观察==============
+
+                // 获取全局鼠标位置和 Viewport 数据
+                ImVec2 mousePosAbs = ImGui::GetMousePos();
+                ImVec2 vpPos = EngineUi::GetSceneViewportPos();
+                //ImVec2 vpSize = EngineUi::GetSceneViewportSize();
+
+                // 计算出鼠标在 3D 画面内部的“局部坐标”
+                float localMouseX = mousePosAbs.x - vpPos.x;
+                float localMouseY = mousePosAbs.y - vpPos.y;
+
+                //判断鼠标是不是真的悬停在 3D 画面内部
+                bool isMouseInViewport = (localMouseX >= 0.0f && localMouseX <= vpSize.x &&
+                    localMouseY >= 0.0f && localMouseY <= vpSize.y);
+
+                //EngineUi::DrawSceneViewport(m_sceneViewportTexId, this, mSceneManager, view, gizmoProj, mSelectedEntityId);
+                EngineUi::DrawSceneViewport(m_sceneViewportTexId, this, mSceneManager, view, gizmoProj, mSelectedEntityId, mState);
+
+                glm::mat4 viewProj = gizmoProj * view;
+                glm::vec3 cameraPos = glm::vec3(glm::inverse(view)[3]); // 提取逆 view 矩阵第 4 列作为位置
+
+                // 给面板加上开关判断：
+                if (mState.showControlPanel) {
+                    EngineUi::DrawControlPanel(mState, this, mSceneManager);
+                }
+
+                if (mState.showContentBrowser) {
+                    EngineUi::DrawContentBrowser(this, mSceneManager);
+                }
+
+                if (mState.showSceneHierarchy || mState.showEntityInspector) {
+                    EngineUi::DrawSceneHierarchy(this, mSceneManager, view, gizmoProj, mSelectedEntityId, mState);
+                }
+
+                if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && isMouseInViewport && !ImGuizmo::IsOver())
+                {
+                    flecs::entity hitEntity = MousePicker::PickEntity(
+                        localMouseX, localMouseY,  // 传局部鼠标坐标
+                        vpSize.x, vpSize.y,        // 传真实的视口大小
+                        mState.camera2world, gizmoProj, mSceneManager
+                    );
+
+                    if (hitEntity.is_alive()) {
+                        mSelectedEntityId = hitEntity.id();
+                        mState.activeParticleIndex = -1;
+                        engine::EngineUi::LogPrint("[Raycast] Hit Object ID: {}\n", hitEntity.id());
+                    }
+                    else {
+                        engine::EngineUi::LogPrint("[Raycast] Hit Nothing\n");
+                        mState.activeParticleIndex = -1;
+                        mSelectedEntityId = 0;
+                    }
+                }
+
+
+                // EngineUi::DrawSceneHierarchy(mSceneManager);
+                if (mSelectedEntityId != 0 && mSceneManager) {
+                    auto& world = mSceneManager->get_world();
+                    flecs::entity selectedEntity = world.entity(mSelectedEntityId);
+
+                    if (selectedEntity.is_alive() && ImGuizmo::IsUsing()) {
+                        const auto& lt = selectedEntity.get<LocalTransform>();
+                        auto pb = selectedEntity.get<PhysicsBody>();
+                        auto* physics = mSceneManager->get_physics_system();
+
+                        JPH::BodyInterface& bodyInterface = physics->get_body_interface();
+                        JPH::BodyID joltBodyID(pb.bodyID);
+
+                        //获取包围盒
+                        //get AABB from Jolt
+                        JPH::TransformedShape ts = bodyInterface.GetTransformedShape(joltBodyID);
+                        JPH::AABox aabb = ts.GetWorldSpaceBounds();
+                        JPH::Vec3 size = aabb.GetExtent() * 2.0f;
+
+                        //debug
+                        engine::EngineUi::LogPrint("[Physics Debug] Entity: {} | Size: ({:.2f}, {:.2f}, {:.2f})\n",
+                            selectedEntity.name() ? selectedEntity.name() : "Unknown",
+                            size.GetX(), size.GetY(), size.GetZ());
+
+                        if (physics) {
+                            physics->set_body_transform(pb.bodyID, lt.matrix);//transform同步synchronous
+
+                            // SCALE缩放同步
+                            glm::vec3 currentScale, translation, skew;
+                            glm::quat rotation;
+                            glm::vec4 perspective;
+
+                            if (glm::decompose(lt.matrix, currentScale, rotation, translation, skew, perspective)) {
+
+                                static std::unordered_map<flecs::entity_t, glm::vec3> scaleCache;
+                                if (scaleCache.find(mSelectedEntityId) == scaleCache.end()) {
+                                    scaleCache[mSelectedEntityId] = currentScale;
+                                }
+
+                                glm::vec3& lastSyncedScale = scaleCache[mSelectedEntityId];
+                                float delta = glm::distance(currentScale, lastSyncedScale);
+                                if (delta > 0.001f) {
+                                    glm::vec3 safeScale = currentScale;
+                                    //negative or zero scale can cause Jolt to break, so clamp it to a small positive value
+                                    for (int i = 0; i < 3; ++i) {
+                                        if (std::abs(safeScale[i]) < 0.001f) {
+                                            safeScale[i] = (safeScale[i] >= 0.0f) ? 0.001f : -0.001f;
+                                        }
+                                    }
+
+                                    physics->set_body_scale(pb.bodyID, safeScale, translation, rotation);
+                                    lastSyncedScale = safeScale;
+                                }
+                            }
+
+                            if (bodyInterface.GetMotionType(joltBodyID) != JPH::EMotionType::Static) {
+                                bodyInterface.SetLinearAndAngularVelocity(
+                                    joltBodyID, JPH::Vec3::sZero(), JPH::Vec3::sZero()
+                                );
+                            }
+
+                            selectedEntity.modified<LocalTransform>();
+                        }
+                    }
+                }
+
+                // //官方 Demo
+                // //imguiRenderer.BuildDemoUI();
+                // //===========================UI System================================
+            }
+            //保存成功提示
+            EngineUi::DrawToast(dt);
+
             if (mInputSystem && mInputSystem->IsActionPressed("Quit")) {
                 glfwSetWindowShouldClose(mWindow.window, GLFW_TRUE);
             }
@@ -597,6 +1079,9 @@ namespace engine {
 
             if (glfwWindowShouldClose(mWindow.window)) {
                 mAppRunning = false;
+                //===========================UI System================================
+                ImGui::EndFrame(); // 结束 ImGui 帧
+                //===========================UI System================================
                 return;
             }
 
@@ -626,6 +1111,87 @@ namespace engine {
                     mOffscreenImage = create_offscreen_buffer(mWindow, mAllocator);
                     mVisImage = create_vis_image(mWindow, mAllocator);
 
+                    // 1。创建严格 1 层 Mipmap 的图像，
+                    VkImageCreateInfo imageInfo{};
+                    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+                    imageInfo.imageType = VK_IMAGE_TYPE_2D;
+                    imageInfo.format = mWindow.swapchainFormat;
+                    imageInfo.extent = { mWindow.swapchainExtent.width, mWindow.swapchainExtent.height, 1 };
+                    imageInfo.mipLevels = 1; // 强制只有 1 层！
+                    imageInfo.arrayLayers = 1;
+                    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+                    imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+                    imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+                    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+                    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+                    VmaAllocationCreateInfo allocInfo{};
+                    allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+                    VkImage rawImage = VK_NULL_HANDLE;
+                    VmaAllocation rawAlloc = VK_NULL_HANDLE;
+                    vmaCreateImage(mAllocator.allocator, &imageInfo, &allocInfo, &rawImage, &rawAlloc, nullptr);
+                    mFinalSceneImg = lut::Image(mAllocator.allocator, rawImage, rawAlloc);
+
+                    // 2. 创建配套的单层 ImageView
+                    VkImageViewCreateInfo viewInfo{};
+                    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+                    viewInfo.image = mFinalSceneImg.image;
+                    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+                    viewInfo.format = mWindow.swapchainFormat;
+                    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                    viewInfo.subresourceRange.baseMipLevel = 0;
+                    viewInfo.subresourceRange.levelCount = 1; //强制 1 层
+                    viewInfo.subresourceRange.baseArrayLayer = 0;
+                    viewInfo.subresourceRange.layerCount = 1;
+
+                    VkImageView rawView = VK_NULL_HANDLE;
+                    vkCreateImageView(mWindow.device, &viewInfo, nullptr, &rawView);
+                    mFinalSceneView = lut::ImageView(mWindow.device, rawView);
+
+                    // 更新 ImGui 的图片绑定
+                   /* if (m_sceneViewportTexId) ImGui_ImplVulkan_RemoveTexture(m_sceneViewportTexId);
+                    m_sceneViewportTexId = ImGui_ImplVulkan_AddTexture(mDefaultSampler.handle, mFinalSceneView.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);*/
+                    if (m_sceneViewportTexId) ImGui_ImplVulkan_RemoveTexture(m_sceneViewportTexId);
+                    m_sceneViewportTexId = ImGui_ImplVulkan_AddTexture(mDefaultSampler.handle, mFinalSceneView.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                    // ----------------------------------------
+
+                    // =====================================================================
+                    // 【新增核心修复】：必须重新创建 Bloom 相关的离屏缓冲 
+                    // =====================================================================
+                    mBrightImage = create_offscreen_buffer(mWindow, mAllocator);
+                    mBlurTempImage = create_offscreen_buffer(mWindow, mAllocator);
+                    mFinalBloomImage = create_offscreen_buffer(mWindow, mAllocator);
+
+                    // 更新 Blur 水平和垂直阶段的描述符 (绑定 0 为 inputView)
+                    UpdatePostDescImage(mBlurHorizDescriptors, mBrightImage.view);
+                    UpdatePostDescImage(mBlurVertDescriptors, mBlurTempImage.view);
+
+                    // 更新 Composite (合成) 阶段的描述符，它需要绑定两张图 (0: 场景图, 1: Bloom图)
+                    for (size_t i = 0; i < mCmdBuffers.size(); ++i) {
+                        VkDescriptorImageInfo imgs[2]{};
+                        imgs[0] = { mPostSampler.handle, mOffscreenImage.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+                        imgs[1] = { mPostSampler.handle, mFinalBloomImage.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+
+                        VkWriteDescriptorSet w[2]{};
+                        w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                        w[0].dstSet = mCompositeDescriptors[i];
+                        w[0].dstBinding = 0;
+                        w[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                        w[0].descriptorCount = 1;
+                        w[0].pImageInfo = &imgs[0];
+
+                        w[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                        w[1].dstSet = mCompositeDescriptors[i];
+                        w[1].dstBinding = 1;
+                        w[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                        w[1].descriptorCount = 1;
+                        w[1].pImageInfo = &imgs[1];
+
+                        vkUpdateDescriptorSets(mWindow.device, 2, w, 0, nullptr);
+                    }
+                    
+
                     // Update descriptor set
                     UpdatePostDescImage(mPostDescriptors, mOffscreenImage.view);
 
@@ -634,6 +1200,9 @@ namespace engine {
                 }
 
                 mRecreateSwapchain = false;
+                //===========================UI System================================
+                ImGui::EndFrame(); // 结束 ImGui 帧
+                //===========================UI System================================
                 return;
             }
 
@@ -657,6 +1226,9 @@ namespace engine {
             if (acquireRes == VK_SUBOPTIMAL_KHR || acquireRes == VK_ERROR_OUT_OF_DATE_KHR) {
                 mRecreateSwapchain = true;
                 mFrameIndex = (mFrameIndex + mCmdBuffers.size() - 1) % mCmdBuffers.size();
+                //===========================UI System================================
+                ImGui::EndFrame(); // 结束 ImGui 帧
+                //===========================UI System================================
                 return;
             }
             if (acquireRes != VK_SUCCESS)
@@ -820,6 +1392,24 @@ namespace engine {
             ImageAndView colorTarget = { mWindow.swapImages[imageIndex], mWindow.swapViews[imageIndex] };
             ImageAndView depthTarget = { mDepthBuffer.image, mDepthBuffer.view };
             ImageAndView shadowTarget = { mShadowMap.image,   mShadowMap.view };
+
+            ImageAndView finalSceneTarget = { mFinalSceneImg.image, mFinalSceneView.handle };
+            // =========================================================
+            //UI system 拖拽
+            // =========================================================
+            // 1. 获取正常场景里的所有实体渲染批次
+            std::vector<RenderBatch> finalBatches = mSceneManager ? mSceneManager->get_render_batches() : std::vector<RenderBatch>{};
+
+            // 2. 如果正在拖拽预览，把预览的 Batch 强行加进列表最后面！
+            if (!m_previewModelPath.empty() && m_previewPrefabCache.count(m_previewModelPath)) {
+                for (const auto& originalBatch : m_previewPrefabCache[m_previewModelPath]) {
+                    RenderBatch previewBatch = originalBatch;
+                    // 用鼠标的矩阵 * 模型部件自身的原始偏移矩阵
+                    previewBatch.transform = m_previewTransform * originalBatch.transform;
+                    finalBatches.push_back(previewBatch);
+                }
+            }
+            // =========================================================
             std::vector<engine::GpuLight> lights;
             if (mSceneManager) {
                 mSceneManager->get_light_data(lights);
@@ -867,7 +1457,8 @@ namespace engine {
                 mModel.meshes,
                 mModel.materials,
                 *currentDescs,
-                mSceneManager ? mSceneManager->get_render_batches() : std::vector<RenderBatch>{},
+                finalBatches,
+                //mSceneManager ? mSceneManager->get_render_batches() : std::vector<RenderBatch>{},
                 // --- 新增 Bloom 参数 (必须与 rendering.cpp 顺序一致) ---
                 mBlurPipe.handle,              // VkPipeline aBlurPipe
                 mBlurPipeLayout.handle,        // VkPipelineLayout aBlurLayout
@@ -880,6 +1471,7 @@ namespace engine {
                 ImageAndView{ mBrightImage.image, mBrightImage.view },
                 ImageAndView{ mBlurTempImage.image, mBlurTempImage.view },
                 ImageAndView{ mFinalBloomImage.image, mFinalBloomImage.view },
+                finalSceneTarget,
                 clearColor,                    // VkClearColorValue aClearColor
                 currentBloomStrength,
                 // --- 剩下的原有参数 ---
@@ -1355,6 +1947,24 @@ namespace engine {
         std::vector<lut::ImageView> particleImageViews;
         std::unordered_map<std::string, VkDescriptorSet> particleTextureDict;
 
+        //===========================UI System================================
+        // UI System 保存当前选中的实体 ID saved selected entity ID for UI system
+        flecs::entity_t mSelectedEntityId = 0;
+        //===========================UI System================================
+
+        // 最终 3D 画面相纸
+        lut::Image mFinalSceneImg;
+        lut::ImageView mFinalSceneView;
+        // 给 ImGui 用的 UI 贴纸 ID
+        VkDescriptorSet m_sceneViewportTexId = VK_NULL_HANDLE;
+
+        // UI System 预览专用的照片和描述符集
+        struct ThumbnailAsset {
+            lut::Image image;
+            lut::ImageView view;
+            VkDescriptorSet guiSet;
+        };
+
         // Index of most recently added runtime mesh's material descriptor
         uint32_t mRuntimeMatIndex = 0;
 
@@ -1377,6 +1987,34 @@ namespace engine {
         std::vector<VkDescriptorSet> mBlurHorizDescriptors;
         std::vector<VkDescriptorSet> mBlurVertDescriptors;
         std::vector<VkDescriptorSet> mCompositeDescriptors;
+        private:
+            // 存储每个模型专属的照片
+            std::unordered_map<std::string, ThumbnailAsset> mThumbnailAssets;
+
+            // 共用的深度缓冲
+            lut::Image mThumbnailDepthImg;
+            lut::ImageView mThumbnailDepthView;
+
+            // 缓存渲染批次
+            std::unordered_map<std::string, std::vector<RenderBatch>> m_previewPrefabCache;
+
+            // 预览状态
+            std::string m_previewModelPath = "";
+            glm::mat4   m_previewTransform = glm::mat4(1.0f);
+
+
+            void InitThumbnailPipeline();
+            void GenerateModelThumbnail(const std::string& modelPath);
+            void PreloadModelForPreview(const std::string& path);
+
+
+    public:
+
+        VkDescriptorSet GetModelThumbnail(const std::string& modelPath);
+        void SetModelPreview(const std::string& path, const glm::mat4& transform);
+        void ClearModelPreview();
+    
     };
+
 
 } // namespace engine

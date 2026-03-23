@@ -11,7 +11,10 @@
 #include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include "../Event/EventSystem.hpp"
 #include "../Event/Event.hpp"
-
+//UI System 射线检测相关
+#include <Jolt/Physics/Collision/RayCast.h>
+#include <Jolt/Physics/Collision/CastResult.h>
+#include <Jolt/Physics/Collision/Shape/ScaledShape.h>
 #include <glm/gtx/matrix_decompose.hpp>
 
 #include <iostream>
@@ -307,14 +310,10 @@ JPH::BodyID PhysicsSystem::create_static_mesh_body(const EngineMesh& mesh, const
 	glm::decompose(transform, scale, rotation, translation, skew, perspective);
 	rotation = glm::normalize(rotation);
 
+	//fix
 	if (scale != glm::vec3(1.0f)) {
-		JPH::VertexList scaledVertices;
-		scaledVertices.reserve(mesh.positions.size());
-		for (const auto& pos : mesh.positions) {
-			scaledVertices.push_back(JPH::Float3(pos.x * scale.x, pos.y * scale.y, pos.z * scale.z));
-		}
-		JPH::MeshShapeSettings scaledShapeSettings(scaledVertices, triangles);
-		shape = scaledShapeSettings.Create().Get();
+		JPH::ScaledShapeSettings scaledSettings(shape, JPH::Vec3(scale.x, scale.y, scale.z));
+		shape = scaledSettings.Create().Get();
 	}
 
 
@@ -495,6 +494,109 @@ JPH::BodyID PhysicsSystem::create_dynamic_compound_body(
 
 	return body->GetID();
 }
+//=============================UI System Interactions=============================
+uint32_t PhysicsSystem::cast_ray(const glm::vec3& origin, const glm::vec3& direction, float max_distance)
+{
+	if (!m_physicsSystem) return JPH::BodyID::cInvalidBodyID;
 
+	//Jolt射线 (起点 和 方向向量)
+	//jolt statrt point and direction vector
+	JPH::RVec3 joltOrigin(origin.x, origin.y, origin.z);
+	//射线长度
+	//ray length
+	JPH::Vec3 joltDir(direction.x * max_distance, direction.y * max_distance, direction.z * max_distance);
+	JPH::RRayCast ray(joltOrigin, joltDir);
+
+	JPH::RayCastResult hitResult;//for storing the result of the raycast
+
+	// 执行射线检测
+	// starts the raycast and stores the result in hitResult
+	// GetNarrowPhaseQuery() 会进行精确的物理形状检测
+	bool isHit = m_physicsSystem->GetNarrowPhaseQuery().CastRay(
+		ray,
+		hitResult,
+		JPH::BroadPhaseLayerFilter(),
+		JPH::ObjectLayerFilter(),
+		JPH::BodyFilter()
+	);
+
+	if (isHit) {
+		// 返回击中的 BodyID 的原始数值
+		//return the raw value of the hit BodyID
+		return hitResult.mBodyID.GetIndexAndSequenceNumber();
+	}
+
+	// 没击中则返回 Jolt 定义的无效 ID
+	//return Jolt's defined invalid ID if no hit
+	return JPH::BodyID::cInvalidBodyID;
+}
+void PhysicsSystem::set_body_transform(uint32_t bodyID, const glm::mat4& transform)
+{
+	if (!m_physicsSystem || bodyID == JPH::BodyID::cInvalidBodyID) return;
+
+	JPH::BodyInterface& bodyInterface = m_physicsSystem->GetBodyInterface();
+	JPH::BodyID joltBodyID(bodyID);
+
+	glm::vec3 scale, translation, skew;
+	glm::quat rotation;
+	glm::vec4 perspective;
+	glm::decompose(transform, scale, rotation, translation, skew, perspective);
+	rotation = glm::normalize(rotation);
+
+	// 判断物体状态
+	//Determine object state. Static objects must use DontActivate
+	JPH::EActivation activation = (bodyInterface.GetMotionType(joltBodyID) == JPH::EMotionType::Static)
+		? JPH::EActivation::DontActivate
+		: JPH::EActivation::Activate;
+
+	// 将最新的渲染位置同步给刚体
+	//Sync the latest render position to the Jolt body
+	bodyInterface.SetPositionAndRotation(
+		joltBodyID,
+		JPH::RVec3(translation.x, translation.y, translation.z),
+		toJolt(rotation),
+		activation
+	);
+}
+void PhysicsSystem::set_body_scale(uint32_t bodyID, const glm::vec3& newScale, const glm::vec3& pos, const glm::quat& rot) {
+	if (!m_physicsSystem || bodyID == JPH::BodyID::cInvalidBodyID) return;
+
+	JPH::BodyInterface& bodyInterface = m_physicsSystem->GetBodyInterface();
+	JPH::BodyID joltBodyID(bodyID);
+
+	// 获取当前形状
+	// Get the current shape
+	JPH::ShapeRefC currentShape = bodyInterface.GetShape(joltBodyID);
+	JPH::ShapeRefC baseShape = currentShape;
+
+	if (currentShape->GetSubType() == JPH::EShapeSubType::Scaled) {
+		const JPH::ScaledShape* scaledShape = static_cast<const JPH::ScaledShape*>(currentShape.GetPtr());
+		baseShape = scaledShape->GetInnerShape();
+	}
+
+	// 基于原始 baseShape 创建新的缩放
+	// Create a new scaled shape based on the original baseShape
+	JPH::ScaledShapeSettings settings(baseShape, JPH::Vec3(newScale.x, newScale.y, newScale.z));
+	auto result = settings.Create();
+
+	if (result.IsValid()) {
+		JPH::EActivation activation = (bodyInterface.GetMotionType(joltBodyID) == JPH::EMotionType::Static)
+			? JPH::EActivation::DontActivate
+			: JPH::EActivation::Activate;
+
+		bodyInterface.RemoveBody(joltBodyID);
+		bodyInterface.SetShape(joltBodyID, result.Get(), true, JPH::EActivation::DontActivate);
+
+		// 重新加入物理世界时，使用正确的激活状态
+		// Re-add to the physics world with the correct activation state
+		bodyInterface.AddBody(joltBodyID, activation);
+
+		bodyInterface.SetPositionAndRotation(joltBodyID,
+			JPH::RVec3(pos.x, pos.y, pos.z), toJolt(rot), activation);
+
+		m_physicsSystem->OptimizeBroadPhase();
+	}
+}
+//=============================UI System Interactions=============================
 
 } // namespace engine

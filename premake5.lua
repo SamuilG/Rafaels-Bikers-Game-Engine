@@ -108,9 +108,60 @@ workspace "EngineWorkspace"
             "ThirdParty/JoltPhysics/Jolt/**.inl",
             "ThirdParty/JoltPhysics/Jolt/**.natvis"
         }
-
+  -- ==========================================
+    -- Project 3: Dear ImGui Static Library
     -- ==========================================
-    -- Project 3: Core Engine Application
+    project "ImGui"
+    location "Intermediate/Projects"
+    kind "StaticLib"
+    language "C++"
+    cppdialect "C++23"
+
+    targetdir "Intermediate/Bin/%{cfg.buildcfg}-%{cfg.platform}/%{prj.name}"
+
+    defines {
+        "IMGUI_IMPL_VULKAN_USE_VOLK"
+    }
+
+    includedirs {
+        "ThirdParty/imgui",
+        "ThirdParty/imgui/backends",
+        "ThirdParty/glfw/include",
+        "ThirdParty/volk/include",
+        "ThirdParty/vulkan/include"
+    }
+
+    files {
+        "ThirdParty/imgui/imgui.cpp",
+        "ThirdParty/imgui/imgui_draw.cpp",
+        "ThirdParty/imgui/imgui_tables.cpp",
+        "ThirdParty/imgui/imgui_widgets.cpp",
+		"ThirdParty/imgui/imgui_demo.cpp",
+        "ThirdParty/imgui/imgui.h",
+        "ThirdParty/imgui/imconfig.h",
+        "ThirdParty/imgui/imgui_internal.h",
+        "ThirdParty/imgui/imstb_rectpack.h",
+        "ThirdParty/imgui/imstb_textedit.h",
+        "ThirdParty/imgui/imstb_truetype.h",
+
+        "ThirdParty/imgui/backends/imgui_impl_glfw.cpp",
+        "ThirdParty/imgui/backends/imgui_impl_glfw.h",
+        "ThirdParty/imgui/backends/imgui_impl_vulkan.cpp",
+        "ThirdParty/imgui/backends/imgui_impl_vulkan.h"
+    }
+
+    filter "system:windows"
+        systemversion "latest"
+
+    filter "configurations:Debug"
+        symbols "On"
+
+    filter "configurations:Release"
+        optimize "On"
+
+    filter "*"
+    -- ==========================================
+    -- Project 4: Core Engine Application
     -- ==========================================
     project "Engine"
         -- [Garbage] Hide the Engine project file in the Intermediate folder
@@ -146,7 +197,10 @@ workspace "EngineWorkspace"
             "ThirdParty/tgen/include",
             "ThirdParty/reflect/include",
             "ThirdParty/flecs-4.1.4/include",
-            "ThirdParty/JoltPhysics"
+            "ThirdParty/JoltPhysics",
+            "ThirdParty/imgui",
+			"ThirdParty/imgui/backends",
+			"ThirdParty/imgui/ImGuizmo",
         }
         
         files {
@@ -159,7 +213,9 @@ workspace "EngineWorkspace"
             "ThirdParty/zstd/src/common/*.c",
             "ThirdParty/zstd/src/decompress/*.c",
             "ThirdParty/flecs-4.1.4/distr/flecs.c",
-            "ThirdParty/flecs-4.1.4/distr/flecs.h"
+            "ThirdParty/flecs-4.1.4/distr/flecs.h",
+			"ThirdParty/imgui/ImGuizmo/ImGuizmo.cpp",
+			"ThirdParty/imgui/ImGuizmo/ImGuizmo.h",
         }
         
         filter "files:ThirdParty/flecs-4.1.4/distr/flecs.c"
@@ -167,7 +223,7 @@ workspace "EngineWorkspace"
             compileas "C"
         filter "*"
 
-        links { "GLFW", "JoltPhysics" }
+        links { "GLFW", "JoltPhysics" ,"ImGui" }
         dependson { "Shaders" } 
 
         filter "system:windows"
@@ -179,7 +235,7 @@ workspace "EngineWorkspace"
         filter "*"
 
     -- ==========================================
-    -- Project 3: Automatic Shader Compilation
+    -- Project 5: Automatic Shader Compilation
     -- ==========================================
     project "Shaders"
         -- [Garbage] Hide the Shaders project file in the Intermediate folder

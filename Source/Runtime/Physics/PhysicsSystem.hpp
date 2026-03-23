@@ -76,7 +76,17 @@ public:
         const std::vector<glm::mat4>& meshTransforms,
         const glm::mat4& transform,
         float mass);
-
+    //=============================UI System Interactions=============================
+    // cast_ray
+    // Raycast from origin in direction, return first hit BodyID射线检测，返回第一个被击中的物理 BodyID
+    uint32_t cast_ray(const glm::vec3& origin, const glm::vec3& direction, float max_distance = 1000.0f);
+    // 根据 BodyID 同步最新的变换矩阵
+    //latest transform
+    void set_body_transform(uint32_t bodyID, const glm::mat4& transform);
+    //更新缩放
+    //update the scale
+    void set_body_scale(uint32_t bodyID, const glm::vec3& newScale, const glm::vec3& currentWorldPos, const glm::quat& currentWorldRot);
+    //=============================UI System Interactions=============================
 
 private:
     std::unique_ptr<JPH::TempAllocatorImpl> m_tempAllocator;
