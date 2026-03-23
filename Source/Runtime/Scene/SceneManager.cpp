@@ -370,7 +370,29 @@ flecs::entity SceneManager::create_dynamic_entity(
     return e;
 }
 
+//==========UI System======================
+// Raycast from origin in direction, return first hit entity射线检测，返回第一个被击中的实体
+flecs::entity SceneManager::raycast_entity(const glm::vec3& origin, const glm::vec3& direction, float max_distance)
+{
+    if (!m_physics_system) return flecs::entity::null();
 
+    uint32_t hitBodyID = m_physics_system->cast_ray(origin, direction, max_distance);
+
+    if (hitBodyID == JPH::BodyID::cInvalidBodyID) {
+        return flecs::entity::null();
+    }
+    m_physics_system->get_body_interface().ActivateBody(JPH::BodyID(hitBodyID));
+
+    flecs::entity hitEntity = flecs::entity::null();
+    m_world->query<const PhysicsBody>().each([&](flecs::entity e, const PhysicsBody& pb) {
+        if (pb.bodyID == hitBodyID) {
+            hitEntity = e;
+        }
+        });
+
+    return hitEntity;
+}
+//==========UI System======================
 
 
 } // namespace enginea

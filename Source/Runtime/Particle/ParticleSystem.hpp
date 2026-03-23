@@ -20,7 +20,8 @@ enum class EmitterShape
 
 // 粒子参数配置
 struct ParticleConfig {
-
+    char name[64] = "Particle name";
+    bool isVisible = true;
 	int useTexture = 0; // 是否使用纹理（0 = 默认小圆球不使用，1 = 使用贴图）
 
     // life time 持续时间
@@ -61,7 +62,8 @@ struct ParticleConfig {
 
     bool particleDebug = false; 
     VkDescriptorSet textureDescriptor = VK_NULL_HANDLE;
-
+    // 给 2D UI (ImGui 视口图标) 用的贴图 ID
+    VkDescriptorSet uiIconDescriptor = VK_NULL_HANDLE;
 };
 
 struct Particle 

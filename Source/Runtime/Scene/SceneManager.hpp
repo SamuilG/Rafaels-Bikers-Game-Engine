@@ -127,6 +127,17 @@ public:
     // 4. Utility: Get entity name from physics body ID
     std::string get_entity_name_from_body_id(uint32_t bodyID);
 
+    //==========UI System======================
+    //获取当前场景中实体的数量（用于调试和UI显示）
+    // Get the count of entities with MeshComponent, which indicates how many renderable entities are in the scene.
+    int get_entity_count() {
+        if (!m_world) return 0;
+        return m_world->count<MeshComponent>();
+    }
+    // Raycast from origin in direction, return first hit entity 射线检测，返回第一个被击中的实体
+    flecs::entity raycast_entity(const glm::vec3& origin, const glm::vec3& direction, float max_distance = 1000.0f);
+    PhysicsSystem* get_physics_system() const { return m_physics_system; }
+    //==========UI System======================
 
     void print_all_entities();
     // 在 SceneManager.hpp 中：
