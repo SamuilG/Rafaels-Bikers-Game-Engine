@@ -192,8 +192,8 @@ void record_commands(
 
 	// 显式配置附件 0
 	colorAtts[0].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-	//colorAtts[0].imageView = aOffscreenColor.view;
-	colorAtts[0].imageView = aFinalSceneColor.view;
+	colorAtts[0].imageView = aOffscreenColor.view;
+	//colorAtts[0].imageView = aFinalSceneColor.view;
 	colorAtts[0].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	colorAtts[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	colorAtts[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -386,6 +386,18 @@ void record_commands(
 		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1 }
 	);
+
+
+	// 【修复 1】：把原来对 aSwapchainAttach 的屏障，改成对 aFinalSceneColor 的屏障
+	lut::image_barrier(aCmdBuff, aFinalSceneColor.image,
+		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+		VK_ACCESS_2_NONE,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+		VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1 }
+	);
 	lut::image_barrier(aCmdBuff, aSwapchainAttach.image,
 		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
 		VK_ACCESS_2_NONE,
@@ -399,7 +411,8 @@ void record_commands(
 	VkRenderingAttachmentInfo compAtt{};
 	compAtt.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
 	//compAtt.imageView = aSwapchainAttach.view;
-	compAtt.imageView = aOffscreenColor.view;
+	//compAtt.imageView = aOffscreenColor.view;
+	compAtt.imageView = aFinalSceneColor.view;
 	compAtt.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	compAtt.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	compAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;

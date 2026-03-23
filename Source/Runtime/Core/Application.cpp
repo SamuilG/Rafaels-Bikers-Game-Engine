@@ -96,6 +96,18 @@ namespace engine {
 
 
 
+
+
+
+
+           // ===================UI System===========================
+        // 加载上次保存的 JSON 存档
+        //load the last saved JSON save file
+        engine::EngineUi::LoadProject(sceneManager, renderSystem, "Assets/MySceneSave.json");
+        // ===================UI System===========================
+        // 
+        // 最后再打印实体列表，确认灯光实体已创建
+        sceneManager->print_all_entities();
         // --- 【修改】计算车头灯的初始位置 ---
 // 假设车头在 Y轴偏上(1.0米)，Z轴偏前(1.2米) 的位置
         glm::vec3 headlightOffset = glm::vec3(0.0f, -7.0f, 0.0f);
@@ -156,14 +168,14 @@ namespace engine {
             light2SpawnPos,
 			20.0f // range
         );
-        // ===================UI System===========================
-        // 加载上次保存的 JSON 存档
-        //load the last saved JSON save file
-        engine::EngineUi::LoadProject(sceneManager, renderSystem, "Assets/MySceneSave.json");
-        // ===================UI System===========================
-        // 
-        // 最后再打印实体列表，确认灯光实体已创建
-        sceneManager->print_all_entities();
+        //// ===================UI System===========================
+        //// 加载上次保存的 JSON 存档
+        ////load the last saved JSON save file
+        //engine::EngineUi::LoadProject(sceneManager, renderSystem, "Assets/MySceneSave.json");
+        //// ===================UI System===========================
+        //// 
+        //// 最后再打印实体列表，确认灯光实体已创建
+        //sceneManager->print_all_entities();
 
         
         // Physics Collision Verification
