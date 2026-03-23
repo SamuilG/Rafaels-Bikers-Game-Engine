@@ -46,7 +46,7 @@ struct UserState
 	//================UI System================================
 
 	glm::vec3 followTargetPos = glm::vec3(10.f);
-	bool      thirdPersonMode = true;
+	bool thirdPersonMode = true;
 
 	bool bloomEnabled = true;
 

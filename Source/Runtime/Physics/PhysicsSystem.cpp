@@ -230,19 +230,23 @@ void PhysicsSystem::AddForce(const JPH::BodyID& bodyID)
 	bodyInterface.SetLinearVelocity(bodyID, newVel);
 }
 
+
+
 void PhysicsSystem::Update(float dt)
 {
 	if (!m_physicsSystem) {
 		return;
 	}
 
-	AddForce(JPH::BodyID(8388674));
+
+	if (mState && mState->thirdPersonMode) {
+		AddForce(JPH::BodyID(8388674));
+	}
 
 	const int cCollisionSteps = 1;
 	// Step the system
 	m_physicsSystem->Update(dt, cCollisionSteps, m_tempAllocator.get(), m_jobSystem.get());
 }
-
 void PhysicsSystem::Shutdown()
 {
 	if (m_physicsSystem) {
