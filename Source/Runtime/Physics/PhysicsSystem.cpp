@@ -191,11 +191,37 @@ void PhysicsSystem::optimize_broad_phase()
 	}
 }
 
+void PhysicsSystem::AddForce(const JPH::BodyID& bodyID)
+{
+	if (!mInputSystem) return;
+	JPH::BodyInterface& bodyInterface = m_physicsSystem->GetBodyInterface();
+	if (!bodyInterface.IsAdded(bodyID)) return;
+
+	glm::vec3 dir(0.0f);
+	float speed = 5.0f;
+
+	if (mInputSystem->IsActionHeld("MoveForward")) dir.z -= 1.0f;
+	if (mInputSystem->IsActionHeld("MoveBackward")) dir.z += 1.0f;
+	if (mInputSystem->IsActionHeld("StrafeLeft")) dir.x -= 1.0f;
+	if (mInputSystem->IsActionHeld("StrafeRight")) dir.x += 1.0f;
+
+
+	if (glm::length(dir) > 0.0f)
+		dir = glm::normalize(dir);
+
+	JPH::Vec3 currentVel = bodyInterface.GetLinearVelocity(bodyID);
+	JPH::Vec3 newVel(dir.x * speed, currentVel.GetY(), dir.z * speed);
+	bodyInterface.SetLinearVelocity(bodyID, newVel);
+
+}
+
 void PhysicsSystem::Update(float dt)
 {
 	if (!m_physicsSystem) {
 		return;
 	}
+
+	AddForce(JPH::BodyID(8388674));
 
 	const int cCollisionSteps = 1;
 	// Step the system

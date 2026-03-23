@@ -44,6 +44,7 @@ namespace engine {
         if (inputSystem && renderSystem) {
             inputSystem->SetWindow(renderSystem->GetGLFWWindow());
             renderSystem->SetInputSystem(inputSystem);
+            physicsSystem->SetInputSystem(inputSystem);
         }
 
         // load models using the API in RenderSystem
