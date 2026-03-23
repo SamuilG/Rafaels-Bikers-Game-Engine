@@ -25,6 +25,7 @@
 #include "../Scene/model_loader/engine_model.hpp"
 #include "../Renderer/RenderUtilities/camera.hpp"
 #include "../Input/InputSystem.hpp"
+#include "../UserState/UserState.hpp"
 
 // helper to convert GLM to Jolt
 inline JPH::Vec3 toJolt(const glm::vec3& v) { return JPH::Vec3(v.x, v.y, v.z); }
@@ -93,8 +94,10 @@ public:
     //=============================UI System Interactions=============================
 
     void SetInputSystem(engine::InputSystem* sys) { mInputSystem = sys; }
+    void SetUserState(UserState* state) { this->mState = state; }
 private:
     
+
     std::unique_ptr<JPH::TempAllocatorImpl> m_tempAllocator;
     std::unique_ptr<JPH::JobSystemThreadPool> m_jobSystem;
     std::unique_ptr<JPH::PhysicsSystem> m_physicsSystem;
@@ -110,6 +113,7 @@ private:
     std::unique_ptr<ObjectLayerPairFilterImpl> m_objectVsObjectFilter;
 
     engine::InputSystem* mInputSystem = nullptr;
+    UserState* mState = nullptr;
 
     // Optional Event System Link
     EventSystem* m_eventSystem = nullptr;

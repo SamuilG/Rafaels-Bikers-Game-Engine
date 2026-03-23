@@ -68,6 +68,7 @@ namespace lut = labut2;
 #include "../UI/MousePicker.hpp"
 #include "..\..\ThirdParty\imgui\ImGuizmo\ImGuizmo.h"
 #include "..\Physics\PhysicsSystem.hpp"
+#include "../UserState/UserState.hpp"
 #include <glm/gtx/matrix_decompose.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <filesystem>
@@ -102,9 +103,9 @@ namespace engine {
         //==============UI System========= Draw the main menu UI
         void DrawMainMenuUI() {
             // 游戏未开始// Game not started
-            if (!mState.isGameStarted) {
+            if (!mState->isGameStarted) {
                 // Draw the main menu UI主菜单
-                EngineUi::DrawMainMenu(this, mAppRunning, mState.isGameStarted);
+                EngineUi::DrawMainMenu(this, mAppRunning, mState->isGameStarted);
             }
         }
 
@@ -219,7 +220,7 @@ namespace engine {
             mWindow = lut::make_vulkan_window();
 
             // Initialize state
-            glfwSetWindowUserPointer(mWindow.window, &mState);
+            glfwSetWindowUserPointer(mWindow.window, mState);
             // Key callbacks handled entirely by the centralised engine::InputSystem
             glfwSetMouseButtonCallback(mWindow.window, &glfw_callback_button);
             glfwSetCursorPosCallback(mWindow.window, &glfw_callback_motion);
@@ -271,7 +272,7 @@ namespace engine {
             
             // Set initial camera position
             // Move camera back (z+) and up (y+) to see the scene
-            mState.camera2world = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 2.0f, 10.0f));
+            mState->camera2world = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 2.0f, 10.0f));
 
             {
                 // just for objects without texture to set a default texture
@@ -813,9 +814,9 @@ namespace engine {
             // game over debug
             if (ImGui::IsKeyPressed(ImGuiKey_G))
             {
-                mState.isGameOver = !mState.isGameOver; // 切换死亡状态进行测试// Toggle game over state for testing
+                mState->isGameOver = !mState->isGameOver; // 切换死亡状态进行测试// Toggle game over state for testing
 
-                if (mState.isGameOver)
+                if (mState->isGameOver)
                 {
                     engine::EngineUi::LogPrintf("Test: Game Over triggered via 'G' key.\n");
 
@@ -828,9 +829,9 @@ namespace engine {
             // game pause debug
             if (ImGui::IsKeyPressed(ImGuiKey_H))
             {
-                mState.isGamePause = !mState.isGamePause; // 切换死亡状态进行测试// Toggle game pause state for testing
+                mState->isGamePause = !mState->isGamePause; // 切换死亡状态进行测试// Toggle game pause state for testing
 
-                if (mState.isGamePause)
+                if (mState->isGamePause)
                 {
                     engine::EngineUi::LogPrintf("Test: Game pause triggered via 'H' key.\n");
                 }
@@ -863,19 +864,19 @@ namespace engine {
 
             //ImGui::DockSpace(ImGui::GetID("MyDockSpace"), ImVec2(0, 0), ImGuiDockNodeFlags_PassthruCentralNode);
             //调用顶部菜单栏！
-            EngineUi::DrawMainMenuBar(this, mSceneManager, mState, mAppRunning);
+            EngineUi::DrawMainMenuBar(this, mSceneManager, *mState, mAppRunning);
             //start gmae menu
            // 如果游戏还没开始，只画主菜单
-            if (!mState.isGameStarted) {
-                EngineUi::DrawMainMenu(this, mAppRunning, mState.isGameStarted);
+            if (!mState->isGameStarted) {
+                EngineUi::DrawMainMenu(this, mAppRunning, mState->isGameStarted);
             }
-            else if (mState.isGameOver) {
+            else if (mState->isGameOver) {
                 // gameover UI
-                EngineUi::DrawGameOver(this, mState, mAppRunning);
+                EngineUi::DrawGameOver(this, *mState, mAppRunning);
             }
-            else if (mState.isGamePause) {
-                // gameover UI
-                EngineUi::DrawGamePause(this, mState, mAppRunning);
+            else if (mState->isGamePause) {
+                // gameover UI 
+                EngineUi::DrawGamePause(this, *mState, mAppRunning);
             }
             else
             {
@@ -892,10 +893,10 @@ namespace engine {
                 update_scene_uniforms(sceneUniforms,
                     (uint32_t)vpSize.x,  // 使用 UI 宽度
                     (uint32_t)vpSize.y,  // 使用 UI 高度
-                    mState);
+                    *mState);
 
                 //View 矩阵
-                glm::mat4 view = glm::inverse(mState.camera2world);
+                glm::mat4 view = glm::inverse(mState->camera2world);
                 //Aspect Ratio
                 //float aspect = (float)mWindow.swapchainExtent.width / (float)mWindow.swapchainExtent.height;
                 float aspect = width / height;
@@ -956,22 +957,22 @@ namespace engine {
                     localMouseY >= 0.0f && localMouseY <= vpSize.y);
 
                 //EngineUi::DrawSceneViewport(m_sceneViewportTexId, this, mSceneManager, view, gizmoProj, mSelectedEntityId);
-                EngineUi::DrawSceneViewport(m_sceneViewportTexId, this, mSceneManager, view, gizmoProj, mSelectedEntityId, mState);
+                EngineUi::DrawSceneViewport(m_sceneViewportTexId, this, mSceneManager, view, gizmoProj, mSelectedEntityId, *mState);
 
                 glm::mat4 viewProj = gizmoProj * view;
                 glm::vec3 cameraPos = glm::vec3(glm::inverse(view)[3]); // 提取逆 view 矩阵第 4 列作为位置
 
                 // 给面板加上开关判断：
-                if (mState.showControlPanel) {
-                    EngineUi::DrawControlPanel(mState, this, mSceneManager);
+                if (mState->showControlPanel) {
+                    EngineUi::DrawControlPanel(*mState, this, mSceneManager);
                 }
 
-                if (mState.showContentBrowser) {
+                if (mState->showContentBrowser) {
                     EngineUi::DrawContentBrowser(this, mSceneManager);
                 }
 
-                if (mState.showSceneHierarchy || mState.showEntityInspector) {
-                    EngineUi::DrawSceneHierarchy(this, mSceneManager, view, gizmoProj, mSelectedEntityId, mState);
+                if (mState->showSceneHierarchy || mState->showEntityInspector) {
+                    EngineUi::DrawSceneHierarchy(this, mSceneManager, view, gizmoProj, mSelectedEntityId, *mState);
                 }
 
                 if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && isMouseInViewport && !ImGuizmo::IsOver())
@@ -979,17 +980,17 @@ namespace engine {
                     flecs::entity hitEntity = MousePicker::PickEntity(
                         localMouseX, localMouseY,  // 传局部鼠标坐标
                         vpSize.x, vpSize.y,        // 传真实的视口大小
-                        mState.camera2world, gizmoProj, mSceneManager
+                        mState->camera2world, gizmoProj, mSceneManager
                     );
 
                     if (hitEntity.is_alive()) {
                         mSelectedEntityId = hitEntity.id();
-                        mState.activeParticleIndex = -1;
+                        mState->activeParticleIndex = -1;
                         engine::EngineUi::LogPrint("[Raycast] Hit Object ID: {}\n", hitEntity.id());
                     }
                     else {
                         engine::EngineUi::LogPrint("[Raycast] Hit Nothing\n");
-                        mState.activeParticleIndex = -1;
+                        mState->activeParticleIndex = -1;
                         mSelectedEntityId = 0;
                     }
                 }
@@ -1073,8 +1074,8 @@ namespace engine {
             }
 
             if (mInputSystem->IsActionPressed("BloomToggle")) {
-                mState.bloomEnabled = !mState.bloomEnabled;
-                std::printf("Bloom Effect: %s\n", mState.bloomEnabled ? "ON" : "OFF");
+                mState->bloomEnabled = !mState->bloomEnabled;
+                std::printf("Bloom Effect: %s\n", mState->bloomEnabled ? "ON" : "OFF");
             }
 
             if (glfwWindowShouldClose(mWindow.window)) {
@@ -1240,53 +1241,53 @@ namespace engine {
                 throw lut::Error("vkResetFences: {}", lut::to_string(res));
 
             //find character pos
-            if (mSceneManager && mState.thirdPersonMode) {
+            if (mSceneManager && mState->thirdPersonMode) {
                 // 用你想跟随的实体名字
                 auto target = mSceneManager->find_entity("Object_10_0");
                 if (target.is_valid() && target.has<WorldTransform>()) {
                     const auto& wt = target.get<WorldTransform>();
-                    mState.followTargetPos = glm::vec3(wt.matrix[3]);
-					// printf("Follow Target Pos: (%.2f, %.2f, %.2f)\n", mState.followTargetPos.x, mState.followTargetPos.y, mState.followTargetPos.z);
+                    mState->followTargetPos = glm::vec3(wt.matrix[3]);
+					// printf("Follow Target Pos: (%.2f, %.2f, %.2f)\n", mState->followTargetPos.x, mState->followTargetPos.y, mState->followTargetPos.z);
                 }
             }
 
             // --- Toggle Inputs via InputSystem ---
             if (mInputSystem) {
                 if (mInputSystem->IsActionPressed("ToggleParticles")) {
-                    mState.particlesEnabled = !mState.particlesEnabled;
-                    std::printf("Particles: %s\n", mState.particlesEnabled ? "ON" : "OFF");
+                    mState->particlesEnabled = !mState->particlesEnabled;
+                    std::printf("Particles: %s\n", mState->particlesEnabled ? "ON" : "OFF");
                 }
                 if (mInputSystem->IsActionPressed("CameraThirdPersonToggle")) {
-                    mState.thirdPersonMode = !mState.thirdPersonMode;
-                    std::printf("Camera: %s\n", mState.thirdPersonMode ? "Third Person" : "Free Fly");
+                    mState->thirdPersonMode = !mState->thirdPersonMode;
+                    std::printf("Camera: %s\n", mState->thirdPersonMode ? "Third Person" : "Free Fly");
                 }
                 
                 // Debug Render Modes
-                if (mInputSystem->IsActionPressed("Default")) mState.renderMode = 0;
-                if (mInputSystem->IsActionPressed("DebugMipmap")) mState.renderMode = 1;
-                if (mInputSystem->IsActionPressed("DebugDepth")) mState.renderMode = 2;
-                if (mInputSystem->IsActionPressed("DebugDerivatives")) mState.renderMode = 3;
-                if (mInputSystem->IsActionPressed("DebugMosaic")) mState.mosaicEnabled = !mState.mosaicEnabled;
-                if (mInputSystem->IsActionPressed("DebugOverdraw")) mState.renderMode = 4;
-                if (mInputSystem->IsActionPressed("DebugOvershading")) mState.renderMode = 5;
-                if (mInputSystem->IsActionPressed("DebugShadows")) mState.renderMode = 6;
+                if (mInputSystem->IsActionPressed("Default")) mState->renderMode = 0;
+                if (mInputSystem->IsActionPressed("DebugMipmap")) mState->renderMode = 1;
+                if (mInputSystem->IsActionPressed("DebugDepth")) mState->renderMode = 2;
+                if (mInputSystem->IsActionPressed("DebugDerivatives")) mState->renderMode = 3;
+                if (mInputSystem->IsActionPressed("DebugMosaic")) mState->mosaicEnabled = !mState->mosaicEnabled;
+                if (mInputSystem->IsActionPressed("DebugOverdraw")) mState->renderMode = 4;
+                if (mInputSystem->IsActionPressed("DebugOvershading")) mState->renderMode = 5;
+                if (mInputSystem->IsActionPressed("DebugShadows")) mState->renderMode = 6;
                 
                 if (mInputSystem->IsActionPressed("PrintCameraPos")) {
-                    auto const pos = mState.camera2world[3];
+                    auto const pos = mState->camera2world[3];
                     std::printf("Camera Pos: %.4f, %.4f, %.4f\n", pos.x, pos.y, pos.z);
                 }
             }
             //
 
             // Update state
-            update_user_state(mState, dt, mInputSystem);
+            update_user_state(*mState, dt, mInputSystem);
 
             // Prepare data for this frame
             glsl::SceneUniform sceneUniforms{};
             update_scene_uniforms(sceneUniforms,
                 mWindow.swapchainExtent.width,
                 mWindow.swapchainExtent.height,
-                mState);
+                *mState);
 
             VkPipeline  currentOpaque = mPipe.handle;
             VkPipeline  currentAlpha = mAlphaPipe.handle;
@@ -1298,7 +1299,7 @@ namespace engine {
             // Sitch the descriptor set to 'debugMaterialDescriptors'
             // because the debug pipeline requires a sampler with anisotropic filtering DISABLED
             // setup.cpp
-            switch (mState.renderMode) {
+            switch (mState->renderMode) {
             case 1: // Mode 1: Mipmap Visualization
                 // Visualizes texture LOD levels (colored).
                 currentOpaque = currentAlpha = mMipPipe.handle;
@@ -1333,7 +1334,7 @@ namespace engine {
             VkPipelineLayout resolveLayout = mPostPipeLayout.handle;
             VkClearColorValue clearColor = { 0.1f, 0.1f, 0.1f, 1.f };
 
-            if (mState.renderMode == 4 || mState.renderMode == 5) {
+            if (mState->renderMode == 4 || mState->renderMode == 5) {
                 // Visualization Mode
                 offscreenTarget = { mVisImage.image, mVisImage.view };
                 resolvePipeline = mVisResolvePipe.handle;
@@ -1347,7 +1348,7 @@ namespace engine {
 
             
             //================   system===================================================
-            if (mState.particlesEnabled)
+            if (mState->particlesEnabled)
             {
                 for (const auto& ps  : allParticles)
                 {
@@ -1382,7 +1383,7 @@ namespace engine {
 
             // update mosaic ubo
             {
-                glsl::MosaicUniform mu{ mState.mosaicEnabled ? 1 : 0, {} };
+                glsl::MosaicUniform mu{ mState->mosaicEnabled ? 1 : 0, {} };
                 void* ptr;
                 vmaMapMemory(mAllocator.allocator, mMosaicUBOs[mFrameIndex].allocation, &ptr);
                 std::memcpy(ptr, &mu, sizeof(mu));
@@ -1436,7 +1437,7 @@ namespace engine {
 
 
 
-            float currentBloomStrength = mState.bloomEnabled ? 0.0f : 1.2f;
+            float currentBloomStrength = mState->bloomEnabled ? 0.0f : 1.2f;
             // Record and submit commands for this frame
             // 在 Update 函数末尾找到 record_commands 调用，修改如下：
             record_commands(
@@ -1481,7 +1482,7 @@ namespace engine {
                 mShadowPipe.handle,
                 shadowTarget,
                 mShadowCascadeViews,
-                mState.particlesEnabled&& mState.renderMode == 0,
+                mState->particlesEnabled&& mState->renderMode == 0,
                 mParticlePipe.handle,
                 allParticles
             );
@@ -1628,7 +1629,11 @@ namespace engine {
         // Allow application to pass in the input system
         void SetInputSystem(engine::InputSystem* sys) { mInputSystem = sys; }
 
+        void SetUserState(UserState* state) { this->mState = state; }
+
     private:
+
+        UserState* mState = nullptr;
 
         engine::InputSystem* mInputSystem = nullptr;
 
@@ -1879,7 +1884,7 @@ namespace engine {
         lut::VulkanWindow  mWindow;
         lut::Allocator     mAllocator;
 
-        UserState  mState{};
+        //UserState  mState{};
         bool       mRecreateSwapchain = false;
         std::size_t mFrameIndex = 0;
 

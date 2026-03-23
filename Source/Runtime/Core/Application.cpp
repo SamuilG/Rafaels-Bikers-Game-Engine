@@ -28,6 +28,7 @@ namespace engine {
 
         physicsSystem = AddSystem<PhysicsSystem>();
         physicsSystem->SetEventSystem(eventSystem);
+        physicsSystem->SetUserState(&mState);
         sceneManager  = AddSystem<SceneManager>(physicsSystem);
 
         //final render 
@@ -35,7 +36,7 @@ namespace engine {
         //AddSystem<CameraSystem>();
         //AddSystem<UISystem>();
         renderSystem = AddSystem<RenderSystem>(Running, sceneManager);
-
+        renderSystem->SetUserState(&mState);
         // Initialise all systems
         for (auto& sys : Systems) {
             sys->Init();
@@ -45,6 +46,9 @@ namespace engine {
             inputSystem->SetWindow(renderSystem->GetGLFWWindow());
             renderSystem->SetInputSystem(inputSystem);
             physicsSystem->SetInputSystem(inputSystem);
+            
+            
+			
         }
 
         // load models using the API in RenderSystem

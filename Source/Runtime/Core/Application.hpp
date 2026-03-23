@@ -4,6 +4,8 @@
 #include <chrono>
 #include "System.h"
 
+#include "../UserState/UserState.hpp"
+
 namespace engine {
     class PhysicsSystem;
     class SceneManager;
@@ -41,10 +43,11 @@ namespace engine {
 
         // Stored for post-Init sphere setup
         PhysicsSystem* physicsSystem = nullptr;
-        SceneManager*  sceneManager  = nullptr;
-        RenderSystem*  renderSystem  = nullptr;
-        InputSystem*   inputSystem   = nullptr;
-        EventSystem*   eventSystem   = nullptr;
+        SceneManager* sceneManager = nullptr;
+        RenderSystem* renderSystem = nullptr;
+        InputSystem* inputSystem = nullptr;
+        EventSystem* eventSystem = nullptr;
+        UserState mState;
     };
 
 } // namespace engine
