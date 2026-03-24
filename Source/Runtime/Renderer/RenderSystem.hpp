@@ -1535,7 +1535,7 @@ namespace engine {
         }
 
         // add an entire model file to the renderer and physics scene
-        void load_additional_model(const char* path, bool isStatic, float mass = 1.0f, const glm::mat4& initialTransform = glm::mat4(1.0f), bool isCompound = false)
+        void load_additional_model(const char* path, bool isStatic, float mass = 1.0f, const glm::mat4& initialTransform = glm::mat4(1.0f), bool isCompound = false, bool isC = false)
         {
             EngineModel newModel = load_engine_model_glb(path);
             uint32_t baseTextureIdx = static_cast<uint32_t>(mModelTextures.size());
@@ -1603,6 +1603,10 @@ namespace engine {
                 if (isCompound) {
                     mSceneManager->load_compound_model(newModel, mass, baseMeshIdx, baseMaterialIdx);
 				}
+                else if (isC)
+                {
+                    mSceneManager->load_C_model(newModel, mass, baseMeshIdx, baseMaterialIdx);
+                }
                 else if (isStatic) {
                     mSceneManager->load_static_model(newModel, baseMeshIdx, baseMaterialIdx);
                 } else {

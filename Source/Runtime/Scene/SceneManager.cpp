@@ -12,7 +12,7 @@
 #include <glm/gtc/constants.hpp>
 #include <cmath>
 #include"../Renderer/RenderUtilities/light.hpp"
-
+#include <glm/gtx/matrix_decompose.hpp> 
 
 
 
@@ -153,6 +153,65 @@ void SceneManager::load_compound_model(const EngineModel& model, float mass, uin
         e.set<MaterialComponent>({ matIdx });
     }
 }
+
+void SceneManager::load_C_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx) {
+    std::print("Loading compound model with {} instances\n", model.scenes.size());
+
+    // 1. Create compound body
+
+    glm::mat4 bodyWorldTransform = glm::mat4(1.0f);
+
+    if (!model.scenes.empty()) {
+        glm::vec3 scale, translation, skew;
+        glm::quat rotation;
+        glm::vec4 perspective;
+
+        // 分解第一个网格的变换矩阵
+        glm::decompose(model.scenes[0].transform, scale, rotation, translation, skew, perspective);
+        rotation = glm::normalize(rotation);
+
+        // 重建一个纯净的矩阵：只保留 平移 (Translation) 和 旋转 (Rotation)，丢弃缩放！
+        bodyWorldTransform = glm::translate(glm::mat4(1.0f), translation) * glm::mat4_cast(rotation);
+    }
+
+    JPH::BodyID compoundBodyID;
+    if (m_physics_system && !model.scenes.empty()) {
+        std::vector<EngineMesh> meshes;
+        std::vector<glm::mat4> meshTransforms;
+        for (const auto& instance : model.scenes) {
+            meshes.push_back(model.meshes[instance.meshIndex]);
+            meshTransforms.push_back(instance.transform);
+        }
+        compoundBodyID = m_physics_system->create_dynamic_compound_body(
+            meshes, meshTransforms, bodyWorldTransform, mass);
+    }
+
+    // Inverse of initial body transform (现在它是没有缩放的了)
+    glm::mat4 invBody = glm::inverse(bodyWorldTransform);
+
+    // 2. Create render entities
+    int counter = 0;
+    for (const auto& instance : model.scenes) {
+        std::string name = instance.name.empty() ? "CompoundPart" : instance.name;
+        name += "_" + std::to_string(counter++);
+
+        // 这里的 localOffset 将完美保留每个零件自己原本的缩放比例
+        glm::mat4 localOffset = invBody * instance.transform;
+
+        auto e = m_world->entity(name.c_str())
+            .add<DynamicObject>()
+            .set<EntityStatus>({ true, true })
+            .set<LocalTransform>({ instance.transform })
+            .set<WorldTransform>({ instance.transform })
+            .set<MeshComponent>({ instance.meshIndex + baseMeshIdx })
+            .set<CompoundParent>({ compoundBodyID.GetIndexAndSequenceNumber(), localOffset });
+
+        uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
+        e.set<MaterialComponent>({ matIdx });
+    }
+}
+
+
 
 flecs::entity SceneManager::find_entity(const char* name) {
     return m_world->lookup(name); // Flecs' efficient lookup interface

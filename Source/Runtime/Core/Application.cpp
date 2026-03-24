@@ -79,6 +79,8 @@ namespace engine {
         glm::mat4 romanSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(10.0f, 10.0f, 25.0f));
         renderSystem->load_additional_model("Assets/Models/Roman Centurion.glb", false, 90.0f, romanSpawnPos);
 
+
+
         glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 10.0f, 30.0f));
         renderSystem->load_additional_model("Assets/Models/bike.glb", false, 50.0f, BikeSpawnPos, true);
 
@@ -88,8 +90,8 @@ namespace engine {
         glm::mat4 CubeSpawnPos = glm::translate( BikeSpawnPos, glm::vec3(0.0f, -7.0f, 8.0f));
         renderSystem->load_additional_model("Assets/Models/em1.gltf", false, 90.0f, CubeSpawnPos);
 
-
-
+        glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
+        renderSystem->load_additional_model("Assets/Models/testBike1.gltf", false, 90.0f, tbpos,false, true);
 
 
         // 在 Application.cpp 的构造函数末尾，print_all_entities 之前添加：
@@ -103,7 +105,7 @@ namespace engine {
            // ===================UI System===========================
         // 加载上次保存的 JSON 存档
         //load the last saved JSON save file
-        engine::EngineUi::LoadProject(sceneManager, renderSystem, "Assets/MySceneSave.json");
+      //  engine::EngineUi::LoadProject(sceneManager, renderSystem, "Assets/MySceneSave.json");
         // ===================UI System===========================
         // 
         // 最后再打印实体列表，确认灯光实体已创建
