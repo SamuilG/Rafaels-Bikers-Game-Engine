@@ -15,6 +15,7 @@
 #include <Jolt/Core/JobSystemThreadPool.h>
 #include <Jolt/Core/TempAllocator.h>
 #include <Jolt/Physics/Character/CharacterVirtual.h>
+#include <Jolt/Physics/Body/BodyLock.h>
 
 
 #include <memory>
@@ -56,7 +57,7 @@ public:
     void Update(float dt) override;
     void Shutdown() override;
 
-    void AddForceDirection(const JPH::BodyID& bodyID, float force = 500.0f);
+    void AddForceDirection(const JPH::BodyID& bodyID, float force = 2000.0f);
 
 
     void SetEventSystem(EventSystem* sys) { m_eventSystem = sys; }

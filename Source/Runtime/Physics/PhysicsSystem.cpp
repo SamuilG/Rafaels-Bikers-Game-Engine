@@ -200,7 +200,6 @@ void PhysicsSystem::AddForceDirection(const JPH::BodyID& bodyID, float force)
 	JPH::BodyInterface& bi = m_physicsSystem->GetBodyInterface();
 	if (!bi.IsAdded(bodyID)) return;
 
-	//follow the camera
 	float yaw = mState->Yaw;
 	glm::vec3 forward(-std::sin(yaw), 0.0f, -std::cos(yaw));
 	glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0, 1, 0)));
@@ -213,23 +212,51 @@ void PhysicsSystem::AddForceDirection(const JPH::BodyID& bodyID, float force)
 
 	glm::vec3 worldDir = forward * inputZ + right * inputX;
 
-	// 
 	if (glm::length(worldDir) > 0.001f)
 	{
 		worldDir = glm::normalize(worldDir);
-		bi.AddForce(bodyID, JPH::Vec3(worldDir.x * force, 0.0f, worldDir.z * force));
+
+		// ---- 射线检测地面法线，把力投影到斜面上 ----
+		glm::vec3 forceDir(worldDir.x, 0.0f, worldDir.z);
+		JPH::RVec3 bodyPos = bi.GetPosition(bodyID);
+		JPH::RRayCast ray(bodyPos, JPH::Vec3(0.0f, -5.0f, 0.0f));
+		JPH::RayCastResult hit;
+
+		if (m_physicsSystem->GetNarrowPhaseQuery().CastRay(
+			ray, hit,
+			JPH::BroadPhaseLayerFilter(),
+			JPH::ObjectLayerFilter(),
+			JPH::BodyFilter()))
+		{
+			JPH::BodyLockRead lock(m_physicsSystem->GetBodyLockInterface(), hit.mBodyID);
+			if (lock.Succeeded()) {
+				JPH::Vec3 normal = lock.GetBody().GetWorldSpaceSurfaceNormal(
+					hit.mSubShapeID2, ray.GetPointOnRay(hit.mFraction));
+				glm::vec3 n(normal.GetX(), normal.GetY(), normal.GetZ());
+				glm::vec3 projected = forceDir - n * glm::dot(forceDir, n);
+				if (glm::length(projected) > 0.001f)
+					forceDir = glm::normalize(projected);
+			}
+		}
+
+		bi.AddForce(bodyID, JPH::Vec3(forceDir.x * force, forceDir.y * force, forceDir.z * force ));
 	}
 	else
 	{
-		// friction
 		JPH::Vec3 vel = bi.GetLinearVelocity(bodyID);
-		bi.AddForce(bodyID, JPH::Vec3(-vel.GetX() * 80.0f, 0.0f, -vel.GetZ() * 80.0f));
+		bi.AddForce(bodyID, JPH::Vec3(-vel.GetX() * 10.0f, 0.0f, -vel.GetZ() * 10.0f));
 	}
 
-	// no shake
 	bi.SetAngularVelocity(bodyID, JPH::Vec3::sZero());
 
-	// limitation on speed
+	if (glm::length(worldDir) > 0.001f)
+	{
+		JPH::Quat targetRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), yaw + JPH::JPH_PI);
+		JPH::Quat currentRot = bi.GetRotation(bodyID);
+		JPH::Quat smoothRot = currentRot.SLERP(targetRot, 0.15f);
+		bi.SetRotation(bodyID, smoothRot, JPH::EActivation::Activate);
+	}
+
 	JPH::Vec3 vel = bi.GetLinearVelocity(bodyID);
 	float maxSpeed = 10.0f;
 	float hSpeed = std::sqrt(vel.GetX() * vel.GetX() + vel.GetZ() * vel.GetZ());
@@ -240,7 +267,6 @@ void PhysicsSystem::AddForceDirection(const JPH::BodyID& bodyID, float force)
 			JPH::Vec3(vel.GetX() * scale, vel.GetY(), vel.GetZ() * scale));
 	}
 }
-
 
 
 void PhysicsSystem::Update(float dt)
@@ -530,15 +556,14 @@ JPH::BodyID PhysicsSystem::create_dynamic_compound_body(
 	bodySettings.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
 	bodySettings.mMassPropertiesOverride.mMass = mass;
 	bodySettings.mMotionQuality = JPH::EMotionQuality::LinearCast;
-	bodySettings.mLinearDamping = 2.0f;    // 松手后快速停下
-	bodySettings.mAngularDamping = 10.0f;   // 防止旋转漂移
+	bodySettings.mLinearDamping = 1.0f;    
+	bodySettings.mAngularDamping = 10.0f;  
 
-	//let bike not falling down (just be used to test)
+
 	bodySettings.mAllowedDOFs =
 		JPH::EAllowedDOFs::TranslationX |
 		JPH::EAllowedDOFs::TranslationY |
-		JPH::EAllowedDOFs::TranslationZ |
-		JPH::EAllowedDOFs::RotationY;
+		JPH::EAllowedDOFs::TranslationZ;
 
 	JPH::Body* body = bodyInterface.CreateBody(bodySettings);
 	if (!body) {
