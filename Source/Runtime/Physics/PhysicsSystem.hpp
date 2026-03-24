@@ -56,7 +56,7 @@ public:
     void Update(float dt) override;
     void Shutdown() override;
 
-    void AddForceDirection(const JPH::BodyID& bodyID, float force = 200.0f);
+    void AddForce(const JPH::BodyID& bodyID);
 
     void SetEventSystem(EventSystem* sys) { m_eventSystem = sys; }
 
