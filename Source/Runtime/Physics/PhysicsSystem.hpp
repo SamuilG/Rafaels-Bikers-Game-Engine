@@ -15,6 +15,7 @@
 #include <Jolt/Core/JobSystemThreadPool.h>
 #include <Jolt/Core/TempAllocator.h>
 #include <Jolt/Physics/Character/CharacterVirtual.h>
+#include <Jolt/Physics/Body/BodyLock.h>
 
 
 #include <memory>
@@ -56,7 +57,8 @@ public:
     void Update(float dt) override;
     void Shutdown() override;
 
-    void AddForce(const JPH::BodyID& bodyID);
+    void AddForceDirection(const JPH::BodyID& bodyID, float force = 2000.0f);
+
 
     void SetEventSystem(EventSystem* sys) { m_eventSystem = sys; }
 
@@ -83,12 +85,12 @@ public:
         float mass);
     //=============================UI System Interactions=============================
     // cast_ray
-    // Raycast from origin in direction, return first hit BodyIDÉäÏß¼ì²â£¬·µ»ØµÚÒ»¸ö±»»÷ÖĞµÄÎïÀí BodyID
+    // Raycast from origin in direction, return first hit BodyIDå°„çº¿æ£€æµ‹ï¼Œè¿”å›ç¬¬ä¸€ä¸ªè¢«å‡»ä¸­çš„ç‰©ç† BodyID
     uint32_t cast_ray(const glm::vec3& origin, const glm::vec3& direction, float max_distance = 1000.0f);
-    // ¸ù¾İ BodyID Í¬²½×îĞÂµÄ±ä»»¾ØÕó
+    // æ ¹æ® BodyID åŒæ­¥æœ€æ–°çš„å˜æ¢çŸ©é˜µ
     //latest transform
     void set_body_transform(uint32_t bodyID, const glm::mat4& transform);
-    //¸üĞÂËõ·Å
+    //æ›´æ–°ç¼©æ”¾
     //update the scale
     void set_body_scale(uint32_t bodyID, const glm::vec3& newScale, const glm::vec3& currentWorldPos, const glm::quat& currentWorldRot);
     //=============================UI System Interactions=============================
