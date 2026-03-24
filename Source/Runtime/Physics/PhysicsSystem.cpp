@@ -194,40 +194,51 @@ void PhysicsSystem::optimize_broad_phase()
 
 
 
-void PhysicsSystem::AddForce(const JPH::BodyID& bodyID)
+void PhysicsSystem::AddForceDirection(const JPH::BodyID& bodyID, float force)
 {
 	if (!mInputSystem || !mState) return;
-	JPH::BodyInterface& bodyInterface = m_physicsSystem->GetBodyInterface();
-	if (!bodyInterface.IsAdded(bodyID)) return;
+	JPH::BodyInterface& bi = m_physicsSystem->GetBodyInterface();
+	if (!bi.IsAdded(bodyID)) return;
 
+	//follow the camera
+	float yaw = mState->Yaw;
+	glm::vec3 forward(-std::sin(yaw), 0.0f, -std::cos(yaw));
+	glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0, 1, 0)));
 
-	glm::vec3 camForward = -glm::vec3(mState->camera2world[2]);
-	glm::vec3 camRight = glm::vec3(mState->camera2world[0]);
-	camForward.y = 0.0f;
-	camRight.y = 0.0f;
+	float inputZ = 0.0f, inputX = 0.0f;
+	if (mInputSystem->IsActionHeld("MoveForward"))  inputZ += 1.0f;
+	if (mInputSystem->IsActionHeld("MoveBackward")) inputZ -= 1.0f;
+	if (mInputSystem->IsActionHeld("StrafeLeft"))   inputX -= 1.0f;
+	if (mInputSystem->IsActionHeld("StrafeRight"))  inputX += 1.0f;
 
-	if (glm::length(camForward) > 0.001f) camForward = glm::normalize(camForward);
-	if (glm::length(camRight) > 0.001f)   camRight = glm::normalize(camRight);
+	glm::vec3 worldDir = forward * inputZ + right * inputX;
 
-
-	glm::vec3 moveDir(0.0f);
-	if (mInputSystem->IsActionHeld("MoveForward"))  moveDir += camForward;
-	if (mInputSystem->IsActionHeld("MoveBackward")) moveDir -= camForward;
-	if (mInputSystem->IsActionHeld("StrafeRight"))  moveDir += camRight;
-	if (mInputSystem->IsActionHeld("StrafeLeft"))   moveDir -= camRight;
-
-
-	float speed = 5.0f;
-	if (glm::length(moveDir) > 0.0f) {
-		moveDir = glm::normalize(moveDir);
-		float targetAngle = std::atan2(moveDir.x, moveDir.z);
-		JPH::Quat targetRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), targetAngle);
-		bodyInterface.SetRotation(bodyID, targetRot, JPH::EActivation::Activate);
+	// 
+	if (glm::length(worldDir) > 0.001f)
+	{
+		worldDir = glm::normalize(worldDir);
+		bi.AddForce(bodyID, JPH::Vec3(worldDir.x * force, 0.0f, worldDir.z * force));
+	}
+	else
+	{
+		// friction
+		JPH::Vec3 vel = bi.GetLinearVelocity(bodyID);
+		bi.AddForce(bodyID, JPH::Vec3(-vel.GetX() * 80.0f, 0.0f, -vel.GetZ() * 80.0f));
 	}
 
-	JPH::Vec3 currentVel = bodyInterface.GetLinearVelocity(bodyID);
-	JPH::Vec3 newVel(moveDir.x * speed, currentVel.GetY(), moveDir.z * speed);
-	bodyInterface.SetLinearVelocity(bodyID, newVel);
+	// no shake
+	bi.SetAngularVelocity(bodyID, JPH::Vec3::sZero());
+
+	// limitation on speed
+	JPH::Vec3 vel = bi.GetLinearVelocity(bodyID);
+	float maxSpeed = 10.0f;
+	float hSpeed = std::sqrt(vel.GetX() * vel.GetX() + vel.GetZ() * vel.GetZ());
+	if (hSpeed > maxSpeed)
+	{
+		float scale = maxSpeed / hSpeed;
+		bi.SetLinearVelocity(bodyID,
+			JPH::Vec3(vel.GetX() * scale, vel.GetY(), vel.GetZ() * scale));
+	}
 }
 
 
@@ -519,6 +530,8 @@ JPH::BodyID PhysicsSystem::create_dynamic_compound_body(
 	bodySettings.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
 	bodySettings.mMassPropertiesOverride.mMass = mass;
 	bodySettings.mMotionQuality = JPH::EMotionQuality::LinearCast;
+	bodySettings.mLinearDamping = 2.0f;    // 松手后快速停下
+	bodySettings.mAngularDamping = 10.0f;   // 防止旋转漂移
 
 	//let bike not falling down (just be used to test)
 	bodySettings.mAllowedDOFs =
