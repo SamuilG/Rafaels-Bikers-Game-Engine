@@ -196,32 +196,35 @@ void PhysicsSystem::optimize_broad_phase()
 
 void PhysicsSystem::AddForceDirection(const JPH::BodyID& bodyID, float force)
 {
-
-	if (!mInputSystem) return;
+	if (!mInputSystem || !mState) return;
 	JPH::BodyInterface& bodyInterface = m_physicsSystem->GetBodyInterface();
 	if (!bodyInterface.IsAdded(bodyID)) return;
 
 
-	glm::vec3 dir(0.0f);
+	glm::vec3 camForward = -glm::vec3(mState->camera2world[2]);
+	camForward.y = 0.0f;
+	if (glm::length(camForward) < 0.001f) return;
+	camForward = glm::normalize(camForward);
+
+	glm::vec3 camRight = glm::vec3(mState->camera2world[0]);
+	camRight.y = 0.0f;
+	camRight = glm::normalize(camRight);
 
 
+	float inputZ = 0.0f, inputX = 0.0f;
+	if (mInputSystem->IsActionHeld("MoveForward"))  inputZ += 1.0f;
+	if (mInputSystem->IsActionHeld("MoveBackward")) inputZ -= 1.0f;
+	if (mInputSystem->IsActionHeld("StrafeLeft"))   inputX -= 1.0f;
+	if (mInputSystem->IsActionHeld("StrafeRight"))  inputX += 1.0f;
 
-	if (mInputSystem->IsActionHeld("MoveForward")) dir.z -= 1.0f;
+	glm::vec3 worldDir = camForward * inputZ + camRight * inputX;
 
-	if (mInputSystem->IsActionHeld("MoveBackward")) dir.z += 1.0f;
-
-	if (mInputSystem->IsActionHeld("StrafeLeft")) dir.x -= 1.0f;
-
-	if (mInputSystem->IsActionHeld("StrafeRight")) dir.x += 1.0f;
-
-
-	if (glm::length(dir) > 0.0f)
+	if (glm::length(worldDir) > 0.0f)
 	{
-		dir = glm::normalize(dir);
-		bodyInterface.AddForce(bodyID, JPH::Vec3(dir.x * force, 0.0f, dir.z * force));
+		worldDir = glm::normalize(worldDir);
+		bodyInterface.AddForce(bodyID,
+			JPH::Vec3(worldDir.x * force, 0.0f, worldDir.z * force));
 	}
-
-
 }
 
 void PhysicsSystem::Update(float dt)
