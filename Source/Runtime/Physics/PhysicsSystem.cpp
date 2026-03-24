@@ -194,40 +194,34 @@ void PhysicsSystem::optimize_broad_phase()
 
 
 
-void PhysicsSystem::AddForce(const JPH::BodyID& bodyID)
+void PhysicsSystem::AddForceDirection(const JPH::BodyID& bodyID, float force)
 {
-	if (!mInputSystem || !mState) return;
+
+	if (!mInputSystem) return;
 	JPH::BodyInterface& bodyInterface = m_physicsSystem->GetBodyInterface();
 	if (!bodyInterface.IsAdded(bodyID)) return;
 
 
-	glm::vec3 camForward = -glm::vec3(mState->camera2world[2]);
-	glm::vec3 camRight = glm::vec3(mState->camera2world[0]);
-	camForward.y = 0.0f;
-	camRight.y = 0.0f;
-
-	if (glm::length(camForward) > 0.001f) camForward = glm::normalize(camForward);
-	if (glm::length(camRight) > 0.001f)   camRight = glm::normalize(camRight);
+	glm::vec3 dir(0.0f);
 
 
-	glm::vec3 moveDir(0.0f);
-	if (mInputSystem->IsActionHeld("MoveForward"))  moveDir += camForward;
-	if (mInputSystem->IsActionHeld("MoveBackward")) moveDir -= camForward;
-	if (mInputSystem->IsActionHeld("StrafeRight"))  moveDir += camRight;
-	if (mInputSystem->IsActionHeld("StrafeLeft"))   moveDir -= camRight;
+
+	if (mInputSystem->IsActionHeld("MoveForward")) dir.z -= 1.0f;
+
+	if (mInputSystem->IsActionHeld("MoveBackward")) dir.z += 1.0f;
+
+	if (mInputSystem->IsActionHeld("StrafeLeft")) dir.x -= 1.0f;
+
+	if (mInputSystem->IsActionHeld("StrafeRight")) dir.x += 1.0f;
 
 
-	float speed = 5.0f;
-	if (glm::length(moveDir) > 0.0f) {
-		moveDir = glm::normalize(moveDir);
-		float targetAngle = std::atan2(moveDir.x, moveDir.z);
-		JPH::Quat targetRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), targetAngle);
-		bodyInterface.SetRotation(bodyID, targetRot, JPH::EActivation::Activate);
+	if (glm::length(dir) > 0.0f)
+	{
+		dir = glm::normalize(dir);
+		bodyInterface.AddForce(bodyID, JPH::Vec3(dir.x * force, 0.0f, dir.z * force));
 	}
 
-	JPH::Vec3 currentVel = bodyInterface.GetLinearVelocity(bodyID);
-	JPH::Vec3 newVel(moveDir.x * speed, currentVel.GetY(), moveDir.z * speed);
-	bodyInterface.SetLinearVelocity(bodyID, newVel);
+
 }
 
 void PhysicsSystem::Update(float dt)
@@ -236,7 +230,7 @@ void PhysicsSystem::Update(float dt)
 		return;
 	}
 
-	AddForce(JPH::BodyID(8388674));
+	AddForceDirection(JPH::BodyID(8388674));
 
 	const int cCollisionSteps = 1;
 	// Step the system
