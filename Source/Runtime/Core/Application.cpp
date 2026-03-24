@@ -103,7 +103,7 @@ namespace engine {
            // ===================UI System===========================
         // 加载上次保存的 JSON 存档
         //load the last saved JSON save file
-        engine::EngineUi::LoadProject(sceneManager, renderSystem, "Assets/MySceneSave.json");
+        //engine::EngineUi::LoadProject(sceneManager, renderSystem, "Assets/MySceneSave.json");
         // ===================UI System===========================
         // 
         // 最后再打印实体列表，确认灯光实体已创建
