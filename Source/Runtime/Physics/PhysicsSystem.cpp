@@ -193,6 +193,7 @@ void PhysicsSystem::optimize_broad_phase()
 
 
 
+
 void PhysicsSystem::AddForceDirection(const JPH::BodyID& bodyID, float force)
 {
 	if (!mInputSystem || !mState) return;
@@ -241,19 +242,22 @@ void PhysicsSystem::AddForceDirection(const JPH::BodyID& bodyID, float force)
 }
 
 
+
 void PhysicsSystem::Update(float dt)
 {
 	if (!m_physicsSystem) {
 		return;
 	}
 
-	AddForceDirection(JPH::BodyID(8388674));
+
+	if (mState && mState->thirdPersonMode) {
+		AddForce(JPH::BodyID(8388674));
+	}
 
 	const int cCollisionSteps = 1;
 	// Step the system
 	m_physicsSystem->Update(dt, cCollisionSteps, m_tempAllocator.get(), m_jobSystem.get());
 }
-
 void PhysicsSystem::Shutdown()
 {
 	if (m_physicsSystem) {
