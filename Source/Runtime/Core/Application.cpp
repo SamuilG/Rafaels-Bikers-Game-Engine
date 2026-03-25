@@ -95,13 +95,38 @@ namespace engine {
         renderSystem->load_additional_model("Assets/Models/em1.gltf", false, 90.0f, CubeSpawnPos);
 
         glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
-        renderSystem->load_additional_model("Assets/Models/testBike1.gltf", false, 90.0f, tbpos,false, true);
+        renderSystem->load_additional_model("Assets/Models/testBike1.gltf", false, 90.0f, tbpos, false, true);
 
+       
+    
+        //=============================================Headlight ==============================================
+        glm::mat4 localLightOffset = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 1.2f));
 
-        // 在 Application.cpp 的构造函数末尾，print_all_entities 之前添加：
+        flecs::entity headlight = sceneManager->create_light_entity(
+            "headlight",
+            engine::LightType::Spot,
+            glm::vec3(1.0f, 0.95f, 0.85f),
+            15.0f,
+            localLightOffset,              
+            40.0f,
+            glm::vec3(0.0f, 0, 1.0f),  
+            15.0f,
+            25.0f
+        );
 
+       
+   
+        flecs::entity bikeEntity = sceneManager->find_entity("立方体_0");
 
+        if (bikeEntity.is_valid()) {
+            headlight.child_of(bikeEntity); // 魔法就在这一行！
+            std::print("Success: Headlight is now firmly attached to the Bike!\n");
+        }
+        else {
+            std::print("Warning: Could not find CPart_0! Check your terminal output for the correct bike entity name.\n");
+        }
 
+        //=============================================Headlight End ==============================================
 
 
 
@@ -116,22 +141,9 @@ namespace engine {
         sceneManager->print_all_entities();
         // --- 【修改】计算车头灯的初始位置 ---
 // 假设车头在 Y轴偏上(1.0米)，Z轴偏前(1.2米) 的位置
-        glm::vec3 headlightOffset = glm::vec3(0.0f, -7.0f, 0.0f);
-        glm::mat4 LightTransform = glm::translate(BikeSpawnPos, headlightOffset);
 
-        // --- 【修改】创建聚光灯 (车头灯) ---
-        sceneManager->create_light_entity(
-            "headlight",
-            engine::LightType::Spot,
-            glm::vec3(1.0f, 0.95f, 0.85f), // 车灯颜色：微微偏暖黄色的卤素/LED灯感觉
-            15.0f,                          // 强度 (intensity)：稍微调亮一点
-            LightTransform,                // 初始位置矩阵
-            40.0f,                         // 照射范围 (range)：车灯能照亮前方 40 米
-            glm::vec3(0.0f, 0, 1.0f), // 照射方向 (direction)：正前方，微微向下倾斜 15% 照亮路面
-            15.0f,                         // 内锥角 (innerCutOff)：中心 15度 范围内是最亮的
-            25.0f                          // 外锥角 (outerCutOff)：边缘衰减到 25度 彻底变暗
-        );
 
+        
 
         //add Lights Here
         // 定义方向：从右上方向左下方照射
