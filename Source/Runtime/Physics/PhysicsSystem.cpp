@@ -277,7 +277,10 @@ void PhysicsSystem::Update(float dt)
 
 
 	if (mState && mState->thirdPersonMode) {
-		AddForceDirection(JPH::BodyID(8388674));
+		//burstlink's old bike
+		//AddForceDirection(JPH::BodyID(8388674));
+
+		AddForceDirection(JPH::BodyID(8388679));
 	}
 
 	const int cCollisionSteps = 1;

@@ -192,7 +192,7 @@ void SceneManager::load_C_model(const EngineModel& model, float mass, uint32_t b
     // 2. Create render entities
     int counter = 0;
     for (const auto& instance : model.scenes) {
-        std::string name = instance.name.empty() ? "CompoundPart" : instance.name;
+        std::string name = instance.name.empty() ? "CPart" : instance.name;
         name += "_" + std::to_string(counter++);
 
         // 这里的 localOffset 将完美保留每个零件自己原本的缩放比例
@@ -282,19 +282,31 @@ void SceneManager::print_all_entities() {
         std::string typeStr = "Unknown";
 
         if (e.has<MeshComponent>()) {
-           
             typeStr = "Mesh [" + std::to_string(e.get<MeshComponent>().meshIndex) + "]";
         }
         else if (e.has<LightComponent>()) {
-            
             auto& lc = e.get<LightComponent>();
-            typeStr = (lc.type == LightType::Directional) ? "DirLight" : "PointLight";
+            if (lc.type == LightType::Directional) typeStr = "DirLight";
+            else if (lc.type == LightType::Spot) typeStr = "SpotLight";
+            else typeStr = "PointLight";
         }
 
-        std::print("Entity: {:<15} | Type: {:<10} | Render: {} | Physics: {}\n",
+        // --- 【新增】获取物理 BodyID 字符串 ---
+        std::string bodyIdStr = "None";
+        if (e.has<PhysicsBody>()) {
+            bodyIdStr = std::to_string(e.get<PhysicsBody>().bodyID);
+        }
+        else if (e.has<CompoundParent>()) {
+            // 如果是复合模型的子零件，也会把主刚体的 ID 打印出来，并标记为 (Sub)
+            bodyIdStr = std::to_string(e.get<CompoundParent>().bodyID) + " (Sub)";
+        }
+
+        // 扩展了打印格式，加上了 BodyID
+        std::print("Entity: {:<18} | Type: {:<12} | Render: {} | Physics: {} | BodyID: {}\n",
             name, typeStr,
             status.should_render ? "ON" : "OFF",
-            status.has_physics ? "ON" : "OFF");
+            status.has_physics ? "ON" : "OFF",
+            bodyIdStr);
         });
     std::print("--------------------------------------\n\n");
 }

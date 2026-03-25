@@ -1243,7 +1243,7 @@ namespace engine {
             //find character pos
             if (mSceneManager && mState->thirdPersonMode) {
                 // 用你想跟随的实体名字
-                auto target = mSceneManager->find_entity("Object_10_0");
+                auto target = mSceneManager->find_entity("立方体_0");
                 if (target.is_valid() && target.has<WorldTransform>()) {
                     const auto& wt = target.get<WorldTransform>();
                     mState->followTargetPos = glm::vec3(wt.matrix[3]);
