@@ -85,12 +85,12 @@ namespace cfg
 
 	//particle textures
 	constexpr char const* ParticleTextures[] = {
-	"assets/Textures/MainMenu_Bg.png",
-	"assets/Textures/fire.png",
-	"assets/Textures/aa.png",
-	"assets/Textures/fire5.png",
-	"assets/Textures/ww.png",
-	"assets/Textures/particleIcon.png",
+	"Assets/Textures/MainMenu_Bg.png",
+	"Assets/Textures/fire.png",
+	"Assets/Textures/aa.png",
+	"Assets/Textures/fire5.png",
+	"Assets/Textures/ww.png",
+	"Assets/Textures/particleIcon.png",
 	};
 
 }
@@ -124,6 +124,7 @@ lut::DescriptorSetLayout create_blur_descriptor_layout(lut::VulkanContext const&
 lut::Pipeline create_triangle_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_B8G8R8A8_SRGB );
 lut::Pipeline create_debug_pipeline( lut::VulkanWindow const&, VkPipelineLayout, char const* aVertPath, char const* aFragPath, VkFormat = VK_FORMAT_B8G8R8A8_SRGB );
 lut::Pipeline create_alpha_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_B8G8R8A8_SRGB );
+lut::Pipeline create_alpha_pipeline_1_attachment( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_B8G8R8A8_SRGB );
 lut::Pipeline create_post_proc_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkDescriptorSetLayout );
 lut::Pipeline create_blur_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout);
 lut::Pipeline create_composite_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout);

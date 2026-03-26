@@ -1,0 +1,24 @@
+==== Building GLFW (debug_x64) ====
+==== Building JoltPhysics (debug_x64) ====
+==== Building ImGui (debug_x64) ====
+==== Building Shaders (debug_x64) ====
+==== Building Engine (debug_x64) ====
+Application.cpp
+In file included from ../../Source/Runtime/Core/Application.cpp:2:
+../../Source/Runtime/Core/../Renderer/RenderSystem.hpp: In member function ‘void engine::RenderSystem::AddParticleGroup()’:
+../../Source/Runtime/Core/../Renderer/RenderSystem.hpp:196:13: error: ‘strcpy_s’ was not declared in this scope; did you mean ‘strcpy’?
+  196 |             strcpy_s(ps->config.name, sizeof(ps->config.name), defaultName.c_str());
+      |             ^~~~~~~~
+      |             strcpy
+../../Source/Runtime/Core/../Renderer/RenderSystem.hpp: In member function ‘virtual void engine::RenderSystem::Update(float)’:
+../../Source/Runtime/Core/../Renderer/RenderSystem.hpp:914:40: warning: unused variable ‘lastSelectedId’ [-Wunused-variable]
+  914 |                 static flecs::entity_t lastSelectedId = 0;
+      |                                        ^~~~~~~~~~~~~~
+../../Source/Runtime/Core/../Renderer/RenderSystem.hpp:915:33: warning: unused variable ‘originalMaterialIdx’ [-Wunused-variable]
+  915 |                 static uint32_t originalMaterialIdx = 0;
+      |                                 ^~~~~~~~~~~~~~~~~~~
+../../Source/Runtime/Core/../Renderer/RenderSystem.hpp:1334:30: warning: unused variable ‘resolveLayout’ [-Wunused-variable]
+ 1334 |             VkPipelineLayout resolveLayout = mPostPipeLayout.handle;
+      |                              ^~~~~~~~~~~~~
+make[1]: *** [Engine.make:237: ../Obj/Engine/Debug-x64/Application.o] Error 1
+make: *** [Makefile:56: Engine] Error 2

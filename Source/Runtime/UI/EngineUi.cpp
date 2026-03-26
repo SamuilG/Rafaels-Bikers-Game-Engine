@@ -1,4 +1,4 @@
-﻿#pragma execution_character_set("utf-8")
+#pragma execution_character_set("utf-8")
 
 #include "EngineUi.hpp"
 
@@ -16,7 +16,7 @@
 #include <algorithm>
 
 #include <imgui.h>
-#include "..\..\ThirdParty\imgui\ImGuizmo\ImGuizmo.h"
+#include "../../ThirdParty/imgui/ImGuizmo/ImGuizmo.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -352,7 +352,7 @@ namespace engine {
 				
 				if (pJson.contains("Name")) {
 					std::string n = pJson["Name"].get<std::string>();
-					strcpy_s(config.name, sizeof(config.name), n.c_str());
+					snprintf(config.name, sizeof(config.name), "%s", n.c_str());
 				}
 				if (pJson.contains("Shape")) ps->setEmitterShape((EmitterShape)pJson["Shape"].get<int>());
 				if (pJson.contains("EmitterPos")) config.emitterPos = JsonToVec3(pJson["EmitterPos"]);

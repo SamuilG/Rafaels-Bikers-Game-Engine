@@ -11,12 +11,14 @@ endif
 ifeq ($(config),debug_x64)
   GLFW_config = debug_x64
   JoltPhysics_config = debug_x64
+  ImGui_config = debug_x64
   Engine_config = debug_x64
   Shaders_config = debug_x64
 
 else ifeq ($(config),release_x64)
   GLFW_config = release_x64
   JoltPhysics_config = release_x64
+  ImGui_config = release_x64
   Engine_config = release_x64
   Shaders_config = release_x64
 
@@ -24,7 +26,7 @@ else
   $(error "invalid configuration $(config)")
 endif
 
-PROJECTS := GLFW JoltPhysics Engine Shaders
+PROJECTS := GLFW JoltPhysics ImGui Engine Shaders
 
 .PHONY: all clean help $(PROJECTS) 
 
@@ -42,7 +44,13 @@ ifneq (,$(JoltPhysics_config))
 	@${MAKE} --no-print-directory -C Intermediate/Projects -f JoltPhysics.make config=$(JoltPhysics_config)
 endif
 
-Engine: GLFW JoltPhysics Shaders
+ImGui:
+ifneq (,$(ImGui_config))
+	@echo "==== Building ImGui ($(ImGui_config)) ===="
+	@${MAKE} --no-print-directory -C Intermediate/Projects -f ImGui.make config=$(ImGui_config)
+endif
+
+Engine: GLFW JoltPhysics ImGui Shaders
 ifneq (,$(Engine_config))
 	@echo "==== Building Engine ($(Engine_config)) ===="
 	@${MAKE} --no-print-directory -C Intermediate/Projects -f Engine.make config=$(Engine_config)
@@ -57,6 +65,7 @@ endif
 clean:
 	@${MAKE} --no-print-directory -C Intermediate/Projects -f GLFW.make clean
 	@${MAKE} --no-print-directory -C Intermediate/Projects -f JoltPhysics.make clean
+	@${MAKE} --no-print-directory -C Intermediate/Projects -f ImGui.make clean
 	@${MAKE} --no-print-directory -C Intermediate/Projects -f Engine.make clean
 	@${MAKE} --no-print-directory -C Intermediate/Projects -f Shaders.make clean
 
@@ -72,6 +81,7 @@ help:
 	@echo "   clean"
 	@echo "   GLFW"
 	@echo "   JoltPhysics"
+	@echo "   ImGui"
 	@echo "   Engine"
 	@echo "   Shaders"
 	@echo ""
