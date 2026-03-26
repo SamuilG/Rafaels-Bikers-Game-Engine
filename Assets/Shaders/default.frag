@@ -2,7 +2,13 @@
 
 #extension GL_EXT_scalar_block_layout : require
 
-
+layout(push_constant) uniform PushConstants {
+    mat4 transform;
+    vec4 baseColorFactor;
+    float metallicFactor;
+    float roughnessFactor;
+    vec2 pad;
+} pc;
 
 layout( location = 0 ) out vec4 oColor;       // 正常场景颜色
 layout( location = 1 ) out vec4 oBrightColor; // 提取的亮度颜
@@ -142,11 +148,18 @@ float calculate_shadow()
 }
 void main()
 {
-    // --- 1. 材质属性采样 ---
-    vec3 baseColor = texture(uTexColor, v2fTexCoord).rgb;
-    float roughness = texture(uTexRoughness, v2fTexCoord).r;
-    float metalness = texture(uTexMetalness, v2fTexCoord).r;
 
+    // --- 1. 材质属性采样 ---
+ 
+
+    // --- 【关键修改】：贴图颜色 乘以 基础颜色因子 ---
+    // 如果没有贴图，uTexColor 返回我们刚改的纯白 (1,1,1,1)，乘出来就是纯色！
+    vec4 texColor = texture(uTexColor, v2fTexCoord);
+    vec3 baseColor = (texColor * pc.baseColorFactor).rgb;
+    
+    // 粗糙度和金属度也一样，结合贴图通道和因子
+    float roughness = texture(uTexRoughness, v2fTexCoord).r * pc.roughnessFactor;
+    float metalness = texture(uTexMetalness, v2fTexCoord).r * pc.metallicFactor;
     // --- 2. 几何向量计算 ---
     vec3 N = normalize(v2fNormal);
     vec3 V = normalize(uScene.cameraPos.xyz - v2fPos); 

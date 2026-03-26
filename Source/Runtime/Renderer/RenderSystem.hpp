@@ -277,8 +277,9 @@ namespace engine {
             {
                 // just for objects without texture to set a default texture
                 // RGBA: 128, 128, 128, 255 (grey)
-                std::uint8_t grey[4] = { 128, 128, 128, 255 };
-
+                //std::uint8_t grey[4] = { 128, 128, 128, 255 };
+				//need it be white for pure color models, otherwise the default grey will darken the colors in the shader (multiplying by 128/255)
+                std::uint8_t grey[4] = { 255, 255, 255, 255 };
                 // uploda 1x1 pixel to GPU
                 mDefaultGrayTex = lut::load_image_texture2d_from_memory(
                     grey, 1, 1,

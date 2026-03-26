@@ -17,6 +17,14 @@
 // apply post processing and render to swapchain
 // function definition
 
+// 在 rendering.cpp 顶部或者 record_commands 函数外定义：
+struct alignas(16) ObjectPC {
+	glm::mat4 transform;
+	glm::vec4 baseColorFactor;
+	float metallicFactor;
+	float roughnessFactor;
+	float padding[2]; // 占位符，保证 16 字节对齐
+};
 void record_commands(
 	VkCommandBuffer aCmdBuff,
 	VkPipeline aGraphicsPipe,
@@ -131,9 +139,13 @@ void record_commands(
 				uint32_t meshIdx = batch.meshIndex;
 				uint32_t matIdx = batch.materialIndex;
 
+				// 【关键】：这里一定要乘上 lightVP，算出投影空间矩阵！
 				glm::mat4 lightModel = aSceneUniform.lightVP[i] * batch.transform;
+            
+				// 【关键】：这里只推送 64 字节 (sizeof(glm::mat4))！不要传整个 128 字节！
 				vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(glm::mat4), &lightModel);
 
+				
 				vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
 
 				vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset);
@@ -239,9 +251,25 @@ void record_commands(
 		uint32_t meshIdx = batch.meshIndex;
 		uint32_t matIdx = batch.materialIndex;
 		auto const& meshInfo = aMeshInfos[meshIdx];
+		// ===============================================
+				// 构建完整的 Push Constant 数据
+		ObjectPC pcData{};
+		pcData.transform = batch.transform; // 主渲染只要世界矩阵，不需要乘 lightVP！
 
-		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(glm::mat4), &batch.transform);
+		if (matIdx < aMaterials.size()) {
+			pcData.baseColorFactor = aMaterials[matIdx].baseColorFactor;
+			pcData.metallicFactor = aMaterials[matIdx].metallicFactor;
+			pcData.roughnessFactor = aMaterials[matIdx].roughnessFactor;
+		}
+		else {
+			pcData.baseColorFactor = glm::vec4(1.0f);
+			pcData.metallicFactor = 1.0f;
+			pcData.roughnessFactor = 1.0f;
+		}
 
+		// 推送 96 字节的数据给显卡
+		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ObjectPC), &pcData);
+		// ===============================================
 		VkPipeline targetPipeline = aGraphicsPipe;
 		if (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0)
 			targetPipeline = aAlphaPipe;
