@@ -1,0 +1,184 @@
+==== Building GLFW (debug_x64) ====
+==== Building JoltPhysics (debug_x64) ====
+==== Building ImGui (debug_x64) ====
+==== Building Shaders (debug_x64) ====
+==== Building Engine (debug_x64) ====
+Application.cpp
+In file included from ../../Source/Runtime/Core/Application.cpp:2:
+../../Source/Runtime/Core/../Renderer/RenderSystem.hpp: In member function ‘virtual void engine::RenderSystem::Update(float)’:
+../../Source/Runtime/Core/../Renderer/RenderSystem.hpp:914:40: warning: unused variable ‘lastSelectedId’ [-Wunused-variable]
+  914 |                 static flecs::entity_t lastSelectedId = 0;
+      |                                        ^~~~~~~~~~~~~~
+../../Source/Runtime/Core/../Renderer/RenderSystem.hpp:915:33: warning: unused variable ‘originalMaterialIdx’ [-Wunused-variable]
+  915 |                 static uint32_t originalMaterialIdx = 0;
+      |                                 ^~~~~~~~~~~~~~~~~~~
+../../Source/Runtime/Core/../Renderer/RenderSystem.hpp:962:27: warning: variable ‘viewProj’ set but not used [-Wunused-but-set-variable]
+  962 |                 glm::mat4 viewProj = gizmoProj * view;
+      |                           ^~~~~~~~
+../../Source/Runtime/Core/../Renderer/RenderSystem.hpp:963:27: warning: variable ‘cameraPos’ set but not used [-Wunused-but-set-variable]
+  963 |                 glm::vec3 cameraPos = glm::vec3(glm::inverse(view)[3]); // 提取逆 view 矩阵第 4 列作为位置
+      |                           ^~~~~~~~~
+../../Source/Runtime/Core/../Renderer/RenderSystem.hpp:1332:29: warning: variable ‘resolvePipeline’ set but not used [-Wunused-but-set-variable]
+ 1332 |             VkPipeline      resolvePipeline = mPostProcPipe.handle;
+      |                             ^~~~~~~~~~~~~~~
+../../Source/Runtime/Core/../Renderer/RenderSystem.hpp:1333:29: warning: variable ‘resolveDescs’ set but not used [-Wunused-but-set-variable]
+ 1333 |             VkDescriptorSet resolveDescs = mPostDescriptors[mFrameIndex];
+      |                             ^~~~~~~~~~~~
+../../Source/Runtime/Core/../Renderer/RenderSystem.hpp:1334:30: warning: unused variable ‘resolveLayout’ [-Wunused-variable]
+ 1334 |             VkPipelineLayout resolveLayout = mPostPipeLayout.handle;
+      |                              ^~~~~~~~~~~~~
+EngineUi.cpp
+../../Source/Runtime/UI/EngineUi.cpp:1: warning: ignoring ‘#pragma execution_character_set ’ [-Wunknown-pragmas]
+    1 | #pragma execution_character_set("utf-8")
+In file included from ../../Source/Runtime/UI/EngineUi.cpp:30:
+../../Source/Runtime/UI/../Renderer/RenderSystem.hpp:26:9: warning: "GLFW_INCLUDE_NONE" redefined
+   26 | #define GLFW_INCLUDE_NONE
+      |         ^~~~~~~~~~~~~~~~~
+In file included from ../../Source/Runtime/UI/../Renderer/RenderUtilities/setup.hpp:4,
+                 from ../../Source/Runtime/UI/EngineUi.hpp:3,
+                 from ../../Source/Runtime/UI/EngineUi.cpp:3:
+../../Source/Runtime/UI/../Renderer/RenderUtilities/../../Rhi/vulkan_window.hpp:8:16: note: this is the location of the previous definition
+    8 | #       define GLFW_INCLUDE_NONE 1
+      |                ^~~~~~~~~~~~~~~~~
+../../Source/Runtime/UI/../Renderer/RenderSystem.hpp: In member function ‘virtual void engine::RenderSystem::Update(float)’:
+../../Source/Runtime/UI/../Renderer/RenderSystem.hpp:914:40: warning: unused variable ‘lastSelectedId’ [-Wunused-variable]
+  914 |                 static flecs::entity_t lastSelectedId = 0;
+      |                                        ^~~~~~~~~~~~~~
+../../Source/Runtime/UI/../Renderer/RenderSystem.hpp:915:33: warning: unused variable ‘originalMaterialIdx’ [-Wunused-variable]
+  915 |                 static uint32_t originalMaterialIdx = 0;
+      |                                 ^~~~~~~~~~~~~~~~~~~
+../../Source/Runtime/UI/../Renderer/RenderSystem.hpp:962:27: warning: variable ‘viewProj’ set but not used [-Wunused-but-set-variable]
+  962 |                 glm::mat4 viewProj = gizmoProj * view;
+      |                           ^~~~~~~~
+../../Source/Runtime/UI/../Renderer/RenderSystem.hpp:963:27: warning: variable ‘cameraPos’ set but not used [-Wunused-but-set-variable]
+  963 |                 glm::vec3 cameraPos = glm::vec3(glm::inverse(view)[3]); // 提取逆 view 矩阵第 4 列作为位置
+      |                           ^~~~~~~~~
+../../Source/Runtime/UI/../Renderer/RenderSystem.hpp:1332:29: warning: variable ‘resolvePipeline’ set but not used [-Wunused-but-set-variable]
+ 1332 |             VkPipeline      resolvePipeline = mPostProcPipe.handle;
+      |                             ^~~~~~~~~~~~~~~
+../../Source/Runtime/UI/../Renderer/RenderSystem.hpp:1333:29: warning: variable ‘resolveDescs’ set but not used [-Wunused-but-set-variable]
+ 1333 |             VkDescriptorSet resolveDescs = mPostDescriptors[mFrameIndex];
+      |                             ^~~~~~~~~~~~
+../../Source/Runtime/UI/../Renderer/RenderSystem.hpp:1334:30: warning: unused variable ‘resolveLayout’ [-Wunused-variable]
+ 1334 |             VkPipelineLayout resolveLayout = mPostPipeLayout.handle;
+      |                              ^~~~~~~~~~~~~
+../../Source/Runtime/UI/EngineUi.cpp: In static member function ‘static void engine::EngineUi::DrawSceneViewport(VkDescriptorSet, engine::RenderSystem*, engine::SceneManager*, const glm::mat4&, const glm::mat4&, flecs::entity_t&, UserState&)’:
+../../Source/Runtime/UI/EngineUi.cpp:488:43: warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::vector<std::unique_ptr<ParticleSystem> >::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+  488 |                         for (int i = 0; i < particles.size(); ++i) {
+      |                                         ~~^~~~~~~~~~~~~~~~~~
+../../Source/Runtime/UI/EngineUi.cpp:562:120: warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::vector<std::unique_ptr<ParticleSystem> >::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+  562 |                 if (renderSys && state.particlesEnabled && state.activeParticleIndex >= 0 && state.activeParticleIndex < renderSys->GetParticles().size()) {
+      |                                                                                              ~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../../Source/Runtime/UI/EngineUi.cpp: In static member function ‘static void engine::EngineUi::DrawControlPanel(UserState&, engine::RenderSystem*, engine::SceneManager*)’:
+../../Source/Runtime/UI/EngineUi.cpp:794:43: warning: format not a string literal and no format arguments [-Wformat-security]
+  794 |                         ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), _SL("[ Performance ]"));
+      |                         ~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../../Source/Runtime/UI/EngineUi.cpp:809:43: warning: format not a string literal and no format arguments [-Wformat-security]
+  809 |                         ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), _SL("[ generator ]"));
+      |                         ~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../../Source/Runtime/UI/EngineUi.cpp:855:43: warning: format not a string literal and no format arguments [-Wformat-security]
+  855 |                         ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), _SL("[ Particle Editor ]"));
+      |                         ~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../../Source/Runtime/UI/EngineUi.cpp:876:62: warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::vector<std::unique_ptr<ParticleSystem> >::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+  876 |                                         if (selectedParticle >= particles.size()) selectedParticle = (int)particles.size() - 1;
+      |                                             ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~
+../../Source/Runtime/UI/EngineUi.cpp:882:67: warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::vector<std::unique_ptr<ParticleSystem> >::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+  882 |                                                 for (int i = 0; i < particles.size(); ++i)
+      |                                                                 ~~^~~~~~~~~~~~~~~~~~
+../../Source/Runtime/UI/EngineUi.cpp:970:76: warning: format not a string literal and no format arguments [-Wformat-security]
+  970 |                                                         ImGui::TextDisabled(_SL("Select Texture"));
+      |                                                         ~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~
+../../Source/Runtime/UI/EngineUi.cpp:976:75: warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::vector<std::__cxx11::basic_string<char>, std::allocator<std::__cxx11::basic_string<char> > >::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+  976 |                                                         for (int i = 0; i < texNames.size(); ++i)
+      |                                                                         ~~^~~~~~~~~~~~~~~~~
+../../Source/Runtime/UI/EngineUi.cpp:1003:99: warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::vector<std::__cxx11::basic_string<char>, std::allocator<std::__cxx11::basic_string<char> > >::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+ 1003 |                                                                         if ((i + 1) % 4 != 0 && i != texNames.size() - 1) {
+      |                                                                                                 ~~^~~~~~~~~~~~~~~~~~~~~~
+../../Source/Runtime/UI/EngineUi.cpp: In static member function ‘static void engine::EngineUi::DrawSceneHierarchy(engine::RenderSystem*, engine::SceneManager*, const glm::mat4&, const glm::mat4&, flecs::entity_t&, UserState&)’:
+../../Source/Runtime/UI/EngineUi.cpp:1178:68: warning: format not a string literal and no format arguments [-Wformat-security]
+ 1178 |                                                         ImGui::Text(_SL("Position (XYZ)"));
+      |                                                         ~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~
+../../Source/Runtime/UI/EngineUi.cpp:1181:68: warning: format not a string literal and no format arguments [-Wformat-security]
+ 1181 |                                                         ImGui::Text(_SL("Rotation (Pitch Yaw Roll)"));
+      |                                                         ~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../../Source/Runtime/UI/EngineUi.cpp:1184:68: warning: format not a string literal and no format arguments [-Wformat-security]
+ 1184 |                                                         ImGui::Text(_SL("Scale (XYZ)"));
+      |                                                         ~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~
+../../Source/Runtime/UI/EngineUi.cpp:1051:23: warning: unused variable ‘screenHeight’ [-Wunused-variable]
+ 1051 |                 float screenHeight = ImGui::GetIO().DisplaySize.y;
+      |                       ^~~~~~~~~~~~
+../../Source/Runtime/UI/EngineUi.cpp: In static member function ‘static void engine::EngineUi::DrawMainMenu(engine::RenderSystem*, bool&, bool&)’:
+../../Source/Runtime/UI/EngineUi.cpp:1360:43: warning: format not a string literal and no format arguments [-Wformat-security]
+ 1360 |                         ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), _SL("[ MAIN MENU ]"));
+      |                         ~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../../Source/Runtime/UI/EngineUi.cpp: In static member function ‘static void engine::EngineUi::DrawGamePause(engine::RenderSystem*, UserState&, bool&)’:
+../../Source/Runtime/UI/EngineUi.cpp:1447:43: warning: format not a string literal and no format arguments [-Wformat-security]
+ 1447 |                         ImGui::TextColored(ImVec4(1, 0, 0, 1), _SL("Pause"));
+      |                         ~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../../Source/Runtime/UI/EngineUi.cpp: In static member function ‘static void engine::EngineUi::DrawGameOver(engine::RenderSystem*, UserState&, bool&)’:
+../../Source/Runtime/UI/EngineUi.cpp:1539:43: warning: format not a string literal and no format arguments [-Wformat-security]
+ 1539 |                         ImGui::TextColored(ImVec4(1, 0, 0, 1), _SL("   GAME OVER"));
+      |                         ~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ImGuizmo.cpp
+MousePicker.cpp
+ParticleSystem.cpp
+../../Source/Runtime/Particle/ParticleSystem.cpp: In member function ‘void ParticleSystem::uploadDebug(const labut2::Allocator&, const glm::vec3&)’:
+../../Source/Runtime/Particle/ParticleSystem.cpp:253:22: warning: unused variable ‘vma’ [-Wunused-variable]
+  253 |         VmaAllocator vma = alloc.allocator;
+      |                      ^~~
+../../Source/Runtime/Particle/ParticleSystem.cpp: At global scope:
+../../Source/Runtime/Particle/ParticleSystem.cpp:13:14: warning: ‘float clamp01(float)’ defined but not used [-Wunused-function]
+   13 | static float clamp01(float x) { return std::clamp(x, 0.0f, 1.0f); }
+      |              ^~~~~~~
+PhysicsSystem.cpp
+RenderSystem_Thumbnail.cpp
+In file included from ../../Source/Runtime/UI/RenderSystem_Thumbnail.cpp:1:
+../../Source/Runtime/UI/../Renderer/RenderSystem.hpp: In member function ‘virtual void engine::RenderSystem::Update(float)’:
+../../Source/Runtime/UI/../Renderer/RenderSystem.hpp:914:40: warning: unused variable ‘lastSelectedId’ [-Wunused-variable]
+  914 |                 static flecs::entity_t lastSelectedId = 0;
+      |                                        ^~~~~~~~~~~~~~
+../../Source/Runtime/UI/../Renderer/RenderSystem.hpp:915:33: warning: unused variable ‘originalMaterialIdx’ [-Wunused-variable]
+  915 |                 static uint32_t originalMaterialIdx = 0;
+      |                                 ^~~~~~~~~~~~~~~~~~~
+../../Source/Runtime/UI/../Renderer/RenderSystem.hpp:962:27: warning: variable ‘viewProj’ set but not used [-Wunused-but-set-variable]
+  962 |                 glm::mat4 viewProj = gizmoProj * view;
+      |                           ^~~~~~~~
+../../Source/Runtime/UI/../Renderer/RenderSystem.hpp:963:27: warning: variable ‘cameraPos’ set but not used [-Wunused-but-set-variable]
+  963 |                 glm::vec3 cameraPos = glm::vec3(glm::inverse(view)[3]); // 提取逆 view 矩阵第 4 列作为位置
+      |                           ^~~~~~~~~
+../../Source/Runtime/UI/../Renderer/RenderSystem.hpp:1332:29: warning: variable ‘resolvePipeline’ set but not used [-Wunused-but-set-variable]
+ 1332 |             VkPipeline      resolvePipeline = mPostProcPipe.handle;
+      |                             ^~~~~~~~~~~~~~~
+../../Source/Runtime/UI/../Renderer/RenderSystem.hpp:1333:29: warning: variable ‘resolveDescs’ set but not used [-Wunused-but-set-variable]
+ 1333 |             VkDescriptorSet resolveDescs = mPostDescriptors[mFrameIndex];
+      |                             ^~~~~~~~~~~~
+../../Source/Runtime/UI/../Renderer/RenderSystem.hpp:1334:30: warning: unused variable ‘resolveLayout’ [-Wunused-variable]
+ 1334 |             VkPipelineLayout resolveLayout = mPostPipeLayout.handle;
+      |                              ^~~~~~~~~~~~~
+SceneManager.cpp
+SwitchLanguage.cpp
+../../Source/Runtime/UI/SwitchLanguage.cpp:1: warning: ignoring ‘#pragma execution_character_set ’ [-Wunknown-pragmas]
+    1 | #pragma execution_character_set("utf-8")
+camera.cpp
+engine_model.cpp
+../../Source/Runtime/Scene/model_loader/engine_model.cpp: In function ‘void processNode(const tinygltf::Model&, int, const glm::mat4&, const std::vector<std::vector<unsigned int> >&, std::vector<EngineInstance>&)’:
+../../Source/Runtime/Scene/model_loader/engine_model.cpp:278:32: warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::vector<tinygltf::Node>::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+  278 |     if (nodeIdx < 0 || nodeIdx >= gltf.nodes.size()) return;
+      |                        ~~~~~~~~^~~~~~~~~~~~~~~~~~~~
+../../Source/Runtime/Scene/model_loader/engine_model.cpp:286:37: warning: comparison of integer expressions of different signedness: ‘const int’ and ‘std::vector<std::vector<unsigned int> >::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+  286 |     if (node.mesh >= 0 && node.mesh < meshMap.size()) {
+      |                           ~~~~~~~~~~^~~~~~~~~~~~~~~~
+light.cpp
+main.cpp
+rendering.cpp
+setup.cpp
+ui.cpp
+../../Source/Runtime/UI/ui.cpp:17:35: error: expected initializer before ‘MyVulkanLoader’
+   17 | static PFN_vkVoidFunction __cdecl MyVulkanLoader(const char* function_name, void* user_data) {
+      |                                   ^~~~~~~~~~~~~~
+../../Source/Runtime/UI/ui.cpp: In member function ‘void ImGuiRenderer::Init(const InitInfo&)’:
+../../Source/Runtime/UI/ui.cpp:128:51: error: ‘MyVulkanLoader’ was not declared in this scope
+  128 |     ImGui_ImplVulkan_LoadFunctions(ii.ApiVersion, MyVulkanLoader, &ii.Instance);
+      |                                                   ^~~~~~~~~~~~~~
+make[1]: *** [Engine.make:324: ../Obj/Engine/Debug-x64/ui.o] Error 1
+make: *** [Makefile:56: Engine] Error 2

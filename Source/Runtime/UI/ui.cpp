@@ -10,11 +10,11 @@
 #include <backends/imgui_impl_vulkan.h>
 #include <string_view>
 
-//============== = Global InstanceÈ«¾ÖÊµÀı============================
+//============== = Global Instanceå…¨å±€å®ä¾‹============================
 ImGuiRenderer imguiRenderer;
 
-//================Vulkan Function LoaderÇı¶¯º¯Êı¼ÓÔØ===================
-static PFN_vkVoidFunction __cdecl MyVulkanLoader(const char* function_name, void* user_data) {
+//================Vulkan Function Loaderé©±åŠ¨å‡½æ•°åŠ è½½===================
+static PFN_vkVoidFunction MyVulkanLoader(const char* function_name, void* user_data) {
     std::string_view name(function_name);
 
     if (name == "vkCmdBeginRenderingKHR") return (PFN_vkVoidFunction)vkCmdBeginRenderingKHR;
@@ -32,7 +32,7 @@ void ImGuiRenderer::DefaultCheck(VkResult err)
         throw std::runtime_error("ImGui Vulkan backend VkResult error.");
 }
 
-//================Descriptor Pool´´½¨ÃèÊö·û³Ø=========================
+//================Descriptor Poolåˆ›å»ºæè¿°ç¬¦æ± =========================
 void ImGuiRenderer::CreateDescriptorPool()
 {
     std::array<VkDescriptorPoolSize, 11> sizes = { {
@@ -60,7 +60,7 @@ void ImGuiRenderer::CreateDescriptorPool()
     }
 }
 
-//================System Initialization³õÊ¼»¯========================
+//================System Initializationåˆå§‹åŒ–========================
 void ImGuiRenderer::Init(const InitInfo& info)
 {
     if (m_inited) return;
@@ -76,28 +76,28 @@ void ImGuiRenderer::Init(const InitInfo& info)
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
 
-    //================Font settings×ÖÌåÉèÖÃ=============================
-    // load Chinese Font ¼ÓÔØÖĞÎÄ×ÖÌå£º
+    //================Font settingså­—ä½“è®¾ç½®=============================
+    // load Chinese Font åŠ è½½ä¸­æ–‡å­—ä½“ï¼š
     io.Fonts->AddFontFromFileTTF("Assets/Fonts/simhei.ttf", 18.0f, NULL, io.Fonts->GetGlyphRangesChineseFull());
 
-    //================Layout settings²¼¾ÖÉèÖÃ============================
+    //================Layout settingså¸ƒå±€è®¾ç½®============================
     //ImGui::StyleColorsLight();
-	ImGui::StyleColorsDark();//°µÉ«Ö÷Ìâ
+	ImGui::StyleColorsDark();//æš—è‰²ä¸»é¢˜
 
     ImGuiStyle& style = ImGui::GetStyle();
-	style.WindowRounding = 8.0f;// ´°¿ÚÔ²½Ç//window rounding
-	style.FrameRounding = 4.0f;// ¿Ø¼şÔ²½Ç//rounding
-	style.Alpha = 0.95f;// ÕûÌåÍ¸Ã÷¶È//opacity
+	style.WindowRounding = 8.0f;// çª—å£åœ†è§’//window rounding
+	style.FrameRounding = 4.0f;// æ§ä»¶åœ†è§’//rounding
+	style.Alpha = 0.95f;// æ•´ä½“é€æ˜åº¦//opacity
     
-    //================Features¹¦ÄÜ¿ª¹Ø==================================
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;// ¿ªÆô¼üÅÌµ¼º½
+    //================FeaturesåŠŸèƒ½å¼€å…³==================================
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;// å¼€å¯é”®ç›˜å¯¼èˆª
 	
-    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;// ¿ªÆô Docking (Í£¿¿ÏµÍ³)// Enable Docking
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;// å¼€å¯ Docking (åœé ç³»ç»Ÿ)// Enable Docking
 
-    //================Backend Initºó¶Ë³õÊ¼»¯=============================
-	ImGui_ImplGlfw_InitForVulkan(info.window, true);// ³õÊ¼»¯ GLFW ºó¶Ë// Initialize GLFW backend
+    //================Backend Initåç«¯åˆå§‹åŒ–=============================
+	ImGui_ImplGlfw_InitForVulkan(info.window, true);// åˆå§‹åŒ– GLFW åç«¯// Initialize GLFW backend
 
-	CreateDescriptorPool();// ´´½¨ÃèÊö·û³Ø// Create Descriptor Pool
+	CreateDescriptorPool();// åˆ›å»ºæè¿°ç¬¦æ± // Create Descriptor Pool
 
     static VkFormat s_colorFmt;
     s_colorFmt = info.colorFormat;
@@ -108,7 +108,7 @@ void ImGuiRenderer::Init(const InitInfo& info)
     s_pri.depthAttachmentFormat = info.depthFormat;
     s_pri.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
 
-	// ³õÊ¼»¯ Vulkan ºó¶ËĞÅÏ¢// Initialize Vulkan backend info
+	// åˆå§‹åŒ– Vulkan åç«¯ä¿¡æ¯// Initialize Vulkan backend info
     ImGui_ImplVulkan_InitInfo ii{};
     ii.ApiVersion = VK_API_VERSION_1_3;
     ii.Instance = info.instance;
@@ -119,12 +119,12 @@ void ImGuiRenderer::Init(const InitInfo& info)
     ii.DescriptorPool = m_pool;
     ii.MinImageCount = info.imageCount;
     ii.ImageCount = info.imageCount;
-	ii.UseDynamicRendering = true;// Ç¿ÖÆÊ¹ÓÃ¶¯Ì¬äÖÈ¾¹ÜÏß// Force using dynamic rendering pipeline
+	ii.UseDynamicRendering = true;// å¼ºåˆ¶ä½¿ç”¨åŠ¨æ€æ¸²æŸ“ç®¡çº¿// Force using dynamic rendering pipeline
     ii.CheckVkResultFn = info.checkVkResultFn ? info.checkVkResultFn : &ImGuiRenderer::DefaultCheck;
     ii.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
     ii.PipelineInfoMain.PipelineRenderingCreateInfo = s_pri;
 
-	// ¼ÓÔØ Vulkan º¯ÊıÖ¸Õë// Load Vulkan function pointers
+	// åŠ è½½ Vulkan å‡½æ•°æŒ‡é’ˆ// Load Vulkan function pointers
     ImGui_ImplVulkan_LoadFunctions(ii.ApiVersion, MyVulkanLoader, &ii.Instance);
 
     if (!ImGui_ImplVulkan_Init(&ii))
@@ -155,7 +155,7 @@ void ImGuiRenderer::Shutdown()
     m_inited = false;
 }
 
-//================Frame LifecycleÖ¡ÉúÃüÖÜÆÚ==========================
+//================Frame Lifecycleå¸§ç”Ÿå‘½å‘¨æœŸ==========================
 void ImGuiRenderer::BeginFrame()
 {
     if (!m_inited) return;
@@ -171,7 +171,7 @@ void ImGuiRenderer::BuildDemoUI()
     ImGui::ShowDemoWindow();
 }
 
-//================RenderingÖ¸ÁîÂ¼ÖÆ================================
+//================RenderingæŒ‡ä»¤å½•åˆ¶================================
 void ImGuiRenderer::Render(VkCommandBuffer cmd)
 {
     if (!m_inited) return;

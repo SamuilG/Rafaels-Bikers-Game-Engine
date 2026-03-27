@@ -63,7 +63,7 @@ namespace engine {
         mThumbnailDepthView = lut::ImageView(mWindow.device, rawDepthView);
     }
 
-	// Éú³ÉÄ£ĞÍËõÂÔÍ¼Êä³ö Vulkan Í¼Ïñ×ÊÔ´// Generate model thumbnail output Vulkan image resource
+	// ç”Ÿæˆæ¨¡å‹ç¼©ç•¥å›¾è¾“å‡º Vulkan å›¾åƒèµ„æº// Generate model thumbnail output Vulkan image resource
     void RenderSystem::GenerateModelThumbnail(const std::string& modelPath) {
         if (mThumbnailAssets.count(modelPath)) return;
         auto it = m_previewPrefabCache.find(modelPath);
@@ -168,7 +168,7 @@ namespace engine {
         colorAttach.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         colorAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         colorAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-        colorAttach.clearValue.color = { 0.0f, 0.0f, 0.0f, 1.0f };//±³¾°ÑÕÉ«
+        colorAttach.clearValue.color = { 0.0f, 0.0f, 0.0f, 1.0f };//èƒŒæ™¯é¢œè‰²
 
         VkRenderingAttachmentInfo depthAttach{};
         depthAttach.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -195,13 +195,13 @@ namespace engine {
 
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mPipeLayout.handle, 0, 1, &mSceneDescriptors, 0, nullptr);
 
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mAlphaPipe.handle);
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mThumbnailAlphaPipe.handle);
 
         VkDeviceSize offset = 0;
         for (const auto& batch : batches) {
             if (batch.meshIndex >= mModel.meshes.size() || batch.materialIndex >= mMaterialDescriptors.size()) continue;
 
-            vkCmdPushConstants(cmd, mPipeLayout.handle, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &batch.transform);
+            vkCmdPushConstants(cmd, mPipeLayout.handle, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(glm::mat4), &batch.transform);
             vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mPipeLayout.handle, 1, 1, &mMaterialDescriptors[batch.materialIndex], 0, nullptr);
 
             vkCmdBindVertexBuffers(cmd, 0, 1, &mMeshPositions[batch.meshIndex].buffer, &offset);
@@ -229,7 +229,7 @@ namespace engine {
         mThumbnailAssets[modelPath] = std::move(asset);
     }
 
-	// Ô¤¼ÓÔØÄ£ĞÍÊı¾İÒÔ¹©ËõÂÔÍ¼ºÍÔ¤ÀÀÊ¹ÓÃ// Preload model data for thumbnail and preview usage
+	// é¢„åŠ è½½æ¨¡å‹æ•°æ®ä»¥ä¾›ç¼©ç•¥å›¾å’Œé¢„è§ˆä½¿ç”¨// Preload model data for thumbnail and preview usage
     void RenderSystem::PreloadModelForPreview(const std::string& path) {
         if (m_previewPrefabCache.count(path)) {
             if (!mThumbnailAssets.count(path)) GenerateModelThumbnail(path);
@@ -281,7 +281,7 @@ namespace engine {
         GenerateModelThumbnail(path);
     }
 
-	// ÉèÖÃÄ£ĞÍÔ¤ÀÀ// Set model preview
+	// è®¾ç½®æ¨¡å‹é¢„è§ˆ// Set model preview
     void RenderSystem::SetModelPreview(const std::string& path, const glm::mat4& transform) {
         m_previewModelPath = path; m_previewTransform = transform; PreloadModelForPreview(path);
     }
