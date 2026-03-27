@@ -89,6 +89,14 @@ namespace engine {
     {
  
     public:
+
+		//==============camera follow =======================
+		// name of the entity to follow in the scene
+		//TODO 把这个做到ui里面，允许用户输入想要跟随的实体名字，或者在场景视口直接点击选中一个实体进行跟随
+		const char* player = "立方体_0"; 
+
+
+
         explicit RenderSystem(bool& appRunning, SceneManager* sceneManager = nullptr)
             : mAppRunning(appRunning), mSceneManager(sceneManager) {
         }
@@ -1241,10 +1249,11 @@ namespace engine {
                 &mFrameDone[mFrameIndex].handle); VK_SUCCESS != res)
                 throw lut::Error("vkResetFences: {}", lut::to_string(res));
 
+            //camera follow
             //find character pos
             if (mSceneManager && mState->thirdPersonMode) {
-                // 用你想跟随的实体名字
-                auto target = mSceneManager->find_entity("立方体_0");
+                
+                auto target = mSceneManager->find_entity(player);
                 if (target.is_valid() && target.has<WorldTransform>()) {
                     const auto& wt = target.get<WorldTransform>();
                     mState->followTargetPos = glm::vec3(wt.matrix[3]);
