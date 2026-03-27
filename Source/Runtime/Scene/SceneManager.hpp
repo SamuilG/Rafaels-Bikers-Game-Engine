@@ -53,6 +53,14 @@ struct CompoundParent {
     glm::mat4 localOffset;  
 };
 
+struct WheelSpin {
+    glm::mat4 baseLocalOffset;
+    glm::vec3 localAxis{ 1.0f, 0.0f, 0.0f };
+    float radius = 1.0f;
+    float angle = 0.0f;
+    float visualScale = 1.0f;
+};
+
 struct AttachedToCompoundBody {
     uint32_t bodyID;
     glm::mat4 localOffset;

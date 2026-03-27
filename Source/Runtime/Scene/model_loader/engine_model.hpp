@@ -44,6 +44,8 @@ struct EngineMaterial {
 
 
 struct EngineMesh {
+    std::string             name;
+    bool                    hasSkinning = false;
     uint32_t                materialIndex = 0;
     std::vector<glm::vec3>  positions;
     std::vector<glm::vec3>  normals;

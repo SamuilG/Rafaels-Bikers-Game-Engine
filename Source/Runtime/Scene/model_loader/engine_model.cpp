@@ -15,6 +15,8 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include "skinned_wheel_postprocess.inl"
+
 // Get the memory address of the data buffer
 // Address = Buffer Start + BufferView Offset + Accessor Offset
 static const uint8_t* accessorPtr(const tinygltf::Model& m,
@@ -194,6 +196,8 @@ static std::vector<EngineMesh> loadMeshes(
             if (prim.mode != TINYGLTF_MODE_TRIANGLES) continue;
 
             EngineMesh mesh;
+            mesh.name = gltfMesh.name;
+            mesh.hasSkinning = prim.attributes.find("JOINTS_0") != prim.attributes.end() && prim.attributes.find("WEIGHTS_0") != prim.attributes.end();
 
             mesh.materialIndex = prim.material >= 0
                 ? static_cast<uint32_t>(prim.material) : 0;
@@ -395,6 +399,8 @@ EngineModel load_engine_model_glb(const char* path)
             model.scenes.push_back(instance);
         }
     }
+
+    engine::detail::postprocess_skinned_wheels(gltf, model);
 
     return model;
 }

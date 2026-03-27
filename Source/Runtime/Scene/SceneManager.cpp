@@ -11,12 +11,57 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/constants.hpp>
 #include <cmath>
+#include <algorithm>
+#include <cctype>
+#include <limits>
 #include"../Renderer/RenderUtilities/light.hpp"
 #include <glm/gtx/matrix_decompose.hpp> 
 
 
 
 namespace engine {
+
+namespace {
+
+std::string to_lower_copy(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return value;
+}
+
+bool contains_wheel_keyword(const std::string& value) {
+    const std::string lowered = to_lower_copy(value);
+    return lowered.find("wheel") != std::string::npos
+        || lowered.find("tire") != std::string::npos
+        || lowered.find("tyre") != std::string::npos
+        || lowered.find("rim") != std::string::npos;
+}
+
+float estimate_wheel_radius(const EngineMesh& mesh) {
+    if (mesh.positions.empty()) {
+        return 1.0f;
+    }
+
+    glm::vec3 minPos(std::numeric_limits<float>::max());
+    glm::vec3 maxPos(std::numeric_limits<float>::lowest());
+    for (const glm::vec3& pos : mesh.positions) {
+        minPos = glm::min(minPos, pos);
+        maxPos = glm::max(maxPos, pos);
+    }
+
+    const glm::vec3 extents = glm::max(maxPos - minPos, glm::vec3(0.001f));
+    return std::max(0.05f, std::max(extents.y, extents.z) * 0.5f);
+}
+
+bool should_spin_as_wheel(const EngineInstance& instance, const EngineMesh& mesh) {
+    if (mesh.hasSkinning) {
+        return false;
+    }
+    return contains_wheel_keyword(instance.name) || contains_wheel_keyword(mesh.name);
+}
+
+}
     
 SceneManager::SceneManager(PhysicsSystem* physics_system) 
     : m_physics_system(physics_system) {
@@ -151,6 +196,11 @@ void SceneManager::load_compound_model(const EngineModel& model, float mass, uin
 
         uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
         e.set<MaterialComponent>({ matIdx });
+
+        const EngineMesh& mesh = model.meshes[instance.meshIndex];
+        if (should_spin_as_wheel(instance, mesh)) {
+            e.set<WheelSpin>({ localOffset, glm::vec3(1.0f, 0.0f, 0.0f), estimate_wheel_radius(mesh), 0.0f });
+        }
     }
 }
 
@@ -208,6 +258,11 @@ void SceneManager::load_C_model(const EngineModel& model, float mass, uint32_t b
 
         uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
         e.set<MaterialComponent>({ matIdx });
+
+        const EngineMesh& mesh = model.meshes[instance.meshIndex];
+        if (should_spin_as_wheel(instance, mesh)) {
+            e.set<WheelSpin>({ localOffset, glm::vec3(1.0f, 0.0f, 0.0f), estimate_wheel_radius(mesh), 0.0f });
+        }
     }
 }
 
@@ -287,8 +342,31 @@ void SceneManager::Update(float dt) {
                 JPH::Quat rot = bodyInterface.GetRotation(bodyID);
                 glm::mat4 bodyWorld = glm::translate(glm::mat4(1.0f), toGlm(pos))
                     * glm::mat4_cast(toGlm(rot));
- 
-                lt.matrix = bodyWorld * cp.localOffset;
+
+                glm::mat4 localOffset = cp.localOffset;
+                if (e.has<WheelSpin>()) {
+                    auto& wheel = e.get_mut<WheelSpin>();
+                    const glm::vec3 bodyForward = glm::normalize(glm::vec3(glm::mat4_cast(toGlm(rot)) * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f)));
+                    const JPH::Vec3 linearVelocity = bodyInterface.GetLinearVelocity(bodyID);
+                    const glm::vec3 velocity(linearVelocity.GetX(), linearVelocity.GetY(), linearVelocity.GetZ());
+                    const float forwardSpeed = glm::dot(velocity, bodyForward);
+                    wheel.angle -= (forwardSpeed * dt) / std::max(0.05f, wheel.radius);
+
+                    glm::vec3 scale, translation, skew;
+                    glm::quat baseRotation;
+                    glm::vec4 perspective;
+                    glm::decompose(wheel.baseLocalOffset, scale, baseRotation, translation, skew, perspective);
+                    baseRotation = glm::normalize(baseRotation);
+                    scale *= wheel.visualScale;
+
+                    localOffset =
+                        glm::translate(glm::mat4(1.0f), translation) *
+                        glm::mat4_cast(baseRotation) *
+                        glm::rotate(glm::mat4(1.0f), wheel.angle, wheel.localAxis) *
+                        glm::scale(glm::mat4(1.0f), scale);
+                }
+
+                lt.matrix = bodyWorld * localOffset;
             }
                 });
 
