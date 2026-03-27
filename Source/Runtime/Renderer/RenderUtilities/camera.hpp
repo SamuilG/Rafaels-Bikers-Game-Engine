@@ -31,14 +31,9 @@ namespace cfg
 
 
 
-// GLFW callbacks
-// yo! Key presses are now handled by engine::InputSystem
-void glfw_callback_button( GLFWwindow* aWindow, int aButton, int aAction, int );
-void glfw_callback_motion( GLFWwindow* aWindow, double aPosX, double aPosY );
-
 namespace engine { class InputSystem; }
 
-void update_user_state( UserState& aState, float aElapsedTime, const engine::InputSystem* inputSys );
+void update_user_state( UserState& aState, float aElapsedTime, engine::InputSystem* inputSys );
 
 void update_scene_uniforms(
 	glsl::SceneUniform& aSceneUniforms,

@@ -8,6 +8,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <glm/glm.hpp>
 
 namespace engine {
 
@@ -31,6 +32,15 @@ namespace engine {
         // gets an analog value for triggers or axes mapped to this action (1.0 for digital keys)
         float GetActionValue(const std::string& actionName) const;
 
+        // Mouse specific
+        glm::vec2 GetMouseDelta() const { return glm::vec2(static_cast<float>(mMouseDeltaX), static_cast<float>(mMouseDeltaY)); }
+        glm::vec2 GetMousePosition() const { return glm::vec2(static_cast<float>(mMouseX), static_cast<float>(mMouseY)); }
+        void SetMouseCaptured(bool captured);
+        bool IsMouseCaptured() const;
+
+        // Gamepad specific
+        glm::vec2 GetGamepadRightStick() const { return glm::vec2(static_cast<float>(mGamepadRightX), static_cast<float>(mGamepadRightY)); }
+
 
 
         // Mapping Setup
@@ -39,7 +49,9 @@ namespace engine {
         // map a gamepad button to an action
         void MapGamepadButtonAction(const std::string& actionName, int glfwGamepadButton);
         // map a gamepad axis to an action
-        void MapGamepadAxisAction(const std::string& actionName, int glfwGamepadAxis, float deadzone = 0.1f);
+        void MapGamepadAxisAction(const std::string& actionName, int glfwGamepadAxis, float direction = 1.0f, float deadzone = 0.1f);
+        // map a mouse button to an action
+        void MapMouseButtonAction(const std::string& actionName, int glfwMouseButton);
 
 
     private:
@@ -49,8 +61,9 @@ namespace engine {
         struct ActionBinding {
             std::vector<int> keyboardKeys;
             std::vector<int> gamepadButtons;
-            struct AxisInfo { int axis; float deadzone; };
+            struct AxisInfo { int axis; float direction; float deadzone; };
             std::vector<AxisInfo> gamepadAxes;
+            std::vector<int> mouseButtons;
             
             // state tracking
             bool isHeld = false;
@@ -61,8 +74,18 @@ namespace engine {
 
         std::unordered_map<std::string, ActionBinding> mActionBindings;
 
+        double mMouseX = 0.0;
+        double mMouseY = 0.0;
+        double mMouseDeltaX = 0.0;
+        double mMouseDeltaY = 0.0;
+        bool mFirstMouseUpdate = true;
+
+        double mGamepadRightX = 0.0;
+        double mGamepadRightY = 0.0;
+
         void UpdateKeyboardStates();
         void UpdateGamepadStates();
+        void UpdateMouseStates();
 
 
 

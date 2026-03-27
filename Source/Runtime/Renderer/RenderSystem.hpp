@@ -231,9 +231,7 @@ namespace engine {
 
             // Initialize state
             glfwSetWindowUserPointer(mWindow.window, mState);
-            // Key callbacks handled entirely by the centralised engine::InputSystem
-            glfwSetMouseButtonCallback(mWindow.window, &glfw_callback_button);
-            glfwSetCursorPosCallback(mWindow.window, &glfw_callback_motion);
+            // Key and mouse callbacks handled entirely by the centralised engine::InputSystem
 
             // Create VMA allocator
             mAllocator = lut::create_allocator(mWindow);
