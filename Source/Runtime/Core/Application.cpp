@@ -84,8 +84,9 @@ namespace engine {
 		//glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 10.0f, 30.0f));
 		//renderSystem->load_additional_model("Assets/Models/bike.glb", false, 50.0f, BikeSpawnPos,true, true);
 
-		glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 10.0f, 30.0f));
-		renderSystem->load_additional_model("Assets/Models/Bicycle.glb", false, 50.0f, BikeSpawnPos, false, true);
+        glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 10.0f, 30.0f));
+        renderSystem->load_additional_model("Assets/Models/bicycle.glb", false, 50.0f, BikeSpawnPos ,false, true);
+
 
 
 		glm::mat4 LampSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(40.0f, 2.0f, 15.0f));

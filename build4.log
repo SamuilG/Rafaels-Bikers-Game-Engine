@@ -1,0 +1,7 @@
+==== Building GLFW (debug_x64) ====
+==== Building JoltPhysics (debug_x64) ====
+==== Building ImGui (debug_x64) ====
+==== Building Shaders (debug_x64) ====
+==== Building Engine (debug_x64) ====
+ui.cpp
+Linking Engine

@@ -101,6 +101,16 @@ namespace engine {
             : mAppRunning(appRunning), mSceneManager(sceneManager) {
         }
 
+    private:
+        bool& mAppRunning;
+        SceneManager* mSceneManager;
+
+        lut::VulkanWindow  mWindow;
+        lut::Allocator     mAllocator;
+
+    public:
+
+
 
         GLFWwindow* GetGLFWWindow() const {
             if (mWindow.window) return mWindow.window;
@@ -201,7 +211,7 @@ namespace engine {
 
             //generate a default name based on the current number of particle groups
             std::string defaultName = "Group " + std::to_string(allParticles.size() + 1);
-            strcpy_s(ps->config.name, sizeof(ps->config.name), defaultName.c_str());
+            snprintf(ps->config.name, sizeof(ps->config.name), "%s", defaultName.c_str());
 
             ps->init(mAllocator, 500, ps->config.emitterPos);
             allParticles.push_back(std::move(ps));
@@ -229,9 +239,7 @@ namespace engine {
 
             // Initialize state
             glfwSetWindowUserPointer(mWindow.window, mState);
-            // Key callbacks handled entirely by the centralised engine::InputSystem
-            glfwSetMouseButtonCallback(mWindow.window, &glfw_callback_button);
-            glfwSetCursorPosCallback(mWindow.window, &glfw_callback_motion);
+            // Key and mouse callbacks handled entirely by the centralised engine::InputSystem
 
             // Create VMA allocator
             mAllocator = lut::create_allocator(mWindow);
@@ -297,6 +305,14 @@ namespace engine {
                 // create grey imageview
                 mDefaultGrayView = lut::create_image_view_texture2d(
                     mWindow, mDefaultGrayTex.image, VK_FORMAT_R8G8B8A8_UNORM);
+
+                std::uint8_t black[4] = { 0, 0, 0, 255 };
+                mDefaultBlackTex = lut::load_image_texture2d_from_memory(
+                    black, 1, 1,
+                    mWindow, mCmdPool.handle, mAllocator,
+                    VK_FORMAT_R8G8B8A8_UNORM);
+                mDefaultBlackView = lut::create_image_view_texture2d(
+                    mWindow, mDefaultBlackTex.image, VK_FORMAT_R8G8B8A8_UNORM);
 
 
                 // 2. 【新增】标准的蓝色法线图 (朝向 Z 轴)
@@ -556,6 +572,7 @@ namespace engine {
             }
 
             mAlphaPipe = create_alpha_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+            mThumbnailAlphaPipe = create_alpha_pipeline_1_attachment(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
 
             // p2_1.5 Shadow Resources
             mShadowMap = create_shadow_map(mWindow, mAllocator);
@@ -1118,6 +1135,7 @@ namespace engine {
                 if (changes.changedFormat) {
                     mPipe = create_triangle_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
                     mAlphaPipe = create_alpha_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+                    mThumbnailAlphaPipe = create_alpha_pipeline_1_attachment(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
                     mMipPipe = create_debug_pipeline(mWindow, mPipeLayout.handle, cfg::kDebugVertShaderPath, cfg::kDebugMipFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT);
                     mDepthPipe = create_debug_pipeline(mWindow, mPipeLayout.handle, cfg::kDebugVertShaderPath, cfg::kDebugDepthFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT);
                     mDerivPipe = create_debug_pipeline(mWindow, mPipeLayout.handle, cfg::kDebugVertShaderPath, cfg::kDebugDerivFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT);
@@ -1551,8 +1569,9 @@ namespace engine {
             }
 
             allParticles.clear();
-          
             mDebugRenderer.Shutdown(mAllocator);
+            ::imguiRenderer.Shutdown();
+
         }
 
         // add runtime-generated mesh (like the sphere) after Init()
@@ -1739,9 +1758,6 @@ namespace engine {
             vkUpdateDescriptorSets(mWindow.device, 3, w, 0, nullptr);
             return ds;
         }
-        
-        lut::Image     mDefaultBlackTex;
-        lut::ImageView mDefaultBlackView;
         void AddOneMaterialDescriptor(VkSampler sampler, std::vector<VkDescriptorSet>& out, const EngineMaterial& mat)
         {
             VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, mObjectLayout.handle);
@@ -1924,13 +1940,8 @@ namespace engine {
             }
         }
 
-        bool& mAppRunning;
-        SceneManager* mSceneManager;
-
-        lut::VulkanWindow  mWindow;
-        lut::Allocator     mAllocator;
-
         //UserState  mState{};
+
         bool       mRecreateSwapchain = false;
         std::size_t mFrameIndex = 0;
 
@@ -1960,9 +1971,13 @@ namespace engine {
 
         lut::Image     mDefaultGrayTex;
         lut::ImageView mDefaultGrayView;
+        lut::Image     mDefaultBlackTex;
+        lut::ImageView mDefaultBlackView;
 
         lut::Image     mDefaultNormalTex;  // 【新增】：正确的法线占位图
         lut::ImageView mDefaultNormalView; // 【新增】
+
+        lut::Pipeline mThumbnailAlphaPipe;
 
         // Samplers
         lut::Sampler mDefaultSampler, mDebugSampler;

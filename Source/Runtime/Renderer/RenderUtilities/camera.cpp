@@ -25,71 +25,51 @@ namespace lut = labut2;
 
 #include "../../Input/InputSystem.hpp"
 
-// Removed glfw_callback_key_press - inputs are now handled system-wide by engine::InputSystem
+// Removed callbacks, now fully handled by engine::InputSystem
 
-void glfw_callback_button( GLFWwindow* aWindow, int aButton, int aAction, int )
-{
-	auto* state = static_cast<UserState*>( glfwGetWindowUserPointer( aWindow ) );
-	if( !state ) return;
-
-	if( GLFW_MOUSE_BUTTON_RIGHT == aButton && GLFW_PRESS == aAction )
-	{
-		state->previousMouseState = !state->previousMouseState;
-		if( state->previousMouseState )
-			glfwSetInputMode( aWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED );
-		else
-			glfwSetInputMode( aWindow, GLFW_CURSOR, GLFW_CURSOR_NORMAL );
-	}
-}
-
-void glfw_callback_motion( GLFWwindow* aWindow, double aPosX, double aPosY )
-{
-	auto* state = static_cast<UserState*>( glfwGetWindowUserPointer( aWindow ) );
-	if( !state ) return;
-
-	state->mouseX = float(aPosX);
-	state->mouseY = float(aPosY);
-}
-
-void update_user_state(UserState& aState, float aElapsedTime, const engine::InputSystem* inputSys)
+void update_user_state(UserState& aState, float aElapsedTime, engine::InputSystem* inputSys)
 {
 	auto& cam = aState.camera2world;
 
+	if (inputSys->IsActionPressed("CaptureMouse"))
+	{
+		aState.previousMouseState = !aState.previousMouseState;
+		inputSys->SetMouseCaptured(aState.previousMouseState);
+	}
 
+	glm::vec2 mouseDelta(0.0f);
 	if (aState.previousMouseState)
 	{
-		if (aState.wasMousing)
-		{
-			auto const sens = cfg::kCameraMouseSensitivity;
-			auto const dx = (aState.mouseX - aState.mouseLastX) * sens;
-			auto const dy = (aState.mouseY - aState.mouseLastY) * sens;
-
-			if (aState.thirdPersonMode)
-			{
-
-				aState.Yaw -= dx;
-				aState.Pitch += dy; 
-
-				//limitation for pitch to prevent flipping
-				float const max_pitch = glm::radians(85.0f);
-				aState.Pitch = glm::clamp(aState.Pitch, -max_pitch, max_pitch);
-			}
-			else
-			{
-				auto const pos = cam[3];
-				cam[3] = glm::vec4(0.f, 0.f, 0.f, 1.f);
-				cam = glm::rotate(-dx, glm::vec3(0.f, 1.f, 0.f)) * cam;
-				cam[3] = pos;
-				cam = glm::rotate(cam, -dy, glm::vec3(1.f, 0.f, 0.f));
-			}
-		}
-		aState.mouseLastX = aState.mouseX;
-		aState.mouseLastY = aState.mouseY;
-		aState.wasMousing = true;
+		mouseDelta = inputSys->GetMouseDelta();
 	}
-	else
+	
+	glm::vec2 gamepadDelta = inputSys->GetGamepadRightStick();
+
+	auto const mouseSens = cfg::kCameraMouseSensitivity;
+	float const gamepadSens = 2.5f * aElapsedTime;
+
+	auto const dx = (mouseDelta.x * mouseSens) + (gamepadDelta.x * gamepadSens);
+	auto const dy = (mouseDelta.y * mouseSens) + (gamepadDelta.y * gamepadSens);
+
+	if (std::abs(dx) > 0.0f || std::abs(dy) > 0.0f)
 	{
-		aState.wasMousing = false;
+		if (aState.thirdPersonMode)
+		{
+			aState.Yaw -= dx;
+			aState.Pitch += dy; 
+
+			//limitation for pitch to prevent flipping
+			float const max_pitch = glm::radians(85.0f);
+			aState.Pitch = glm::clamp(aState.Pitch, -max_pitch, max_pitch);
+		}
+		else
+		{
+			auto const pos = cam[3];
+			cam[3] = glm::vec4(0.f, 0.f, 0.f, 1.f);
+			cam = glm::rotate(-dx, glm::vec3(0.f, 1.f, 0.f)) * cam;
+			cam[3] = pos;
+			cam = glm::rotate(cam, -dy, glm::vec3(1.f, 0.f, 0.f));
+		}
 	}
 
 
