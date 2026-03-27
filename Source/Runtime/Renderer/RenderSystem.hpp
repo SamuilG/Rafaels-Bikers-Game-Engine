@@ -1296,11 +1296,23 @@ namespace engine {
             // Update state
             update_user_state(*mState, dt, mInputSystem);
 
+            //// Prepare data for this frame
+            //glsl::SceneUniform sceneUniforms{};
+            //update_scene_uniforms(sceneUniforms,
+            //    mWindow.swapchainExtent.width,
+            //    mWindow.swapchainExtent.height,
+            //    *mState);
             // Prepare data for this frame
             glsl::SceneUniform sceneUniforms{};
+
+			//重新获取一次 UI 视口尺寸//re-fetch UI viewport size
+            ImVec2 finalVpSize = EngineUi::GetSceneViewportSize();
+            float finalWidth = std::max(1.0f, std::abs(finalVpSize.x));
+            float finalHeight = std::max(1.0f, std::abs(finalVpSize.y));
+
             update_scene_uniforms(sceneUniforms,
-                mWindow.swapchainExtent.width,
-                mWindow.swapchainExtent.height,
+                (uint32_t)finalWidth,
+                (uint32_t)finalHeight,
                 *mState);
 
             VkPipeline  currentOpaque = mPipe.handle;
