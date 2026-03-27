@@ -47,6 +47,7 @@ struct UserState
 
 	glm::vec3 followTargetPos = glm::vec3(10.f);
 	bool thirdPersonMode = true;
+	unsigned int controlledCompoundBodyID = ~0u;
 
 	bool bloomEnabled = true;
 

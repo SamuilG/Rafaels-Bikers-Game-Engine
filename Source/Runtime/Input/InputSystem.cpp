@@ -28,7 +28,10 @@ namespace engine {
 
         MapKeyboardAction("StrafeRight", GLFW_KEY_D);
         MapKeyboardAction("StrafeRight", GLFW_KEY_RIGHT);
-        
+
+        MapKeyboardAction("Jump", GLFW_KEY_SPACE);
+        MapGamepadButtonAction("Jump", GLFW_GAMEPAD_BUTTON_A);
+
         // Vertical Movement (Up/Down)
         MapKeyboardAction("Upward", GLFW_KEY_E);
         MapKeyboardAction("Downward", GLFW_KEY_Q);

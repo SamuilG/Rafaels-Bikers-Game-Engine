@@ -18,6 +18,18 @@ bool contains_wheel_keyword(const std::string& value) {
         || lowered.find("rim") != std::string::npos;
 }
 
+bool contains_front_steering_keyword(const std::string& value) {
+    const std::string lowered = to_lower_copy(value);
+    return lowered.find("fwheel") != std::string::npos
+        || lowered.find("frontwheel") != std::string::npos
+        || lowered.find("fork") != std::string::npos
+        || lowered.find("handle") != std::string::npos
+        || lowered.find("stem") != std::string::npos
+        || lowered.find("headtube") != std::string::npos
+        || lowered.find("head_tube") != std::string::npos
+        || lowered.find("headset") != std::string::npos;
+}
+
 const uint8_t* accessor_ptr(const tinygltf::Model& model, const tinygltf::Accessor& accessor) {
     const auto& buffer_view = model.bufferViews[accessor.bufferView];
     const auto& buffer = model.buffers[buffer_view.buffer];
@@ -307,7 +319,7 @@ void postprocess_skinned_wheels(const tinygltf::Model& gltf, EngineModel& model)
             continue;
         }
 
-        std::unordered_map<uint16_t, std::vector<uint32_t>> wheel_triangles;
+        std::unordered_map<uint16_t, std::vector<uint32_t>> extracted_triangles;
         std::vector<uint32_t> remaining_triangles;
         remaining_triangles.reserve(source_indices.size());
 
@@ -319,13 +331,20 @@ void postprocess_skinned_wheels(const tinygltf::Model& gltf, EngineModel& model)
             const uint16_t j1 = dominant_joints[i1];
             const uint16_t j2 = dominant_joints[i2];
 
-            if (j0 == j1 && j1 == j2
-                && j0 < skin.joints.size()
-                && contains_wheel_keyword(gltf.nodes[skin.joints[j0]].name)) {
-                auto& bucket = wheel_triangles[j0];
-                bucket.push_back(i0);
-                bucket.push_back(i1);
-                bucket.push_back(i2);
+            if (j0 == j1 && j1 == j2 && j0 < skin.joints.size()) {
+                const std::string& joint_name = gltf.nodes[skin.joints[j0]].name;
+                const bool extract_for_joint =
+                    contains_wheel_keyword(joint_name) || contains_front_steering_keyword(joint_name);
+                if (extract_for_joint) {
+                    auto& bucket = extracted_triangles[j0];
+                    bucket.push_back(i0);
+                    bucket.push_back(i1);
+                    bucket.push_back(i2);
+                } else {
+                    remaining_triangles.push_back(i0);
+                    remaining_triangles.push_back(i1);
+                    remaining_triangles.push_back(i2);
+                }
             } else {
                 remaining_triangles.push_back(i0);
                 remaining_triangles.push_back(i1);
@@ -333,11 +352,11 @@ void postprocess_skinned_wheels(const tinygltf::Model& gltf, EngineModel& model)
             }
         }
 
-        if (wheel_triangles.empty()) {
+        if (extracted_triangles.empty()) {
             continue;
         }
 
-        for (const auto& [joint_index, tri_indices] : wheel_triangles) {
+        for (const auto& [joint_index, tri_indices] : extracted_triangles) {
             const int joint_node_index = skin.joints[joint_index];
             const tinygltf::Node& joint_node = gltf.nodes[joint_node_index];
 
