@@ -234,6 +234,27 @@ std::string SceneManager::get_entity_name_from_body_id(uint32_t bodyID) {
     return result;
 }
 
+uint32_t SceneManager::find_compound_body_near(const glm::vec3& worldPos, float maxDistance) const {
+    if (!m_world) {
+        return ~0u;
+    }
+
+    uint32_t bestBodyID = ~0u;
+    float bestDistanceSq = maxDistance * maxDistance;
+
+    m_world->query<const WorldTransform, const CompoundParent>()
+        .each([&](const WorldTransform& wt, const CompoundParent& cp) {
+            glm::vec3 entityPos = glm::vec3(wt.matrix[3]);
+            float distSq = glm::dot(entityPos - worldPos, entityPos - worldPos);
+            if (distSq <= bestDistanceSq) {
+                bestDistanceSq = distSq;
+                bestBodyID = cp.bodyID;
+            }
+        });
+
+    return bestBodyID;
+}
+
 void SceneManager::Update(float dt) {
     if (m_physics_system) {
         JPH::BodyInterface& bodyInterface = m_physics_system->get_body_interface();
@@ -258,7 +279,7 @@ void SceneManager::Update(float dt) {
                 });
 
 
-        m_world->query<LocalTransform, const CompoundParent>()
+                m_world->query<LocalTransform, const CompoundParent>()
             .each([&](flecs::entity e, LocalTransform& lt, const CompoundParent& cp) {
             JPH::BodyID bodyID(cp.bodyID);
             if (bodyInterface.IsActive(bodyID)) {
@@ -270,7 +291,19 @@ void SceneManager::Update(float dt) {
                 lt.matrix = bodyWorld * cp.localOffset;
             }
                 });
-    }
+
+        m_world->query<LocalTransform, const AttachedToCompoundBody>()
+            .each([&](flecs::entity e, LocalTransform& lt, const AttachedToCompoundBody& attachment) {
+            JPH::BodyID bodyID(attachment.bodyID);
+            if (bodyInterface.IsActive(bodyID)) {
+                JPH::Vec3 pos = bodyInterface.GetPosition(bodyID);
+                JPH::Quat rot = bodyInterface.GetRotation(bodyID);
+                glm::mat4 bodyWorld = glm::translate(glm::mat4(1.0f), toGlm(pos))
+                    * glm::mat4_cast(toGlm(rot));
+
+                lt.matrix = bodyWorld * attachment.localOffset;
+            }
+                });    }
     m_world->progress(dt);
 }
 
