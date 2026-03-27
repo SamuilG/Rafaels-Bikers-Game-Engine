@@ -66,16 +66,16 @@ namespace lut = labut2;
 #include <imgui.h>
 #include <backends/imgui_impl_vulkan.h>
 #include "../UI/MousePicker.hpp"
-#include "..\..\ThirdParty\imgui\ImGuizmo\ImGuizmo.h"
-#include "..\Physics\PhysicsSystem.hpp"
+#include "../../ThirdParty/imgui/ImGuizmo/ImGuizmo.h"
+#include "../Physics/PhysicsSystem.hpp"
 #include "../UserState/UserState.hpp"
 #include <glm/gtx/matrix_decompose.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <filesystem>
 #include <algorithm>
 #include <flecs.h>
-
-
+// ================= debug =================
+#include "../debug/DebugRenderer.hpp"
 namespace glsl {
     struct MosaicUniform {
         int   mosaicOn;
@@ -98,7 +98,7 @@ namespace engine {
             if (mWindow.window) return mWindow.window;
             return nullptr;
         }
-        
+       
 
         //==============UI System========= Draw the main menu UI
         void DrawMainMenuUI() {
@@ -314,6 +314,11 @@ namespace engine {
 
             // UploadMeshes() will be driven by load_additional_model
 
+			// Debug Renderer============================
+            mDebugRenderer.Init(mAllocator);
+            
+            mDebugLinePipe = create_debug_line_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+           
 
             //================particle system===================================================
             // 粒子系统
@@ -851,8 +856,8 @@ namespace engine {
                 EngineUi::ShowToast("[ Project Saved Successfully ]");
                 engine::EngineUi::LogPrintf("Project Saved \n");
             }
-
-
+			//debug draw box
+            //mDebugRenderer.DrawBox(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
             // 
 
@@ -1015,7 +1020,15 @@ namespace engine {
                         JPH::TransformedShape ts = bodyInterface.GetTransformedShape(joltBodyID);
                         JPH::AABox aabb = ts.GetWorldSpaceBounds();
                         JPH::Vec3 size = aabb.GetExtent() * 2.0f;
+                        
+						//Debug Renderer 画包围盒 draw AABB from Jolt using Debug Renderer==========================
+                        glm::vec3 center(aabb.GetCenter().GetX(), aabb.GetCenter().GetY(), aabb.GetCenter().GetZ());
+                        glm::vec3 extents(aabb.GetExtent().GetX(), aabb.GetExtent().GetY(), aabb.GetExtent().GetZ());
 
+                        //draw
+                        mDebugRenderer.DrawBox(center, extents, glm::vec3(0.0f, 1.0f, 0.0f));
+                        // =========================================================================
+                        
                         //debug
                         engine::EngineUi::LogPrint("[Physics Debug] Entity: {} | Size: ({:.2f}, {:.2f}, {:.2f})\n",
                             selectedEntity.name() ? selectedEntity.name() : "Unknown",
@@ -1436,7 +1449,8 @@ namespace engine {
                 }
             }
 
-
+            // 1. 在提交命令前，把这一帧收集的线上传到 GPU
+            mDebugRenderer.Upload(mAllocator);
 
             float currentBloomStrength = mState->bloomEnabled ? 0.0f : 1.2f;
             // Record and submit commands for this frame
@@ -1485,8 +1499,12 @@ namespace engine {
                 mShadowCascadeViews,
                 mState->particlesEnabled&& mState->renderMode == 0,
                 mParticlePipe.handle,
-                allParticles
+                allParticles,
+                mDebugLinePipe.handle,
+                mDebugRenderer
             );
+			//clear debug renderer data after uploading
+            mDebugRenderer.Clear();
 
             submit_commands(mWindow,
                 mCmdBuffers[mFrameIndex],
@@ -1512,6 +1530,8 @@ namespace engine {
             }
 
             allParticles.clear();
+          
+            mDebugRenderer.Shutdown(mAllocator);
         }
 
         // add runtime-generated mesh (like the sphere) after Init()
@@ -1975,6 +1995,9 @@ namespace engine {
             VkDescriptorSet guiSet;
         };
 
+       
+        lut::Pipeline mDebugLinePipe;
+
         // Index of most recently added runtime mesh's material descriptor
         uint32_t mRuntimeMatIndex = 0;
 
@@ -2023,6 +2046,7 @@ namespace engine {
         VkDescriptorSet GetModelThumbnail(const std::string& modelPath);
         void SetModelPreview(const std::string& path, const glm::mat4& transform);
         void ClearModelPreview();
+        DebugRenderer mDebugRenderer;
     
     };
 
