@@ -136,19 +136,22 @@ public:
     uint32_t find_compound_body_near(const glm::vec3& worldPos, float maxDistance = 20.0f) const;
 
     //==========UI System======================
-    //��ȡ��ǰ������ʵ������������ڵ��Ժ�UI��ʾ��
+    // 获取当前场景中实体的数量（用于调试和 UI 显示）
+
     // Get the count of entities with MeshComponent, which indicates how many renderable entities are in the scene.
     int get_entity_count() {
         if (!m_world) return 0;
         return m_world->count<MeshComponent>();
     }
-    // Raycast from origin in direction, return first hit entity ���߼�⣬���ص�һ�������е�ʵ��
+    // Raycast from origin in direction, return first hit entity 射线检测，返回第一个被击中的实体
+
     flecs::entity raycast_entity(const glm::vec3& origin, const glm::vec3& direction, float max_distance = 1000.0f);
     PhysicsSystem* get_physics_system() const { return m_physics_system; }
     //==========UI System======================
 
     void print_all_entities();
-    // �� SceneManager.hpp �У�
+    // 在 SceneManager.hpp 中：
+
     flecs::entity create_light_entity(
         const char* name,
         LightType type,
@@ -156,7 +159,8 @@ public:
         float intensity,
         const glm::mat4& transform,
         float range = 10.0f,
-        // --- ���������۹��ר���������Ĭ��ֵ����Ӱ����ǰ�Ĵ��룩 ---
+        // --- 【新增】聚光灯专属参数（带默认值，不影响以前的代码）---
+
         glm::vec3 direction = glm::vec3(0.0f, 0.0f, -1.0f),
         float innerCutOff = 12.5f,
         float outerCutOff = 17.5f
