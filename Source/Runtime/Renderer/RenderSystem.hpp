@@ -75,7 +75,7 @@ namespace lut = labut2;
 #include <algorithm>
 #include <flecs.h>
 // ================= debug =================
-#include "../debug/DebugRenderer.hpp"
+#include "../Debug/DebugRenderer.hpp"
 namespace glsl {
     struct MosaicUniform {
         int   mosaicOn;

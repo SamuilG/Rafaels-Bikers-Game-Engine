@@ -6,7 +6,7 @@
 #include "../Event/EventSystem.hpp"
 #include <flecs.h>
 // ================= debug =================
-#include "../debug/DebugRenderer.hpp"
+#include "../Debug/DebugRenderer.hpp"
 
 namespace engine {
 
