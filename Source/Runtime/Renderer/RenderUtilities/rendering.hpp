@@ -12,6 +12,7 @@
 #include "../../Rhi/vkbuffer.hpp" 
 #include "../../Scene/SceneManager.hpp"
 #include "../../Particle/ParticleSystem.hpp"
+#include "../../Debug/DebugRenderer.hpp"
 
 namespace lut = labut2;
 
@@ -61,7 +62,9 @@ void record_commands(
 	std::vector<VkImageView> const& aShadowCascadeViews,
 	bool particlesEnabled,
 	VkPipeline particlePipe,
-	const std::vector<std::unique_ptr<ParticleSystem>>& allParticles
+	const std::vector<std::unique_ptr<ParticleSystem>>& allParticles,
+	VkPipeline aDebugLinePipe,              // Debug line rendering pipeline
+	engine::DebugRenderer& aDebugRenderer
 );
 
 

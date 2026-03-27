@@ -68,7 +68,9 @@ void record_commands(
 	std::vector<VkImageView> const& aShadowCascadeViews,
 	bool particlesEnabled,
 	VkPipeline particlePipe,
-	const std::vector<std::unique_ptr<ParticleSystem>>& allParticles
+	const std::vector<std::unique_ptr<ParticleSystem>>& allParticles,
+	VkPipeline aDebugLinePipe,
+	engine::DebugRenderer& aDebugRenderer
 )
 {
 	// Begin command buffer
@@ -314,7 +316,11 @@ void record_commands(
 		}
 	}
 
+	
+	aDebugRenderer.Render(aCmdBuff, aDebugLinePipe, aGraphicsLayout, aSceneDescriptors);
+
 	vkCmdEndRendering(aCmdBuff);
+
 
 	// ==========================================================
 	// Blur pass: Horizontal (Bright -> BlurTemp)
