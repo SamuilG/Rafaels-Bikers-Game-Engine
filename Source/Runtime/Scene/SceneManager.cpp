@@ -1,24 +1,181 @@
-#include "SceneManager.hpp"
+﻿#include "SceneManager.hpp"
+
+#include <algorithm>
+#include <cctype>
+#include <cmath>
+#include <limits>
+#include <print>
 
 #include <flecs.h>
-#include    <print>
-#include "../Physics/PhysicsSystem.hpp"
-
-
-
-
+#include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include <glm/gtc/constants.hpp>
-#include <cmath>
-#include"../Renderer/RenderUtilities/light.hpp"
-#include <glm/gtx/matrix_decompose.hpp> 
+#include <glm/gtx/matrix_decompose.hpp>
 
+#include "../Input/InputSystem.hpp"
+#include "../Physics/PhysicsSystem.hpp"
+#include "../Renderer/RenderUtilities/light.hpp"
 
+namespace {
+
+std::string to_lower_copy(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return value;
+}
+
+bool contains_wheel_keyword(const std::string& value) {
+    const std::string lowered = to_lower_copy(value);
+    return lowered.find("wheel") != std::string::npos
+        || lowered.find("tire") != std::string::npos
+        || lowered.find("tyre") != std::string::npos
+        || lowered.find("rim") != std::string::npos;
+}
+
+float estimate_wheel_radius(const EngineMesh& mesh) {
+    if (mesh.positions.empty()) {
+        return 1.0f;
+    }
+
+    glm::vec3 minPos(std::numeric_limits<float>::max());
+    glm::vec3 maxPos(std::numeric_limits<float>::lowest());
+    for (const glm::vec3& pos : mesh.positions) {
+        minPos = glm::min(minPos, pos);
+        maxPos = glm::max(maxPos, pos);
+    }
+
+    const glm::vec3 extents = glm::max(maxPos - minPos, glm::vec3(0.001f));
+    return std::max(0.05f, std::max(extents.y, extents.z) * 0.5f);
+}
+
+bool should_spin_as_wheel(const EngineInstance& instance, const EngineMesh& mesh) {
+    if (mesh.hasSkinning) {
+        return false;
+    }
+    return contains_wheel_keyword(instance.name) || contains_wheel_keyword(mesh.name);
+}
+
+bool should_skip_bicycle_cable(const EngineInstance& instance, const EngineMesh& mesh) {
+    const std::string instanceName = to_lower_copy(instance.name);
+    const std::string meshName = to_lower_copy(mesh.name);
+    return instanceName.find("cable") != std::string::npos
+        || meshName.find("cable") != std::string::npos
+        || meshName.find("casing") != std::string::npos;
+}
+
+bool should_steer_with_front(const EngineInstance& instance, const EngineMesh& mesh) {
+    const std::string instanceName = to_lower_copy(instance.name);
+    const std::string meshName = to_lower_copy(mesh.name);
+
+    const bool isFrontWheel = instanceName.find("fwheel") != std::string::npos
+        || meshName.find("fwheel") != std::string::npos
+        || instanceName.find("frontwheel") != std::string::npos
+        || meshName.find("frontwheel") != std::string::npos;
+    const bool isFork = instanceName.find("fork") != std::string::npos
+        || meshName.find("fork") != std::string::npos;
+    const bool isHandlebar = instanceName.find("handlebar") != std::string::npos
+        || meshName.find("handlebar") != std::string::npos
+        || instanceName.find("taped_handlebars") != std::string::npos
+        || meshName.find("taped_handlebars") != std::string::npos;
+    const bool isStem = instanceName.find("stem") != std::string::npos
+        || meshName.find("stem") != std::string::npos
+        || instanceName.find("headtube") != std::string::npos
+        || meshName.find("headtube") != std::string::npos
+        || instanceName.find("head_tube") != std::string::npos
+        || meshName.find("head_tube") != std::string::npos
+        || instanceName.find("headset") != std::string::npos
+        || meshName.find("headset") != std::string::npos;
+    return isFrontWheel || isFork || isHandlebar || isStem;
+}
+
+int steering_priority(const EngineInstance& instance, const EngineMesh& mesh) {
+    const std::string instanceName = to_lower_copy(instance.name);
+    const std::string meshName = to_lower_copy(mesh.name);
+
+    if (instanceName.find("fork") != std::string::npos || meshName.find("fork") != std::string::npos) {
+        return 0;
+    }
+    if (instanceName.find("headtube") != std::string::npos || meshName.find("headtube") != std::string::npos
+        || instanceName.find("head_tube") != std::string::npos || meshName.find("head_tube") != std::string::npos
+        || instanceName.find("headset") != std::string::npos || meshName.find("headset") != std::string::npos
+        || instanceName.find("stem") != std::string::npos || meshName.find("stem") != std::string::npos) {
+        return 1;
+    }
+    if (instanceName.find("handlebar") != std::string::npos || meshName.find("handlebar") != std::string::npos
+        || instanceName.find("taped_handlebars") != std::string::npos || meshName.find("taped_handlebars") != std::string::npos) {
+        return 2;
+    }
+    if (instanceName.find("fwheel") != std::string::npos || meshName.find("fwheel") != std::string::npos
+        || instanceName.find("frontwheel") != std::string::npos || meshName.find("frontwheel") != std::string::npos) {
+        return 3;
+    }
+    return 100;
+}
+
+glm::vec3 extract_translation(const glm::mat4& transform) {
+    return glm::vec3(transform[3]);
+}
+
+glm::vec3 find_steering_pivot(const EngineModel& model, const glm::mat4& invBody) {
+    int bestPriority = 100;
+    glm::vec3 pivot(0.0f);
+
+    for (const auto& instance : model.scenes) {
+        const EngineMesh& mesh = model.meshes[instance.meshIndex];
+        if (!should_steer_with_front(instance, mesh)) {
+            continue;
+        }
+
+        const int priority = steering_priority(instance, mesh);
+        if (priority < bestPriority) {
+            bestPriority = priority;
+            pivot = extract_translation(invBody * instance.transform);
+        }
+    }
+
+    return pivot;
+}
+
+}
+
+EngineMesh generate_uv_sphere(float radius, uint32_t rings, uint32_t sectors)
+{
+    EngineMesh mesh;
+    const float pi = glm::pi<float>();
+
+    for (uint32_t r = 0; r <= rings; ++r) {
+        const float phi = pi * r / rings;
+        for (uint32_t s = 0; s <= sectors; ++s) {
+            const float theta = 2.0f * pi * s / sectors;
+
+            const float x = std::sin(phi) * std::cos(theta);
+            const float y = std::cos(phi);
+            const float z = std::sin(phi) * std::sin(theta);
+
+            mesh.positions.emplace_back(radius * x, radius * y, radius * z);
+            mesh.normals.emplace_back(x, y, z);
+            mesh.texcoords.emplace_back(
+                static_cast<float>(s) / sectors,
+                static_cast<float>(r) / rings);
+        }
+    }
+
+    for (uint32_t r = 0; r < rings; ++r) {
+        for (uint32_t s = 0; s < sectors; ++s) {
+            const uint32_t a = r * (sectors + 1) + s;
+            const uint32_t b = (r + 1) * (sectors + 1) + s;
+            mesh.indices.push_back(a);     mesh.indices.push_back(b);     mesh.indices.push_back(a + 1);
+            mesh.indices.push_back(b);     mesh.indices.push_back(b + 1); mesh.indices.push_back(a + 1);
+        }
+    }
+
+    return mesh;
+}
 
 namespace engine {
-    
-SceneManager::SceneManager(PhysicsSystem* physics_system) 
+
+SceneManager::SceneManager(PhysicsSystem* physics_system)
     : m_physics_system(physics_system) {
 }
 
@@ -29,21 +186,15 @@ SceneManager::~SceneManager() {
 void SceneManager::Init() {
     m_world = new flecs::world();
 
-
-    // Robust hierarchical transform system
     m_world->system<WorldTransform, const LocalTransform>("UpdateWorldTransform")
         .kind(flecs::OnUpdate)
         .each([](flecs::entity e, WorldTransform& wt, const LocalTransform& lt) {
             auto parent = e.parent();
-
-            // Fix: First check if the parent entity exists and has the component
             if (parent.is_valid() && parent.has<WorldTransform>()) {
-                // Use .get<T>() to get a reference, and receive its address with a pointer
                 const WorldTransform* pwt = &parent.get<WorldTransform>();
                 wt.matrix = pwt->matrix * lt.matrix;
             }
             else {
-                // If it is a root node, the world matrix is directly equal to the local matrix
                 wt.matrix = lt.matrix;
             }
         });
@@ -55,7 +206,6 @@ void SceneManager::Shutdown() {
         m_world = nullptr;
     }
 }
-
 
 void SceneManager::load_static_model(const EngineModel& model, uint32_t baseMeshIdx, uint32_t baseMatIdx) {
     std::print("Loading static model with {} instances\n", model.scenes.size());
@@ -72,7 +222,7 @@ void SceneManager::load_static_model(const EngineModel& model, uint32_t baseMesh
             .set<WorldTransform>({ instance.transform })
             .set<MeshComponent>({ instance.meshIndex + baseMeshIdx });
 
-        uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
+        const uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
         e.set<MaterialComponent>({ matIdx });
 
         if (m_physics_system) {
@@ -99,7 +249,7 @@ void SceneManager::load_dynamic_model(const EngineModel& model, float mass, uint
             .set<WorldTransform>({ instance.transform })
             .set<MeshComponent>({ instance.meshIndex + baseMeshIdx });
 
-        uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
+        const uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
         e.set<MaterialComponent>({ matIdx });
 
         if (m_physics_system) {
@@ -114,7 +264,6 @@ void SceneManager::load_dynamic_model(const EngineModel& model, float mass, uint
 void SceneManager::load_compound_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx) {
     std::print("Loading compound model with {} instances\n", model.scenes.size());
 
-    // 1. Create compound body
     JPH::BodyID compoundBodyID;
     glm::mat4 bodyWorldTransform = model.scenes.empty() ? glm::mat4(1.0f) : model.scenes[0].transform;
 
@@ -122,55 +271,64 @@ void SceneManager::load_compound_model(const EngineModel& model, float mass, uin
         std::vector<EngineMesh> meshes;
         std::vector<glm::mat4> meshTransforms;
         for (const auto& instance : model.scenes) {
-            meshes.push_back(model.meshes[instance.meshIndex]);
+            const EngineMesh& mesh = model.meshes[instance.meshIndex];
+            if (should_skip_bicycle_cable(instance, mesh)) {
+                continue;
+            }
+            meshes.push_back(mesh);
             meshTransforms.push_back(instance.transform);
         }
-        compoundBodyID = m_physics_system->create_dynamic_compound_body(
-            meshes, meshTransforms, bodyWorldTransform, mass);
+        if (!meshes.empty()) {
+            compoundBodyID = m_physics_system->create_dynamic_compound_body(meshes, meshTransforms, bodyWorldTransform, mass);
+        }
     }
 
-    // Inverse of initial body transform, to compute each part's local offset
-    glm::mat4 invBody = glm::inverse(bodyWorldTransform);
+    const glm::mat4 invBody = glm::inverse(bodyWorldTransform);
 
-    // 2. Create render entities
+    const glm::vec3 steeringPivot = find_steering_pivot(model, invBody);
+
     int counter = 0;
     for (const auto& instance : model.scenes) {
+        const EngineMesh& mesh = model.meshes[instance.meshIndex];
+        if (should_skip_bicycle_cable(instance, mesh)) {
+            continue;
+        }
+
         std::string name = instance.name.empty() ? "CompoundPart" : instance.name;
         name += "_" + std::to_string(counter++);
 
-        // This part's offset relative to the body origin
-        glm::mat4 localOffset = invBody * instance.transform;
+        const glm::mat4 localOffset = invBody * instance.transform;
 
         auto e = m_world->entity(name.c_str())
             .add<DynamicObject>()
-            .set<EntityStatus>({ true, false })  // No individual physics
+            .set<EntityStatus>({ true, false })
             .set<LocalTransform>({ instance.transform })
             .set<WorldTransform>({ instance.transform })
             .set<MeshComponent>({ instance.meshIndex + baseMeshIdx })
             .set<CompoundParent>({ compoundBodyID.GetIndexAndSequenceNumber(), localOffset });
 
-        uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
+        const uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
         e.set<MaterialComponent>({ matIdx });
+
+        if (should_spin_as_wheel(instance, mesh)) {
+            e.set<WheelSpin>({ localOffset, glm::vec3(1.0f, 0.0f, 0.0f), estimate_wheel_radius(mesh), 0.0f });
+        }
+        if (should_steer_with_front(instance, mesh)) {
+            e.set<SteeringVisual>({ localOffset, glm::vec3(0.0f, 1.0f, 0.0f), steeringPivot });
+        }
     }
 }
 
 void SceneManager::load_C_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx) {
     std::print("Loading compound model with {} instances\n", model.scenes.size());
 
-    // 1. Create compound body
-
     glm::mat4 bodyWorldTransform = glm::mat4(1.0f);
-
     if (!model.scenes.empty()) {
         glm::vec3 scale, translation, skew;
         glm::quat rotation;
         glm::vec4 perspective;
-
-        // 分解第一个网格的变换矩阵
         glm::decompose(model.scenes[0].transform, scale, rotation, translation, skew, perspective);
         rotation = glm::normalize(rotation);
-
-        // 重建一个纯净的矩阵：只保留 平移 (Translation) 和 旋转 (Rotation)，丢弃缩放！
         bodyWorldTransform = glm::translate(glm::mat4(1.0f), translation) * glm::mat4_cast(rotation);
     }
 
@@ -179,24 +337,33 @@ void SceneManager::load_C_model(const EngineModel& model, float mass, uint32_t b
         std::vector<EngineMesh> meshes;
         std::vector<glm::mat4> meshTransforms;
         for (const auto& instance : model.scenes) {
-            meshes.push_back(model.meshes[instance.meshIndex]);
+            const EngineMesh& mesh = model.meshes[instance.meshIndex];
+            if (should_skip_bicycle_cable(instance, mesh)) {
+                continue;
+            }
+            meshes.push_back(mesh);
             meshTransforms.push_back(instance.transform);
         }
-        compoundBodyID = m_physics_system->create_dynamic_compound_body(
-            meshes, meshTransforms, bodyWorldTransform, mass);
+        if (!meshes.empty()) {
+            compoundBodyID = m_physics_system->create_dynamic_compound_body(meshes, meshTransforms, bodyWorldTransform, mass);
+        }
     }
 
-    // Inverse of initial body transform (现在它是没有缩放的了)
-    glm::mat4 invBody = glm::inverse(bodyWorldTransform);
+    const glm::mat4 invBody = glm::inverse(bodyWorldTransform);
 
-    // 2. Create render entities
+    const glm::vec3 steeringPivot = find_steering_pivot(model, invBody);
+
     int counter = 0;
     for (const auto& instance : model.scenes) {
-        std::string name = instance.name.empty() ? "CPart" : instance.name;
+        const EngineMesh& mesh = model.meshes[instance.meshIndex];
+        if (should_skip_bicycle_cable(instance, mesh)) {
+            continue;
+        }
+
+        std::string name = instance.name.empty() ? "CompoundPart" : instance.name;
         name += "_" + std::to_string(counter++);
 
-        // 这里的 localOffset 将完美保留每个零件自己原本的缩放比例
-        glm::mat4 localOffset = invBody * instance.transform;
+        const glm::mat4 localOffset = invBody * instance.transform;
 
         auto e = m_world->entity(name.c_str())
             .add<DynamicObject>()
@@ -206,20 +373,25 @@ void SceneManager::load_C_model(const EngineModel& model, float mass, uint32_t b
             .set<MeshComponent>({ instance.meshIndex + baseMeshIdx })
             .set<CompoundParent>({ compoundBodyID.GetIndexAndSequenceNumber(), localOffset });
 
-        uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
+        const uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
         e.set<MaterialComponent>({ matIdx });
+
+        if (should_spin_as_wheel(instance, mesh)) {
+            e.set<WheelSpin>({ localOffset, glm::vec3(1.0f, 0.0f, 0.0f), estimate_wheel_radius(mesh), 0.0f });
+        }
+        if (should_steer_with_front(instance, mesh)) {
+            e.set<SteeringVisual>({ localOffset, glm::vec3(0.0f, 1.0f, 0.0f), steeringPivot });
+        }
     }
 }
 
-
-
 flecs::entity SceneManager::find_entity(const char* name) {
-    return m_world->lookup(name); // Flecs' efficient lookup interface
+    return m_world->lookup(name);
 }
 
 void SceneManager::set_local_transform(flecs::entity e, const glm::mat4& transform) {
     if (e.is_valid()) {
-        e.set<LocalTransform>({ transform }); // Update component, which automatically triggers the UpdateWorldTransform system
+        e.set<LocalTransform>({ transform });
     }
 }
 
@@ -234,43 +406,167 @@ std::string SceneManager::get_entity_name_from_body_id(uint32_t bodyID) {
     return result;
 }
 
+uint32_t SceneManager::find_compound_body_near(const glm::vec3& worldPos, float maxDistance) const {
+    if (!m_world) {
+        return ~0u;
+    }
+
+    uint32_t bestBodyID = ~0u;
+    float bestDistanceSq = maxDistance * maxDistance;
+
+    m_world->query<const WorldTransform, const CompoundParent>()
+        .each([&](const WorldTransform& wt, const CompoundParent& cp) {
+            const glm::vec3 entityPos = glm::vec3(wt.matrix[3]);
+            const float distSq = glm::dot(entityPos - worldPos, entityPos - worldPos);
+            if (distSq <= bestDistanceSq) {
+                bestDistanceSq = distSq;
+                bestBodyID = cp.bodyID;
+            }
+        });
+
+    return bestBodyID;
+}
+
+glm::vec3 SceneManager::get_compound_body_world_position(uint32_t bodyID) const {
+    if (!m_world || bodyID == ~0u) {
+        return glm::vec3(0.0f);
+    }
+
+    glm::vec3 result(0.0f);
+    bool found = false;
+
+    m_world->query<const WorldTransform, const CompoundParent>()
+        .each([&](const WorldTransform& wt, const CompoundParent& cp) {
+            if (!found && cp.bodyID == bodyID) {
+                result = glm::vec3(wt.matrix[3]);
+                found = true;
+            }
+        });
+
+    return result;
+}
+
 void SceneManager::Update(float dt) {
     if (m_physics_system) {
         JPH::BodyInterface& bodyInterface = m_physics_system->get_body_interface();
 
-
         m_world->query<LocalTransform, const PhysicsBody, const EntityStatus>()
             .each([&](flecs::entity e, LocalTransform& lt, const PhysicsBody& pb, const EntityStatus& status) {
-            if (!status.has_physics) return;
-            JPH::BodyID bodyID(pb.bodyID);
-            if (bodyInterface.IsActive(bodyID)) {
-                JPH::Vec3 pos = bodyInterface.GetPosition(bodyID);
-                JPH::Quat rot = bodyInterface.GetRotation(bodyID);
-                glm::mat4 translation = glm::translate(glm::mat4(1.0f), toGlm(pos));
-                glm::mat4 rotation = glm::mat4_cast(toGlm(rot));
-                glm::vec3 scale(
-                    glm::length(glm::vec3(lt.matrix[0])),
-                    glm::length(glm::vec3(lt.matrix[1])),
-                    glm::length(glm::vec3(lt.matrix[2]))
-                );
-                lt.matrix = translation * rotation * glm::scale(glm::mat4(1.0f), scale);
-            }
-                });
-
+                if (!status.has_physics) return;
+                JPH::BodyID bodyID(pb.bodyID);
+                if (bodyInterface.IsActive(bodyID)) {
+                    const JPH::Vec3 pos = bodyInterface.GetPosition(bodyID);
+                    const JPH::Quat rot = bodyInterface.GetRotation(bodyID);
+                    const glm::mat4 translation = glm::translate(glm::mat4(1.0f), toGlm(pos));
+                    const glm::mat4 rotation = glm::mat4_cast(toGlm(rot));
+                    const glm::vec3 scale(
+                        glm::length(glm::vec3(lt.matrix[0])),
+                        glm::length(glm::vec3(lt.matrix[1])),
+                        glm::length(glm::vec3(lt.matrix[2])));
+                    lt.matrix = translation * rotation * glm::scale(glm::mat4(1.0f), scale);
+                }
+            });
 
         m_world->query<LocalTransform, const CompoundParent>()
             .each([&](flecs::entity e, LocalTransform& lt, const CompoundParent& cp) {
-            JPH::BodyID bodyID(cp.bodyID);
-            if (bodyInterface.IsActive(bodyID)) {
-                JPH::Vec3 pos = bodyInterface.GetPosition(bodyID);
-                JPH::Quat rot = bodyInterface.GetRotation(bodyID);
-                glm::mat4 bodyWorld = glm::translate(glm::mat4(1.0f), toGlm(pos))
-                    * glm::mat4_cast(toGlm(rot));
- 
-                lt.matrix = bodyWorld * cp.localOffset;
-            }
-                });
+                JPH::BodyID bodyID(cp.bodyID);
+                if (!bodyInterface.IsActive(bodyID)) {
+                    return;
+                }
+
+                const JPH::Vec3 pos = bodyInterface.GetPosition(bodyID);
+                const JPH::Quat rot = bodyInterface.GetRotation(bodyID);
+                const glm::mat4 bodyWorld = glm::translate(glm::mat4(1.0f), toGlm(pos)) * glm::mat4_cast(toGlm(rot));
+
+                glm::mat4 localOffset = cp.localOffset;
+                glm::vec3 scale(1.0f);
+                glm::vec3 translation(0.0f);
+                glm::vec3 skew(0.0f);
+                glm::quat baseRotation(1.0f, 0.0f, 0.0f, 0.0f);
+                glm::vec4 perspective(0.0f);
+                bool hasBaseOffset = false;
+                float wheelAngle = 0.0f;
+                glm::vec3 wheelAxis(1.0f, 0.0f, 0.0f);
+                float steeringAngle = 0.0f;
+                glm::vec3 steeringAxis(0.0f, 1.0f, 0.0f);
+
+                if (e.has<SteeringVisual>()) {
+                    const SteeringVisual& steering = e.get<SteeringVisual>();
+                    glm::decompose(steering.baseLocalOffset, scale, baseRotation, translation, skew, perspective);
+                    baseRotation = glm::normalize(baseRotation);
+                    localOffset = steering.baseLocalOffset;
+                    steeringAxis = steering.localAxis;
+                    translation -= steering.pivotLocalPosition;
+                    hasBaseOffset = true;
+                }
+
+                if (e.has<WheelSpin>()) {
+                    auto& wheel = e.get_mut<WheelSpin>();
+                    if (!hasBaseOffset) {
+                        glm::decompose(wheel.baseLocalOffset, scale, baseRotation, translation, skew, perspective);
+                        baseRotation = glm::normalize(baseRotation);
+                        localOffset = wheel.baseLocalOffset;
+                        hasBaseOffset = true;
+                    }
+
+                    const glm::vec3 bodyForward = glm::normalize(glm::vec3(glm::mat4_cast(toGlm(rot)) * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f)));
+                    const JPH::Vec3 linearVelocity = bodyInterface.GetLinearVelocity(bodyID);
+                    const glm::vec3 velocity(linearVelocity.GetX(), linearVelocity.GetY(), linearVelocity.GetZ());
+                    const float forwardSpeed = glm::dot(velocity, bodyForward);
+                    wheel.angle -= (forwardSpeed * dt) / std::max(0.05f, wheel.radius);
+                    wheelAngle = wheel.angle;
+                    wheelAxis = wheel.localAxis;
+                    scale *= wheel.visualScale;
+                }
+
+                if (e.has<SteeringVisual>()) {
+                    auto& steering = e.get_mut<SteeringVisual>();
+                    float steerInput = 0.0f;
+                    if (m_input_system) {
+                        if (m_input_system->IsActionHeld("StrafeLeft")) {
+                            steerInput -= 1.0f;
+                        }
+                        if (m_input_system->IsActionHeld("StrafeRight")) {
+                            steerInput += 1.0f;
+                        }
+                    }
+
+                    const float targetAngle = -steerInput * steering.maxAngleRadians;
+                    const float blend = glm::clamp(dt * steering.response, 0.0f, 1.0f);
+                    steering.angle = glm::mix(steering.angle, targetAngle, blend);
+                    steeringAngle = steering.angle;
+                    steeringAxis = steering.localAxis;
+                    localOffset = steering.baseLocalOffset;
+                }
+
+                if (hasBaseOffset) {
+                    const glm::vec3 steeringPivot = e.has<SteeringVisual>()
+                        ? e.get<SteeringVisual>().pivotLocalPosition
+                        : glm::vec3(0.0f);
+                    localOffset =
+                        glm::translate(glm::mat4(1.0f), steeringPivot) *
+                        glm::rotate(glm::mat4(1.0f), steeringAngle, steeringAxis) *
+                        glm::translate(glm::mat4(1.0f), translation) *
+                        glm::mat4_cast(baseRotation) *
+                        glm::rotate(glm::mat4(1.0f), wheelAngle, wheelAxis) *
+                        glm::scale(glm::mat4(1.0f), scale);
+                }
+
+                lt.matrix = bodyWorld * localOffset;
+            });
+
+        m_world->query<LocalTransform, const AttachedToCompoundBody>()
+            .each([&](flecs::entity e, LocalTransform& lt, const AttachedToCompoundBody& attachment) {
+                JPH::BodyID bodyID(attachment.bodyID);
+                if (bodyInterface.IsActive(bodyID)) {
+                    const JPH::Vec3 pos = bodyInterface.GetPosition(bodyID);
+                    const JPH::Quat rot = bodyInterface.GetRotation(bodyID);
+                    const glm::mat4 bodyWorld = glm::translate(glm::mat4(1.0f), toGlm(pos)) * glm::mat4_cast(toGlm(rot));
+                    lt.matrix = bodyWorld * attachment.localOffset;
+                }
+            });
     }
+
     m_world->progress(dt);
 }
 
@@ -285,33 +581,18 @@ void SceneManager::print_all_entities() {
             typeStr = "Mesh [" + std::to_string(e.get<MeshComponent>().meshIndex) + "]";
         }
         else if (e.has<LightComponent>()) {
-            auto& lc = e.get<LightComponent>();
-            if (lc.type == LightType::Directional) typeStr = "DirLight";
-            else if (lc.type == LightType::Spot) typeStr = "SpotLight";
-            else typeStr = "PointLight";
+            const auto& lc = e.get<LightComponent>();
+            typeStr = (lc.type == LightType::Directional) ? "DirLight" : "PointLight";
         }
 
-        // --- 【新增】获取物理 BodyID 字符串 ---
-        std::string bodyIdStr = "None";
-        if (e.has<PhysicsBody>()) {
-            bodyIdStr = std::to_string(e.get<PhysicsBody>().bodyID);
-        }
-        else if (e.has<CompoundParent>()) {
-            // 如果是复合模型的子零件，也会把主刚体的 ID 打印出来，并标记为 (Sub)
-            bodyIdStr = std::to_string(e.get<CompoundParent>().bodyID) + " (Sub)";
-        }
-
-        // 扩展了打印格式，加上了 BodyID
-        std::print("Entity: {:<18} | Type: {:<12} | Render: {} | Physics: {} | BodyID: {}\n",
+        std::print("Entity: {:<15} | Type: {:<10} | Render: {} | Physics: {}\n",
             name, typeStr,
             status.should_render ? "ON" : "OFF",
-            status.has_physics ? "ON" : "OFF",
-            bodyIdStr);
-        });
+            status.has_physics ? "ON" : "OFF");
+    });
     std::print("--------------------------------------\n\n");
 }
 
-// 在 SceneManager.cpp 中：
 flecs::entity SceneManager::create_light_entity(
     const char* name,
     LightType type,
@@ -319,109 +600,53 @@ flecs::entity SceneManager::create_light_entity(
     float intensity,
     const glm::mat4& transform,
     float range,
-    // --- 【新增参数】 ---
     glm::vec3 direction,
     float innerCutOff,
     float outerCutOff)
 {
     return m_world->entity(name)
-        .set<EntityStatus>({ true, false }) // 光源通常不需要参与物理同步
+        .set<EntityStatus>({ true, false })
         .set<LocalTransform>({ transform })
         .set<WorldTransform>({ transform })
-        // --- 【关键修改】：按顺序把新参数全部塞进去 ---
         .set<LightComponent>({ color, intensity, type, range, direction, innerCutOff, outerCutOff });
 }
-
 
 void SceneManager::get_light_data(std::vector<GpuLight>& outLights) {
     outLights.clear();
 
-    // 查询所有具有 LightComponent 和 WorldTransform 的实体
     m_world->query<const WorldTransform, const LightComponent, const EntityStatus>()
         .each([&](const WorldTransform& wt, const LightComponent& lc, const EntityStatus& status) {
-        if (!status.should_render) return; // 如果关闭了渲染，则不贡献光照
-        if (outLights.size() >= 16) return; // 假设 Shader 最大支持 16 个光源
+            if (!status.should_render) return;
+            if (outLights.size() >= 16) return;
 
-        GpuLight gpuLight{};
+            GpuLight gpuLight{};
+            gpuLight.position = glm::vec4(glm::vec3(wt.matrix[3]), static_cast<float>(lc.type));
+            gpuLight.color = glm::vec4(lc.color, lc.intensity);
 
-        // 提取世界坐标：矩阵第4列 (wt.matrix[3])
-        // 对于定向光，w=0；点光源，w=1；聚光灯，w=2
-        gpuLight.position = glm::vec4(glm::vec3(wt.matrix[3]), static_cast<float>(lc.type));
+            const glm::vec3 worldDir = glm::normalize(glm::vec3(wt.matrix * glm::vec4(lc.direction, 0.0f)));
+            gpuLight.direction = glm::vec4(worldDir, lc.range);
 
-        // 颜色与强度
-        gpuLight.color = glm::vec4(lc.color, lc.intensity);
+            const float cosInner = glm::cos(glm::radians(lc.innerCutOff));
+            const float cosOuter = glm::cos(glm::radians(lc.outerCutOff));
+            gpuLight.params = glm::vec4(cosInner, cosOuter, 0.0f, 0.0f);
 
-        // --- 【新增计算】光照方向与范围 ---
-        // 使用矩阵将局部朝向 (lc.direction) 转换到世界空间（忽略平移，只取旋转，所以 w=0.0f）
-        glm::vec3 worldDir = glm::normalize(glm::vec3(wt.matrix * glm::vec4(lc.direction, 0.0f)));
-
-        // 把 range 移到了 direction 的 w 通道
-        gpuLight.direction = glm::vec4(worldDir, lc.range);
-
-        // --- 【新增计算】预计算光锥角度的 cos 值 ---
-        // 这样 Shader 里就不用算昂贵的三角函数了
-        float cosInner = glm::cos(glm::radians(lc.innerCutOff));
-        float cosOuter = glm::cos(glm::radians(lc.outerCutOff));
-        gpuLight.params = glm::vec4(cosInner, cosOuter, 0.0f, 0.0f);
-
-        outLights.push_back(gpuLight);
-            });
+            outLights.push_back(gpuLight);
+        });
 }
+
 std::vector<RenderBatch> SceneManager::get_render_batches() {
     std::vector<RenderBatch> batches;
 
-    // Query all entities with WorldTransform, MeshComponent, and MaterialComponent
     m_world->query<const WorldTransform, const MeshComponent, const MaterialComponent, const EntityStatus>()
         .each([&](const WorldTransform& wt, const MeshComponent& mc, const MaterialComponent& matc, const EntityStatus& status) {
-        // 只有 should_render 为 true 时才加入渲染批次
-        if (status.should_render) {
-            batches.push_back({ mc.meshIndex, matc.materialIndex, wt.matrix });
-        }
-            });
+            if (status.should_render) {
+                batches.push_back({ mc.meshIndex, matc.materialIndex, wt.matrix });
+            }
+        });
+
     return batches;
 }
 
-} // namespace engine
-
-
-
-EngineMesh generate_uv_sphere(float radius, uint32_t rings, uint32_t sectors)
-{
-    EngineMesh mesh;
-    const float pi = glm::pi<float>();
-
-    for (uint32_t r = 0; r <= rings; ++r) {
-        float const phi = pi * r / rings; // 0 .. pi
-        for (uint32_t s = 0; s <= sectors; ++s) {
-            float const theta = 2.f * pi * s / sectors; // 0 .. 2pi
-
-            float x = std::sin(phi) * std::cos(theta);
-            float y = std::cos(phi);
-            float z = std::sin(phi) * std::sin(theta);
-
-            mesh.positions.emplace_back(radius * x, radius * y, radius * z);
-            mesh.normals.emplace_back(x, y, z);
-            mesh.texcoords.emplace_back(
-                static_cast<float>(s) / sectors,
-                static_cast<float>(r) / rings);
-        }
-    }
-
-    for (uint32_t r = 0; r < rings; ++r) {
-        for (uint32_t s = 0; s < sectors; ++s) {
-            uint32_t a = r       * (sectors + 1) + s;
-            uint32_t b = (r + 1) * (sectors + 1) + s;
-            mesh.indices.push_back(a);     mesh.indices.push_back(b);     mesh.indices.push_back(a + 1);
-            mesh.indices.push_back(b);     mesh.indices.push_back(b + 1); mesh.indices.push_back(a + 1);
-        }
-    }
-
-    return mesh;
-}
-
-namespace engine {
-
-	
 flecs::entity SceneManager::create_dynamic_entity(
     const char* name, uint32_t meshIndex, uint32_t matIndex,
     const glm::mat4& transform, uint32_t physicsBodyID)
@@ -441,17 +666,15 @@ flecs::entity SceneManager::create_dynamic_entity(
     return e;
 }
 
-//==========UI System======================
-// Raycast from origin in direction, return first hit entity射线检测，返回第一个被击中的实体
 flecs::entity SceneManager::raycast_entity(const glm::vec3& origin, const glm::vec3& direction, float max_distance)
 {
     if (!m_physics_system) return flecs::entity::null();
 
-    uint32_t hitBodyID = m_physics_system->cast_ray(origin, direction, max_distance);
-
+    const uint32_t hitBodyID = m_physics_system->cast_ray(origin, direction, max_distance);
     if (hitBodyID == JPH::BodyID::cInvalidBodyID) {
         return flecs::entity::null();
     }
+
     m_physics_system->get_body_interface().ActivateBody(JPH::BodyID(hitBodyID));
 
     flecs::entity hitEntity = flecs::entity::null();
@@ -459,11 +682,9 @@ flecs::entity SceneManager::raycast_entity(const glm::vec3& origin, const glm::v
         if (pb.bodyID == hitBodyID) {
             hitEntity = e;
         }
-        });
+    });
 
     return hitEntity;
 }
-//==========UI System======================
 
-
-} // namespace enginea
+} // namespace engine

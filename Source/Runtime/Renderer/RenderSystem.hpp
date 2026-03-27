@@ -74,8 +74,8 @@ namespace lut = labut2;
 #include <filesystem>
 #include <algorithm>
 #include <flecs.h>
-
-
+// ================= debug =================
+#include "../debug/DebugRenderer.hpp"
 namespace glsl {
     struct MosaicUniform {
         int   mosaicOn;
@@ -89,6 +89,14 @@ namespace engine {
     {
  
     public:
+
+		//==============camera follow =======================
+		// name of the entity to follow in the scene
+		//TODO 把这个做到ui里面，允许用户输入想要跟随的实体名字，或者在场景视口直接点击选中一个实体进行跟随
+		const char* player = "立方体_0"; 
+
+
+
         explicit RenderSystem(bool& appRunning, SceneManager* sceneManager = nullptr)
             : mAppRunning(appRunning), mSceneManager(sceneManager) {
         }
@@ -108,7 +116,7 @@ namespace engine {
             if (mWindow.window) return mWindow.window;
             return nullptr;
         }
-        
+       
 
         //==============UI System========= Draw the main menu UI
         void DrawMainMenuUI() {
@@ -285,8 +293,9 @@ namespace engine {
             {
                 // just for objects without texture to set a default texture
                 // RGBA: 128, 128, 128, 255 (grey)
-                std::uint8_t grey[4] = { 128, 128, 128, 255 };
-
+                //std::uint8_t grey[4] = { 128, 128, 128, 255 };
+				//need it be white for pure color models, otherwise the default grey will darken the colors in the shader (multiplying by 128/255)
+                std::uint8_t grey[4] = { 255, 255, 255, 255 };
                 // uploda 1x1 pixel to GPU
                 mDefaultGrayTex = lut::load_image_texture2d_from_memory(
                     grey, 1, 1,
@@ -329,6 +338,11 @@ namespace engine {
 
             // UploadMeshes() will be driven by load_additional_model
 
+			// Debug Renderer============================
+            mDebugRenderer.Init(mAllocator);
+            
+            mDebugLinePipe = create_debug_line_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+           
 
             //================particle system===================================================
             // 粒子系统
@@ -867,8 +881,8 @@ namespace engine {
                 EngineUi::ShowToast("[ Project Saved Successfully ]");
                 engine::EngineUi::LogPrintf("Project Saved \n");
             }
-
-
+			//debug draw box
+            //mDebugRenderer.DrawBox(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
             // 
 
@@ -1031,7 +1045,15 @@ namespace engine {
                         JPH::TransformedShape ts = bodyInterface.GetTransformedShape(joltBodyID);
                         JPH::AABox aabb = ts.GetWorldSpaceBounds();
                         JPH::Vec3 size = aabb.GetExtent() * 2.0f;
+                        
+						//Debug Renderer 画包围盒 draw AABB from Jolt using Debug Renderer==========================
+                        glm::vec3 center(aabb.GetCenter().GetX(), aabb.GetCenter().GetY(), aabb.GetCenter().GetZ());
+                        glm::vec3 extents(aabb.GetExtent().GetX(), aabb.GetExtent().GetY(), aabb.GetExtent().GetZ());
 
+                        //draw
+                        mDebugRenderer.DrawBox(center, extents, glm::vec3(0.0f, 1.0f, 0.0f));
+                        // =========================================================================
+                        
                         //debug
                         engine::EngineUi::LogPrint("[Physics Debug] Entity: {} | Size: ({:.2f}, {:.2f}, {:.2f})\n",
                             selectedEntity.name() ? selectedEntity.name() : "Unknown",
@@ -1258,10 +1280,11 @@ namespace engine {
                 &mFrameDone[mFrameIndex].handle); VK_SUCCESS != res)
                 throw lut::Error("vkResetFences: {}", lut::to_string(res));
 
+            //camera follow
             //find character pos
             if (mSceneManager && mState->thirdPersonMode) {
-                // 用你想跟随的实体名字
-                auto target = mSceneManager->find_entity("立方体_0");
+                
+                auto target = mSceneManager->find_entity(player);
                 if (target.is_valid() && target.has<WorldTransform>()) {
                     const auto& wt = target.get<WorldTransform>();
                     mState->followTargetPos = glm::vec3(wt.matrix[3]);
@@ -1300,11 +1323,23 @@ namespace engine {
             // Update state
             update_user_state(*mState, dt, mInputSystem);
 
+            //// Prepare data for this frame
+            //glsl::SceneUniform sceneUniforms{};
+            //update_scene_uniforms(sceneUniforms,
+            //    mWindow.swapchainExtent.width,
+            //    mWindow.swapchainExtent.height,
+            //    *mState);
             // Prepare data for this frame
             glsl::SceneUniform sceneUniforms{};
+
+			//重新获取一次 UI 视口尺寸//re-fetch UI viewport size
+            ImVec2 finalVpSize = EngineUi::GetSceneViewportSize();
+            float finalWidth = std::max(1.0f, std::abs(finalVpSize.x));
+            float finalHeight = std::max(1.0f, std::abs(finalVpSize.y));
+
             update_scene_uniforms(sceneUniforms,
-                mWindow.swapchainExtent.width,
-                mWindow.swapchainExtent.height,
+                (uint32_t)finalWidth,
+                (uint32_t)finalHeight,
                 *mState);
 
             VkPipeline  currentOpaque = mPipe.handle;
@@ -1453,7 +1488,8 @@ namespace engine {
                 }
             }
 
-
+            // 1. 在提交命令前，把这一帧收集的线上传到 GPU
+            mDebugRenderer.Upload(mAllocator);
 
             float currentBloomStrength = mState->bloomEnabled ? 0.0f : 1.2f;
             // Record and submit commands for this frame
@@ -1502,8 +1538,12 @@ namespace engine {
                 mShadowCascadeViews,
                 mState->particlesEnabled&& mState->renderMode == 0,
                 mParticlePipe.handle,
-                allParticles
+                allParticles,
+                mDebugLinePipe.handle,
+                mDebugRenderer
             );
+			//clear debug renderer data after uploading
+            mDebugRenderer.Clear();
 
             submit_commands(mWindow,
                 mCmdBuffers[mFrameIndex],
@@ -1531,6 +1571,7 @@ namespace engine {
             allParticles.clear();
 
             ::imguiRenderer.Shutdown();
+            mDebugRenderer.Shutdown(mAllocator);
         }
 
         // add runtime-generated mesh (like the sphere) after Init()
@@ -1990,6 +2031,9 @@ namespace engine {
             VkDescriptorSet guiSet;
         };
 
+       
+        lut::Pipeline mDebugLinePipe;
+
         // Index of most recently added runtime mesh's material descriptor
         uint32_t mRuntimeMatIndex = 0;
 
@@ -2038,6 +2082,7 @@ namespace engine {
         VkDescriptorSet GetModelThumbnail(const std::string& modelPath);
         void SetModelPreview(const std::string& path, const glm::mat4& transform);
         void ClearModelPreview();
+        DebugRenderer mDebugRenderer;
     
     };
 

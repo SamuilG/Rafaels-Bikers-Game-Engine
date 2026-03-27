@@ -81,6 +81,11 @@ namespace cfg
 
 	constexpr char const* kBlurShaderPath = SHADERDIR_ "blur.frag.spv";
 	constexpr char const* kComShaderPath = SHADERDIR_ "composite.frag.spv";
+
+	//Debug Line
+	constexpr char const* kDebugLineVertShaderPath = SHADERDIR_"debug_line.vert.spv";
+	constexpr char const* kDebugLineFragShaderPath = SHADERDIR_"debug_line.frag.spv";
+
 #	undef SHADERDIR_
 
 	//particle textures
@@ -139,3 +144,6 @@ lut::Pipeline create_particle_pipeline(lut::VulkanWindow const&, VkPipelineLayou
 
 lut::Sampler create_debug_sampler( lut::VulkanWindow const& );
 lut::Sampler create_post_proc_sampler( lut::VulkanWindow const& );
+
+// debug render
+lut::Pipeline create_debug_line_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, VkFormat aColorFormat);

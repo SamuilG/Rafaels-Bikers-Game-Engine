@@ -15,6 +15,8 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include "skinned_wheel_postprocess.inl"
+
 // Get the memory address of the data buffer
 // Address = Buffer Start + BufferView Offset + Accessor Offset
 static const uint8_t* accessorPtr(const tinygltf::Model& m,
@@ -106,15 +108,42 @@ static std::vector<EngineMaterial> loadMaterials(
         m.baseColorTexture = bcIdx;
         if (bcIdx >= 0)
             textures[bcIdx].space = ETextureSpace::srgb;
-
+        // ==========================================
+        // --- 【关键修改 1】：提取基础颜色系数 ---
+        // ==========================================
         if (pbr.baseColorFactor.size() == 4) {
             m.baseColorFactor = glm::vec4(
-                pbr.baseColorFactor[0], pbr.baseColorFactor[1],
-                pbr.baseColorFactor[2], pbr.baseColorFactor[3]);
+                static_cast<float>(pbr.baseColorFactor[0]),
+                static_cast<float>(pbr.baseColorFactor[1]),
+                static_cast<float>(pbr.baseColorFactor[2]),
+                static_cast<float>(pbr.baseColorFactor[3])
+            );
+        }
+        else {
+            m.baseColorFactor = glm::vec4(1.0f); // 默认白色/不受影响
         }
 
         // MetalRoughness（UNORM，G=rough B=metal，shared）
         m.metalRoughTexture = texIndex(gltf, pbr.metallicRoughnessTexture.index);
+
+
+        //if (pbr.baseColorFactor.size() == 4) {
+        //    m.baseColorFactor = glm::vec4(
+        //        pbr.baseColorFactor[0], pbr.baseColorFactor[1],
+        //        pbr.baseColorFactor[2], pbr.baseColorFactor[3]);
+        //}
+
+        // MetalRoughness（UNORM，G=rough B=metal，shared）
+        //m.metalRoughTexture = texIndex(gltf, pbr.metallicRoughnessTexture.index);
+        //m.metallicFactor = static_cast<float>(pbr.metallicFactor);
+        //m.roughnessFactor = static_cast<float>(pbr.roughnessFactor);
+
+
+
+        // ==========================================
+        // --- 【关键修改 2】：提取金属度与粗糙度系数 ---
+        // ==========================================
+        // tinygltf 在没有数据时通常会给默认值 1.0
         m.metallicFactor = static_cast<float>(pbr.metallicFactor);
         m.roughnessFactor = static_cast<float>(pbr.roughnessFactor);
 
@@ -132,9 +161,10 @@ static std::vector<EngineMaterial> loadMaterials(
 
         if (mat.emissiveFactor.size() == 3) {
             m.emissiveFactor = glm::vec3(
-                mat.emissiveFactor[0],
-                mat.emissiveFactor[1],
-                mat.emissiveFactor[2]);
+                static_cast<float>(mat.emissiveFactor[0]),
+                static_cast<float>(mat.emissiveFactor[1]),
+                static_cast<float>(mat.emissiveFactor[2])
+            );
         }
 
         // Alpha
@@ -166,6 +196,8 @@ static std::vector<EngineMesh> loadMeshes(
             if (prim.mode != TINYGLTF_MODE_TRIANGLES) continue;
 
             EngineMesh mesh;
+            mesh.name = gltfMesh.name;
+            mesh.hasSkinning = prim.attributes.find("JOINTS_0") != prim.attributes.end() && prim.attributes.find("WEIGHTS_0") != prim.attributes.end();
 
             mesh.materialIndex = prim.material >= 0
                 ? static_cast<uint32_t>(prim.material) : 0;
@@ -367,6 +399,8 @@ EngineModel load_engine_model_glb(const char* path)
             model.scenes.push_back(instance);
         }
     }
+
+    engine::detail::postprocess_skinned_wheels(gltf, model);
 
     return model;
 }

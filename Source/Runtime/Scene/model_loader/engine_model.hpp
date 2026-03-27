@@ -29,16 +29,23 @@ struct EngineMaterial {
     int emissiveTexture = -1;
     int alphaMaskTexture = -1; // -1 = no alpha mask
 
-    glm::vec4 baseColorFactor{ 1.f, 1.f, 1.f, 1.f };
-    float     metallicFactor = 1.f;
-    float     roughnessFactor = 1.f;
+    //glm::vec4 baseColorFactor{ 1.f, 1.f, 1.f, 1.f };
+    //float     metallicFactor = 1.f;
+    //float     roughnessFactor = 1.f;
     glm::vec3 emissiveFactor{ 0.f, 0.f, 0.f };
     float     alphaCutoff = 0.5f;
     bool      alphaBlend = false;
+
+    // 【新增】：用于纯色模型的因子
+    glm::vec4 baseColorFactor = glm::vec4(1.0f);
+    float metallicFactor = 1.0f;
+    float roughnessFactor = 1.0f;
 };
 
 
 struct EngineMesh {
+    std::string             name;
+    bool                    hasSkinning = false;
     uint32_t                materialIndex = 0;
     std::vector<glm::vec3>  positions;
     std::vector<glm::vec3>  normals;

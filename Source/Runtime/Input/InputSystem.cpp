@@ -1,97 +1,59 @@
 #include "InputSystem.hpp"
 #include <algorithm>
 #include <cmath>
-#include <fstream>
-#include <string>
 
 namespace engine {
 
     void InputSystem::Init() {
-        // MUST initialize GLFW so its joystick subsystem is active before we poll or map!
-        if (glfwInit() != GLFW_TRUE) {
-            printf("[InputSystem] ERROR: glfwInit() failed!\n");
-        }
-
-        // Load extensive community SDL mappings for missing Xbox/Linux controller layouts
-        std::ifstream file("gamecontrollerdb.txt");
-        if (file.is_open()) {
-            std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-            if (!content.empty()) {
-                if (glfwUpdateGamepadMappings(content.c_str())) {
-                    printf("[InputSystem] Successfully updated GLFW gamepad mappings from db.\n");
-                }
-            }
-        } else {
-            printf("[InputSystem] WARNING: gamecontrollerdb.txt not found!\n");
-        }
-
-        // Enumerate all joysticks for debugging
-        printf("--- Debugging GLFW Joysticks ---\n");
-        for (int i = 0; i <= GLFW_JOYSTICK_LAST; ++i) {
-            if (glfwJoystickPresent(i)) {
-                const char* name = glfwGetJoystickName(i);
-                bool isGamepad = glfwJoystickIsGamepad(i);
-                const char* guid = glfwGetJoystickGUID(i);
-                printf("Joystick %d: Name='%s', GUID='%s', IsGamepad=%s\n", 
-                       i, name ? name : "Unknown", guid ? guid : "Unknown", isGamepad ? "TRUE" : "FALSE");
-                
-                if (isGamepad) {
-                    const char* gpName = glfwGetGamepadName(i);
-                    printf("  Gamepad Name: '%s'\n", gpName ? gpName : "Unknown");
-                }
-            }
-        }
-        printf("--------------------------------\n");
-
         // Action Mappings
+        // linking abstract gameplay actions to physical 
+        // hardware inputs: keyboard/mouse (gamepad to some extend lol)
 
 
         // --- Movement & Navigation ---
         // Forward/Backward
         MapKeyboardAction("MoveForward", GLFW_KEY_W);
         MapKeyboardAction("MoveForward", GLFW_KEY_UP);
-        MapGamepadAxisAction("MoveForward", GLFW_GAMEPAD_AXIS_LEFT_Y, -1.0f);
-        
+        MapGamepadAxisAction("MoveForward", GLFW_GAMEPAD_AXIS_LEFT_Y);
+        // Note: Left Y is intuitively mapped here; deadzone processing handles directional separation
+
         MapKeyboardAction("MoveBackward", GLFW_KEY_S);
         MapKeyboardAction("MoveBackward", GLFW_KEY_DOWN);
-        MapGamepadAxisAction("MoveBackward", GLFW_GAMEPAD_AXIS_LEFT_Y, 1.0f);
+
 
         // Strafing (Left/Right)
         MapKeyboardAction("StrafeLeft", GLFW_KEY_A);
         MapKeyboardAction("StrafeLeft", GLFW_KEY_LEFT);
-        MapGamepadAxisAction("StrafeLeft", GLFW_GAMEPAD_AXIS_LEFT_X, -1.0f);
+        MapGamepadAxisAction("StrafeLeft", GLFW_GAMEPAD_AXIS_LEFT_X);
 
         MapKeyboardAction("StrafeRight", GLFW_KEY_D);
         MapKeyboardAction("StrafeRight", GLFW_KEY_RIGHT);
-        MapGamepadAxisAction("StrafeRight", GLFW_GAMEPAD_AXIS_LEFT_X, 1.0f);
-        
+
+        MapKeyboardAction("Jump", GLFW_KEY_SPACE);
+        MapGamepadButtonAction("Jump", GLFW_GAMEPAD_BUTTON_A);
+
         // Vertical Movement (Up/Down)
         MapKeyboardAction("Upward", GLFW_KEY_E);
-        MapGamepadButtonAction("Upward", GLFW_GAMEPAD_BUTTON_RIGHT_BUMPER);
-
         MapKeyboardAction("Downward", GLFW_KEY_Q);
-        MapGamepadButtonAction("Downward", GLFW_GAMEPAD_BUTTON_LEFT_BUMPER);
 
 
         // Movement Modifiers (Fast/Slow)
         MapKeyboardAction("Fast", GLFW_KEY_LEFT_SHIFT);
         MapKeyboardAction("Fast", GLFW_KEY_RIGHT_SHIFT);
-        MapGamepadAxisAction("Fast", GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER, 1.0f, -0.5f);
+        MapGamepadButtonAction("Fast", GLFW_GAMEPAD_BUTTON_LEFT_BUMPER);
 
         MapKeyboardAction("Slow", GLFW_KEY_LEFT_CONTROL);
         MapKeyboardAction("Slow", GLFW_KEY_RIGHT_CONTROL);
-        MapGamepadAxisAction("Slow", GLFW_GAMEPAD_AXIS_LEFT_TRIGGER, 1.0f, -0.5f);
         
 
         // --- Camera & View ---
         MapKeyboardAction("CameraThirdPersonToggle", GLFW_KEY_T);
         MapGamepadButtonAction("CameraThirdPersonToggle", GLFW_GAMEPAD_BUTTON_Y);
-        MapMouseButtonAction("CaptureMouse", GLFW_MOUSE_BUTTON_RIGHT);
         
 
         // --- Game Systems & Effects ---
         MapKeyboardAction("ToggleParticles", GLFW_KEY_R);
-        // MapGamepadButtonAction("ToggleParticles", GLFW_GAMEPAD_BUTTON_X);
+        MapGamepadButtonAction("ToggleParticles", GLFW_GAMEPAD_BUTTON_X);
 
         // --- Debug Toggles ---
         MapKeyboardAction("Default", GLFW_KEY_1); // Default
@@ -125,7 +87,6 @@ namespace engine {
 
         UpdateKeyboardStates();
         UpdateGamepadStates();
-        UpdateMouseStates();
     }
 
     void InputSystem::Shutdown() {
@@ -147,54 +108,36 @@ namespace engine {
     }
 
     void InputSystem::UpdateGamepadStates() {
-        mGamepadRightX = 0.0;
-        mGamepadRightY = 0.0;
-        
-        int activeGamepad = -1;
-        for (int i = 0; i <= GLFW_JOYSTICK_LAST; ++i) {
-            if (glfwJoystickPresent(i) && glfwJoystickIsGamepad(i)) {
-                activeGamepad = i;
-                break;
-            }
-        }
+        GLFWgamepadstate state;
+        if (glfwGetGamepadState(GLFW_JOYSTICK_1, &state)) {
+            for (auto& pair : mActionBindings) {
+                auto& binding = pair.second;
 
-        if (activeGamepad != -1) {
-            GLFWgamepadstate state;
-            if (glfwGetGamepadState(activeGamepad, &state)) {
-                for (auto& pair : mActionBindings) {
-                    auto& binding = pair.second;
-
-                    // Buttons
-                    for (int btn : binding.gamepadButtons) {
-                        if (state.buttons[btn] == GLFW_PRESS) {
-                            binding.isHeld = true;
-                            binding.value = 1.0f;
-                        }
+                // Buttons
+                for (int btn : binding.gamepadButtons) {
+                    if (state.buttons[btn] == GLFW_PRESS) {
+                        binding.isHeld = true;
+                        binding.value = 1.0f;
                     }
+                }
 
-                    // Axes
-                    for (const auto& axisInfo : binding.gamepadAxes) {
-                        float val = state.axes[axisInfo.axis];
-                        
-                        // Multiply the axis value with our desired direction (-1.0 or 1.0)
-                        float directionalValue = val * axisInfo.direction;
-                        
-                        if (directionalValue > axisInfo.deadzone) {
-                            binding.isHeld = true;
-                            // Only replace value if this directional magnitude is higher
-                            if (directionalValue > binding.value) {
-                                binding.value = directionalValue;
-                            }
+                // Axes
+                for (const auto& axisInfo : binding.gamepadAxes) {
+                    float val = state.axes[axisInfo.axis];
+                    
+                    // Specific mapping logic:
+                    // Left Y is negative going UP for GLFW
+                    // take absolute for the magnitude, and the game logic handles directions
+                    
+                    // for directional axes split, we should separate them or return negative
+                    if (std::abs(val) > axisInfo.deadzone) {
+                        binding.isHeld = true;
+                        // replace value if magnitude is higher
+                        if (std::abs(val) > std::abs(binding.value)) {
+                            binding.value = val;
                         }
                     }
                 }
-                
-                // Camera Free Look Extension
-                float rawRx = state.axes[GLFW_GAMEPAD_AXIS_RIGHT_X];
-                float rawRy = state.axes[GLFW_GAMEPAD_AXIS_RIGHT_Y];
-                if (std::abs(rawRx) > 0.1f) mGamepadRightX = rawRx; 
-                if (std::abs(rawRy) > 0.1f) mGamepadRightY = rawRy; 
-            
             }
         }
     }
@@ -231,53 +174,8 @@ namespace engine {
         mActionBindings[actionName].gamepadButtons.push_back(glfwGamepadButton);
     }
 
-    void InputSystem::MapGamepadAxisAction(const std::string& actionName, int glfwGamepadAxis, float direction, float deadzone) {
-        mActionBindings[actionName].gamepadAxes.push_back({glfwGamepadAxis, direction, deadzone});
-    }
-
-    void InputSystem::MapMouseButtonAction(const std::string& actionName, int glfwMouseButton) {
-        mActionBindings[actionName].mouseButtons.push_back(glfwMouseButton);
-    }
-
-    void InputSystem::UpdateMouseStates() {
-        
-        double nx, ny;
-        glfwGetCursorPos(mWindow, &nx, &ny);
-        
-        if (mFirstMouseUpdate) {
-            mMouseX = nx; mMouseY = ny;
-            mFirstMouseUpdate = false;
-
-        }
-
-        mMouseDeltaX = nx - mMouseX;
-        mMouseDeltaY = ny - mMouseY;
-        mMouseX = nx;
-        mMouseY = ny;
-
-        for (auto& pair : mActionBindings) {
-            auto& binding = pair.second;
-            for (int btn : binding.mouseButtons) {
-                if (glfwGetMouseButton(mWindow, btn) == GLFW_PRESS) {
-                    binding.isHeld = true;
-                    binding.value = 1.0f;
-                    break;
-                }
-            }
-        }
-
-
-
-    }
-
-    void InputSystem::SetMouseCaptured(bool captured) {
-        if (!mWindow) return;
-        glfwSetInputMode(mWindow, GLFW_CURSOR, captured ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
-    }
-
-    bool InputSystem::IsMouseCaptured() const {
-        if (!mWindow) return false;
-        return glfwGetInputMode(mWindow, GLFW_CURSOR) == GLFW_CURSOR_DISABLED;
+    void InputSystem::MapGamepadAxisAction(const std::string& actionName, int glfwGamepadAxis, float deadzone) {
+        mActionBindings[actionName].gamepadAxes.push_back({glfwGamepadAxis, deadzone});
     }
 
 } // namespace engine
