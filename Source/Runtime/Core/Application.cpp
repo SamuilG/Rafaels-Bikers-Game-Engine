@@ -47,8 +47,6 @@ namespace engine {
             renderSystem->SetInputSystem(inputSystem);
             physicsSystem->SetInputSystem(inputSystem);
             
-            
-			
         }
 
         // load models using the API in RenderSystem
