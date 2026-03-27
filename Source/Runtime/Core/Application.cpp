@@ -95,8 +95,15 @@ namespace engine {
 		glm::mat4 CubeSpawnPos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, -7.0f, 8.0f));
 		renderSystem->load_additional_model("Assets/Models/em1.gltf", false, 90.0f, CubeSpawnPos);
 
+
+		// testBiek1,2  二选一
+		// testBike2 有compound bug
+		
 		glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
 		renderSystem->load_additional_model("Assets/Models/testBike1.gltf", false, 90.0f, tbpos, false, true);
+
+		//glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
+		//renderSystem->load_additional_model("Assets/Models/testBike2.gltf", false, 90.0f, tbpos, false, true);
 
 
 
@@ -120,7 +127,7 @@ namespace engine {
 		flecs::entity bikeEntity = sceneManager->find_entity("立方体_0");
 
 		if (bikeEntity.is_valid()) {
-			headlight.child_of(bikeEntity); // 魔法就在这一行！
+			headlight.child_of(bikeEntity); 
 			std::print("Success: Headlight is now firmly attached to the Bike!\n");
 		}
 		else {
