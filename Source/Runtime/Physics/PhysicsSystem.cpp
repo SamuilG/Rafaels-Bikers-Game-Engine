@@ -497,39 +497,40 @@ JPH::BodyID PhysicsSystem::create_dynamic_compound_body(
 	for (size_t i = 0; i < meshes.size(); ++i) {
 		const auto& mesh = meshes[i];
 
-		// Extract part-local transform
 		glm::vec3 partScale, partTranslation, partSkew;
 		glm::quat partRotation;
 		glm::vec4 partPersp;
-		glm::decompose(meshTransforms[i], partScale, partRotation, partTranslation, partSkew, partPersp);
+		glm::decompose(meshTransforms[i], partScale, partRotation,
+			partTranslation, partSkew, partPersp);
 		partRotation = glm::normalize(partRotation);
+
+
 		glm::vec3 finalScale = scale * partScale;
 
-		// Build Vertex List (applying combined scale directly)
 		JPH::Array<JPH::Vec3> points;
 		points.resize(mesh.positions.size());
 		for (size_t v = 0; v < mesh.positions.size(); ++v) {
 			const auto& pos = mesh.positions[v];
-			points[v] = JPH::Vec3(pos.x * finalScale.x, pos.y * finalScale.y, pos.z * finalScale.z);
+			points[v] = JPH::Vec3(pos.x * finalScale.x,
+				pos.y * finalScale.y,
+				pos.z * finalScale.z);
 		}
-
 		if (points.empty()) continue;
 
-		// Create ConvexHullShape for this part
 		JPH::ConvexHullShapeSettings hullSettings(points);
 		JPH::ShapeSettings::ShapeResult hullResult = hullSettings.Create();
 		if (hullResult.HasError()) {
-			std::cout << "Error creating ConvexHullShape for part " << i
-				<< ": " << hullResult.GetError() << std::endl;
+			std::cout << "Error: " << hullResult.GetError() << std::endl;
 			continue;
 		}
 
-		// Part offset relative to body origin (scaled)
+
 		JPH::Vec3 partOffset(
 			(partTranslation.x - translation.x) * scale.x,
 			(partTranslation.y - translation.y) * scale.y,
 			(partTranslation.z - translation.z) * scale.z
 		);
+
 		compoundSettings.AddShape(partOffset, toJolt(partRotation), hullResult.Get());
 		partCount++;
 	}

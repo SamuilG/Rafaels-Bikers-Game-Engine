@@ -84,7 +84,7 @@ namespace engine {
 		//glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 10.0f, 30.0f));
 		//renderSystem->load_additional_model("Assets/Models/bike.glb", false, 50.0f, BikeSpawnPos,true, true);
 
-        glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 10.0f, 30.0f));
+        glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 20.0f, 30.0f));
         renderSystem->load_additional_model("Assets/Models/bicycle.glb", false, 50.0f, BikeSpawnPos ,false, true);
 
 
@@ -97,13 +97,13 @@ namespace engine {
 
 
 		// testBiek1,2  二选一
-		// testBike2 有compound bug
+		// testBike2 has compound bug
 		
-		glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
-		renderSystem->load_additional_model("Assets/Models/testBike1.gltf", false, 90.0f, tbpos, false, true);
-
 		//glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
-		//renderSystem->load_additional_model("Assets/Models/testBike2.gltf", false, 90.0f, tbpos, false, true);
+		//renderSystem->load_additional_model("Assets/Models/testBike1.gltf", false, 90.0f, tbpos, false, true);
+
+		glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
+		renderSystem->load_additional_model("Assets/Models/tbike.glb", false, 90.0f, tbpos, false, true);
 
 
 
