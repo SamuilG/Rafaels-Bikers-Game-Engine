@@ -697,7 +697,7 @@ void PhysicsSystem::create_bicycle(uint32_t chassisBodyID) {
 	m_bicycle = std::make_unique<BicycleState>();
 	m_bicycle->chassisID = JPH::BodyID(chassisBodyID);
 
-	// 锁定一些不需要的自由度，防止乱翻
+
 	JPH::BodyInterface& bi = m_physicsSystem->GetBodyInterface();
 	bi.SetGravityFactor(m_bicycle->chassisID, 1.0f);
 
@@ -711,68 +711,66 @@ void PhysicsSystem::update_bicycle(float dt) {
 	JPH::BodyID id = m_bicycle->chassisID;
 	if (!bi.IsAdded(id)) return;
 
-	// ---- 1. 读取输入 ----
-	float inputThrottle = 0.0f;  // W/S
-	float inputSteer = 0.0f;  // A/D
+	float inputThrottle = 0.0f;  
+	float inputSteer = 0.0f;  
 
 	if (mInputSystem->IsActionHeld("MoveForward"))  inputThrottle += 1.0f;
 	if (mInputSystem->IsActionHeld("MoveBackward")) inputThrottle -= 1.0f;
 	if (mInputSystem->IsActionHeld("StrafeLeft"))   inputSteer += 1.0f;
 	if (mInputSystem->IsActionHeld("StrafeRight"))  inputSteer -= 1.0f;
 
-	// ---- 2. 转向角平滑过渡 ----
+
 	const float maxSteerAngle = glm::radians(35.0f);
-	const float steerSpeed = glm::radians(120.0f); // 每秒120度
+	const float steerSpeed = glm::radians(120.0f); 
 	float targetSteer = inputSteer * maxSteerAngle;
 	float steerDiff = targetSteer - m_bicycle->steerAngle;
 	float maxDelta = steerSpeed * dt;
 	m_bicycle->steerAngle += glm::clamp(steerDiff, -maxDelta, maxDelta);
 
-	// ---- 3. 倾斜角 (A/D 控制) ----
+
 	const float maxLeanAngle = glm::radians(25.0f);
 	const float leanSpeed = glm::radians(90.0f);
-	float targetLean = -inputSteer * maxLeanAngle; // 左转左倾
+	float targetLean = -inputSteer * maxLeanAngle; 
 	float leanDiff = targetLean - m_bicycle->leanAngle;
 	float maxLeanDelta = leanSpeed * dt;
 	m_bicycle->leanAngle += glm::clamp(leanDiff, -maxLeanDelta, maxLeanDelta);
 
-	// ---- 4. 计算朝向 ----
-	// 获取当前yaw，根据转向角和速度更新yaw
+
 	JPH::Quat currentRot = bi.GetRotation(id);
-	// 从四元数提取yaw
-	JPH::Vec3 fwd = currentRot.RotateAxisZ(); // 假设模型前方是 -Z
+
+	JPH::Vec3 fwd = currentRot.RotateAxisZ(); 
 	float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
 
-	// 速度越快转弯越明显
+
 	JPH::Vec3 vel = bi.GetLinearVelocity(id);
 	float speed = std::sqrt(vel.GetX() * vel.GetX() + vel.GetZ() * vel.GetZ());
 	m_bicycle->currentSpeed = speed;
 
-	// 根据转向角更新yaw (自行车运动学: yaw变化率 = speed * tan(steer) / wheelbase)
-	const float wheelBase = 1.6f; // 前后轮距，根据模型调
+
+	const float wheelBase = 1.6f; 
 	float yawRate = 0.0f;
 	if (speed > 0.1f) {
 		yawRate = (speed * std::tan(m_bicycle->steerAngle)) / wheelBase;
 	}
 	float newYaw = currentYaw + yawRate * dt;
 
-	// ---- 5. 构建最终旋转: yaw + lean(绕前进方向倾斜) ----
+
 	JPH::Quat yawQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), newYaw + JPH::JPH_PI);
 	JPH::Quat leanQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisZ(), m_bicycle->leanAngle);
 	JPH::Quat finalRot = yawQuat * leanQuat;
 
 	bi.SetRotation(id, finalRot, JPH::EActivation::Activate);
 
-	// ---- 6. 前进/后退力 ----
+
 	const float driveForce = 300.0f;
 	const float brakeForce = 15.0f;
-	const float maxSpeed = 15.0f;  // 自行车最大速度
+	const float maxSpeed = 15.0f;  
 
-	// 前进方向 (从当前yaw得到)
+
 	glm::vec3 forwardDir(-std::sin(newYaw), 0.0f, -std::cos(newYaw));
 
 	if (std::abs(inputThrottle) > 0.01f) {
-		// 限速
+
 		if (speed < maxSpeed || inputThrottle < 0.0f) {
 			bi.AddForce(id, JPH::Vec3(
 				forwardDir.x * driveForce * inputThrottle,
@@ -782,7 +780,7 @@ void PhysicsSystem::update_bicycle(float dt) {
 		}
 	}
 	else {
-		// 无输入时自然减速
+
 		bi.AddForce(id, JPH::Vec3(
 			-vel.GetX() * brakeForce,
 			0.0f,
@@ -790,10 +788,10 @@ void PhysicsSystem::update_bicycle(float dt) {
 		));
 	}
 
-	// ---- 7. 清除角速度 (我们手动管理旋转) ----
+
 	bi.SetAngularVelocity(id, JPH::Vec3::sZero());
 
-	// ---- 8. 限制最大速度 ----
+
 	if (speed > maxSpeed) {
 		float scale = maxSpeed / speed;
 		bi.SetLinearVelocity(id, JPH::Vec3(
