@@ -100,7 +100,7 @@ namespace engine {
 		// testBike2 有compound bug
 		
 		glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
-		renderSystem->load_additional_model("Assets/Models/testBike1.gltf", false, 90.0f, tbpos, false, true);
+		renderSystem->load_additional_model("Assets/Models/tbike.glb", false, 90.0f, tbpos, false, true);
 
 		//glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
 		//renderSystem->load_additional_model("Assets/Models/testBike2.gltf", false, 90.0f, tbpos, true);
@@ -108,7 +108,7 @@ namespace engine {
 
 
 		//=============================================Headlight ==============================================
-		glm::mat4 localLightOffset = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 1.2f));
+		glm::mat4 localLightOffset = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.7f, 1.7f));
 
 		flecs::entity headlight = sceneManager->create_light_entity(
 			"headlight",
@@ -116,7 +116,7 @@ namespace engine {
 			glm::vec3(1.0f, 0.95f, 0.85f),
 			15.0f,
 			localLightOffset,
-			40.0f,
+			40.0f, 
 			glm::vec3(0.0f, 0, 1.0f),
 			15.0f,
 			25.0f
@@ -124,7 +124,7 @@ namespace engine {
 
 
 
-		flecs::entity bikeEntity = sceneManager->find_entity("立方体_0");
+		flecs::entity bikeEntity = sceneManager->find_entity("Bike_0");
 
 		if (bikeEntity.is_valid()) {
 			headlight.child_of(bikeEntity); 
