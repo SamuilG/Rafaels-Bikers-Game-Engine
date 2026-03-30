@@ -140,7 +140,7 @@ public:
     flecs::entity raycast_entity(const glm::vec3& origin, const glm::vec3& direction, float max_distance = 1000.0f);
     PhysicsSystem* get_physics_system() const { return m_physics_system; }
     //==========UI System======================
-
+    float speed = 0.0f;
     void print_all_entities();
     // дк SceneManager.hpp жаЃК
     flecs::entity create_light_entity(

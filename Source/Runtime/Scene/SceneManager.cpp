@@ -47,6 +47,7 @@ void SceneManager::Init() {
                 wt.matrix = lt.matrix;
             }
         });
+    speed = 0.0f;
 }
 
 void SceneManager::Shutdown() {
@@ -264,10 +265,55 @@ void SceneManager::Update(float dt) {
             if (bodyInterface.IsActive(bodyID)) {
                 JPH::Vec3 pos = bodyInterface.GetPosition(bodyID);
                 JPH::Quat rot = bodyInterface.GetRotation(bodyID);
+
                 glm::mat4 bodyWorld = glm::translate(glm::mat4(1.0f), toGlm(pos))
                     * glm::mat4_cast(toGlm(rot));
+
+                glm::mat4 finalOffset = cp.localOffset;
+
+                const char* name = e.name();
+                if (name != nullptr && (strstr(name, "steer.001_2") || strstr(name, "frontwheel.001_3"))) {
+
+                    float steerAngle = m_physics_system->get_steer_angle();
  
-                lt.matrix = bodyWorld * cp.localOffset;
+                    glm::mat4 steerRot = glm::rotate(glm::mat4(1.0f), steerAngle, glm::vec3(0.0f, 1.0f, 0.0f));
+
+
+                    finalOffset = cp.localOffset * steerRot;
+                }
+
+
+                lt.matrix = bodyWorld * finalOffset;
+            }
+                });
+
+
+        m_world->query<LocalTransform, const CompoundParent>()
+            .each([&](flecs::entity e, LocalTransform& lt, const CompoundParent& cp) {
+            JPH::BodyID bodyID(cp.bodyID);
+            if (bodyInterface.IsActive(bodyID)) {
+                JPH::Vec3 pos = bodyInterface.GetPosition(bodyID);
+                JPH::Quat rot = bodyInterface.GetRotation(bodyID);
+
+                glm::mat4 bodyWorld = glm::translate(glm::mat4(1.0f), toGlm(pos))
+                    * glm::mat4_cast(toGlm(rot));
+
+                glm::mat4 finalOffset = cp.localOffset;
+
+                const char* name = e.name();
+                if (name != nullptr && (strstr(name, "frontwheel.001_3") || strstr(name, "Rear wheel_1") || strstr(name, "Pedal.002_5") || strstr(name, "WholePedal_4"))) {
+
+                    speed += 0.001 * m_physics_system->get_speed();
+                    
+
+                    glm::mat4 selfRot = glm::rotate(glm::mat4(1.0f), speed, glm::vec3(1.0f, 0.0f, 0.0f));
+
+
+                    finalOffset = cp.localOffset * selfRot;
+                }
+
+
+                lt.matrix = bodyWorld * finalOffset;
             }
                 });
     }

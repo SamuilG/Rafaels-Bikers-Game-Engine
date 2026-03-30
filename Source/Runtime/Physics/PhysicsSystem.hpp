@@ -49,6 +49,7 @@ struct BicycleState {
     float steerAngle = 0.0f;   // 当前转向角 (rad)
     float currentSpeed = 0.0f;
     float leanAngle = 0.0f;   // 当前倾斜角 (rad)
+    float wheelAngle = 0.0f;
 };
 
 namespace engine {
@@ -108,7 +109,13 @@ public:
     void create_bicycle(uint32_t chassisBodyID);
     void update_bicycle(float dt);
 
+    float get_steer_angle() const {
+        return m_bicycle ? m_bicycle->steerAngle : 0.0f;
+    }
 
+    float get_speed() const {
+        return m_bicycle ? m_bicycle->currentSpeed : 0.0f;
+    }
 private:
     
 

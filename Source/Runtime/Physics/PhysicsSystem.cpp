@@ -218,7 +218,7 @@ void PhysicsSystem::AddForceDirection(const JPH::BodyID& bodyID, float force)
 	{
 		worldDir = glm::normalize(worldDir);
 
-		// ---- 射线检测地面法线，把力投影到斜面上 ----
+
 		glm::vec3 forceDir(worldDir.x, 0.0f, worldDir.z);
 		JPH::RVec3 bodyPos = bi.GetPosition(bodyID);
 		JPH::RRayCast ray(bodyPos, JPH::Vec3(0.0f, -5.0f, 0.0f));
@@ -719,33 +719,46 @@ void PhysicsSystem::update_bicycle(float dt) {
 	if (mInputSystem->IsActionHeld("StrafeLeft"))   inputSteer += 1.0f;
 	if (mInputSystem->IsActionHeld("StrafeRight"))  inputSteer -= 1.0f;
 
-
-	const float maxSteerAngle = glm::radians(35.0f);
-	const float steerSpeed = glm::radians(120.0f); 
+	//车把
+	const float maxSteerAngle = glm::radians(25.0f);
+	const float steerSpeed = glm::radians(90.0f); 
 	float targetSteer = inputSteer * maxSteerAngle;
 	float steerDiff = targetSteer - m_bicycle->steerAngle;
 	float maxDelta = steerSpeed * dt;
 	m_bicycle->steerAngle += glm::clamp(steerDiff, -maxDelta, maxDelta);
 
 
-	const float maxLeanAngle = glm::radians(25.0f);
-	const float leanSpeed = glm::radians(90.0f);
-	float targetLean = -inputSteer * maxLeanAngle; 
-	float leanDiff = targetLean - m_bicycle->leanAngle;
-	float maxLeanDelta = leanSpeed * dt;
-	m_bicycle->leanAngle += glm::clamp(leanDiff, -maxLeanDelta, maxLeanDelta);
-
-
-	JPH::Quat currentRot = bi.GetRotation(id);
-
-	JPH::Vec3 fwd = currentRot.RotateAxisZ(); 
-	float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
-
-
 	JPH::Vec3 vel = bi.GetLinearVelocity(id);
 	float speed = std::sqrt(vel.GetX() * vel.GetX() + vel.GetZ() * vel.GetZ());
 	m_bicycle->currentSpeed = speed;
 
+
+
+
+	//车身倾斜
+	const float maxLeanAngle = glm::radians(30.0f);
+	const float leanSpeed = glm::radians(90.0f); 
+	float maxLeanDelta = leanSpeed * dt;
+
+	float targetLean = 0.0f;
+	if (speed > 0.5f) {
+		targetLean = -inputSteer * maxLeanAngle;
+	}
+	else {
+		targetLean = 0.0f; 
+	}
+
+
+	float leanDiff = targetLean - m_bicycle->leanAngle;
+
+
+	m_bicycle->leanAngle += glm::clamp(leanDiff, -maxLeanDelta, maxLeanDelta);
+
+
+
+	JPH::Quat currentRot = bi.GetRotation(id);
+	JPH::Vec3 fwd = currentRot.RotateAxisZ();
+	float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
 
 	const float wheelBase = 1.6f; 
 	float yawRate = 0.0f;
@@ -759,12 +772,18 @@ void PhysicsSystem::update_bicycle(float dt) {
 	JPH::Quat leanQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisZ(), m_bicycle->leanAngle);
 	JPH::Quat finalRot = yawQuat * leanQuat;
 
+
 	bi.SetRotation(id, finalRot, JPH::EActivation::Activate);
 
 
-	const float driveForce = 300.0f;
-	const float brakeForce = 15.0f;
-	const float maxSpeed = 15.0f;  
+	//施加的力的大小
+	const float driveForce = 1000.0f;
+
+	//停车力的大小
+	const float brakeForce = 20.0f;
+
+	//最大速度限制
+	const float maxSpeed = 60.0f;  
 
 
 	glm::vec3 forwardDir(-std::sin(newYaw), 0.0f, -std::cos(newYaw));
