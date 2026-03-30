@@ -96,14 +96,14 @@ namespace engine {
 		renderSystem->load_additional_model("Assets/Models/em1.gltf", false, 90.0f, CubeSpawnPos);
 
 
-		// testBiek1,2  二选一
+		// testBiek1,2  二选一+
 		// testBike2 有compound bug
 		
 		glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
 		renderSystem->load_additional_model("Assets/Models/testBike1.gltf", false, 90.0f, tbpos, false, true);
 
 		//glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
-		//renderSystem->load_additional_model("Assets/Models/testBike2.gltf", false, 90.0f, tbpos, false, true);
+		//renderSystem->load_additional_model("Assets/Models/testBike2.gltf", false, 90.0f, tbpos, true);
 
 
 
@@ -189,7 +189,8 @@ namespace engine {
 			"voidLight",
 			engine::LightType::Point,
 			glm::vec3(0.5f, 0.0f, 3.0f), //color
-			5,//intensity     
+			//glm::vec3(1, 1, 1), //color
+			8,//intensity     
 
 			light2SpawnPos,
 			20.0f // range
