@@ -21,7 +21,7 @@
 #include <cstdarg>
 #include <thread>
 
-
+#include <Jolt/Physics/Body/BodyFilter.h>
 // callback for traces
 static void TraceImpl(const char *inFMT, ...)
 {
@@ -212,8 +212,8 @@ void PhysicsSystem::AddForceDirection(const JPH::BodyID& bodyID, float force)
 	if (mInputSystem->IsActionHeld("StrafeLeft"))   inputX -= 1.0f;
 	if (mInputSystem->IsActionHeld("StrafeRight"))  inputX += 1.0f;
 
-	glm::vec3 worldDir = forward * inputZ + right * inputX;
 
+        glm::vec3 worldDir = forward * std::max(inputZ, 0.0f) + right * inputX;
 	if (glm::length(worldDir) > 0.001f)
 	{
 		worldDir = glm::normalize(worldDir);
@@ -586,6 +586,67 @@ JPH::BodyID PhysicsSystem::create_dynamic_compound_body(
 
 	return body->GetID();
 }
+
+
+// 实现带有忽略逻辑的射线
+uint32_t PhysicsSystem::cast_ray_ignore(const glm::vec3& start, const glm::vec3& end, uint32_t ignoreBodyIDRaw)
+{
+	if (!m_physicsSystem) return JPH::BodyID::cInvalidBodyID;
+
+	JPH::RVec3 joltStart(start.x, start.y, start.z);
+	JPH::Vec3 joltDir(end.x - start.x, end.y - start.y, end.z - start.z);
+	JPH::RRayCast ray(joltStart, joltDir);
+
+	JPH::RayCastResult hitResult;
+
+	JPH::IgnoreSingleBodyFilter ignoreFilter{ JPH::BodyID(ignoreBodyIDRaw) };
+
+	bool isHit = m_physicsSystem->GetNarrowPhaseQuery().CastRay(
+		ray,
+		hitResult,
+		JPH::BroadPhaseLayerFilter(),
+		JPH::ObjectLayerFilter(),
+		ignoreFilter 
+	);
+
+	if (isHit) {
+		return hitResult.mBodyID.GetIndexAndSequenceNumber();
+	}
+
+	return JPH::BodyID::cInvalidBodyID;
+}
+uint32_t PhysicsSystem::cast_ray_ignore_multiple(const glm::vec3& start, const glm::vec3& end, const std::vector<uint32_t>& ignoreIDs)
+{
+	if (!m_physicsSystem) return JPH::BodyID::cInvalidBodyID;
+
+	JPH::RVec3 joltStart(start.x, start.y, start.z);
+	JPH::Vec3 joltDir(end.x - start.x, end.y - start.y, end.z - start.z);
+	JPH::RRayCast ray(joltStart, joltDir);
+	JPH::RayCastResult hitResult;
+
+	class MultiIgnoreFilter : public JPH::BodyFilter {
+		const std::vector<uint32_t>& m_ignores;
+	public:
+		MultiIgnoreFilter(const std::vector<uint32_t>& ignores) : m_ignores(ignores) {}
+		virtual bool ShouldCollide(const JPH::BodyID& inBodyID) const override {
+			uint32_t rawID = inBodyID.GetIndexAndSequenceNumber();
+			for (uint32_t id : m_ignores) {
+				if (rawID == id) return false;
+			}
+			return true;
+		}
+	};
+
+	MultiIgnoreFilter filter(ignoreIDs);
+
+	bool isHit = m_physicsSystem->GetNarrowPhaseQuery().CastRay(
+		ray, hitResult,
+		JPH::BroadPhaseLayerFilter(), JPH::ObjectLayerFilter(), filter
+	);
+
+	if (isHit) return hitResult.mBodyID.GetIndexAndSequenceNumber();
+	return JPH::BodyID::cInvalidBodyID;
+}
 //=============================UI System Interactions=============================
 uint32_t PhysicsSystem::cast_ray(const glm::vec3& origin, const glm::vec3& direction, float max_distance)
 {
@@ -622,6 +683,15 @@ uint32_t PhysicsSystem::cast_ray(const glm::vec3& origin, const glm::vec3& direc
 	//return Jolt's defined invalid ID if no hit
 	return JPH::BodyID::cInvalidBodyID;
 }
+
+
+
+
+
+
+
+
+
 void PhysicsSystem::set_body_transform(uint32_t bodyID, const glm::mat4& transform)
 {
 	if (!m_physicsSystem || bodyID == JPH::BodyID::cInvalidBodyID) return;

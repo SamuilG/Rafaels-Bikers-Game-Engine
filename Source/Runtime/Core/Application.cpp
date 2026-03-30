@@ -33,6 +33,8 @@ namespace engine {
 		physicsSystem->SetUserState(&mState);
 		sceneManager = AddSystem<SceneManager>(physicsSystem);
 
+		// 【新增】：把 mState 也传给 SceneManager！
+		sceneManager->SetUserState(&mState);
 		//final render 
 
 		//AddSystem<CameraSystem>();

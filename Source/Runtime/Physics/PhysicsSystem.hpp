@@ -21,7 +21,7 @@
 #include <memory>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
-
+#include <vector> 
 #include "../Core/System.h"
 #include "../Scene/model_loader/engine_model.hpp"
 #include "../Renderer/RenderUtilities/camera.hpp"
@@ -95,6 +95,12 @@ public:
     // cast_ray
     // Raycast from origin in direction, return first hit BodyID射线检测，返回第一个被击中的物理 BodyID
     uint32_t cast_ray(const glm::vec3& origin, const glm::vec3& direction, float max_distance = 1000.0f);
+
+    uint32_t cast_ray_ignore(const glm::vec3& start, const glm::vec3& end, uint32_t ignoreBodyIDRaw);
+
+    // ...
+    uint32_t cast_ray_ignore_multiple(const glm::vec3& start, const glm::vec3& end, const std::vector<uint32_t>& ignoreIDs);
+
     // 根据 BodyID 同步最新的变换矩阵
     //latest transform
     void set_body_transform(uint32_t bodyID, const glm::mat4& transform);

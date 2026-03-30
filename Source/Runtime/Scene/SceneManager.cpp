@@ -236,6 +236,8 @@ std::string SceneManager::get_entity_name_from_body_id(uint32_t bodyID) {
 }
 
 void SceneManager::Update(float dt) {
+
+
     if (m_physics_system) {
         JPH::BodyInterface& bodyInterface = m_physics_system->get_body_interface();
 
@@ -316,6 +318,86 @@ void SceneManager::Update(float dt) {
                 lt.matrix = bodyWorld * finalOffset;
             }
                 });
+
+         
+        // ========================================================
+         // --- 3. 【新增】：第三人称相机遮挡透视 (X-Ray) 逻辑 ---
+         // ========================================================
+        if (mState && mState->thirdPersonMode) {
+            // 从 mState 中提取相机的世界坐标 (矩阵的平移列)
+            glm::vec3 cameraPos = glm::vec3(mState->camera2world[3]);
+
+            // a. 平滑所有 OpacityComponent 动画
+            m_world->query<OpacityComponent>().each([&](flecs::entity e, OpacityComponent& op) {
+                // 平滑插值
+                op.currentAlpha += (op.targetAlpha - op.currentAlpha) * 8.0f * dt;
+
+                // 每帧默认目标为恢复不透明。如果这帧依然被挡住，后面的射线会把它重新设为 0.3
+                op.targetAlpha = 1.0f;
+
+                // 如果完全恢复了，自动销毁组件，节省渲染性能
+                if (op.currentAlpha >= 0.99f && op.targetAlpha == 1.0f) {
+                    e.remove<OpacityComponent>();
+                }
+                });
+
+            // b. 射线检测
+            flecs::entity bikeEntity = find_entity("Bike_0");
+
+            if (bikeEntity.is_valid() && bikeEntity.has<WorldTransform>()) {
+
+                // 【关键修复】：自动兼容所有的物理组件，确保绝对能拿到 BodyID！
+                uint32_t bikeBodyID = JPH::BodyID::cInvalidBodyID;
+                if (bikeEntity.has<CompoundParent>()) {
+                    bikeBodyID = bikeEntity.get<CompoundParent>().bodyID;
+                }
+                else if (bikeEntity.has<PhysicsBody>()) {
+                    bikeBodyID = bikeEntity.get<PhysicsBody>().bodyID;
+                }
+
+                if (bikeBodyID != JPH::BodyID::cInvalidBodyID) {
+                    glm::vec3 bikePos = glm::vec3(bikeEntity.get<WorldTransform>().matrix[3]);
+                    bikePos.y += 0.8f; // 瞄准单车上半身
+
+                    std::vector<uint32_t> ignoredIDs;
+                    ignoredIDs.push_back(bikeBodyID); // 先把单车自己拉黑，防误伤
+
+                    // 穿透射线循环
+                    while (true) {
+                        uint32_t hitBodyID = m_physics_system->cast_ray_ignore_multiple(cameraPos, bikePos, ignoredIDs);
+
+                        if (hitBodyID == JPH::BodyID::cInvalidBodyID) {
+                            break; // 没有任何遮挡物了，通关！
+                        }
+
+                        // 打印命中提示，看到这个说明射线真的在工作！
+                        std::print("[X-Ray] Hit blocking object ID: {}\n", hitBodyID);
+
+                        // 检查被打中的是否是普通刚体（比如房子）
+                        m_world->query<const PhysicsBody>().each([&](flecs::entity e, const PhysicsBody& pb) {
+                            if (pb.bodyID == hitBodyID) {
+                                if (!e.has<OpacityComponent>()) e.set<OpacityComponent>({ 1.0f, 0.3f });
+                                else e.get_mut<OpacityComponent>().targetAlpha = 0.3f;
+                            }
+                            });
+
+                        // 检查被打中的是否是复合刚体（比如汽车的各个零件）
+                        m_world->query<const CompoundParent>().each([&](flecs::entity e, const CompoundParent& cp) {
+                            if (cp.bodyID == hitBodyID) {
+                                if (!e.has<OpacityComponent>()) e.set<OpacityComponent>({ 1.0f, 0.3f });
+                                else e.get_mut<OpacityComponent>().targetAlpha = 0.3f;
+                            }
+                            });
+
+                        // 把刚打中的障碍物也拉黑，下一发射线直接穿透它！
+                        ignoredIDs.push_back(hitBodyID);
+                    }
+                }
+            }
+        }
+
+
+
     }
     m_world->progress(dt);
 }
@@ -416,12 +498,13 @@ void SceneManager::get_light_data(std::vector<GpuLight>& outLights) {
 std::vector<RenderBatch> SceneManager::get_render_batches() {
     std::vector<RenderBatch> batches;
 
-    // Query all entities with WorldTransform, MeshComponent, and MaterialComponent
-    m_world->query<const WorldTransform, const MeshComponent, const MaterialComponent, const EntityStatus>()
-        .each([&](const WorldTransform& wt, const MeshComponent& mc, const MaterialComponent& matc, const EntityStatus& status) {
-        // 只有 should_render 为 true 时才加入渲染批次
+    // 【修改】：使用指针 (const OpacityComponent*) 使得该组件变为可选！
+    m_world->query<const WorldTransform, const MeshComponent, const MaterialComponent, const EntityStatus, const OpacityComponent*>()
+        .each([&](const WorldTransform& wt, const MeshComponent& mc, const MaterialComponent& matc, const EntityStatus& status, const OpacityComponent* op) {
         if (status.should_render) {
-            batches.push_back({ mc.meshIndex, matc.materialIndex, wt.matrix });
+            // 如果有 OpacityComponent，提取它的 alpha，否则默认为 1.0f (不透明)
+            float alpha = op ? op->currentAlpha : 1.0f;
+            batches.push_back({ mc.meshIndex, matc.materialIndex, wt.matrix, alpha });
         }
             });
     return batches;

@@ -16,6 +16,7 @@
 #include "../Core/System.h"
 #include "model_loader/engine_model.hpp"
 #include"../Renderer/RenderUtilities/light.hpp"
+#include "../UserState/UserState.hpp"
 
 // Forward declare EngineModel to avoid including engine_model.hpp here
 
@@ -31,7 +32,6 @@ namespace cfg
 
 
 }
-
 
 
 namespace engine {
@@ -70,6 +70,7 @@ struct RenderBatch {
     uint32_t meshIndex;
     uint32_t materialIndex;
     glm::mat4 transform;
+    float alphaMultiplier; 
 };
 
 // forward declare EngineModel to avoid including engine_model.hpp here
@@ -82,9 +83,22 @@ struct EngineMesh generate_uv_sphere(float radius, uint32_t rings, uint32_t sect
 // Forward declare flecs::world so it can be used as a pointer
 namespace flecs { class world; }
 
+
+struct OpacityComponent {
+    float currentAlpha = 1.0f; // 当前透明度
+    float targetAlpha = 1.0f;  // 目标透明度 (用于平滑过渡)
+};
+
+
 namespace engine {
 
 class SceneManager final : public System {
+
+
+private:
+    struct UserState* mState = nullptr; // 加上这个指针 (如果不识别 UserState，请 include 对应的头文件)
+
+
 public:
     SceneManager(PhysicsSystem* physics_system = nullptr);
     ~SceneManager() override;
@@ -139,6 +153,10 @@ public:
     // Raycast from origin in direction, return first hit entity 射线检测，返回第一个被击中的实体
     flecs::entity raycast_entity(const glm::vec3& origin, const glm::vec3& direction, float max_distance = 1000.0f);
     PhysicsSystem* get_physics_system() const { return m_physics_system; }
+
+
+    void SetUserState(struct UserState* state) { mState = state; }
+
     //==========UI System======================
     float speed = 0.0f;
     void print_all_entities();

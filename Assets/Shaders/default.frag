@@ -277,9 +277,13 @@ void main()
     // 调试模式覆盖
     if( uScene.renderMode == 6 ) finalColor = vec3(shadow); 
     
-    // 输出到 Attachment 0 (正常渲染图)
-    oColor = vec4(finalColor, 1.0);
-
+  // ==========================================
+    // 【关键修复】：提取真正的透明度！
+    // 贴图的 alpha * C++ 传进来的系数(0.3)
+    float finalAlpha = texColor.a * pc.baseColorFactor.a;
+    
+    // 输出到 Attachment 0 (正常场景)
+    oColor = vec4(finalColor, finalAlpha);
 
    // --- 6. Bloom 亮度提取 ---
     float threshold = 0.5; // 阈值可以根据你的光源强度调整

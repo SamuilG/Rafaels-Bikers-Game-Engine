@@ -140,7 +140,7 @@ void record_commands(
 			for (const auto& batch : aBatches) {
 				uint32_t meshIdx = batch.meshIndex;
 				uint32_t matIdx = batch.materialIndex;
-
+				if (batch.alphaMultiplier < 0.99f) continue;
 				// 【关键】：这里一定要乘上 lightVP，算出投影空间矩阵！
 				glm::mat4 lightModel = aSceneUniform.lightVP[i] * batch.transform;
             
@@ -248,15 +248,26 @@ void record_commands(
 	VkPipeline currentPipeline = aGraphicsPipe;
 	VkDeviceSize kZeroOffset = 0;
 
+	// =====================================================================
+	// 阶段 1：只画【实心】物体 (使用 aGraphicsPipe)
+	// =====================================================================
+	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsPipe);
 	for (const auto& batch : aBatches)
 	{
 		uint32_t meshIdx = batch.meshIndex;
 		uint32_t matIdx = batch.materialIndex;
+
+		// 判断材质是否带透明遮罩
+		bool isMatTransparent = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0);
+
+		// 【拦截器】：如果这个物体是半透明的，或者材质带透明度，直接跳过！等会儿再画！
+		if (isMatTransparent || batch.alphaMultiplier < 0.99f) {
+			continue;
+		}
+
 		auto const& meshInfo = aMeshInfos[meshIdx];
-		// ===============================================
-				// 构建完整的 Push Constant 数据
 		ObjectPC pcData{};
-		pcData.transform = batch.transform; // 主渲染只要世界矩阵，不需要乘 lightVP！
+		pcData.transform = batch.transform;
 
 		if (matIdx < aMaterials.size()) {
 			pcData.baseColorFactor = aMaterials[matIdx].baseColorFactor;
@@ -264,25 +275,13 @@ void record_commands(
 			pcData.roughnessFactor = aMaterials[matIdx].roughnessFactor;
 		}
 		else {
-			pcData.baseColorFactor = glm::vec4(1.0f);
-			pcData.metallicFactor = 1.0f;
-			pcData.roughnessFactor = 1.0f;
+			pcData.baseColorFactor = glm::vec4(1.0f); pcData.metallicFactor = 1.0f; pcData.roughnessFactor = 1.0f;
 		}
 
-		// 推送 96 字节的数据给显卡
+		pcData.baseColorFactor.a *= batch.alphaMultiplier; // 此时肯定是 1.0
 		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ObjectPC), &pcData);
-		// ===============================================
-		VkPipeline targetPipeline = aGraphicsPipe;
-		if (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0)
-			targetPipeline = aAlphaPipe;
-
-		if (targetPipeline != currentPipeline) {
-			vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, targetPipeline);
-			currentPipeline = targetPipeline;
-		}
 
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
-
 		vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset);
 		vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &kZeroOffset);
 		vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &kZeroOffset);
@@ -291,6 +290,46 @@ void record_commands(
 		vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(meshInfo.indices.size()), 1, 0, 0, 0);
 	}
 
+	// =====================================================================
+	// 阶段 2：只画【半透明】物体 (使用 aAlphaPipe，叠加在实心物体之上)
+	// =====================================================================
+	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aAlphaPipe);
+	for (const auto& batch : aBatches)
+	{
+		uint32_t meshIdx = batch.meshIndex;
+		uint32_t matIdx = batch.materialIndex;
+
+		bool isMatTransparent = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0);
+
+		// 【拦截器】：如果这个物体是实心的，直接跳过！(因为刚才已经画过了)
+		if (!isMatTransparent && batch.alphaMultiplier >= 0.99f) {
+			continue;
+		}
+
+		auto const& meshInfo = aMeshInfos[meshIdx];
+		ObjectPC pcData{};
+		pcData.transform = batch.transform;
+
+		if (matIdx < aMaterials.size()) {
+			pcData.baseColorFactor = aMaterials[matIdx].baseColorFactor;
+			pcData.metallicFactor = aMaterials[matIdx].metallicFactor;
+			pcData.roughnessFactor = aMaterials[matIdx].roughnessFactor;
+		}
+		else {
+			pcData.baseColorFactor = glm::vec4(1.0f); pcData.metallicFactor = 1.0f; pcData.roughnessFactor = 1.0f;
+		}
+
+		pcData.baseColorFactor.a *= batch.alphaMultiplier; // 此时它是 0.3 !
+		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ObjectPC), &pcData);
+
+		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
+		vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset);
+		vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &kZeroOffset);
+		vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &kZeroOffset);
+		vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
+
+		vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(meshInfo.indices.size()), 1, 0, 0, 0);
+	}
 	// Particles (保持原逻辑)
 	if (particlesEnabled)
 	{
