@@ -44,6 +44,14 @@ namespace Layers
 	static constexpr JPH::ObjectLayer NUM_LAYERS = 2;
 };
 
+struct BicycleState {
+    JPH::BodyID chassisID = JPH::BodyID(8388679);
+    float steerAngle = 0.0f;   // 当前转向角 (rad)
+    float currentSpeed = 0.0f;
+    float leanAngle = 0.0f;   // 当前倾斜角 (rad)
+    float wheelAngle = 0.0f;
+};
+
 namespace engine {
 class EventSystem;
 
@@ -97,12 +105,24 @@ public:
 
     void SetInputSystem(engine::InputSystem* sys) { mInputSystem = sys; }
     void SetUserState(UserState* state) { this->mState = state; }
+
+    void create_bicycle(uint32_t chassisBodyID);
+    void update_bicycle(float dt);
+
+    float get_steer_angle() const {
+        return m_bicycle ? m_bicycle->steerAngle : 0.0f;
+    }
+
+    float get_speed() const {
+        return m_bicycle ? m_bicycle->currentSpeed : 0.0f;
+    }
 private:
     
 
     std::unique_ptr<JPH::TempAllocatorImpl> m_tempAllocator;
     std::unique_ptr<JPH::JobSystemThreadPool> m_jobSystem;
     std::unique_ptr<JPH::PhysicsSystem> m_physicsSystem;
+
 
     // filters and layers
     class BPLayerInterfaceImpl;
@@ -123,6 +143,8 @@ private:
     class ContactListenerImpl;
     std::unique_ptr<ContactListenerImpl> m_contactListener;
 
+
+    std::unique_ptr<BicycleState> m_bicycle;
 
 
 

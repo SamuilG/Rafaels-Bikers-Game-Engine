@@ -182,6 +182,8 @@ void PhysicsSystem::Init()
 	// register the contact listener to listen to collisions
 	m_contactListener = std::make_unique<ContactListenerImpl>(this);
 	m_physicsSystem->SetContactListener(m_contactListener.get());
+
+	create_bicycle(8388679);
 }
 
 void PhysicsSystem::optimize_broad_phase()
@@ -216,7 +218,7 @@ void PhysicsSystem::AddForceDirection(const JPH::BodyID& bodyID, float force)
 	{
 		worldDir = glm::normalize(worldDir);
 
-		// ---- 射线检测地面法线，把力投影到斜面上 ----
+
 		glm::vec3 forceDir(worldDir.x, 0.0f, worldDir.z);
 		JPH::RVec3 bodyPos = bi.GetPosition(bodyID);
 		JPH::RRayCast ray(bodyPos, JPH::Vec3(0.0f, -5.0f, 0.0f));
@@ -275,12 +277,15 @@ void PhysicsSystem::Update(float dt)
 		return;
 	}
 
+	if (mState && mState->thirdPersonMode && m_bicycle) {
+		update_bicycle(dt);
+	}
 
 	if (mState && mState->thirdPersonMode) {
 		//burstlink's old bike
 		//AddForceDirection(JPH::BodyID(8388674));
 
-		AddForceDirection(JPH::BodyID(8388679));
+		//AddForceDirection(JPH::BodyID(8388679));
 	}
 
 	const int cCollisionSteps = 1;
@@ -497,39 +502,40 @@ JPH::BodyID PhysicsSystem::create_dynamic_compound_body(
 	for (size_t i = 0; i < meshes.size(); ++i) {
 		const auto& mesh = meshes[i];
 
-		// Extract part-local transform
 		glm::vec3 partScale, partTranslation, partSkew;
 		glm::quat partRotation;
 		glm::vec4 partPersp;
-		glm::decompose(meshTransforms[i], partScale, partRotation, partTranslation, partSkew, partPersp);
+		glm::decompose(meshTransforms[i], partScale, partRotation,
+			partTranslation, partSkew, partPersp);
 		partRotation = glm::normalize(partRotation);
+
+
 		glm::vec3 finalScale = scale * partScale;
 
-		// Build Vertex List (applying combined scale directly)
 		JPH::Array<JPH::Vec3> points;
 		points.resize(mesh.positions.size());
 		for (size_t v = 0; v < mesh.positions.size(); ++v) {
 			const auto& pos = mesh.positions[v];
-			points[v] = JPH::Vec3(pos.x * finalScale.x, pos.y * finalScale.y, pos.z * finalScale.z);
+			points[v] = JPH::Vec3(pos.x * finalScale.x,
+				pos.y * finalScale.y,
+				pos.z * finalScale.z);
 		}
-
 		if (points.empty()) continue;
 
-		// Create ConvexHullShape for this part
 		JPH::ConvexHullShapeSettings hullSettings(points);
 		JPH::ShapeSettings::ShapeResult hullResult = hullSettings.Create();
 		if (hullResult.HasError()) {
-			std::cout << "Error creating ConvexHullShape for part " << i
-				<< ": " << hullResult.GetError() << std::endl;
+			std::cout << "Error: " << hullResult.GetError() << std::endl;
 			continue;
 		}
 
-		// Part offset relative to body origin (scaled)
+
 		JPH::Vec3 partOffset(
 			(partTranslation.x - translation.x) * scale.x,
 			(partTranslation.y - translation.y) * scale.y,
 			(partTranslation.z - translation.z) * scale.z
 		);
+
 		compoundSettings.AddShape(partOffset, toJolt(partRotation), hullResult.Get());
 		partCount++;
 	}
@@ -562,11 +568,11 @@ JPH::BodyID PhysicsSystem::create_dynamic_compound_body(
 	bodySettings.mLinearDamping = 1.0f;    
 	bodySettings.mAngularDamping = 10.0f;  
 
-
-	bodySettings.mAllowedDOFs =
-		JPH::EAllowedDOFs::TranslationX |
-		JPH::EAllowedDOFs::TranslationY |
-		JPH::EAllowedDOFs::TranslationZ;
+	//TODO: TEST BIKE NOT ROTATION
+	//bodySettings.mAllowedDOFs =
+	//	JPH::EAllowedDOFs::TranslationX |
+	//	JPH::EAllowedDOFs::TranslationY |
+	//	JPH::EAllowedDOFs::TranslationZ;
 
 	JPH::Body* body = bodyInterface.CreateBody(bodySettings);
 	if (!body) {
@@ -684,5 +690,134 @@ void PhysicsSystem::set_body_scale(uint32_t bodyID, const glm::vec3& newScale, c
 	}
 }
 //=============================UI System Interactions=============================
+
+void PhysicsSystem::create_bicycle(uint32_t chassisBodyID) {
+	if (!m_physicsSystem || chassisBodyID == JPH::BodyID::cInvalidBodyID) return;
+
+	m_bicycle = std::make_unique<BicycleState>();
+	m_bicycle->chassisID = JPH::BodyID(chassisBodyID);
+
+
+	JPH::BodyInterface& bi = m_physicsSystem->GetBodyInterface();
+	bi.SetGravityFactor(m_bicycle->chassisID, 1.0f);
+
+	std::cout << "[Bicycle] bicycle created." << std::endl;
+}
+
+void PhysicsSystem::update_bicycle(float dt) {
+	if (!m_bicycle || !mInputSystem || !m_physicsSystem) return;
+
+	JPH::BodyInterface& bi = m_physicsSystem->GetBodyInterface();
+	JPH::BodyID id = m_bicycle->chassisID;
+	if (!bi.IsAdded(id)) return;
+
+	float inputThrottle = 0.0f;  
+	float inputSteer = 0.0f;  
+
+	if (mInputSystem->IsActionHeld("MoveForward"))  inputThrottle += 1.0f;
+	if (mInputSystem->IsActionHeld("MoveBackward")) inputThrottle -= 1.0f;
+	if (mInputSystem->IsActionHeld("StrafeLeft"))   inputSteer += 1.0f;
+	if (mInputSystem->IsActionHeld("StrafeRight"))  inputSteer -= 1.0f;
+
+	//车把
+	const float maxSteerAngle = glm::radians(25.0f);
+	const float steerSpeed = glm::radians(90.0f); 
+	float targetSteer = inputSteer * maxSteerAngle;
+	float steerDiff = targetSteer - m_bicycle->steerAngle;
+	float maxDelta = steerSpeed * dt;
+	m_bicycle->steerAngle += glm::clamp(steerDiff, -maxDelta, maxDelta);
+
+
+	JPH::Vec3 vel = bi.GetLinearVelocity(id);
+	float speed = std::sqrt(vel.GetX() * vel.GetX() + vel.GetZ() * vel.GetZ());
+	m_bicycle->currentSpeed = speed;
+
+
+
+
+	//车身倾斜
+	const float maxLeanAngle = glm::radians(30.0f);
+	const float leanSpeed = glm::radians(90.0f); 
+	float maxLeanDelta = leanSpeed * dt;
+
+	float targetLean = 0.0f;
+	if (speed > 0.5f) {
+		targetLean = -inputSteer * maxLeanAngle;
+	}
+	else {
+		targetLean = 0.0f; 
+	}
+
+
+	float leanDiff = targetLean - m_bicycle->leanAngle;
+
+
+	m_bicycle->leanAngle += glm::clamp(leanDiff, -maxLeanDelta, maxLeanDelta);
+
+
+
+	JPH::Quat currentRot = bi.GetRotation(id);
+	JPH::Vec3 fwd = currentRot.RotateAxisZ();
+	float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
+
+	const float wheelBase = 1.6f; 
+	float yawRate = 0.0f;
+	if (speed > 0.1f) {
+		yawRate = (speed * std::tan(m_bicycle->steerAngle)) / wheelBase;
+	}
+	float newYaw = currentYaw + yawRate * dt;
+
+
+	JPH::Quat yawQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), newYaw + JPH::JPH_PI);
+	JPH::Quat leanQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisZ(), m_bicycle->leanAngle);
+	JPH::Quat finalRot = yawQuat * leanQuat;
+
+
+	bi.SetRotation(id, finalRot, JPH::EActivation::Activate);
+
+
+	//施加的力的大小
+	const float driveForce = 1000.0f;
+
+	//停车力的大小
+	const float brakeForce = 20.0f;
+
+	//最大速度限制
+	const float maxSpeed = 60.0f;  
+
+
+	glm::vec3 forwardDir(-std::sin(newYaw), 0.0f, -std::cos(newYaw));
+
+	if (std::abs(inputThrottle) > 0.01f) {
+
+		if (speed < maxSpeed || inputThrottle < 0.0f) {
+			bi.AddForce(id, JPH::Vec3(
+				forwardDir.x * driveForce * inputThrottle,
+				0.0f,
+				forwardDir.z * driveForce * inputThrottle
+			));
+		}
+	}
+	else {
+
+		bi.AddForce(id, JPH::Vec3(
+			-vel.GetX() * brakeForce,
+			0.0f,
+			-vel.GetZ() * brakeForce
+		));
+	}
+
+
+	bi.SetAngularVelocity(id, JPH::Vec3::sZero());
+
+
+	if (speed > maxSpeed) {
+		float scale = maxSpeed / speed;
+		bi.SetLinearVelocity(id, JPH::Vec3(
+			vel.GetX() * scale, vel.GetY(), vel.GetZ() * scale
+		));
+	}
+}
+
 
 } // namespace engine
