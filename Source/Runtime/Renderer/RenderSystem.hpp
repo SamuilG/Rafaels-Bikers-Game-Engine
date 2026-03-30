@@ -93,7 +93,7 @@ namespace engine {
 		//==============camera follow =======================
 		// name of the entity to follow in the scene
 		//TODO 把这个做到ui里面，允许用户输入想要跟随的实体名字，或者在场景视口直接点击选中一个实体进行跟随
-		const char* player = "立方体_0"; 
+		const char* player = "Bike_0"; 
 
 
 
