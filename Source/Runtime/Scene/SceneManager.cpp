@@ -240,27 +240,37 @@ void SceneManager::Update(float dt) {
 
     if (m_physics_system) {
         JPH::BodyInterface& bodyInterface = m_physics_system->get_body_interface();
-
-
+        // =========================================================
+        // 同步普通刚体（汽车、人、直升机等）的物理位置到渲染模型
+		// normal rigid bodies (cars, characters, helicopters, etc.): sync physics position to render model
+        // =========================================================
         m_world->query<LocalTransform, const PhysicsBody, const EntityStatus>()
             .each([&](flecs::entity e, LocalTransform& lt, const PhysicsBody& pb, const EntityStatus& status) {
             if (!status.has_physics) return;
             JPH::BodyID bodyID(pb.bodyID);
+
+            // 如果物体在物理世界中是活跃的（比如正在下坠、翻滚）
             if (bodyInterface.IsActive(bodyID)) {
                 JPH::Vec3 pos = bodyInterface.GetPosition(bodyID);
                 JPH::Quat rot = bodyInterface.GetRotation(bodyID);
+
                 glm::mat4 translation = glm::translate(glm::mat4(1.0f), toGlm(pos));
                 glm::mat4 rotation = glm::mat4_cast(toGlm(rot));
+
+                // 保持模型原本的缩放比例不变
                 glm::vec3 scale(
                     glm::length(glm::vec3(lt.matrix[0])),
                     glm::length(glm::vec3(lt.matrix[1])),
                     glm::length(glm::vec3(lt.matrix[2]))
                 );
+
+                // 更新渲染矩阵！
                 lt.matrix = translation * rotation * glm::scale(glm::mat4(1.0f), scale);
             }
                 });
-
-
+        // =========================================================
+		//  prevent the bike's wheels and handlebars from inheriting the physics body's transform, and apply custom animations instead
+        // =========================================================
         m_world->query<LocalTransform, const CompoundParent>()
             .each([&](flecs::entity e, LocalTransform& lt, const CompoundParent& cp) {
             JPH::BodyID bodyID(cp.bodyID);
@@ -272,52 +282,33 @@ void SceneManager::Update(float dt) {
                     * glm::mat4_cast(toGlm(rot));
 
                 glm::mat4 finalOffset = cp.localOffset;
-
                 const char* name = e.name();
-                if (name != nullptr && (strstr(name, "steer.001_2") || strstr(name, "frontwheel.001_3"))) {
 
-                    float steerAngle = m_physics_system->get_steer_angle();
- 
-                    glm::mat4 steerRot = glm::rotate(glm::mat4(1.0f), steerAngle, glm::vec3(0.0f, 1.0f, 0.0f));
+                if (name != nullptr) {
+                    // 1. 处理车把手和前轮的【转向 (Steer)】
+                    if (strstr(name, "steer.001_2") || strstr(name, "frontwheel.001_3")) {
+                        float steerAngle = mState ? mState->bikeSteerAngle : 0.0f;
+                        glm::mat4 steerRot = glm::rotate(glm::mat4(1.0f), steerAngle, glm::vec3(0.0f, 1.0f, 0.0f));
+                        // 叠加转向旋转
+                        finalOffset = finalOffset * steerRot;
+                    }
 
+                    // 2. 处理所有轮子和踏板的【滚动 (Roll)】
+                    if (strstr(name, "frontwheel.001_3") || strstr(name, "Rear wheel_1") || strstr(name, "Pedal.002_5") || strstr(name, "WholePedal_4")) {
+                        float currentSpeed = mState ? mState->bikeSpeed : 0.0f;
+                        speed += 0.001f * currentSpeed; // speed 是 SceneManager 的成员变量，用来累计旋转角度
 
-                    finalOffset = cp.localOffset * steerRot;
+                        glm::mat4 selfRot = glm::rotate(glm::mat4(1.0f), speed, glm::vec3(1.0f, 0.0f, 0.0f));
+                        // 叠加滚动旋转（如果是前轮，此时它已经包含了上面的转向旋转！）
+                        finalOffset = finalOffset * selfRot;
+                    }
                 }
 
-
+                // 将最终合成的矩阵保存回去
                 lt.matrix = bodyWorld * finalOffset;
             }
                 });
-
-
-        m_world->query<LocalTransform, const CompoundParent>()
-            .each([&](flecs::entity e, LocalTransform& lt, const CompoundParent& cp) {
-            JPH::BodyID bodyID(cp.bodyID);
-            if (bodyInterface.IsActive(bodyID)) {
-                JPH::Vec3 pos = bodyInterface.GetPosition(bodyID);
-                JPH::Quat rot = bodyInterface.GetRotation(bodyID);
-
-                glm::mat4 bodyWorld = glm::translate(glm::mat4(1.0f), toGlm(pos))
-                    * glm::mat4_cast(toGlm(rot));
-
-                glm::mat4 finalOffset = cp.localOffset;
-
-                const char* name = e.name();
-                if (name != nullptr && (strstr(name, "frontwheel.001_3") || strstr(name, "Rear wheel_1") || strstr(name, "Pedal.002_5") || strstr(name, "WholePedal_4"))) {
-
-                    speed += 0.001 * m_physics_system->get_speed();
-                    
-
-                    glm::mat4 selfRot = glm::rotate(glm::mat4(1.0f), speed, glm::vec3(1.0f, 0.0f, 0.0f));
-
-
-                    finalOffset = cp.localOffset * selfRot;
-                }
-
-
-                lt.matrix = bodyWorld * finalOffset;
-            }
-                });
+        // =========================================================
 
          
         // ========================================================

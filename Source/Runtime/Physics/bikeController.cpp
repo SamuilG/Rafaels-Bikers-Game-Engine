@@ -139,6 +139,8 @@ namespace engine {
                 vel.GetX() * scale, vel.GetY(), vel.GetZ() * scale
             ));
         }
+        m_state->bikeSpeed = speed;
+        m_state->bikeSteerAngle = m_bicycle->steerAngle;
     }
 
 } // namespace engine
