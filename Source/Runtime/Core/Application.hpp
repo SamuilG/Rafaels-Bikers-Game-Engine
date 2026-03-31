@@ -7,6 +7,7 @@
 #include "../UserState/UserState.hpp"
 
 namespace engine {
+    class BikeController;
     class PhysicsSystem;
     class SceneManager;
     class RenderSystem;
@@ -42,6 +43,7 @@ namespace engine {
             = std::chrono::steady_clock::now();
 
         // Stored for post-Init sphere setup
+        std::unique_ptr<BikeController> m_bikeController;
         PhysicsSystem* physicsSystem = nullptr;
         SceneManager* sceneManager = nullptr;
         RenderSystem* renderSystem = nullptr;

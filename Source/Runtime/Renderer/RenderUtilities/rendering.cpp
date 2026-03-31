@@ -140,7 +140,7 @@ void record_commands(
 			for (const auto& batch : aBatches) {
 				uint32_t meshIdx = batch.meshIndex;
 				uint32_t matIdx = batch.materialIndex;
-				if (batch.alphaMultiplier < 0.99f) continue;
+				//if (batch.alphaMultiplier < 0.99f) continue;
 				// 【关键】：这里一定要乘上 lightVP，算出投影空间矩阵！
 				glm::mat4 lightModel = aSceneUniform.lightVP[i] * batch.transform;
             

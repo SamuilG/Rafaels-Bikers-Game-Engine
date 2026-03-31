@@ -122,6 +122,11 @@ public:
     float get_speed() const {
         return m_bicycle ? m_bicycle->currentSpeed : 0.0f;
     }
+
+    // 【关键修复】：暴露底层的 Jolt PhysicsSystem 给控制器使用！
+    JPH::PhysicsSystem* GetJoltSystem() const {
+        return m_physicsSystem.get();
+    }
 private:
     
 

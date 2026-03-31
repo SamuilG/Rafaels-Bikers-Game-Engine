@@ -2,6 +2,7 @@
 #include "../Renderer/RenderSystem.hpp"
 #include "../Scene/SceneManager.hpp"
 #include "../Physics/PhysicsSystem.hpp"
+#include "../Physics/bikeController.hpp"
 #include "../Input/InputSystem.hpp"
 #include "../Event/EventSystem.hpp"
 #include <flecs.h>
@@ -53,6 +54,8 @@ namespace engine {
             
         }
 
+
+
 		// load models using the API in RenderSystem
 		// TScene is completely static (ground + buildings)
 		renderSystem->load_additional_model("Assets/Models/TScene.glb", true);
@@ -103,6 +106,37 @@ namespace engine {
 		
 		glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
 		renderSystem->load_additional_model("Assets/Models/tbike.glb", false, 90.0f, tbpos, false, true);
+		// ==============================================================
+		// 【新增 2】：实例化并初始化 BikeController！
+		// ==============================================================
+		// 1. 实例化控制器，把需要的三个系统传给它
+		// 注意：这里需要给 PhysicsSystem 加一个 GetJoltSystem() 的接口，或者你把它设成公有了？
+		m_bikeController = std::make_unique<BikeController>(
+			physicsSystem->GetJoltSystem(), // <--- 确保你在 PhysicsSystem 里暴露了这个获取底层 Jolt System 的指针
+			inputSystem,
+			&mState
+		);
+
+		// 2. 找到刚才加载出来的自行车的实体和物理 ID
+		flecs::entity bikeEntity = sceneManager->find_entity("Bike_0");
+		if (bikeEntity.is_valid()) {
+			// 拿到自行车的物理 Body ID
+			uint32_t bikeBodyID = JPH::BodyID::cInvalidBodyID;
+
+			// 之前排错时我们知道，动态模型可能挂载的是 PhysicsBody 或者 CompoundParent
+			if (bikeEntity.has<PhysicsBody>()) {
+				bikeBodyID = bikeEntity.get<PhysicsBody>().bodyID;
+			}
+			else if (bikeEntity.has<CompoundParent>()) {
+				bikeBodyID = bikeEntity.get<CompoundParent>().bodyID;
+			}
+
+			// 3. 将物理 ID 传给控制器进行初始化
+			m_bikeController->Init(bikeBodyID);
+		}
+		else {
+			std::print("[Error] BikeController Init Failed: Could not find Bike_0 entity!\n");
+		}
 
 		//glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
 		//renderSystem->load_additional_model("Assets/Models/testBike2.gltf", false, 90.0f, tbpos, true);
@@ -126,7 +160,7 @@ namespace engine {
 
 
 
-		flecs::entity bikeEntity = sceneManager->find_entity("Bike_0");
+		bikeEntity = sceneManager->find_entity("Bike_0");
 
 		if (bikeEntity.is_valid()) {
 			headlight.child_of(bikeEntity); 
@@ -269,6 +303,13 @@ namespace engine {
 				glm::vec3(1.0f, 1.0f, 0.0f)
 			);
 			// =========================================================================
+			// ==========================================================
+				// 【新增 3】：每帧更新单车的物理逻辑
+				if (m_bikeController) {
+					m_bikeController->Update(dt);
+				}
+			// ==========================================================
+
 
 			for (auto& sys : Systems)
 				sys->Update(dt);
