@@ -5,8 +5,30 @@
 #include <string>
 
 namespace engine {
+    // =======================================================
+    // 【新增】：用于回调函数的全局指针和旧回调存储
+    static InputSystem* g_InputSystem = nullptr;
+    static GLFWscrollfun s_PrevScrollCallback = nullptr;
 
+    // GLFW 滚轮回调函数
+    static void ScrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
+        // 1. 如果 ImGui 或其他系统之前注册了回调，先调用它们，防止破坏 UI 滚动
+
+        if (s_PrevScrollCallback) {
+            s_PrevScrollCallback(window, xoffset, yoffset);
+        }
+
+        // 2. 将滚轮数据传递给我们的输入系统
+        if (g_InputSystem) {
+            g_InputSystem->AddScrollY(static_cast<float>(yoffset));
+        }
+    }
+    // =======================================================
     void InputSystem::Init() {
+        // ==========================================
+  
+        g_InputSystem = this;
+        // ==========================================
         // MUST initialize GLFW so its joystick subsystem is active before we poll or map!
         if (glfwInit() != GLFW_TRUE) {
             printf("[InputSystem] ERROR: glfwInit() failed!\n");
@@ -113,7 +135,13 @@ namespace engine {
     }
 
     void InputSystem::Update(float dt) {
+
         if (!mWindow) return;
+        // ==========================================
+        // 提取这一帧的滚轮数据，并清零累加器
+        mScrollDeltaY = mScrollAccumulatorY;
+        mScrollAccumulatorY = 0.0f;
+        // ==========================================
         // for update window needs to be set
 
         // Shift current states to previous
@@ -196,6 +224,15 @@ namespace engine {
                 if (std::abs(rawRy) > 0.1f) mGamepadRightY = rawRy; 
             
             }
+        }
+    }
+
+
+    void InputSystem::SetWindow(GLFWwindow* window) {
+        mWindow = window;
+        if (mWindow) {
+            // 设置新的回调，并接管旧的回调（通常是 ImGui 注册的）
+            s_PrevScrollCallback = glfwSetScrollCallback(mWindow, ScrollCallback);
         }
     }
 

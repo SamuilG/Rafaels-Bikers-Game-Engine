@@ -22,8 +22,7 @@ namespace engine {
         void Shutdown() override;
 
         // Call to provide the GLFW window pointer once created by the Window/Render system
-        void SetWindow(GLFWwindow* window) { mWindow = window; }
-
+        void SetWindow(GLFWwindow* window);
         // Core Input Polling
         // checks if an action was JUST pressed this frame
         bool IsActionPressed(const std::string& actionName) const;
@@ -53,6 +52,14 @@ namespace engine {
         // map a mouse button to an action
         void MapMouseButtonAction(const std::string& actionName, int glfwMouseButton);
 
+        // 获取当前帧的滚轮滚动量
+        float GetScrollY() const { return mScrollDeltaY; }
+
+        // 给回调函数使用的累加器
+        void AddScrollY(float yOffset) { mScrollAccumulatorY += yOffset; }
+
+        // 原本就有的 SetWindow，如果没有请确保它的存在
+       // void SetWindow(GLFWwindow* window);
 
     private:
         GLFWwindow* mWindow = nullptr;
@@ -88,7 +95,8 @@ namespace engine {
         void UpdateMouseStates();
 
 
-
+        float mScrollDeltaY = 0.0f;       // 当前帧可用的滚轮变化量
+        float mScrollAccumulatorY = 0.0f; // 累加器（因为回调在帧中间随时可能触发）
 
     };
 

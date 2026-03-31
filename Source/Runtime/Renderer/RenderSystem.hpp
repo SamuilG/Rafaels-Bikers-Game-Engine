@@ -1284,8 +1284,11 @@ namespace engine {
             //find character pos
             if (mSceneManager && mState->thirdPersonMode) {
                 
+                //
                 auto target = mSceneManager->find_entity(player);
+
                 if (target.is_valid() && target.has<WorldTransform>()) {
+
                     const auto& wt = target.get<WorldTransform>();
                     mState->followTargetPos = glm::vec3(wt.matrix[3]);
 					// printf("Follow Target Pos: (%.2f, %.2f, %.2f)\n", mState->followTargetPos.x, mState->followTargetPos.y, mState->followTargetPos.z);

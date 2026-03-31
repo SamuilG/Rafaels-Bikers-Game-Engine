@@ -72,22 +72,39 @@ void update_user_state(UserState& aState, float aElapsedTime, engine::InputSyste
 		}
 	}
 
+	// ==============================================================
+	// 【新增】：获取滚轮输入，更新并限制相机的 Distance
+	// ==============================================================
+	float scroll = inputSys->GetScrollY();
+	if (scroll != 0.0f) {
+		float zoomSpeed = 1.5f; // 缩放灵敏度，如果觉得太快或太慢可以改这里
+		aState.Distance -= scroll * zoomSpeed; // 减去 scroll，因为通常向上滚是放大(拉近)
+
+		// 限制相机的最小和最大距离：最近 1.5 米，最远 30 米
+		aState.Distance = std::clamp(aState.Distance, 1.5f, 30.0f);
+	}
+	// ==============================================================
 
 	if (aState.thirdPersonMode)
 	{
-
 		glm::vec3 char_pos = aState.followTargetPos;
 		glm::vec3 eye_offset(0.f, 1.6f, 0.f);
 		glm::vec3 target_pos = char_pos + eye_offset;
 
-		//TODO : Collide with wall
-		float const distance = 5.0f;
+		// 【关键修复 1】：删除原来的硬编码
+		// float const distance = 5.0f; 
+
+		// 【关键修复 2】：做个安全保护，如果 Distance 初始值为 0，给个默认值 5.0f
+		if (aState.Distance < 1.0f) {
+			aState.Distance = 5.0f;
+		}
 
 		// Yaw and Pitch to Cartesian coordinates
 		glm::vec3 offset;
-		offset.x = distance * std::cos(aState.Pitch) * std::sin(aState.Yaw);
-		offset.y = distance * std::sin(aState.Pitch);
-		offset.z = distance * std::cos(aState.Pitch) * std::cos(aState.Yaw);
+		// 【关键修复 3】：把原来的 distance 替换成 aState.Distance
+		offset.x = aState.Distance * std::cos(aState.Pitch) * std::sin(aState.Yaw);
+		offset.y = aState.Distance * std::sin(aState.Pitch);
+		offset.z = aState.Distance * std::cos(aState.Pitch) * std::cos(aState.Yaw);
 
 		glm::vec3 cam_pos = target_pos + offset;
 

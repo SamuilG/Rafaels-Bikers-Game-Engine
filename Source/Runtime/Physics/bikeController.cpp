@@ -11,16 +11,17 @@
  #include "../Input/InputSystem.hpp" 
 
 
-namespace engine {
-
-    BikeController::BikeController(JPH::PhysicsSystem* joltPhysics, InputSystem* input, UserState* state)
-        : m_joltPhysics(joltPhysics), m_inputSystem(input), m_state(state)
+namespace engine 
     {
-    }
+
+        BikeController::BikeController(JPH::PhysicsSystem* joltPhysics, InputSystem* input, UserState* state)
+            : m_joltPhysics(joltPhysics), m_inputSystem(input), m_state(state)
+        {}
 
   
 
-    void BikeController::Init(uint32_t chassisBodyID) {
+    void BikeController::Init(uint32_t chassisBodyID) 
+    {
         if (!m_joltPhysics || chassisBodyID == JPH::BodyID::cInvalidBodyID) return;
 
         m_bicycle = std::make_unique<BicycleState>();
@@ -51,6 +52,7 @@ namespace engine {
         // ==========================================
         // 1. 车把转向计算
         // ==========================================
+
         const float maxSteerAngle = glm::radians(25.0f);
         const float steerSpeed = glm::radians(90.0f);
         float targetSteer = inputSteer * maxSteerAngle;
