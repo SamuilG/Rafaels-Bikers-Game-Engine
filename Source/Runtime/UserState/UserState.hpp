@@ -41,6 +41,9 @@ struct UserState
 	bool showEntityInspector = true;
 	bool showConsole = true;
 
+	float bikeSpeed = 0.0f;
+	float bikeSteerAngle = 0.0f;
+
 	// 记录当前选中的粒子索引 (-1 表示没选中任何粒子)
 	int activeParticleIndex = -1;
 	//================UI System================================
