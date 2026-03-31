@@ -183,7 +183,7 @@ void PhysicsSystem::Init()
 	m_contactListener = std::make_unique<ContactListenerImpl>(this);
 	m_physicsSystem->SetContactListener(m_contactListener.get());
 
-	create_bicycle(8388679);
+	//create_bicycle(8388679);
 }
 
 void PhysicsSystem::optimize_broad_phase()
@@ -277,9 +277,9 @@ void PhysicsSystem::Update(float dt)
 		return;
 	}
 
-	if (mState && mState->thirdPersonMode && m_bicycle) {
-		update_bicycle(dt);
-	}
+	//if (mState && mState->thirdPersonMode && m_bicycle) {
+	//	update_bicycle(dt);
+	//}
 
 	if (mState && mState->thirdPersonMode) {
 		//burstlink's old bike
@@ -761,18 +761,18 @@ void PhysicsSystem::set_body_scale(uint32_t bodyID, const glm::vec3& newScale, c
 }
 //=============================UI System Interactions=============================
 
-void PhysicsSystem::create_bicycle(uint32_t chassisBodyID) {
-	if (!m_physicsSystem || chassisBodyID == JPH::BodyID::cInvalidBodyID) return;
-
-	m_bicycle = std::make_unique<BicycleState>();
-	m_bicycle->chassisID = JPH::BodyID(chassisBodyID);
-
-
-	JPH::BodyInterface& bi = m_physicsSystem->GetBodyInterface();
-	bi.SetGravityFactor(m_bicycle->chassisID, 1.0f);
-
-	std::cout << "[Bicycle] bicycle created." << std::endl;
-}
+//void PhysicsSystem::create_bicycle(uint32_t chassisBodyID) {
+//	if (!m_physicsSystem || chassisBodyID == JPH::BodyID::cInvalidBodyID) return;
+//
+//	m_bicycle = std::make_unique<BicycleState>();
+//	m_bicycle->chassisID = JPH::BodyID(chassisBodyID);
+//
+//
+//	JPH::BodyInterface& bi = m_physicsSystem->GetBodyInterface();
+//	bi.SetGravityFactor(m_bicycle->chassisID, 1.0f);
+//
+//	std::cout << "[Bicycle] bicycle created." << std::endl;
+//}
 
 void PhysicsSystem::update_bicycle(float dt) {
 	if (!m_bicycle || !mInputSystem || !m_physicsSystem) return;
