@@ -24,6 +24,7 @@ workspace "EngineWorkspace"
         links { "stdc++exp" }
 
     filter "toolset:msc-*"
+        cppdialect "C++latest"
         defines { "_CRT_SECURE_NO_WARNINGS=1", "_SCL_SECURE_NO_WARNINGS=1" }
         buildoptions { "/utf-8" } 
     
@@ -115,7 +116,7 @@ workspace "EngineWorkspace"
     location "Intermediate/Projects"
     kind "StaticLib"
     language "C++"
-    cppdialect "C++23"
+    cppdialect "C++latest"
 
     targetdir "Intermediate/Bin/%{cfg.buildcfg}-%{cfg.platform}/%{prj.name}"
 

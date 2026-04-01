@@ -807,6 +807,31 @@ namespace engine {
 
 			ImGui::Separator();
 
+			//UI system for bike===============================
+			ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.6f, 1.0f), _SL("[ Bicycle Tuning ]"));
+			ImGui::Text(_SL("Speed: %.2f"), state.bikeSpeed);
+			ImGui::Text(_SL("Steer Angle: %.1f deg"), glm::degrees(state.bikeSteerAngle));
+
+			//reset button 重置按钮
+			if (ImGui::Button(_SL("Reset Bike Tuning"))) {
+				state.bikeTuning = BikeTuning{};
+			}
+
+			// sliders 滑动条
+			ImGui::SliderFloat(_SL("Max Steer Angle (deg)"), &state.bikeTuning.maxSteerAngleDeg, 1.0f, 60.0f);
+			ImGui::SliderFloat(_SL("Steer Speed (deg/s)"), &state.bikeTuning.steerSpeedDeg, 1.0f, 360.0f);
+			ImGui::SliderFloat(_SL("Max Lean Angle (deg)"), &state.bikeTuning.maxLeanAngleDeg, 0.0f, 60.0f);
+			ImGui::SliderFloat(_SL("Lean Speed (deg/s)"), &state.bikeTuning.leanSpeedDeg, 1.0f, 360.0f);
+			ImGui::SliderFloat(_SL("Wheel Base"), &state.bikeTuning.wheelBase, 0.1f, 5.0f);
+			ImGui::SliderFloat(_SL("Drive Force"), &state.bikeTuning.driveForce, 0.0f, 5000.0f);
+			ImGui::SliderFloat(_SL("Brake Force"), &state.bikeTuning.brakeForce, 0.0f, 500.0f);
+			ImGui::SliderFloat(_SL("Max Speed"), &state.bikeTuning.maxSpeed, 0.1f, 200.0f);
+			ImGui::SliderFloat(_SL("Gravity Factor"), &state.bikeTuning.gravityFactor, 0.0f, 5.0f);
+
+			ImGui::Separator();
+			//UI system for bike===============================
+			
+			
 			//generator 生成器
 			ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), _SL("[ generator ]"));
 

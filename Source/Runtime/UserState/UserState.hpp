@@ -2,6 +2,20 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+//UI system for bike
+struct BikeTuning
+{
+	float maxSteerAngleDeg = 25.0f;
+	float steerSpeedDeg = 90.0f;
+	float maxLeanAngleDeg = 30.0f;
+	float leanSpeedDeg = 90.0f;
+	float wheelBase = 1.6f;
+	float driveForce = 1000.0f;
+	float brakeForce = 20.0f;
+	float maxSpeed = 60.0f;
+	float gravityFactor = 1.0f;
+};
+
 struct UserState
 {
 	float mouseX = 0.f;
@@ -43,6 +57,7 @@ struct UserState
 
 	float bikeSpeed = 0.0f;
 	float bikeSteerAngle = 0.0f;
+	BikeTuning bikeTuning{};
 
 	// 记录当前选中的粒子索引 (-1 表示没选中任何粒子)
 	int activeParticleIndex = -1;
