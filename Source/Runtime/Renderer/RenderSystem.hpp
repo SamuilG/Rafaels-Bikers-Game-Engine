@@ -76,6 +76,7 @@ namespace lut = labut2;
 #include <flecs.h>
 // ================= debug =================
 #include "../Debug/DebugRenderer.hpp"
+#include "../Trigger/trigger.hpp"
 namespace glsl {
     struct MosaicUniform {
         int   mosaicOn;
@@ -187,6 +188,8 @@ namespace engine {
 
         //UI System get particle system reference
         std::vector<std::unique_ptr<ParticleSystem>>& GetParticles() { return allParticles; }
+        // trigger:
+        TriggerSystem& GetTriggerSystem() { return mTriggerSystem; }
         //动态安全创建粒子组
         //create particle group
         void AddParticleGroup() {
@@ -1403,13 +1406,21 @@ namespace engine {
             }
 
             
-            //================   system===================================================
+            //================  particle system===================================================
+
+             // trigger
+            mTriggerSystem.ProcessParticleTriggers(mState->followTargetPos, allParticles);
+
             if (mState->particlesEnabled)
             {
                 for (const auto& ps  : allParticles)
                 {
-                   
-                    if (ps->getEmitterShape() == EmitterShape::Sphere)
+                    // trigger: skip particle updates when the trigger system has hidden this particle group.
+                    if (!ps->config.isVisible) {
+                        continue;
+                    }
+
+                    if (ps->getEmitterShape() == EmitterShape::Sphere && !ps->config.triggerControlled)
                     {
 
                         auto bat = mSceneManager->find_entity("BaseballBat.nails_0");
@@ -1490,7 +1501,8 @@ namespace engine {
                     break; // 假设场景目前只有一个车灯投射阴影
                 }
             }
-
+            // trigger: draw every visible trigger volume through DebugRendere
+            mTriggerSystem.DrawTriggers(mDebugRenderer);
             // 1. 在提交命令前，把这一帧收集的线上传到 GPU
             mDebugRenderer.Upload(mAllocator);
 
@@ -1572,6 +1584,8 @@ namespace engine {
             }
 
             allParticles.clear();
+            // trigger: clear all trigger volumes on shutdown
+            mTriggerSystem.ClearTriggers();
             mDebugRenderer.Shutdown(mAllocator);
             ::imguiRenderer.Shutdown();
 
@@ -2086,6 +2100,8 @@ namespace engine {
         void SetModelPreview(const std::string& path, const glm::mat4& transform);
         void ClearModelPreview();
         DebugRenderer mDebugRenderer;
+        // trigger
+        TriggerSystem mTriggerSystem;
     
     };
 

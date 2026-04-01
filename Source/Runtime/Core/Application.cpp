@@ -100,6 +100,35 @@ namespace engine {
 		glm::mat4 CubeSpawnPos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, -7.0f, 8.0f));
 		renderSystem->load_additional_model("Assets/Models/em1.gltf", false, 90.0f, CubeSpawnPos);
 
+		//======trigger box start=====
+		//create a particle group
+		renderSystem->AddParticleGroup();
+		auto& triggerParticles = renderSystem->GetParticles();
+		size_t triggerParticleIndex = triggerParticles.size() - 1;
+
+		triggerParticles[triggerParticleIndex]->config.emitterPos = glm::vec3(50.0f, 1.0f, 20.0f);
+		triggerParticles[triggerParticleIndex]->config.isVisible = false;//不可见
+
+		// trigger: create a visible box trigger
+		size_t triggerBox01 = renderSystem->GetTriggerSystem().AddBoxTrigger(
+			glm::vec3(50.0f, 1.0f, 20.0f),
+			glm::vec3(2.0f, 2.0f, 2.0f),
+			triggerParticleIndex,
+			glm::vec3(1.0f, 0.0f, 0.0f),
+			glm::mat4(1.0f),
+			true,
+			false
+		);
+		// trigger callback system
+		renderSystem->GetTriggerSystem().SetTriggerCallbacks(triggerBox01,
+			[]() {
+				engine::EngineUi::LogPrint("trigger box triggered!!\n");
+			},
+			[]() {
+				engine::EngineUi::LogPrint("trigger box exited!!\n");
+			}
+		);
+		//======trigger box end=====
 
 		// testBiek1,2  二选一+
 		// testBike2 有compound bug

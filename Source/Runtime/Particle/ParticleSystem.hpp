@@ -22,6 +22,8 @@ enum class EmitterShape
 struct ParticleConfig {
     char name[64] = "Particle name";
     bool isVisible = true;
+    //是否被trigger box控制//marks whether this particle system is currently controlled by trigger visibility logic.
+    bool triggerControlled = false;
 	int useTexture = 0; // 是否使用纹理（0 = 默认小圆球不使用，1 = 使用贴图）
 
     // life time 持续时间

@@ -340,6 +340,11 @@ void record_commands(
 
 		for (const auto& ps : allParticles)
 		{
+			// trigger: skip draw submission when a trigger has hidden this particle system.
+			if (!ps->config.isVisible) {
+				continue;
+			}
+
 			ParticlePC pc{};
 			if (ps->config.textureDescriptor != VK_NULL_HANDLE) {
 				vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &ps->config.textureDescriptor, 0, nullptr);
