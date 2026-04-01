@@ -606,6 +606,8 @@ namespace engine {
 			}
 		}
 
+		state.isSceneViewportHovered = ImGui::IsWindowHovered();
+
 		ImGui::End(); //  Viewport 闭合
 		ImGui::PopStyleColor();
 		ImGui::PopStyleVar();
