@@ -28,7 +28,10 @@ namespace engine
         m_bicycle->chassisID = JPH::BodyID(chassisBodyID);
 
         JPH::BodyInterface& bi = m_joltPhysics->GetBodyInterface();
-        bi.SetGravityFactor(m_bicycle->chassisID, 1.0f);
+        //bi.SetGravityFactor(m_bicycle->chassisID, 1.0f);
+        //UI system for bike===========
+        // initialize gravity from UI-editable tuning data
+        bi.SetGravityFactor(m_bicycle->chassisID, m_state ? m_state->bikeTuning.gravityFactor : 1.0f);
 
         std::cout << "[Bicycle] bicycle created via BikeController." << std::endl;
     }
@@ -40,6 +43,11 @@ namespace engine
         JPH::BodyInterface& bi = m_joltPhysics->GetBodyInterface();
         JPH::BodyID id = m_bicycle->chassisID;
         if (!bi.IsAdded(id)) return;
+
+        //UI system for bike===============
+        //  pull the latest bicycle tuning values from UserState every frame
+        const BikeTuning& tuning = m_state->bikeTuning;
+        bi.SetGravityFactor(id, tuning.gravityFactor);
 
         float inputThrottle = 0.0f;
         float inputSteer = 0.0f;
@@ -53,8 +61,8 @@ namespace engine
         // 1. 车把转向计算
         // ==========================================
 
-        const float maxSteerAngle = glm::radians(25.0f);
-        const float steerSpeed = glm::radians(90.0f);
+		const float maxSteerAngle = glm::radians(tuning.maxSteerAngleDeg);//UI system for bike========
+		const float steerSpeed = glm::radians(tuning.steerSpeedDeg);//UI system for bike========
         float targetSteer = inputSteer * maxSteerAngle;
         float steerDiff = targetSteer - m_bicycle->steerAngle;
         float maxDelta = steerSpeed * dt;
@@ -70,8 +78,8 @@ namespace engine
         // ==========================================
         // 3. 车身倾斜计算
         // ==========================================
-        const float maxLeanAngle = glm::radians(30.0f);
-        const float leanSpeed = glm::radians(90.0f);
+		const float maxLeanAngle = glm::radians(tuning.maxLeanAngleDeg);//UI system for bike=====
+		const float leanSpeed = glm::radians(tuning.leanSpeedDeg);//UI system for bike======
         float maxLeanDelta = leanSpeed * dt;
 
         float targetLean = 0.0f;
@@ -92,7 +100,8 @@ namespace engine
         JPH::Vec3 fwd = currentRot.RotateAxisZ();
         float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
 
-        const float wheelBase = 1.6f;
+        //const float wheelBase = 1.6f;
+		const float wheelBase = std::max(tuning.wheelBase, 0.01f);//UI system for bike==
         float yawRate = 0.0f;
         if (speed > 0.1f) {
             yawRate = (speed * std::tan(m_bicycle->steerAngle)) / wheelBase;
@@ -108,9 +117,13 @@ namespace engine
         // ==========================================
         // 5. 施加前进驱动力或刹车力
         // ==========================================
-        const float driveForce = 1000.0f;
+       /* const float driveForce = 1000.0f;
         const float brakeForce = 20.0f;
-        const float maxSpeed = 60.0f;
+        const float maxSpeed = 60.0f;*/
+		//UI system for bike==========
+        const float driveForce = std::max(tuning.driveForce, 0.0f);
+        const float brakeForce = std::max(tuning.brakeForce, 0.0f);
+        const float maxSpeed = std::max(tuning.maxSpeed, 0.1f);
 
         glm::vec3 forwardDir(-std::sin(newYaw), 0.0f, -std::cos(newYaw));
 

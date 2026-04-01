@@ -15,7 +15,7 @@ static float clamp01(float x) { return std::clamp(x, 0.0f, 1.0f); }
 Particle ParticleSystem::spawn(const glm::vec3& emitterPos)
 {
     Particle p{};
-    p.randomSeed = rand01(); // ← 补上这行
+    p.randomSeed = rand01(); 
     // 持续时间和大小的随机值
     p.maxLife = config.lifeMin + rand01() * (config.lifeMax - config.lifeMin);
     p.life = p.maxLife;
