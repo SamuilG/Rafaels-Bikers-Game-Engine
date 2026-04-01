@@ -861,7 +861,7 @@ lut::Pipeline create_debug_pipeline( lut::VulkanWindow const& aWindow, VkPipelin
 	// no blending needed for debug output
 	// see raw data
 	VkPipelineColorBlendAttachmentState blendStates[2]{};
-	blendStates[0].blendEnable = VK_TRUE;
+	blendStates[0].blendEnable = VK_FALSE;
 	blendStates[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 	
 	// Copy exactly identical memory block
