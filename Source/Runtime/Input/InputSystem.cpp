@@ -48,22 +48,22 @@ namespace engine {
         }
 
         // Enumerate all joysticks for debugging
-        printf("--- Debugging GLFW Joysticks ---\n");
-        for (int i = 0; i <= GLFW_JOYSTICK_LAST; ++i) {
-            if (glfwJoystickPresent(i)) {
-                const char* name = glfwGetJoystickName(i);
-                bool isGamepad = glfwJoystickIsGamepad(i);
-                const char* guid = glfwGetJoystickGUID(i);
-                printf("Joystick %d: Name='%s', GUID='%s', IsGamepad=%s\n", 
-                       i, name ? name : "Unknown", guid ? guid : "Unknown", isGamepad ? "TRUE" : "FALSE");
-                
-                if (isGamepad) {
-                    const char* gpName = glfwGetGamepadName(i);
-                    printf("  Gamepad Name: '%s'\n", gpName ? gpName : "Unknown");
-                }
-            }
-        }
-        printf("--------------------------------\n");
+        //printf("--- Debugging GLFW Joysticks ---\n");
+        //for (int i = 0; i <= GLFW_JOYSTICK_LAST; ++i) {
+        //    if (glfwJoystickPresent(i)) {
+        //        const char* name = glfwGetJoystickName(i);
+        //        bool isGamepad = glfwJoystickIsGamepad(i);
+        //        const char* guid = glfwGetJoystickGUID(i);
+        //        printf("Joystick %d: Name='%s', GUID='%s', IsGamepad=%s\n", 
+        //               i, name ? name : "Unknown", guid ? guid : "Unknown", isGamepad ? "TRUE" : "FALSE");
+        //        
+        //        if (isGamepad) {
+        //            const char* gpName = glfwGetGamepadName(i);
+        //            printf("  Gamepad Name: '%s'\n", gpName ? gpName : "Unknown");
+        //        }
+        //    }
+        //}
+        //printf("--------------------------------\n");
 
         // Action Mappings
 
