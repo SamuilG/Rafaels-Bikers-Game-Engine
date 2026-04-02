@@ -2,6 +2,20 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+//UI system for bike
+struct BikeTuning
+{
+	float maxSteerAngleDeg = 25.0f;
+	float steerSpeedDeg = 90.0f;
+	float maxLeanAngleDeg = 30.0f;
+	float leanSpeedDeg = 90.0f;
+	float wheelBase = 1.6f;
+	float driveForce = 1000.0f;
+	float brakeForce = 20.0f;
+	float maxSpeed = 60.0f;
+	float gravityFactor = 1.0f;
+};
+
 struct UserState
 {
 	float mouseX = 0.f;
@@ -34,7 +48,7 @@ struct UserState
 
 	bool isGamePause = false;//game Pause toggle
 
-	//UI ´°¿ÚµÄÏÔÊ¾¿ª¹Ø£¨Ä¬ÈÏÈ«¿ª£©
+	//UI çª—å£çš„æ˜¾ç¤ºå¼€å…³ï¼ˆé»˜è®¤å…¨å¼€ï¼‰
 	bool showControlPanel = true;
 	bool showContentBrowser = true;
 	bool showSceneHierarchy = true;
@@ -43,9 +57,12 @@ struct UserState
 
 	float bikeSpeed = 0.0f;
 	float bikeSteerAngle = 0.0f;
+	BikeTuning bikeTuning{};
 
-	// ¼ÇÂ¼µ±Ç°Ñ¡ÖĞµÄÁ£×ÓË÷Òı (-1 ±íÊ¾Ã»Ñ¡ÖĞÈÎºÎÁ£×Ó)
+	// è®°å½•å½“å‰é€‰ä¸­çš„ç²’å­ç´¢å¼• (-1 è¡¨ç¤ºæ²¡é€‰ä¸­ä»»ä½•ç²’å­)
 	int activeParticleIndex = -1;
+
+	bool isSceneViewportHovered = false;
 	//================UI System================================
 
 	glm::vec3 followTargetPos = glm::vec3(10.f);

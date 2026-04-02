@@ -18,6 +18,7 @@
 #include <limits>    
 #include <glm/gtc/matrix_transform.hpp>
 #include "light.hpp"
+#include <imgui.h>
 
 
 
@@ -73,15 +74,17 @@ void update_user_state(UserState& aState, float aElapsedTime, engine::InputSyste
 	}
 
 	// ==============================================================
-	// 【新增】：获取滚轮输入，更新并限制相机的 Distance
-	// ==============================================================
-	float scroll = inputSys->GetScrollY();
-	if (scroll != 0.0f) {
-		float zoomSpeed = 1.5f; // 缩放灵敏度，如果觉得太快或太慢可以改这里
-		aState.Distance -= scroll * zoomSpeed; // 减去 scroll，因为通常向上滚是放大(拉近)
+	// Capture scroll wheel input, update and limit camera distance
+	// If hovering the viewport OR controlling the camera (mouse captured), allow zoom
+	if (aState.isSceneViewportHovered || inputSys->IsMouseCaptured()) {
+		float scroll = inputSys->GetScrollY();
+		if (scroll != 0.0f) {
+			float zoomSpeed = 1.5f; // 缩放灵敏度，如果觉得太快或太慢可以改这里
+			aState.Distance -= scroll * zoomSpeed; // 减去 scroll，因为通常向上滚是放大(拉近)
 
-		// 限制相机的最小和最大距离：最近 1.5 米，最远 30 米
-		aState.Distance = std::clamp(aState.Distance, 1.5f, 30.0f);
+			// 限制相机的最小和最大距离：最近 1.5 米，最远 30 米
+			aState.Distance = std::clamp(aState.Distance, 1.5f, 30.0f);
+		}
 	}
 	// ==============================================================
 

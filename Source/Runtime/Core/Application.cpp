@@ -58,48 +58,64 @@ namespace engine {
 
 		// load models using the API in RenderSystem
 		// TScene is completely static (ground + buildings)
-		renderSystem->load_additional_model("Assets/Models/TScene.glb", true);
+		// renderSystem->load_additional_model("Assets/Models/TScene.glb", true);
+		renderSystem->load_additional_model("Assets/Models/TScene.glb", true, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
 
 		// specify a small mass
 		glm::mat4 spawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(25.0f, 100.0f, 35.0f));
 		renderSystem->load_additional_model("Assets/Models/BaseballBat.glb", false, 1.5f, spawnPos);
 
-		glm::mat4 charSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(15.0f, 10.0f, 25.0f));
-		renderSystem->load_additional_model("Assets/Models/Animated Character Base.glb", false, 80.0f, charSpawnPos);
 
 		// Scale cars down to 0.1
 		glm::mat4 carSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(5.0f, 10.0f, 15.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(0.1f));
 		renderSystem->load_additional_model("Assets/Models/Car.glb", false, 1500.0f, carSpawnPos);
 
-		// Scale helicopter down to 0.3
-		glm::mat4 heliSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(45.0f, 10.0f, 5.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(0.3f));
-		renderSystem->load_additional_model("Assets/Models/Helicopter.glb", false, 3000.0f, heliSpawnPos);
-
-		glm::mat4 missileSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(35.0f, 10.0f, 45.0f));
-		renderSystem->load_additional_model("Assets/Models/Missile.glb", false, 50.0f, missileSpawnPos);
-
-		glm::mat4 policeCarSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(25.0f, 10.0f, 15.0f));
-		renderSystem->load_additional_model("Assets/Models/Police Car.glb", false, 1600.0f, policeCarSpawnPos);
-
-		glm::mat4 romanSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(10.0f, 10.0f, 25.0f));
-		renderSystem->load_additional_model("Assets/Models/Roman Centurion.glb", false, 90.0f, romanSpawnPos);
 
 
 		//burstlink's old bike.
 		//glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 10.0f, 30.0f));
 		//renderSystem->load_additional_model("Assets/Models/bike.glb", false, 50.0f, BikeSpawnPos,true, true);
 
-        glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 20.0f, 30.0f));
+        glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(60.0f, 20.0f, 60.0f));
         renderSystem->load_additional_model("Assets/Models/bicycle.glb", false, 50.0f, BikeSpawnPos ,false, true);
 
 
 
-		glm::mat4 LampSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(40.0f, 2.0f, 15.0f));
+		glm::mat4 LampSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(90.0f, 2.0f, 65.0f));
 		renderSystem->load_additional_model("Assets/Models/Lamp post.glb", false, 90.0f, LampSpawnPos);
 
 		glm::mat4 CubeSpawnPos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, -7.0f, 8.0f));
 		renderSystem->load_additional_model("Assets/Models/em1.gltf", false, 90.0f, CubeSpawnPos);
 
+		//======trigger box start=====
+		//create a particle group
+		renderSystem->AddParticleGroup();
+		auto& triggerParticles = renderSystem->GetParticles();
+		size_t triggerParticleIndex = triggerParticles.size() - 1;
+
+		triggerParticles[triggerParticleIndex]->config.emitterPos = glm::vec3(50.0f, 1.0f, 20.0f);
+		triggerParticles[triggerParticleIndex]->config.isVisible = false;//不可见
+
+		// trigger: create a visible box trigger
+		size_t triggerBox01 = renderSystem->GetTriggerSystem().AddBoxTrigger(
+			glm::vec3(50.0f, 1.0f, 20.0f),
+			glm::vec3(2.0f, 2.0f, 2.0f),
+			triggerParticleIndex,
+			glm::vec3(1.0f, 0.0f, 0.0f),
+			glm::mat4(1.0f),
+			true,
+			false
+		);
+		// trigger callback system
+		renderSystem->GetTriggerSystem().SetTriggerCallbacks(triggerBox01,
+			[]() {
+				engine::EngineUi::LogPrint("trigger box triggered!!\n");
+			},
+			[]() {
+				engine::EngineUi::LogPrint("trigger box exited!!\n");
+			}
+		);
+		//======trigger box end=====
 
 		// testBiek1,2  二选一+
 		// testBike2 有compound bug

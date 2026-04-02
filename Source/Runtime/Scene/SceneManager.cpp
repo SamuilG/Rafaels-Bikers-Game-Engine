@@ -319,6 +319,7 @@ void SceneManager::Update(float dt) {
             glm::vec3 cameraPos = glm::vec3(mState->camera2world[3]);
 
             // a. 平滑所有 OpacityComponent 动画
+            m_world->defer_begin();
             m_world->query<OpacityComponent>().each([&](flecs::entity e, OpacityComponent& op) {
                 // 平滑插值
                 op.currentAlpha += (op.targetAlpha - op.currentAlpha) * 8.0f * dt;
@@ -331,6 +332,7 @@ void SceneManager::Update(float dt) {
                     e.remove<OpacityComponent>();
                 }
                 });
+            m_world->defer_end();
 
             // b. 射线检测
             flecs::entity bikeEntity = find_entity("Bike_0");
@@ -354,6 +356,7 @@ void SceneManager::Update(float dt) {
                     ignoredIDs.push_back(bikeBodyID); // 先把单车自己拉黑，防误伤
 
                     // 穿透射线循环
+                    m_world->defer_begin();
                     while (true) {
                         uint32_t hitBodyID = m_physics_system->cast_ray_ignore_multiple(cameraPos, bikePos, ignoredIDs);
 
@@ -383,6 +386,7 @@ void SceneManager::Update(float dt) {
                         // 把刚打中的障碍物也拉黑，下一发射线直接穿透它！
                         ignoredIDs.push_back(hitBodyID);
                     }
+                    m_world->defer_end();
                 }
             }
         }

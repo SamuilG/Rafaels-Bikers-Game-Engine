@@ -7,7 +7,7 @@
 #include "../UserState/UserState.hpp"
 
 
-// Çë¸ù¾ÝÄãÏîÄ¿µÄÊµ¼ÊÂ·¾¶°üº¬ÕâÁ½¸öÍ·ÎÄ¼þ
+// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½Êµï¿½ï¿½Â·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í·ï¿½Ä¼ï¿?
  #include "../Input/InputSystem.hpp" 
 
 
@@ -28,18 +28,26 @@ namespace engine
         m_bicycle->chassisID = JPH::BodyID(chassisBodyID);
 
         JPH::BodyInterface& bi = m_joltPhysics->GetBodyInterface();
-        bi.SetGravityFactor(m_bicycle->chassisID, 1.0f);
+        //bi.SetGravityFactor(m_bicycle->chassisID, 1.0f);
+        //UI system for bike===========
+        // initialize gravity from UI-editable tuning data
+        bi.SetGravityFactor(m_bicycle->chassisID, m_state ? m_state->bikeTuning.gravityFactor : 1.0f);
 
         std::cout << "[Bicycle] bicycle created via BikeController." << std::endl;
     }
 
     void BikeController::Update(float dt) {
-        // ¼ì²éÖ¸ÕëºÍµÚÈýÈË³ÆÄ£Ê½
+        // ï¿½ï¿½ï¿½Ö¸ï¿½ï¿½Íµï¿½ï¿½ï¿½ï¿½Ë³ï¿½Ä£Ê½
         if (!m_bicycle || !m_inputSystem || !m_joltPhysics || !m_state || !m_state->thirdPersonMode) return;
 
         JPH::BodyInterface& bi = m_joltPhysics->GetBodyInterface();
         JPH::BodyID id = m_bicycle->chassisID;
         if (!bi.IsAdded(id)) return;
+
+        //UI system for bike===============
+        //  pull the latest bicycle tuning values from UserState every frame
+        const BikeTuning& tuning = m_state->bikeTuning;
+        bi.SetGravityFactor(id, tuning.gravityFactor);
 
         float inputThrottle = 0.0f;
         float inputSteer = 0.0f;
@@ -49,11 +57,29 @@ namespace engine
         if (m_inputSystem->IsActionHeld("StrafeLeft"))   inputSteer += 1.0f;
         if (m_inputSystem->IsActionHeld("StrafeRight"))  inputSteer -= 1.0f;
 
+<<<<<<< HEAD
         // 1. »ñÈ¡µ±Ç°ÏßËÙ¶È´óÐ¡
+=======
+        // ==========================================
+        // 1. ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½ï¿?
+        // ==========================================
+
+		const float maxSteerAngle = glm::radians(tuning.maxSteerAngleDeg);//UI system for bike========
+		const float steerSpeed = glm::radians(tuning.steerSpeedDeg);//UI system for bike========
+        float targetSteer = inputSteer * maxSteerAngle;
+        float steerDiff = targetSteer - m_bicycle->steerAngle;
+        float maxDelta = steerSpeed * dt;
+        m_bicycle->steerAngle += glm::clamp(steerDiff, -maxDelta, maxDelta);
+
+        // ==========================================
+        // 2. ï¿½Ù¶È»ï¿½È¡
+        // ==========================================
+>>>>>>> c3258c92c17c2bf52e537b464e4b5a63e6448f70
         JPH::Vec3 vel = bi.GetLinearVelocity(id);
         float speed = std::sqrt(vel.GetX() * vel.GetX() + vel.GetZ() * vel.GetZ());
         m_bicycle->currentSpeed = speed;
 
+<<<<<<< HEAD
         // 2. ³µ°Ñ×ªÏò¼ÆËã (´øËÙ¶ÈÔ¼Êø£¬·ÀÔ­µØ´ò×ª)
         const float baseMaxSteerAngle = glm::radians(25.0f);
         const float steerSpeed = glm::radians(90.0f);
@@ -69,6 +95,13 @@ namespace engine
         // 3. ³µÉíÇãÐ±¼ÆËã
         const float maxLeanAngle = glm::radians(30.0f);
         const float leanSpeed = glm::radians(90.0f);
+=======
+        // ==========================================
+        // 3. ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð±ï¿½ï¿½ï¿½ï¿½
+        // ==========================================
+		const float maxLeanAngle = glm::radians(tuning.maxLeanAngleDeg);//UI system for bike=====
+		const float leanSpeed = glm::radians(tuning.leanSpeedDeg);//UI system for bike======
+>>>>>>> c3258c92c17c2bf52e537b464e4b5a63e6448f70
         float maxLeanDelta = leanSpeed * dt;
 
         float targetLean = 0.0f;
@@ -78,12 +111,19 @@ namespace engine
         float leanDiff = targetLean - m_bicycle->leanAngle;
         m_bicycle->leanAngle += glm::clamp(leanDiff, -maxLeanDelta, maxLeanDelta);
 
+<<<<<<< HEAD
         // 4. ¼ÆËã³µÉíÊµ¼ÊµÄÐý×ª (Yaw)
+=======
+        // ==========================================
+        // 4. ï¿½ï¿½×ªÓ¦ï¿½ï¿½ (Yaw & Lean)
+        // ==========================================
+>>>>>>> c3258c92c17c2bf52e537b464e4b5a63e6448f70
         JPH::Quat currentRot = bi.GetRotation(id);
         JPH::Vec3 fwd = currentRot.RotateAxisZ();
         float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
 
-        const float wheelBase = 1.6f;
+        //const float wheelBase = 1.6f;
+		const float wheelBase = std::max(tuning.wheelBase, 0.01f);//UI system for bike==
         float yawRate = 0.0f;
         if (speed > 0.1f) {
             yawRate = (speed * std::tan(m_bicycle->steerAngle)) / wheelBase;
@@ -92,14 +132,38 @@ namespace engine
 
         JPH::Quat yawQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), newYaw + JPH::JPH_PI);
         JPH::Quat leanQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisZ(), m_bicycle->leanAngle);
-        JPH::Quat finalRot = yawQuat * leanQuat;
+        // JPH::Quat finalRot = yawQuat * leanQuat;
+
+        // preserve pitch (x-axis rotation) from current rotation, so it aligns with slopes
+        float fwdY = -fwd.GetY();
+
+        float pitch = std::asin(std::max(-1.0f, std::min(1.0f, fwdY)));
+        // limit pitch to avoid flipping over backwards completely
+        pitch = std::max(-1.3f, std::min(1.3f, pitch));
+        
+        JPH::Quat pitchQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisX(), pitch);
+
+        JPH::Quat finalRot = yawQuat * pitchQuat * leanQuat;
 
         bi.SetRotation(id, finalRot, JPH::EActivation::Activate);
 
+<<<<<<< HEAD
         // ==========================================================
         // ¡¾ºËÐÄÄ§·¨¡¿£ºÄ£Äâ×¥µØÁ¦£¬Ïû³ý²à»¬£¬Ç¿ÐÐ¸úËæÇ°ÂÖÒÆ¶¯£¡
         // ==========================================================
         const float maxSpeed = 60.0f;
+=======
+        // ==========================================
+        // 5. Ê©ï¿½ï¿½Ç°ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½É²ï¿½ï¿½ï¿½ï¿½
+        // ==========================================
+       /* const float driveForce = 1000.0f;
+        const float brakeForce = 20.0f;
+        const float maxSpeed = 60.0f;*/
+		//UI system for bike==========
+        const float driveForce = std::max(tuning.driveForce, 0.0f);
+        const float brakeForce = std::max(tuning.brakeForce, 0.0f);
+        const float maxSpeed = std::max(tuning.maxSpeed, 0.1f);
+>>>>>>> c3258c92c17c2bf52e537b464e4b5a63e6448f70
 
         // Ëã³ö¡°³µÉí³¯Ïò + 50%µÄÎÕ°Ñ³¯Ïò¡±¡£ÕâÑùÖØÐÄÒÆ¶¯µÄÊÖ¸Ð×îÏñÕæÊµµÄ×ÔÐÐ³µ£¡
         float moveYaw = newYaw + m_bicycle->steerAngle * 0.5f;
@@ -141,10 +205,23 @@ namespace engine
             ));
         }
 
+<<<<<<< HEAD
         // Ëø¶¨ÆäËûÖáµÄ½ÇËÙ¶È£¨·ÀÖ¹ÔÚÅö×²Ê±Ïñ¸öÇòÒ»ÑùÂÒ¹ö£©
         bi.SetAngularVelocity(id, JPH::Vec3::sZero());
 
         // Í¬²½¸øÆäËûÏµÍ³
+=======
+        // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä½ï¿½ï¿½Ù¶ï¿?
+        bi.SetAngularVelocity(id, JPH::Vec3::sZero());
+
+        // Ç¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ù¶ï¿?
+        if (speed > maxSpeed) {
+            float scale = maxSpeed / speed;
+            bi.SetLinearVelocity(id, JPH::Vec3(
+                vel.GetX() * scale, vel.GetY(), vel.GetZ() * scale
+            ));
+        }
+>>>>>>> c3258c92c17c2bf52e537b464e4b5a63e6448f70
         m_state->bikeSpeed = speed;
         m_state->bikeSteerAngle = m_bicycle->steerAngle;
     }

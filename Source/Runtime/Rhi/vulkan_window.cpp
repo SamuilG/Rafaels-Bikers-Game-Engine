@@ -199,7 +199,7 @@ namespace labut2
         glfwWindowHint( GLFW_CLIENT_API, GLFW_NO_API );
 
         // create glfw window
-        ret.window = glfwCreateWindow( 1280, 720, "Assignment 2, Part 2", nullptr, nullptr );
+        ret.window = glfwCreateWindow( 1280, 720, "Rafael’s  Bikers", nullptr, nullptr );
         if( !ret.window )
         {
             // get glfw error and throw
