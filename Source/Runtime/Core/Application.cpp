@@ -100,6 +100,10 @@ namespace engine {
 		glm::mat4 CubeSpawnPos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, -7.0f, 8.0f));
 		renderSystem->load_additional_model("Assets/Models/em1.gltf", false, 90.0f, CubeSpawnPos);
 
+		glm::mat4 CharacterSpawnPos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, -7.0f, 8.0f));
+		renderSystem->load_additional_model("Assets/Models/character.glb", false, 90.0f, CharacterSpawnPos, false, true);
+
+		
 
 		// testBiek1,2  二选一+
 		// testBike2 有compound bug
