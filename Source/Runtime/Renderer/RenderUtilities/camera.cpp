@@ -52,6 +52,22 @@ void update_user_state(UserState& aState, float aElapsedTime, engine::InputSyste
 	auto const dx = (mouseDelta.x * mouseSens) + (gamepadDelta.x * gamepadSens);
 	auto const dy = (mouseDelta.y * mouseSens) + (gamepadDelta.y * gamepadSens);
 
+
+
+	// ==============================================================
+	// FOV
+	// ==============================================================
+	float fovZoomSpeed = 40.0f; // rad per second, adjust as needed for faster/slower zoom
+	if (inputSys->IsActionHeld("ZoomIn")) {
+		aState.cameraFov -= fovZoomSpeed * aElapsedTime;
+	}
+	if (inputSys->IsActionHeld("ZoomOut")) {
+		aState.cameraFov += fovZoomSpeed * aElapsedTime;
+	}
+	//limimt FOV to reasonable range to prevent extreme distortion or inverted view
+	aState.cameraFov = std::clamp(aState.cameraFov, 10.0f, 120.0f);
+	// ==============================================================
+
 	if (std::abs(dx) > 0.0f || std::abs(dy) > 0.0f)
 	{
 		if (aState.thirdPersonMode)
@@ -94,17 +110,14 @@ void update_user_state(UserState& aState, float aElapsedTime, engine::InputSyste
 		glm::vec3 eye_offset(0.f, 1.6f, 0.f);
 		glm::vec3 target_pos = char_pos + eye_offset;
 
-		// 【关键修复 1】：删除原来的硬编码
+		
 		// float const distance = 5.0f; 
-
-		// 【关键修复 2】：做个安全保护，如果 Distance 初始值为 0，给个默认值 5.0f
 		if (aState.Distance < 1.0f) {
 			aState.Distance = 5.0f;
 		}
 
 		// Yaw and Pitch to Cartesian coordinates
 		glm::vec3 offset;
-		// 【关键修复 3】：把原来的 distance 替换成 aState.Distance
 		offset.x = aState.Distance * std::cos(aState.Pitch) * std::sin(aState.Yaw);
 		offset.y = aState.Distance * std::sin(aState.Pitch);
 		offset.z = aState.Distance * std::cos(aState.Pitch) * std::cos(aState.Yaw);
@@ -142,8 +155,11 @@ void update_user_state(UserState& aState, float aElapsedTime, engine::InputSyste
 void update_scene_uniforms(glsl::SceneUniform& aSceneUniforms, std::uint32_t aFramebufferWidth, std::uint32_t aFramebufferHeight, UserState const& aState)
 {
 	float const aspect = float(aFramebufferWidth) / float(aFramebufferHeight);
-	float const fov = lut::Radians(cfg::kCameraFov).value();
-
+	// ==============================================================
+	
+	// float const fov = lut::Radians(cfg::kCameraFov).value(); // 删掉或注释这行
+	float const fov = glm::radians(aState.cameraFov); // 使用动态 FOV 并转成弧度
+	// ==============================================================
 	// 1. 相机矩阵计算
 	aSceneUniforms.projection = glm::perspectiveRH_ZO(fov, aspect, cfg::kCameraNear, cfg::kCameraFar);
 	aSceneUniforms.projection[1][1] *= -1.f;

@@ -70,4 +70,6 @@ struct UserState
 
 	bool bloomEnabled = true;
 
+
+	float cameraFov = 85.0f;
 };
