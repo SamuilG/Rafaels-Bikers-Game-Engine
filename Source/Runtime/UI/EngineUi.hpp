@@ -69,6 +69,12 @@ namespace engine {
 		//控制面板（粒子设置、渲染模式切换）//Control panel (particle settings, render mode switching)
         static void DrawControlPanel(UserState& state, RenderSystem* renderSys, SceneManager* sceneManager);
 
+        //light UI灯光调节面板
+        static void DrawLightPanel(SceneManager* sceneManager, UserState& state);
+
+        //camera UI相机调节面板
+        static void DrawCameraPanel(UserState& state);
+
 		// 场景层级面板与属性检查器（Inspector）//Scene Hierarchy panel with property inspector (Inspector)
         static void DrawSceneHierarchy(RenderSystem* renderSys, SceneManager* sceneManager, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, UserState& state);
 		
@@ -90,6 +96,7 @@ namespace engine {
         inline static float m_ui_translation[3] = { 0.0f, 0.0f, 0.0f };
         inline static float m_ui_rotation[3] = { 0.0f, 0.0f, 0.0f };
         inline static float m_ui_scale[3] = { 1.0f, 1.0f, 1.0f };
+        inline static flecs::entity_t m_selected_light_id = 0;
 
         //粒子图标显示
         // 用于存储图标贴图的 Vulkan 资源描述符集合 (Vulkan Descriptor Set)

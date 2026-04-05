@@ -1008,6 +1008,14 @@ namespace engine {
                 if (mState->showSceneHierarchy || mState->showEntityInspector) {
                     EngineUi::DrawSceneHierarchy(this, mSceneManager, view, gizmoProj, mSelectedEntityId, *mState);
                 }
+                //light UI
+                if (mState->showLightPanel) {
+                    EngineUi::DrawLightPanel(mSceneManager, *mState);
+                }
+				//camera UI
+                if (mState->showCameraPanel) {
+                    EngineUi::DrawCameraPanel(*mState);
+                }
 
                 if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && isMouseInViewport && !ImGuizmo::IsOver())
                 {

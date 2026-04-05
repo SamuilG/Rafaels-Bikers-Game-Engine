@@ -48,12 +48,14 @@ struct UserState
 
 	bool isGamePause = false;//game Pause toggle
 
-	//UI 窗口的显示开关（默认全开）
+	//UI 窗口的显示开关
 	bool showControlPanel = true;
 	bool showContentBrowser = true;
 	bool showSceneHierarchy = true;
 	bool showEntityInspector = true;
 	bool showConsole = true;
+	bool showLightPanel = true;
+	bool showCameraPanel = true;
 
 	float bikeSpeed = 0.0f;
 	float bikeSteerAngle = 0.0f;

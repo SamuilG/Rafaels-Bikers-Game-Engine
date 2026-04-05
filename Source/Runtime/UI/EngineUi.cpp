@@ -31,13 +31,23 @@
 #include "../Scene/SceneManager.hpp" 
 #include "../Particle/ParticleSystem.hpp"
 #include "../Physics/PhysicsSystem.hpp"
-
+#include "../Renderer/RenderUtilities/light.hpp"
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 
 
 
 namespace engine {
+
+	namespace {
+		glm::vec3 NormalizeOrFallback(const glm::vec3& value, const glm::vec3& fallback) {
+			float length = glm::length(value);
+			if (length <= 0.0001f) {
+				return fallback;
+			}
+			return value / length;
+		}
+	}
 
 	// ========== console system 内置控制台系统==========
 	struct EngineConsole {
@@ -1070,6 +1080,210 @@ namespace engine {
 		s_Console.Draw("Output Console", &state.showConsole);
 	}
 
+	//light UI灯光调节面板
+	void EngineUi::DrawLightPanel(SceneManager* sceneManager, UserState& state)
+	{
+		if (!state.showLightPanel) return;
+
+		ImGui::SetNextWindowPos(ImVec2(40, 140), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(360, 420), ImGuiCond_FirstUseEver);
+
+		if (!ImGui::Begin("Light Panel", &state.showLightPanel)) {
+			ImGui::End();
+			return;
+		}
+
+		if (!sceneManager) {
+			ImGui::TextDisabled("SceneManager unavailable.");
+			ImGui::End();
+			return;
+		}
+
+		auto& world = sceneManager->get_world();
+		std::vector<flecs::entity_t> lightIds;
+
+		world.each([&](flecs::entity entity, LightComponent&) {
+			lightIds.push_back(entity.id());
+			});
+
+		if (lightIds.empty()) {
+			ImGui::TextDisabled("No light entities found.");
+			m_selected_light_id = 0;
+			ImGui::End();
+			return;
+		}
+
+		flecs::entity selectedLight = world.entity(m_selected_light_id);
+		if (m_selected_light_id == 0 || !selectedLight.is_alive() || !selectedLight.has<LightComponent>()) {
+			m_selected_light_id = lightIds.front();
+			selectedLight = world.entity(m_selected_light_id);
+		}
+
+		const char* currentLightName = selectedLight.name();
+		if (!currentLightName || currentLightName[0] == '\0') currentLightName = "Unnamed Light";
+
+		if (ImGui::BeginCombo("Light Entity", currentLightName)) {
+			for (flecs::entity_t id : lightIds) {
+				flecs::entity lightEntity = world.entity(id);
+				const char* lightName = lightEntity.name();
+				if (!lightName || lightName[0] == '\0') lightName = "Unnamed Light";
+
+				bool isSelected = (m_selected_light_id == id);
+				if (ImGui::Selectable(lightName, isSelected)) {
+					m_selected_light_id = id;
+					selectedLight = lightEntity;
+				}
+				if (isSelected) ImGui::SetItemDefaultFocus();
+			}
+			ImGui::EndCombo();
+		}
+
+		if (!selectedLight.is_alive() || !selectedLight.has<LightComponent>()) {
+			ImGui::TextDisabled("Selected light is no longer valid.");
+			ImGui::End();
+			return;
+		}
+
+		LightComponent* lightComponent = &selectedLight.get_mut<LightComponent>();
+		EntityStatus* entityStatus = selectedLight.has<EntityStatus>() ? &selectedLight.get_mut<EntityStatus>() : nullptr;
+		LocalTransform* localTransform = selectedLight.has<LocalTransform>() ? &selectedLight.get_mut<LocalTransform>() : nullptr;
+
+		ImGui::Separator();
+		ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.35f, 1.0f), "[ %s ]", currentLightName);
+
+		if (entityStatus) {
+			ImGui::Checkbox("Visible", &entityStatus->should_render);
+		}
+
+		const char* lightTypeNames[] = { "Directional", "Point", "Spot" };
+		int lightTypeIndex = static_cast<int>(lightComponent->type);
+		if (ImGui::Combo("Type", &lightTypeIndex, lightTypeNames, IM_ARRAYSIZE(lightTypeNames))) {
+			lightComponent->type = static_cast<LightType>(lightTypeIndex);
+			selectedLight.modified<LightComponent>();
+		}
+
+		bool lightChanged = false;
+		lightChanged |= ImGui::ColorEdit3("Color", &lightComponent->color.x);
+		lightChanged |= ImGui::DragFloat("Intensity", &lightComponent->intensity, 0.1f, 0.0f, 100.0f, "%.2f");
+
+		if (lightComponent->type != LightType::Directional) {
+			lightChanged |= ImGui::DragFloat("Range", &lightComponent->range, 0.1f, 0.0f, 500.0f, "%.2f");
+		}
+
+		if (localTransform && lightComponent->type == LightType::Directional) {
+			//light UI（备注）方向光把方向存放在 transform 的第 4 列
+			glm::vec3 dir = NormalizeOrFallback(glm::vec3(localTransform->matrix[3]), glm::vec3(0.0f, 1.0f, 0.0f));
+			if (ImGui::DragFloat3("Direction", &dir.x, 0.01f, -1.0f, 1.0f, "%.3f")) {
+				dir = NormalizeOrFallback(dir, glm::vec3(0.0f, 1.0f, 0.0f));
+				localTransform->matrix[3] = glm::vec4(dir, 0.0f);
+				selectedLight.modified<LocalTransform>();
+			}
+		}
+		else if (localTransform) {
+			//light UI（备注）点光和聚光灯直接调位置
+			glm::vec3 position = glm::vec3(localTransform->matrix[3]);
+			if (ImGui::DragFloat3("Position", &position.x, 0.1f)) {
+				localTransform->matrix[3] = glm::vec4(position, 1.0f);
+				selectedLight.modified<LocalTransform>();
+			}
+		}
+
+		if (lightComponent->type == LightType::Spot) {
+			//light UI（备注）聚光灯额外暴露方向和锥角参数
+			glm::vec3 direction = lightComponent->direction;
+			if (ImGui::DragFloat3("Spot Direction", &direction.x, 0.01f, -1.0f, 1.0f, "%.3f")) {
+				lightComponent->direction = NormalizeOrFallback(direction, glm::vec3(0.0f, 0.0f, -1.0f));
+				lightChanged = true;
+			}
+
+			float innerCutOff = lightComponent->innerCutOff;
+			float outerCutOff = lightComponent->outerCutOff;
+			if (ImGui::SliderFloat("Inner Cutoff", &innerCutOff, 0.0f, 89.0f, "%.1f deg")) {
+				lightComponent->innerCutOff = std::min(innerCutOff, lightComponent->outerCutOff);
+				lightChanged = true;
+			}
+			if (ImGui::SliderFloat("Outer Cutoff", &outerCutOff, 0.0f, 89.0f, "%.1f deg")) {
+				lightComponent->outerCutOff = std::max(outerCutOff, lightComponent->innerCutOff);
+				lightChanged = true;
+			}
+		}
+
+		if (lightChanged) {
+			selectedLight.modified<LightComponent>();
+		}
+
+		ImGui::Separator();
+
+		ImGui::End();
+	}
+
+	//camera UI相机调节面板
+	void EngineUi::DrawCameraPanel(UserState& state)
+	{
+		if (!state.showCameraPanel) return;
+
+		ImGui::SetNextWindowPos(ImVec2(420, 140), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(340, 360), ImGuiCond_FirstUseEver);
+
+		if (!ImGui::Begin("Camera Panel", &state.showCameraPanel)) {
+			ImGui::End();
+			return;
+		}
+
+		//UI基础相机模式与镜头参数// Basic camera mode and lens parameters
+		ImGui::Checkbox("Third Person Mode", &state.thirdPersonMode);
+		ImGui::SliderFloat("FOV", &state.cameraFov, 10.0f, 120.0f, "%.1f deg");
+
+		glm::vec3 cameraPos = glm::vec3(state.camera2world[3]);
+		ImGui::Text("Camera Pos: %.2f, %.2f, %.2f", cameraPos.x, cameraPos.y, cameraPos.z);
+
+		if (state.thirdPersonMode) {
+			//第三人称相机参数// Third-person camera parameters
+			ImGui::DragFloat3("Follow Target", &state.followTargetPos.x, 0.1f);
+			ImGui::SliderAngle("Yaw", &state.Yaw, -180.0f, 180.0f);
+			ImGui::SliderAngle("Pitch", &state.Pitch, -85.0f, 85.0f);
+			ImGui::SliderFloat("Distance", &state.Distance, 1.5f, 30.0f, "%.2f");
+
+			if (ImGui::Button("Reset Third Person Camera")) {
+				state.Yaw = 0.0f;
+				state.Pitch = 0.0f;
+				state.Distance = 5.0f;
+			}
+		}
+		else {
+			//自由相机直接编辑世界矩阵的位移和旋转// Free camera directly edits the translation and rotation of the world matrix
+			float cameraTranslation[3];
+			float cameraRotation[3];
+			float cameraScale[3];
+
+			ImGuizmo::DecomposeMatrixToComponents(
+				glm::value_ptr(state.camera2world),
+				cameraTranslation,
+				cameraRotation,
+				cameraScale
+			);
+
+			bool cameraTransformChanged = false;
+			cameraTransformChanged |= ImGui::DragFloat3("Position", cameraTranslation, 0.1f);
+			cameraTransformChanged |= ImGui::DragFloat3("Rotation", cameraRotation, 0.5f);
+
+			if (cameraTransformChanged) {
+				cameraScale[0] = 1.0f;
+				cameraScale[1] = 1.0f;
+				cameraScale[2] = 1.0f;
+				ImGuizmo::RecomposeMatrixFromComponents(
+					cameraTranslation,
+					cameraRotation,
+					cameraScale,
+					glm::value_ptr(state.camera2world)
+				);
+			}
+		}
+
+		ImGui::Separator();
+
+		ImGui::End();
+	}
 
 	void EngineUi::DrawSceneHierarchy(RenderSystem* renderSys, SceneManager* sceneManager, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, UserState& state)
 	{
@@ -1279,6 +1493,8 @@ namespace engine {
 				ImGui::MenuItem(_SL("Scene Hierarchy"), NULL, &state.showSceneHierarchy);
 				ImGui::MenuItem(_SL("Entity Inspector"), NULL, &state.showEntityInspector);
 				ImGui::MenuItem(_SL("Output Console"), NULL, &state.showConsole);
+				ImGui::MenuItem(_SL("Light Panel"), NULL, &state.showLightPanel);
+				ImGui::MenuItem(_SL("Camera Panel"), NULL, &state.showCameraPanel);
 				ImGui::EndMenu();
 			}
 
