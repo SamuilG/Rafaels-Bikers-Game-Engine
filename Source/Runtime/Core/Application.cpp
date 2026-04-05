@@ -61,31 +61,9 @@ namespace engine {
 		// renderSystem->load_additional_model("Assets/Models/TScene.glb", true);
 		renderSystem->load_additional_model("Assets/Models/TScene.glb", true, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
 
-		// specify a small mass
-		glm::mat4 spawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(25.0f, 100.0f, 35.0f));
-		renderSystem->load_additional_model("Assets/Models/BaseballBat.glb", false, 1.5f, spawnPos);
-
-
-		// Scale cars down to 0.1
-		glm::mat4 carSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(5.0f, 10.0f, 15.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(0.1f));
-		renderSystem->load_additional_model("Assets/Models/Car.glb", false, 1500.0f, carSpawnPos);
 
 
 
-		//burstlink's old bike.
-		//glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 10.0f, 30.0f));
-		//renderSystem->load_additional_model("Assets/Models/bike.glb", false, 50.0f, BikeSpawnPos,true, true);
-
-        glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(60.0f, 20.0f, 60.0f));
-        renderSystem->load_additional_model("Assets/Models/bicycle.glb", false, 50.0f, BikeSpawnPos ,false, true);
-
-
-
-		glm::mat4 LampSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(90.0f, 2.0f, 65.0f));
-		renderSystem->load_additional_model("Assets/Models/Lamp post.glb", false, 90.0f, LampSpawnPos);
-
-		glm::mat4 CubeSpawnPos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, -7.0f, 8.0f));
-		renderSystem->load_additional_model("Assets/Models/em1.gltf", false, 90.0f, CubeSpawnPos);
 
 		//======trigger box start=====
 		//create a particle group
@@ -120,8 +98,14 @@ namespace engine {
 		// testBiek1,2  二选一+
 		// testBike2 有compound bug
 		
+
+
+		glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 10.0f, 30.0f));
 		glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
 		renderSystem->load_additional_model("Assets/Models/tbike.glb", false, 90.0f, tbpos, false, true);
+
+
+
 		// ==============================================================
 		// 【新增 2】：实例化并初始化 BikeController！
 		// ==============================================================
@@ -154,9 +138,7 @@ namespace engine {
 			std::print("[Error] BikeController Init Failed: Could not find Bike_0 entity!\n");
 		}
 
-		//glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
-		//renderSystem->load_additional_model("Assets/Models/testBike2.gltf", false, 90.0f, tbpos, true);
-
+	
 
 
 		//=============================================Headlight ==============================================

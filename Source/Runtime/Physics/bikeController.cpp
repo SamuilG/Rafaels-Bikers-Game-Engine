@@ -7,8 +7,10 @@
 #include "../UserState/UserState.hpp"
 
 
-// ���������Ŀ��ʵ��·������������ͷ�ļ�
 #include "../Input/InputSystem.hpp" 
+#include <Jolt/Physics/Collision/RayCast.h>
+#include <Jolt/Physics/Collision/CastResult.h>
+#include <Jolt/Physics/Body/BodyFilter.h>
 
 
 namespace engine
@@ -29,7 +31,7 @@ namespace engine
         m_bicycle->chassisID = JPH::BodyID(chassisBodyID);
 
         JPH::BodyInterface& bi = m_joltPhysics->GetBodyInterface();
-        bi.SetGravityFactor(m_bicycle->chassisID, 1.0f);
+        bi.SetGravityFactor(m_bicycle->chassisID, 3.0f);
 
         std::cout << "[Bicycle] bicycle created via BikeController." << std::endl;
     }
@@ -62,8 +64,14 @@ namespace engine
         float signedSpeed = vel.GetX() * forwardX + vel.GetZ() * forwardZ;
         m_bicycle->currentSpeed = signedSpeed;
 
-        if (m_inputSystem->IsActionPressed("Jump")) {
-            vel.SetY(vel.GetY() + 10.0f);
+        JPH::RVec3 centerPos = bi.GetPosition(id);
+        JPH::RRayCast ray{centerPos, JPH::Vec3(0.0f, -1.8f, 0.0f)}; // Check 1.8 units below center of mass
+        JPH::RayCastResult hit;
+        JPH::IgnoreSingleBodyFilter bodyFilter(id);
+        bool isGrounded = m_joltPhysics->GetNarrowPhaseQuery().CastRay(ray, hit, { }, { }, bodyFilter);
+
+        if (isGrounded && m_inputSystem->IsActionPressed("Jump")) {
+            vel.SetY(vel.GetY() + 16.0f); // Higher impulse to counteract the 3x gravity
             bi.SetLinearVelocity(id, vel);
         }
 
@@ -127,8 +135,8 @@ namespace engine
             ));
         }
 
-        const float driveForce = 1000.0f;
-        const float brakeForce = 20.0f;
+        const float driveForce = 2000.0f;
+        const float brakeForce = 40.0f;
 
         if (std::abs(inputThrottle) > 0.01f) {
             if (speed < maxSpeed || (inputThrottle > 0.0f && signedSpeed < 0.0f) || (inputThrottle < 0.0f && signedSpeed > 0.0f)) {
