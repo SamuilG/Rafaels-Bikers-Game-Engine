@@ -95,6 +95,10 @@ namespace engine {
         MapKeyboardAction("Downward", GLFW_KEY_Q);
         MapGamepadButtonAction("Downward", GLFW_GAMEPAD_BUTTON_LEFT_BUMPER);
 
+        // Jumping
+        MapKeyboardAction("Jump", GLFW_KEY_SPACE);
+        MapGamepadButtonAction("Jump", GLFW_GAMEPAD_BUTTON_A);
+
 
         // Movement Modifiers (Fast/Slow)
         MapKeyboardAction("Fast", GLFW_KEY_LEFT_SHIFT);

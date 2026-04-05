@@ -1,4 +1,4 @@
-﻿#include "bikeController.hpp"
+#include "bikeController.hpp"
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Physics/Body/BodyInterface.h>
 #include <iostream>
@@ -50,12 +50,24 @@ namespace engine
         if (m_inputSystem->IsActionHeld("StrafeLeft"))   inputSteer += 1.0f;
         if (m_inputSystem->IsActionHeld("StrafeRight"))  inputSteer -= 1.0f;
 
-        // 1. ��ȡ��ǰ���ٶȴ�С
+        // 1. Get current attitude and velocity
+        JPH::Quat currentRot = bi.GetRotation(id);
+        JPH::Vec3 fwd = currentRot.RotateAxisZ();
+        float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
+
         JPH::Vec3 vel = bi.GetLinearVelocity(id);
         float speed = std::sqrt(vel.GetX() * vel.GetX() + vel.GetZ() * vel.GetZ());
-        m_bicycle->currentSpeed = speed;
+        float forwardX = -std::sin(currentYaw);
+        float forwardZ = -std::cos(currentYaw);
+        float signedSpeed = vel.GetX() * forwardX + vel.GetZ() * forwardZ;
+        m_bicycle->currentSpeed = signedSpeed;
 
-        // 2. ����ת����� (���ٶ�Լ������ԭ�ش�ת)
+        if (m_inputSystem->IsActionPressed("Jump")) {
+            vel.SetY(vel.GetY() + 10.0f);
+            bi.SetLinearVelocity(id, vel);
+        }
+
+        // 2. Target turning angle
         const float baseMaxSteerAngle = glm::radians(25.0f);
         const float steerSpeed = glm::radians(90.0f);
 
@@ -67,7 +79,7 @@ namespace engine
         float maxDelta = steerSpeed * dt;
         m_bicycle->steerAngle += glm::clamp(steerDiff, -maxDelta, maxDelta);
 
-        // 3. ������б����
+        // 3. Target tilt angle
         const float maxLeanAngle = glm::radians(30.0f);
         const float leanSpeed = glm::radians(90.0f);
         float maxLeanDelta = leanSpeed * dt;
@@ -79,53 +91,47 @@ namespace engine
         float leanDiff = targetLean - m_bicycle->leanAngle;
         m_bicycle->leanAngle += glm::clamp(leanDiff, -maxLeanDelta, maxLeanDelta);
 
-        // 4. ���㳵��ʵ�ʵ���ת (Yaw)
-        JPH::Quat currentRot = bi.GetRotation(id);
-        JPH::Vec3 fwd = currentRot.RotateAxisZ();
-        float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
-
+        // 4. Calculate the vehicle's actual steering (Yaw) and attitude reconstruction
         const float wheelBase = 1.6f;
         float yawRate = 0.0f;
-        if (speed > 0.1f) {
-            yawRate = (speed * std::tan(m_bicycle->steerAngle)) / wheelBase;
+        if (std::abs(signedSpeed) > 0.1f) {
+            yawRate = (signedSpeed * std::tan(m_bicycle->steerAngle)) / wheelBase;
         }
         float newYaw = currentYaw + yawRate * dt;
 
+        JPH::Vec3 fwdLocalUnit(0.0f, 0.0f, -1.0f);
+        JPH::Vec3 currentNose = currentRot * fwdLocalUnit;
+        float currentPitch = std::asin(std::clamp(currentNose.GetY(), -1.0f, 1.0f));
+
         JPH::Quat yawQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), newYaw + JPH::JPH_PI);
         JPH::Quat leanQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisZ(), m_bicycle->leanAngle);
-        JPH::Quat finalRot = yawQuat * leanQuat;
+        JPH::Quat pitchQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisX(), currentPitch);
 
+        JPH::Quat finalRot = yawQuat * leanQuat * pitchQuat;
         bi.SetRotation(id, finalRot, JPH::EActivation::Activate);
 
-        // ==========================================================
-        // ������ħ������ģ��ץ�����������໬��ǿ�и���ǰ���ƶ���
-        // ==========================================================
+        // 5. Grip and drive power combined
         const float maxSpeed = 60.0f;
-
-        // ������������� + 50%���հѳ��򡱡����������ƶ����ָ�������ʵ�����г���
-        float moveYaw = newYaw + m_bicycle->steerAngle * 0.5f;
+        float slipAngle = m_bicycle->steerAngle * 0.5f;
+        if (signedSpeed < 0.0f) slipAngle = -slipAngle;
+        float moveYaw = newYaw + slipAngle;
         glm::vec3 moveDir(-std::sin(moveYaw), 0.0f, -std::cos(moveYaw));
 
         if (speed > 0.1f) {
-            // ����һ������ٶȣ���ֹ�������
             if (speed > maxSpeed) speed = maxSpeed;
-
-            // ǿ�а�ԭ�еĹ����ٶȣ�������ͷǰ���Ĺ켣�ϣ�(����Y����������)
+            float driveSpeed = signedSpeed > 0 ? speed : -speed;
             bi.SetLinearVelocity(id, JPH::Vec3(
-                moveDir.x * speed,
-                vel.GetY(),
-                moveDir.z * speed
+                moveDir.x * driveSpeed,
+                bi.GetLinearVelocity(id).GetY(),
+                moveDir.z * driveSpeed
             ));
         }
 
-        // ==========================================================
-        // 5. ʩ������/ɲ���� (ʹ�ö����� moveDir)
-        // ==========================================================
         const float driveForce = 1000.0f;
         const float brakeForce = 20.0f;
 
         if (std::abs(inputThrottle) > 0.01f) {
-            if (speed < maxSpeed || inputThrottle < 0.0f) {
+            if (speed < maxSpeed || (inputThrottle > 0.0f && signedSpeed < 0.0f) || (inputThrottle < 0.0f && signedSpeed > 0.0f)) {
                 bi.AddForce(id, JPH::Vec3(
                     moveDir.x * driveForce * inputThrottle,
                     0.0f,
@@ -134,18 +140,20 @@ namespace engine
             }
         }
         else {
-            // û�в�����ʱ��ʹ���뵱ǰ�ٶȳ����ȵ�������ɲ��
+            float forceDir = signedSpeed > 0 ? -1.0f : 1.0f;
             bi.AddForce(id, JPH::Vec3(
-                -moveDir.x * speed * brakeForce,
+                moveDir.x * speed * brakeForce * forceDir,
                 0.0f,
-                -moveDir.z * speed * brakeForce
+                moveDir.z * speed * brakeForce * forceDir
             ));
         }
 
-        // ����������Ľ��ٶȣ���ֹ����ײʱ�����һ���ҹ���
-        bi.SetAngularVelocity(id, JPH::Vec3::sZero());
-
-        // ͬ��������ϵͳ
+        // stabilise dynamic physics: Isolate and decay pitch rate, force roll and yaw rates to 0
+        JPH::Vec3 angVel = bi.GetAngularVelocity(id);
+        JPH::Vec3 localX = finalRot.RotateAxisX();
+        float pitchAngVel = angVel.Dot(localX);
+        bi.SetAngularVelocity(id, localX * (pitchAngVel * 0.85f));
+        // 
         m_state->bikeSpeed = speed;
         m_state->bikeSteerAngle = m_bicycle->steerAngle;
     }

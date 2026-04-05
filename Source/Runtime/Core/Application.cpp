@@ -267,7 +267,7 @@ namespace engine {
 			std::string nameA = this->sceneManager->get_entity_name_from_body_id(idA);
 			std::string nameB = this->sceneManager->get_entity_name_from_body_id(idB);
 
-			std::printf("[PhysicsSystem] CRASH: %s and %s collided.\n",
+			std::printf("[PhysicsSystem] COLLISION: %s and %s collided.\n",
 				nameA.c_str(),
 				nameB.c_str());
 			});
