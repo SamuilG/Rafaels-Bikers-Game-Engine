@@ -59,7 +59,7 @@ namespace engine {
 		// load models using the API in RenderSystem
 		// TScene is completely static (ground + buildings)
 		// renderSystem->load_additional_model("Assets/Models/TScene.glb", true);
-		renderSystem->load_additional_model("Assets/Models/TScene.glb", true, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
+		renderSystem->load_additional_model("Assets/Models/warehouseSceneWithShelf_opt.glb", true, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)) * glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 8.9621f, 0.0f)));
 
 
 
@@ -100,7 +100,7 @@ namespace engine {
 		
 
 
-		glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 10.0f, 30.0f));
+		glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 2.0f, 30.0f));
 		glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
 		renderSystem->load_additional_model("Assets/Models/tbike.glb", false, 90.0f, tbpos, false, true);
 

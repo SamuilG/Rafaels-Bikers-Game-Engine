@@ -277,6 +277,12 @@ JPH::BodyID PhysicsSystem::create_static_mesh_body(const EngineMesh& mesh, const
 {
 	JPH::BodyInterface& bodyInterface = m_physicsSystem->GetBodyInterface();
 
+	// 0. Validation: Skip if mesh data is missing or too small
+	if (mesh.positions.size() < 3 || mesh.indices.size() < 3) {
+		// std::cout << "[Physics] Skipping mesh body creation: Insufficient data." << std::endl;
+		return JPH::BodyID();
+	}
+
 	// 1. Build Vertex List
 	JPH::VertexList vertices;
 	vertices.reserve(mesh.positions.size());
@@ -288,13 +294,21 @@ JPH::BodyID PhysicsSystem::create_static_mesh_body(const EngineMesh& mesh, const
 	JPH::IndexedTriangleList triangles;
 	auto numTriangles = mesh.indices.size() / 3;
 	triangles.reserve(numTriangles);
-	for (size_t i = 0; i < mesh.indices.size(); i += 3) {
-		triangles.emplace_back(
-			mesh.indices[i],
-			mesh.indices[i + 1],
-			mesh.indices[i + 2]
-		);
+	uint32_t maxVertexIdx = static_cast<uint32_t>(mesh.positions.size());
+	for (size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
+		uint32_t i0 = mesh.indices[i];
+		uint32_t i1 = mesh.indices[i+1];
+		uint32_t i2 = mesh.indices[i+2];
+
+		// Safety check: ensure indices are within vertex array bounds
+		if (i0 >= maxVertexIdx || i1 >= maxVertexIdx || i2 >= maxVertexIdx) {
+			continue; 
+		}
+
+		triangles.emplace_back(i0, i1, i2);
 	}
+
+	if (triangles.empty()) return JPH::BodyID();
 
 	// 3. Create MeshShapeSettings
 	JPH::MeshShapeSettings shapeSettings(vertices, triangles);
@@ -351,6 +365,9 @@ JPH::BodyID PhysicsSystem::create_dynamic_convex_body(const EngineMesh& mesh, co
 	glm::vec4 perspective;
 	glm::decompose(transform, scale, rotation, translation, skew, perspective);
 	rotation = glm::normalize(rotation);
+	// 0. Validation
+	if (mesh.positions.empty()) return JPH::BodyID();
+
 	// 1. Build Vertex List (applying scale directly)
 	JPH::Array<JPH::Vec3> points;
 	points.resize(mesh.positions.size());

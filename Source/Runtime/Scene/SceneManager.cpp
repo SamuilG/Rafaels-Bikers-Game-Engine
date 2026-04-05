@@ -76,7 +76,7 @@ void SceneManager::load_static_model(const EngineModel& model, uint32_t baseMesh
         uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
         e.set<MaterialComponent>({ matIdx });
 
-        if (m_physics_system) {
+        if (m_physics_system && !model.meshes[instance.meshIndex].positions.empty()) {
             JPH::BodyID bodyID = m_physics_system->create_static_mesh_body(model.meshes[instance.meshIndex], instance.transform);
             if (!bodyID.IsInvalid()) {
                 e.set<PhysicsBody>({ bodyID.GetIndexAndSequenceNumber() });
@@ -103,7 +103,7 @@ void SceneManager::load_dynamic_model(const EngineModel& model, float mass, uint
         uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
         e.set<MaterialComponent>({ matIdx });
 
-        if (m_physics_system) {
+        if (m_physics_system && !model.meshes[instance.meshIndex].positions.empty()) {
             JPH::BodyID bodyID = m_physics_system->create_dynamic_convex_body(model.meshes[instance.meshIndex], instance.transform, mass);
             if (!bodyID.IsInvalid()) {
                 e.set<PhysicsBody>({ bodyID.GetIndexAndSequenceNumber() });
