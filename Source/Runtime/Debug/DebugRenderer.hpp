@@ -31,6 +31,16 @@ namespace engine {
 
         void DrawCapsule(const glm::vec3& center, float radius, float halfHeight, const glm::vec3& color = glm::vec3(1.0f, 1.0f, 0.0f), int segments = 16);
 
+        void DrawTriangleWireframe(
+            const glm::vec3& p0,
+            const glm::vec3& p1,
+            const glm::vec3& p2,
+            const glm::vec3& color = glm::vec3(0.0f, 1.0f, 0.0f)
+        ) {
+            DrawLine(p0, p1, color);
+            DrawLine(p1, p2, color);
+            DrawLine(p2, p0, color);
+        }
 
         void Upload(labut2::Allocator const& allocator);
 

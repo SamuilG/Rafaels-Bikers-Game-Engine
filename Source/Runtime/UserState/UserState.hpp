@@ -56,6 +56,10 @@ struct UserState
 	bool showConsole = true;
 	bool showLightPanel = true;
 	bool showCameraPanel = true;
+	bool showDebugPanel = true;
+
+	bool debugSelectionBounds = false;
+	bool debugCollisionShapes = true;
 
 	float bikeSpeed = 0.0f;
 	float bikeSteerAngle = 0.0f;

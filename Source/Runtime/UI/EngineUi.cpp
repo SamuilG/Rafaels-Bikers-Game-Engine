@@ -1285,6 +1285,27 @@ namespace engine {
 		ImGui::End();
 	}
 
+	void EngineUi::DrawDebugPanel(UserState& state)
+	{
+		if (!state.showDebugPanel) return;
+
+		ImGui::SetNextWindowPos(ImVec2(780, 140), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(320, 160), ImGuiCond_FirstUseEver);
+
+		if (!ImGui::Begin("Debug Panel", &state.showDebugPanel)) {
+			ImGui::End();
+			return;
+		}
+
+		ImGui::TextUnformatted("Selection Debug");
+		ImGui::Checkbox("Selection Bounds (AABB)", &state.debugSelectionBounds);
+		ImGui::Checkbox("Collision Shapes", &state.debugCollisionShapes);
+		ImGui::Separator();
+		ImGui::TextWrapped("Selection Bounds draws the selected body's world-space AABB. Collision Shapes draws the selected body's physics shape wireframe.");
+
+		ImGui::End();
+	}
+
 	void EngineUi::DrawSceneHierarchy(RenderSystem* renderSys, SceneManager* sceneManager, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, UserState& state)
 	{
 		// 获取当前屏幕分辨率 (Current screen resolution)

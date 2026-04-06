@@ -77,6 +77,7 @@ namespace lut = labut2;
 // ================= debug =================
 #include "../Debug/DebugRenderer.hpp"
 #include "../Trigger/trigger.hpp"
+#include "../Debug/PhysicsDebugDraw.hpp"
 namespace glsl {
     struct MosaicUniform {
         int   mosaicOn;
@@ -1016,6 +1017,10 @@ namespace engine {
                 if (mState->showCameraPanel) {
                     EngineUi::DrawCameraPanel(*mState);
                 }
+				//debug UI
+                if (mState->showDebugPanel) {
+                    EngineUi::DrawDebugPanel(*mState);
+                }
 
                 if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && isMouseInViewport && !ImGuizmo::IsOver())
                 {
@@ -1042,11 +1047,27 @@ namespace engine {
                 if (mSelectedEntityId != 0 && mSceneManager) {
                     auto& world = mSceneManager->get_world();
                     flecs::entity selectedEntity = world.entity(mSelectedEntityId);
+                    auto* physics = mSceneManager->get_physics_system();
+                    uint32_t selectedBodyID = JPH::BodyID::cInvalidBodyID;
+                    bool hasDebugBody = selectedEntity.is_alive() && physics && TryGetDebugBodyID(selectedEntity, selectedBodyID);
 
-                    if (selectedEntity.is_alive() && ImGuizmo::IsUsing()) {
+                    if (hasDebugBody && (mState->debugSelectionBounds || mState->debugCollisionShapes)) {
+                        JPH::BodyInterface& bodyInterface = physics->get_body_interface();
+                        JPH::TransformedShape ts = bodyInterface.GetTransformedShape(JPH::BodyID(selectedBodyID));
+
+                        if (mState->debugSelectionBounds) {
+                            physics_debug::DrawSelectionBounds(mDebugRenderer, ts, glm::vec3(0.0f, 1.0f, 0.0f));
+                        }
+
+                        if (mState->debugCollisionShapes) {
+                            physics_debug::DrawCollisionShapeWireframe(mDebugRenderer, ts, glm::vec3(1.0f, 0.75f, 0.15f));
+                        }
+                    }
+
+                    if (selectedEntity.is_alive() && ImGuizmo::IsUsing() && selectedEntity.has<PhysicsBody>() && physics) {
                         const auto& lt = selectedEntity.get<LocalTransform>();
                         auto pb = selectedEntity.get<PhysicsBody>();
-                        auto* physics = mSceneManager->get_physics_system();
+                        //auto* physics = mSceneManager->get_physics_system();
 
                         JPH::BodyInterface& bodyInterface = physics->get_body_interface();
                         JPH::BodyID joltBodyID(pb.bodyID);
@@ -1062,11 +1083,11 @@ namespace engine {
                         glm::vec3 extents(aabb.GetExtent().GetX(), aabb.GetExtent().GetY(), aabb.GetExtent().GetZ());
 
                         //draw
-                        mDebugRenderer.DrawBox(center, extents, glm::vec3(0.0f, 1.0f, 0.0f));
+                        //mDebugRenderer.DrawBox(center, extents, glm::vec3(0.0f, 1.0f, 0.0f));
                         // =========================================================================
                         
                         //debug
-                        engine::EngineUi::LogPrint("[Physics Debug] Entity: {} | Size: ({:.2f}, {:.2f}, {:.2f})\n",
+                        if (false) engine::EngineUi::LogPrint("[Physics Debug] Entity: {} | Size: ({:.2f}, {:.2f}, {:.2f})\n",
                             selectedEntity.name() ? selectedEntity.name() : "Unknown",
                             size.GetX(), size.GetY(), size.GetZ());
 
@@ -1726,6 +1747,21 @@ namespace engine {
         UserState* mState = nullptr;
 
         engine::InputSystem* mInputSystem = nullptr;
+
+        bool TryGetDebugBodyID(flecs::entity entity, uint32_t& outBodyID) const
+        {
+            if (entity.has<PhysicsBody>()) {
+                outBodyID = entity.get<PhysicsBody>().bodyID;
+                return true;
+            }
+
+            if (entity.has<CompoundParent>()) {
+                outBodyID = entity.get<CompoundParent>().bodyID;
+                return true;
+            }
+
+            return false;
+        }
 
         // (Bloom/Composite members moved below mAllocator for correct RAII destruction order)
         

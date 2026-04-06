@@ -74,6 +74,8 @@ namespace engine {
 
         //camera UI相机调节面板
         static void DrawCameraPanel(UserState& state);
+		//调试信息面板//Debug info panel
+        static void DrawDebugPanel(UserState& state);
 
 		// 场景层级面板与属性检查器（Inspector）//Scene Hierarchy panel with property inspector (Inspector)
         static void DrawSceneHierarchy(RenderSystem* renderSys, SceneManager* sceneManager, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, UserState& state);
