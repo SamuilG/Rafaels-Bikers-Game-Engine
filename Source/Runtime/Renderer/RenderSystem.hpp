@@ -1336,7 +1336,7 @@ namespace engine {
                     // 2. 设置越肩的偏移量 
                     float shoulderOffsetX = 1.0f; //left and right
                     float shoulderOffsetY = -1.0f; // height
-                    float shoulderOffsetZ = 10000.0f; // 调整注视点前后
+                    float shoulderOffsetZ = 0.0f; // 调整注视点前后
 
                     // 3. 计算出最终的越肩目标点
                     mState->followTargetPos = basePos
