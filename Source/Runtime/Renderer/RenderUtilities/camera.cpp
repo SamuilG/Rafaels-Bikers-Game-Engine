@@ -75,7 +75,7 @@ void update_user_state(UserState& aState, float aElapsedTime, engine::InputSyste
 			if (scroll != 0.0f) {
 				float zoomSpeed = 1.5f;
 				aState.targetDistance -= scroll * zoomSpeed;
-				aState.targetDistance = std::clamp(aState.targetDistance, 1.5f, 30.0f);
+				aState.targetDistance = std::clamp(aState.targetDistance, 0.5f, 30.0f);
 			}
 		}
 

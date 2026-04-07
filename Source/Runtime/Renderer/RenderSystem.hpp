@@ -1333,10 +1333,10 @@ namespace engine {
                     // =========================================================
                     glm::vec3 camRight = glm::vec3(std::cos(mState->Yaw), 0.0f, -std::sin(mState->Yaw));
 
-                    // 2. 设置越肩的偏移量 (后续你可以把它们写进 UserState，做成动态切换左右肩)
+                    // 2. 设置越肩的偏移量 
                     float shoulderOffsetX = 1.0f; //left and right
-                    float shoulderOffsetY = -0.5f; // height
-                    float shoulderOffsetZ = 0.0f; // 调整注视点前后
+                    float shoulderOffsetY = -1.0f; // height
+                    float shoulderOffsetZ = 10000.0f; // 调整注视点前后
 
                     // 3. 计算出最终的越肩目标点
                     mState->followTargetPos = basePos
