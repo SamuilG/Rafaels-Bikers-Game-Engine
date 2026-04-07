@@ -53,7 +53,7 @@ void update_user_state(UserState& aState, float aElapsedTime, engine::InputSyste
 	auto const dy = (mouseDelta.y * mouseSens) + (gamepadDelta.y * gamepadSens);
 
 	// ==============================================================
-	// FOV 动态缩放逻辑 (第一/第三人称通用)
+	// FOV 
 	// ==============================================================
 	float fovZoomSpeed = 40.0f; // rad per second
 	if (inputSys->IsActionHeld("ZoomIn")) {
@@ -65,7 +65,7 @@ void update_user_state(UserState& aState, float aElapsedTime, engine::InputSyste
 	aState.cameraFov = std::clamp(aState.cameraFov, 10.0f, 120.0f);
 
 	// ==============================================================
-	// 分支：第三人称视角 vs 第一人称漫游视角
+	// third person and first person
 	// ==============================================================
 	if (aState.thirdPersonMode)
 	{
@@ -79,8 +79,16 @@ void update_user_state(UserState& aState, float aElapsedTime, engine::InputSyste
 			}
 		}
 
-		if (std::abs(dx) > 0.0f || std::abs(dy) > 0.0f)
+		// ==============================================================
+		// 相机输入判定与自动回正逻辑
+		// ==============================================================
+		bool hasCameraInput = (std::abs(dx) > 0.001f || std::abs(dy) > 0.001f);
+
+		if (hasCameraInput)
 		{
+			// 如果玩家正在转动视角，重置发呆计时器
+			aState.cameraIdleTimer = 0.0f;
+
 			aState.targetYaw -= dx;
 			aState.targetPitch += dy;
 
@@ -88,7 +96,49 @@ void update_user_state(UserState& aState, float aElapsedTime, engine::InputSyste
 			float const max_pitch = glm::radians(85.0f);
 			aState.targetPitch = glm::clamp(aState.targetPitch, -max_pitch, max_pitch);
 		}
+		else
+		{
+			// 如果玩家没碰鼠标
+			aState.cameraIdleTimer += aElapsedTime;
+		}
 
+		// 自动回正触发条件：发呆超过 2.0 秒，且车速大于 2.0
+		float autoAlignDelay = 0.5f;
+		float minAlignSpeed = 2.0f;
+
+		if (aState.cameraIdleTimer > autoAlignDelay && std::abs(aState.bikeSpeed) > minAlignSpeed) {
+
+			// ==============================================================
+			// 基于相机距离的衰减因子 (Distance Falloff)
+			// ==============================================================
+			float fullEffectDist = 2.0f;  // 小于 5 米时，100% 自动回正
+			float noEffectDist = 20.0f;   // 大于 20 米时，0% 自动回正（完全不受影响）
+
+			// 计算距离因子：距离越远，factor 越接近 0
+			float distanceFactor = 1.0f - glm::clamp((aState.Distance - fullEffectDist) / (noEffectDist - fullEffectDist), 0.0f, 1.0f);
+
+			// 只有当距离因子有意义时才执行回正（节省性能）
+			if (distanceFactor > 0.001f) {
+				// 计算当前相机目标偏航角与单车真实偏航角的差值
+				float diff = aState.bikeYaw - aState.targetYaw;
+
+				// 规范化到 [-PI, PI]
+				while (diff > glm::pi<float>())  diff -= 2.0f * glm::pi<float>();
+				while (diff < -glm::pi<float>()) diff += 2.0f * glm::pi<float>();
+
+				// 基础回正速度乘以距离因子，距离越远回正越慢，直到完全不动
+				float baseAlignSpeed = 3.0f;
+				float alignSpeed = baseAlignSpeed * distanceFactor;
+
+				// 渐渐将相机的目标 Yaw 修正到车头方向
+				aState.targetYaw += diff * alignSpeed * aElapsedTime;
+
+				// 将俯仰角(Pitch)也拉回到适合驾驶的高度（向下看 15 度左右）
+				float defaultPitch = glm::radians(15.0f);
+				aState.targetPitch += (defaultPitch - aState.targetPitch) * alignSpeed * aElapsedTime;
+			}
+		}
+		// ==============================================================
 		// 2. camera lerp
 		float smoothness = 6.0f; // 调节这个值：越小越滑(比如8.0f)，越大越跟手(比如20.0f)
 		aState.Yaw += (aState.targetYaw - aState.Yaw) * smoothness * aElapsedTime;

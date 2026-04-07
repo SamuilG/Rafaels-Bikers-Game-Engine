@@ -163,6 +163,9 @@ namespace engine
         // 
         m_state->bikeSpeed = speed;
         m_state->bikeSteerAngle = m_bicycle->steerAngle;
+
+        // 【新增】：把算出好的新偏航角(车头朝向)导给相机！
+        m_state->bikeYaw = newYaw;
     }
 
 } // namespace engine
