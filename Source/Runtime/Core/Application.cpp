@@ -59,8 +59,8 @@ namespace engine {
 		// load models using the API in RenderSystem
 		// TScene is completely static (ground + buildings)
 		// renderSystem->load_additional_model("Assets/Models/TScene.glb", true);
-		//renderSystem->load_additional_model("Assets/Models/TScene.glb", true, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
-		renderSystem->load_additional_model("Assets/Models/warehouseSceneWithShelf.glb", true, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(1.0f)));
+		renderSystem->load_additional_model("Assets/Models/TScene.glb", true, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
+		//renderSystem->load_additional_model("Assets/Models/warehouseSceneWithShelf.glb", true, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(1.0f)));
 
 
 

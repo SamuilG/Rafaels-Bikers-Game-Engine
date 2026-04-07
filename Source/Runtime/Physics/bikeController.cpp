@@ -75,30 +75,29 @@ namespace engine
             bi.SetLinearVelocity(id, vel);
         }
 
-        // 2. Target turning angle
-        const float baseMaxSteerAngle = glm::radians(25.0f);
-        const float steerSpeed = glm::radians(90.0f);
+		//2.calculate target steer angle and smoothly interpolate towards it
+        const float maxSteerAngle = glm::radians(25.0f); 
+        const float steerSpeed = glm::radians(90.0f);   
 
-        float speedFactor = glm::clamp(speed / 5.0f, 0.1f, 1.0f);
-        float currentMaxSteerAngle = baseMaxSteerAngle * speedFactor;
-
-        float targetSteer = inputSteer * currentMaxSteerAngle;
+        float targetSteer = inputSteer * maxSteerAngle;
         float steerDiff = targetSteer - m_bicycle->steerAngle;
         float maxDelta = steerSpeed * dt;
         m_bicycle->steerAngle += glm::clamp(steerDiff, -maxDelta, maxDelta);
-
-        // 3. Target tilt angle
+		//3. Calculate target lean angle based on steer input and speed, then smoothly interpolate towards it
         const float maxLeanAngle = glm::radians(30.0f);
         const float leanSpeed = glm::radians(90.0f);
         float maxLeanDelta = leanSpeed * dt;
 
+        float leanSpeedFactor = glm::clamp(speed / 10.0f, 0.0f, 1.0f);
+
         float targetLean = 0.0f;
-        if (speed > 1.0f) {
-            targetLean = -inputSteer * maxLeanAngle * speedFactor;
+        
+        if (speed > 0.5f) {
+            targetLean = -inputSteer * maxLeanAngle * leanSpeedFactor;
         }
+
         float leanDiff = targetLean - m_bicycle->leanAngle;
         m_bicycle->leanAngle += glm::clamp(leanDiff, -maxLeanDelta, maxLeanDelta);
-
         // 4. Calculate the vehicle's actual steering (Yaw) and attitude reconstruction
         const float wheelBase = 1.6f;
         float yawRate = 0.0f;
