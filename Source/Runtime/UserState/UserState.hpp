@@ -60,6 +60,13 @@ struct UserState
 
 	bool debugSelectionBounds = false;
 	bool debugCollisionShapes = true;
+	bool frustumCullingEnabled = false; //frustum culling
+
+	float frustumCullingOffFps = 0.0f; //off frustum culling fps
+	float frustumCullingOnFps = 0.0f; // On frustum culling fps
+	uint32_t frustumCullingTotalCandidates = 0; // new frustum culling
+	uint32_t frustumCullingVisibleCandidates = 0; // new frustum culling
+	float frustumCullingPadding = 0.5f; // new frustum culling
 
 	float bikeSpeed = 0.0f;
 	float bikeSteerAngle = 0.0f;

@@ -17,6 +17,7 @@
 #include "model_loader/engine_model.hpp"
 #include"../Renderer/RenderUtilities/light.hpp"
 #include "../UserState/UserState.hpp"
+#include "../Renderer/RenderUtilities/frustum.hpp"
 
 // Forward declare EngineModel to avoid including engine_model.hpp here
 
@@ -120,7 +121,11 @@ public:
 	const EngineModel& get_model() const { return mModel; }//expose the cpu model to other systems (like Vulkan) to upload data to gpu
 
     // Get render batches for the current frame
-    std::vector<RenderBatch> get_render_batches();
+    //frustum culling
+   // std::vector<RenderBatch> get_render_batches(const Frustum* frustum = nullptr); 
+    std::vector<RenderBatch> get_render_batches(const Frustum* frustum = nullptr, float frustumPadding = 0.0f); // new frustum culling
+    uint32_t get_last_frustum_culling_candidates() const { return mLastFrustumCullingCandidates; }
+    uint32_t get_last_frustum_culling_visible() const { return mLastFrustumCullingVisible; }
 
     // dynamic entity backed by a runtime mesh + optional physics body
     // meshIndex: index returned by RenderSystem::add_runtime_mesh()
@@ -179,6 +184,9 @@ private:
     flecs::world* m_world; 
     EngineModel mModel;//private member
     PhysicsSystem* m_physics_system; // Optional dependency
+    void cache_model_for_culling(const EngineModel& model, uint32_t baseMeshIdx, uint32_t baseMatIdx); //frustum culling
+    uint32_t mLastFrustumCullingCandidates = 0; //frustum culling
+    uint32_t mLastFrustumCullingVisible = 0; // frustum culling
 };
 
 } // namespace engine

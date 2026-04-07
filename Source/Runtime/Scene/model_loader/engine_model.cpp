@@ -258,6 +258,17 @@ static std::vector<EngineMesh> loadMeshes(
                 }
             }
 
+            //frustum culling: cache the mesh's local-space AABB once during import.
+            if (!mesh.positions.empty()) {
+                mesh.localAabbMin = mesh.positions[0];
+                mesh.localAabbMax = mesh.positions[0];
+
+                for (const glm::vec3& position : mesh.positions) {
+                    mesh.localAabbMin = glm::min(mesh.localAabbMin, position);
+                    mesh.localAabbMax = glm::max(mesh.localAabbMax, position);
+                }
+            }
+
 			// record the current EngineMesh index for this glTF mesh
 			// out.size() is the index of the EngineMesh we are about to add
             meshMap[i].push_back(static_cast<uint32_t>(out.size()));

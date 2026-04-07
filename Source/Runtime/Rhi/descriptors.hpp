@@ -10,7 +10,7 @@
 
 namespace labut2
 {
-	DescriptorPool create_descriptor_pool( VulkanContext const& aContext, std::uint32_t aMaxDescriptors = 2048, std::uint32_t aMaxSets = 1024 );
+	DescriptorPool create_descriptor_pool( VulkanContext const& aContext, std::uint32_t aMaxDescriptors = 16384, std::uint32_t aMaxSets = 4096 );
 
 	VkDescriptorSet alloc_desc_set( VulkanContext const& aContext, VkDescriptorPool aPool, VkDescriptorSetLayout aSetLayout );
 }

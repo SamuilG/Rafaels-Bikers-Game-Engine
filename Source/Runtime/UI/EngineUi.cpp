@@ -1302,7 +1302,19 @@ namespace engine {
 		ImGui::Checkbox("Collision Shapes", &state.debugCollisionShapes);
 		ImGui::Separator();
 		ImGui::TextWrapped("Selection Bounds draws the selected body's world-space AABB. Collision Shapes draws the selected body's physics shape wireframe.");
+		ImGui::Separator();
 
+		ImGui::TextUnformatted("Frustum Culling");
+		ImGui::Checkbox("Enable Frustum Culling", &state.frustumCullingEnabled);
+		ImGui::SliderFloat("Frustum Padding", &state.frustumCullingPadding, 0.0f, 10.0f, "%.2f"); // new frustum culling
+		ImGui::Text("Visible Batches: %u / %u", state.frustumCullingVisibleCandidates, state.frustumCullingTotalCandidates);
+		ImGui::Text("FPS (Culling Off): %.1f", state.frustumCullingOffFps); 
+		ImGui::Text("FPS (Culling On): %.1f", state.frustumCullingOnFps); 
+		if (state.frustumCullingOffFps > 0.0f && state.frustumCullingOnFps > 0.0f) { 
+			float fpsDelta = state.frustumCullingOnFps - state.frustumCullingOffFps;
+			float fpsDeltaPercent = state.frustumCullingOffFps > 0.0f ? (fpsDelta / state.frustumCullingOffFps) * 100.0f : 0.0f;
+			ImGui::Text("Delta: %+0.1f FPS (%+0.1f%%)", fpsDelta, fpsDeltaPercent);
+		}
 		ImGui::End();
 	}
 

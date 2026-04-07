@@ -49,6 +49,8 @@ struct EngineMesh {
     std::vector<glm::vec3>  normals;
     std::vector<glm::vec2>  texcoords;
     std::vector<uint32_t>   indices;
+    glm::vec3 localAabbMin = glm::vec3(0.0f); //frustum culling
+    glm::vec3 localAabbMax = glm::vec3(0.0f); //frustum culling
 	// lightmapUVs may be added in the future
 };
 

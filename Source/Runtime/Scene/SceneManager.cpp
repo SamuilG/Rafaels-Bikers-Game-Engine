@@ -57,10 +57,34 @@ void SceneManager::Shutdown() {
     }
 }
 
+void SceneManager::cache_model_for_culling(const EngineModel& model, uint32_t baseMeshIdx, uint32_t baseMatIdx) {
+    // fix frustum culling: keep SceneManager's CPU mesh cache aligned with renderer mesh indices.
+    if (mModel.materials.size() < baseMatIdx) {
+        mModel.materials.resize(baseMatIdx);
+    }
+    if (mModel.meshes.size() < baseMeshIdx) {
+        mModel.meshes.resize(baseMeshIdx);
+    }
+
+    for (const auto& material : model.materials) {
+        mModel.materials.push_back(material);
+    }
+
+    for (auto mesh : model.meshes) {
+        mesh.materialIndex += baseMatIdx;
+        mModel.meshes.push_back(std::move(mesh));
+    }
+
+    for (auto instance : model.scenes) {
+        instance.meshIndex += baseMeshIdx;
+        mModel.scenes.push_back(std::move(instance));
+    }
+}
 
 void SceneManager::load_static_model(const EngineModel& model, uint32_t baseMeshIdx, uint32_t baseMatIdx) {
     std::print("Loading static model with {} instances\n", model.scenes.size());
     std::print("[Debug] load_static_model called on SceneManager at: {}\n", (void*)this);
+    cache_model_for_culling(model, baseMeshIdx, baseMatIdx); // frustum culling caching
     int counter = 0;
     for (const auto& instance : model.scenes) {
         std::string name = instance.name.empty() ? "StaticObject" : instance.name;
@@ -88,6 +112,7 @@ void SceneManager::load_static_model(const EngineModel& model, uint32_t baseMesh
 void SceneManager::load_dynamic_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx) {
     std::print("Loading dynamic model with {} instances\n", model.scenes.size());
     std::print("[Debug] load_dynamic_model called on SceneManager at: {}\n", (void*)this);
+	cache_model_for_culling(model, baseMeshIdx, baseMatIdx);//frustum culling caching
     int counter = 0;
     for (const auto& instance : model.scenes) {
         std::string name = instance.name.empty() ? "DynamicObject" : instance.name;
@@ -114,7 +139,7 @@ void SceneManager::load_dynamic_model(const EngineModel& model, float mass, uint
 
 void SceneManager::load_compound_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx) {
     std::print("Loading compound model with {} instances\n", model.scenes.size());
-
+	cache_model_for_culling(model, baseMeshIdx, baseMatIdx);//  frustum culling caching
     // 1. Create compound body
     JPH::BodyID compoundBodyID;
     glm::mat4 bodyWorldTransform = model.scenes.empty() ? glm::mat4(1.0f) : model.scenes[0].transform;
@@ -157,7 +182,7 @@ void SceneManager::load_compound_model(const EngineModel& model, float mass, uin
 
 void SceneManager::load_C_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx) {
     std::print("Loading compound model with {} instances\n", model.scenes.size());
-
+	cache_model_for_culling(model, baseMeshIdx, baseMatIdx); // frustum culling caching
     // 1. Create compound body
 
     glm::mat4 bodyWorldTransform = glm::mat4(1.0f);
@@ -490,17 +515,37 @@ void SceneManager::get_light_data(std::vector<GpuLight>& outLights) {
         outLights.push_back(gpuLight);
             });
 }
-std::vector<RenderBatch> SceneManager::get_render_batches() {
+//std::vector<RenderBatch> SceneManager::get_render_batches(const Frustum* frustum) {
+std::vector<RenderBatch> SceneManager::get_render_batches(const Frustum * frustum, float frustumPadding) {
     std::vector<RenderBatch> batches;
+    mLastFrustumCullingCandidates = 0; // frustum culling
+    mLastFrustumCullingVisible = 0; // frustum culling
 
     // 【修改】：使用指针 (const OpacityComponent*) 使得该组件变为可选！
     m_world->query<const WorldTransform, const MeshComponent, const MaterialComponent, const EntityStatus, const OpacityComponent*>()
         .each([&](const WorldTransform& wt, const MeshComponent& mc, const MaterialComponent& matc, const EntityStatus& status, const OpacityComponent* op) {
-        if (status.should_render) {
+        if (!status.should_render) return;
+
+        ++mLastFrustumCullingCandidates; //frustum culling
+
+        if (frustum && mc.meshIndex < mModel.meshes.size()) {
+            const EngineMesh& mesh = mModel.meshes[mc.meshIndex];
+
+            glm::vec3 worldAabbMin(0.0f);
+            glm::vec3 worldAabbMax(0.0f);
+            TransformAabb(mesh.localAabbMin, mesh.localAabbMax, wt.matrix, worldAabbMin, worldAabbMax); // new frustum culling
+
+           // if (!IntersectsAabb(*frustum, worldAabbMin, worldAabbMax)) { // new frustum culling
+           if (!IntersectsAabb(*frustum, worldAabbMin, worldAabbMax, frustumPadding)) {
+                return;
+            }
+        }
+
+        ++mLastFrustumCullingVisible; // new frustum culling
             // 如果有 OpacityComponent，提取它的 alpha，否则默认为 1.0f (不透明)
             float alpha = op ? op->currentAlpha : 1.0f;
             batches.push_back({ mc.meshIndex, matc.materialIndex, wt.matrix, alpha });
-        }
+        
             });
     return batches;
 }
@@ -539,6 +584,8 @@ EngineMesh generate_uv_sphere(float radius, uint32_t rings, uint32_t sectors)
             mesh.indices.push_back(b);     mesh.indices.push_back(b + 1); mesh.indices.push_back(a + 1);
         }
     }
+    mesh.localAabbMin = glm::vec3(-radius); // frustum culling
+    mesh.localAabbMax = glm::vec3(radius); // frustum culling
 
     return mesh;
 }

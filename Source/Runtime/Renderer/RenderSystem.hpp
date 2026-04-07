@@ -78,6 +78,7 @@ namespace lut = labut2;
 #include "../Debug/DebugRenderer.hpp"
 #include "../Trigger/trigger.hpp"
 #include "../Debug/PhysicsDebugDraw.hpp"
+#include "RenderUtilities/frustum.hpp"
 namespace glsl {
     struct MosaicUniform {
         int   mosaicOn;
@@ -1377,6 +1378,21 @@ namespace engine {
                 (uint32_t)finalHeight,
                 *mState);
 
+            //frustum culling: keep separate smoothed FPS samples for culling ON vs OFF.
+            if (dt > 0.0001f) {
+                float currentFps = 1.0f / dt;
+                auto smoothFrustumFpsSample = [](float currentSample, float latestSample) {
+                    return currentSample <= 0.0f ? latestSample : currentSample + (latestSample - currentSample) * 0.1f;
+                    };
+
+                if (mState->frustumCullingEnabled) {
+                    mState->frustumCullingOnFps = smoothFrustumFpsSample(mState->frustumCullingOnFps, currentFps);
+                }
+                else {
+                    mState->frustumCullingOffFps = smoothFrustumFpsSample(mState->frustumCullingOffFps, currentFps);
+                }
+            }
+
             VkPipeline  currentOpaque = mPipe.handle;
             VkPipeline  currentAlpha = mAlphaPipe.handle;
             auto const* currentDescs = &mMaterialDescriptors;
@@ -1495,8 +1511,20 @@ namespace engine {
             //UI system 拖拽
             // =========================================================
             // 1. 获取正常场景里的所有实体渲染批次
-            std::vector<RenderBatch> finalBatches = mSceneManager ? mSceneManager->get_render_batches() : std::vector<RenderBatch>{};
+            //std::vector<RenderBatch> finalBatches = mSceneManager ? mSceneManager->get_render_batches() : std::vector<RenderBatch>{};
+            const Frustum* activeFrustum = nullptr; // new frustum culling
+            Frustum cameraFrustum{}; // new frustum culling
+            if (mSceneManager && mState->frustumCullingEnabled) {
+                cameraFrustum = BuildFrustum(sceneUniforms.projCam); // new frustum culling
+                activeFrustum = &cameraFrustum; // new frustum culling
+            }
 
+            //std::vector<RenderBatch> finalBatches = mSceneManager ? mSceneManager->get_render_batches(activeFrustum) : std::vector<RenderBatch>{};
+            std::vector<RenderBatch> finalBatches = mSceneManager ? mSceneManager->get_render_batches(activeFrustum, mState->frustumCullingPadding) : std::vector<RenderBatch>{};
+            if (mSceneManager) {
+                mState->frustumCullingTotalCandidates = mSceneManager->get_last_frustum_culling_candidates(); // new frustum culling
+                mState->frustumCullingVisibleCandidates = mSceneManager->get_last_frustum_culling_visible(); // new frustum culling
+            }
             // 2. 如果正在拖拽预览，把预览的 Batch 强行加进列表最后面！
             if (!m_previewModelPath.empty() && m_previewPrefabCache.count(m_previewModelPath)) {
                 for (const auto& originalBatch : m_previewPrefabCache[m_previewModelPath]) {
