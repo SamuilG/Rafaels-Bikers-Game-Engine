@@ -133,7 +133,7 @@ namespace engine {
 
 
         // ==========================================
-        // 【新增】：FOV 缩放按键映射
+        // FOV 
         MapKeyboardAction("ZoomIn", GLFW_KEY_9);  // 9键：放大 (FOV变小)
         MapKeyboardAction("ZoomOut", GLFW_KEY_0); // 0键：缩小 (FOV变大)
         // ==========================================

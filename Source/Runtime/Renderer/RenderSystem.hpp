@@ -1316,15 +1316,34 @@ namespace engine {
             //camera follow
             //find character pos
             if (mSceneManager && mState->thirdPersonMode) {
-                
-                //
+
                 auto target = mSceneManager->find_entity(player);
 
                 if (target.is_valid() && target.has<WorldTransform>()) {
-
                     const auto& wt = target.get<WorldTransform>();
-                    mState->followTargetPos = glm::vec3(wt.matrix[3]);
-					// printf("Follow Target Pos: (%.2f, %.2f, %.2f)\n", mState->followTargetPos.x, mState->followTargetPos.y, mState->followTargetPos.z);
+
+                    // 1. 获取角色脚底底座的原始世界坐标
+                    glm::vec3 basePos = glm::vec3(wt.matrix[3]);
+
+                    // =========================================================
+                    // 
+					// yaw for offset direction:
+                    //  (-sin(Yaw), 0, -cos(Yaw))
+                    // 水平向量: (cos(Yaw), 0, -sin(Yaw))
+                    // =========================================================
+                    glm::vec3 camRight = glm::vec3(std::cos(mState->Yaw), 0.0f, -std::sin(mState->Yaw));
+
+                    // 2. 设置越肩的偏移量 (后续你可以把它们写进 UserState，做成动态切换左右肩)
+                    float shoulderOffsetX = 1.0f; //left and right
+                    float shoulderOffsetY = -0.5f; // height
+                    float shoulderOffsetZ = 0.0f; // 调整注视点前后
+
+                    // 3. 计算出最终的越肩目标点
+                    mState->followTargetPos = basePos
+                        + (camRight * shoulderOffsetX)
+                        + glm::vec3(0.0f, shoulderOffsetY, 0.0f);
+
+                    // printf("Follow Target Pos: (%.2f, %.2f, %.2f)\n", mState->followTargetPos.x, mState->followTargetPos.y, mState->followTargetPos.z);
                 }
             }
 

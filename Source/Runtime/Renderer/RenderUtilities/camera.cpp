@@ -43,7 +43,7 @@ void update_user_state(UserState& aState, float aElapsedTime, engine::InputSyste
 	{
 		mouseDelta = inputSys->GetMouseDelta();
 	}
-	
+
 	glm::vec2 gamepadDelta = inputSys->GetGamepadRightStick();
 
 	auto const mouseSens = cfg::kCameraMouseSensitivity;
@@ -52,34 +52,67 @@ void update_user_state(UserState& aState, float aElapsedTime, engine::InputSyste
 	auto const dx = (mouseDelta.x * mouseSens) + (gamepadDelta.x * gamepadSens);
 	auto const dy = (mouseDelta.y * mouseSens) + (gamepadDelta.y * gamepadSens);
 
-
-
 	// ==============================================================
-	// FOV
+	// FOV 动态缩放逻辑 (第一/第三人称通用)
 	// ==============================================================
-	float fovZoomSpeed = 40.0f; // rad per second, adjust as needed for faster/slower zoom
+	float fovZoomSpeed = 40.0f; // rad per second
 	if (inputSys->IsActionHeld("ZoomIn")) {
 		aState.cameraFov -= fovZoomSpeed * aElapsedTime;
 	}
 	if (inputSys->IsActionHeld("ZoomOut")) {
 		aState.cameraFov += fovZoomSpeed * aElapsedTime;
 	}
-	//limimt FOV to reasonable range to prevent extreme distortion or inverted view
 	aState.cameraFov = std::clamp(aState.cameraFov, 10.0f, 120.0f);
+
 	// ==============================================================
-
-	if (std::abs(dx) > 0.0f || std::abs(dy) > 0.0f)
+	// 分支：第三人称视角 vs 第一人称漫游视角
+	// ==============================================================
+	if (aState.thirdPersonMode)
 	{
-		if (aState.thirdPersonMode)
-		{
-			aState.Yaw -= dx;
-			aState.Pitch += dy; 
-
-			//limitation for pitch to prevent flipping
-			float const max_pitch = glm::radians(85.0f);
-			aState.Pitch = glm::clamp(aState.Pitch, -max_pitch, max_pitch);
+		// 1. 获取输入，只更新 Target (目标值)
+		if (aState.isSceneViewportHovered || inputSys->IsMouseCaptured()) {
+			float scroll = inputSys->GetScrollY();
+			if (scroll != 0.0f) {
+				float zoomSpeed = 1.5f;
+				aState.targetDistance -= scroll * zoomSpeed;
+				aState.targetDistance = std::clamp(aState.targetDistance, 1.5f, 30.0f);
+			}
 		}
-		else
+
+		if (std::abs(dx) > 0.0f || std::abs(dy) > 0.0f)
+		{
+			aState.targetYaw -= dx;
+			aState.targetPitch += dy;
+
+			// 限制 Pitch 防止翻转
+			float const max_pitch = glm::radians(85.0f);
+			aState.targetPitch = glm::clamp(aState.targetPitch, -max_pitch, max_pitch);
+		}
+
+		// 2. camera lerp
+		float smoothness = 6.0f; // 调节这个值：越小越滑(比如8.0f)，越大越跟手(比如20.0f)
+		aState.Yaw += (aState.targetYaw - aState.Yaw) * smoothness * aElapsedTime;
+		aState.Pitch += (aState.targetPitch - aState.Pitch) * smoothness * aElapsedTime;
+		aState.Distance += (aState.targetDistance - aState.Distance) * smoothness * aElapsedTime;
+
+		// 3. 计算最终的相机矩阵
+		glm::vec3 char_pos = aState.followTargetPos;
+		glm::vec3 eye_offset(0.f, 1.6f, 0.f);
+		glm::vec3 target_pos = char_pos + eye_offset;
+
+		glm::vec3 offset;
+		offset.x = aState.Distance * std::cos(aState.Pitch) * std::sin(aState.Yaw);
+		offset.y = aState.Distance * std::sin(aState.Pitch);
+		offset.z = aState.Distance * std::cos(aState.Pitch) * std::cos(aState.Yaw);
+
+		glm::vec3 cam_pos = target_pos + offset;
+		glm::mat4 view_matrix = glm::lookAt(cam_pos, target_pos, glm::vec3(0.f, 1.f, 0.f));
+		cam = glm::inverse(view_matrix);
+	}
+	else
+	{
+		// 第一人称漫游模式：直接旋转，无需延迟
+		if (std::abs(dx) > 0.0f || std::abs(dy) > 0.0f)
 		{
 			auto const pos = cam[3];
 			cam[3] = glm::vec4(0.f, 0.f, 0.f, 1.f);
@@ -87,49 +120,8 @@ void update_user_state(UserState& aState, float aElapsedTime, engine::InputSyste
 			cam[3] = pos;
 			cam = glm::rotate(cam, -dy, glm::vec3(1.f, 0.f, 0.f));
 		}
-	}
 
-	// ==============================================================
-	// Capture scroll wheel input, update and limit camera distance
-	// If hovering the viewport OR controlling the camera (mouse captured), allow zoom
-	if (aState.isSceneViewportHovered || inputSys->IsMouseCaptured()) {
-		float scroll = inputSys->GetScrollY();
-		if (scroll != 0.0f) {
-			float zoomSpeed = 1.5f; // 缩放灵敏度，如果觉得太快或太慢可以改这里
-			aState.Distance -= scroll * zoomSpeed; // 减去 scroll，因为通常向上滚是放大(拉近)
-
-			// 限制相机的最小和最大距离：最近 1.5 米，最远 30 米
-			aState.Distance = std::clamp(aState.Distance, 1.5f, 30.0f);
-		}
-	}
-	// ==============================================================
-
-	if (aState.thirdPersonMode)
-	{
-		glm::vec3 char_pos = aState.followTargetPos;
-		glm::vec3 eye_offset(0.f, 1.6f, 0.f);
-		glm::vec3 target_pos = char_pos + eye_offset;
-
-		
-		// float const distance = 5.0f; 
-		if (aState.Distance < 1.0f) {
-			aState.Distance = 5.0f;
-		}
-
-		// Yaw and Pitch to Cartesian coordinates
-		glm::vec3 offset;
-		offset.x = aState.Distance * std::cos(aState.Pitch) * std::sin(aState.Yaw);
-		offset.y = aState.Distance * std::sin(aState.Pitch);
-		offset.z = aState.Distance * std::cos(aState.Pitch) * std::cos(aState.Yaw);
-
-		glm::vec3 cam_pos = target_pos + offset;
-
-		//World to View Matrix
-		glm::mat4 view_matrix = glm::lookAt(cam_pos, target_pos, glm::vec3(0.f, 1.f, 0.f));
-		cam = glm::inverse(view_matrix);
-	}
-	else
-	{
+		// 第一人称移动 (WASD)
 		auto const move = aElapsedTime * cfg::kCameraBaseSpeed *
 			(inputSys->IsActionHeld("Fast") ? cfg::kCameraFastMult : 1.f) *
 			(inputSys->IsActionHeld("Slow") ? cfg::kCameraSlowMult : 1.f);
@@ -138,19 +130,16 @@ void update_user_state(UserState& aState, float aElapsedTime, engine::InputSyste
 			cam = cam * glm::translate(glm::vec3(0.f, 0.f, -move));
 		if (inputSys->IsActionHeld("MoveBackward"))
 			cam = cam * glm::translate(glm::vec3(0.f, 0.f, +move));
-
 		if (inputSys->IsActionHeld("StrafeLeft"))
 			cam = cam * glm::translate(glm::vec3(-move, 0.f, 0.f));
 		if (inputSys->IsActionHeld("StrafeRight"))
 			cam = cam * glm::translate(glm::vec3(+move, 0.f, 0.f));
-
 		if (inputSys->IsActionHeld("Upward"))
 			cam = cam * glm::translate(glm::vec3(0.f, +move, 0.f));
 		if (inputSys->IsActionHeld("Downward"))
 			cam = cam * glm::translate(glm::vec3(0.f, -move, 0.f));
 	}
 }
-
 
 void update_scene_uniforms(glsl::SceneUniform& aSceneUniforms, std::uint32_t aFramebufferWidth, std::uint32_t aFramebufferHeight, UserState const& aState)
 {

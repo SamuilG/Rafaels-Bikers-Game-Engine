@@ -78,11 +78,17 @@ struct UserState
 	bool isSceneViewportHovered = false;
 	//================UI System================================
 
-	glm::vec3 followTargetPos = glm::vec3(10.f);
+	glm::vec3 followTargetPos = glm::vec3(2.f);
 	bool thirdPersonMode = true;
 
 	bool bloomEnabled = true;
 
 
 	float cameraFov = 85.0f;
+
+	// ==========================================
+	// lerp for camera free look
+	float targetYaw = 0.f;
+	float targetPitch = 0.f;
+	float targetDistance = 5.0f;
 };
