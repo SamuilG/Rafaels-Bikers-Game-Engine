@@ -16,6 +16,7 @@
 namespace engine
 {
 
+    float speed;
     BikeController::BikeController(JPH::PhysicsSystem* joltPhysics, InputSystem* input, UserState* state)
         : m_joltPhysics(joltPhysics), m_inputSystem(input), m_state(state)
     {
@@ -58,7 +59,7 @@ namespace engine
         float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
 
         JPH::Vec3 vel = bi.GetLinearVelocity(id);
-        float speed = std::sqrt(vel.GetX() * vel.GetX() + vel.GetZ() * vel.GetZ());
+         speed = std::sqrt(vel.GetX() * vel.GetX() + vel.GetZ() * vel.GetZ());
         float forwardX = -std::sin(currentYaw);
         float forwardZ = -std::cos(currentYaw);
         float signedSpeed = vel.GetX() * forwardX + vel.GetZ() * forwardZ;
@@ -86,7 +87,7 @@ namespace engine
         // the slower the speed, the higher the contribution of handlebar steering; conversely, the higher the speed, the higher the contribution of leaning.
         // 
         // ==============================================================
-        float leanBlend = glm::clamp((speed - 5.0f) / 35.0f, 0.0f, 1.0f);
+		float leanBlend = glm::clamp((speed - 5.0f) / 30.0f, 0.0f, 1.0f);// 0.0f at 5.0f speed, 1.0f at 35.0f speed
         float steerBlend = 1.0f - leanBlend;
 
         // ==============================================================
@@ -95,7 +96,7 @@ namespace engine
 		const float maxSteerAngle = glm::radians(45.0f); // big turning angle for handlebar
         const float steerSpeed = glm::radians(150.0f);
 
-		//faster you go, the less you can steer with the handlebar, but the more you can steer by leaning. At very high speeds, the handlebar is almost locked, and you have to rely on leaning to turn.
+		//faster you go, the less you can steer with the handlebar, but the more you can turn by leaning. At very high speeds, the handlebar is almost locked, and you have to rely on leaning to turn.
         float targetSteer = inputSteer * maxSteerAngle * steerBlend;
         float steerDiff = targetSteer - m_bicycle->steerAngle;
         float maxDelta = steerSpeed * dt;
@@ -145,7 +146,7 @@ namespace engine
         // ==========================================================
         // 5. Grip and drive power combined 
         // ==========================================================
-        const float maxSpeed = 120.0f;
+        const float maxSpeed = 60.0f;
         float slipAngle = m_bicycle->steerAngle * 0.5f;
         if (signedSpeed < 0.0f) slipAngle = -slipAngle;
         float moveYaw = newYaw + slipAngle;
@@ -174,12 +175,12 @@ namespace engine
             float speedRatio = glm::clamp(speed / maxSpeed, 0.0f, 1.0f);
 
 			// 2. 二次方衰减曲线：start with 1，smooth low in mid，drop to zero at max speed
-            float curveFactor = 1.0f - (speedRatio * speedRatio);
+            float curveFactor = 1.0f - 10 *(speedRatio * speedRatio);
 
             // 3. 动态计算当前的推力增加率 (AccelRate)
             // 起步时 (curveFactor=1)  6000.0f 
             // 极速时 (curveFactor=0) only 500.0f
-            float currentAccelRate = 500.0f + (5500.0f * curveFactor);
+            float currentAccelRate = 300.0f + (1000.0f * curveFactor);
 
             // 4. 应用动态增加率
             s_engineForce += currentAccelRate * dt;

@@ -19,12 +19,13 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include "light.hpp"
 #include <imgui.h>
-
+#include "../../Input/InputSystem.hpp"
 
 
 namespace lut = labut2;
 
-#include "../../Input/InputSystem.hpp"
+
+float extremeSpeedThreshold = 30.0f;
 
 // Removed callbacks, now fully handled by engine::InputSystem
 auto const mouseSens = cfg::kCameraMouseSensitivity;
@@ -76,35 +77,46 @@ void update_user_state(UserState& aState, float aElapsedTime, engine::InputSyste
 	if (aState.thirdPersonMode)
 	{
 		// ==============================================================
-		// 2. 滚轮控制：Distance 与 FOV 的完美数学映射 (Dolly Zoom)
+		// 2. 状态机：基于真实物理速度的极速视角接管 (Dolly Zoom)
 		// ==============================================================
-		if (aState.isSceneViewportHovered || inputSys->IsMouseCaptured()) {
-			float scroll = inputSys->GetScrollY();
-			if (scroll != 0.0f) {
-				// A. 滚轮只负责更新“目标距离 (targetDistance)”
-				float zoomSpeed = 9.0f;
-				aState.targetDistance -= scroll * zoomSpeed;
-				aState.targetDistance = std::clamp(aState.targetDistance, 0.5f, 70.0f);
 
-				// B.出当前距离在 [0.5, 70.0] 区间内的百分比 (0.0 到 1.0)
-				float distRatio = (aState.targetDistance - 0.5f) / (70.0f - 0.5f);
-
-				// C. 强制绑定 FOV：距离最近(Ratio=0)时 FOV 为 120，最远(Ratio=1)时 FOV 为 20
-				aState.targetFov = 120.0f - distRatio * (120.0f - 20.0f);
-			}
-		}
+		// 设定触发极速视角的真实物理车速门槛（可以略低于 maxSpeed，比如 100.0f）
+		
 	
-		// 确保 FOV 不会越界
-		aState.targetFov = std::clamp(aState.targetFov, 10.0f, 120.0f);
-		// 1. 获取输入，只更新 Target (目标值)
-		/*if (aState.isSceneViewportHovered || inputSys->IsMouseCaptured()) {
-			float scroll = inputSys->GetScrollY();
-			if (scroll != 0.0f) {
-				float zoomSpeed = 0.0f;
-				aState.targetDistance -= scroll * zoomSpeed;
-				aState.targetDistance = std::clamp(aState.targetDistance, 0.5f, 70.0f);
+		if (aState.isExtremeSpeed) {
+			// 【强制接管】：车速达标！剥夺滚轮控制权，强制将镜头推到极限贴背、超大广角状态
+			aState.targetDistance = 0.5f;
+			aState.targetFov = 120.0f;
+		}
+		else {
+			// 【正常状态】：车速没到极限，允许玩家自由使用滚轮调节
+
+			// 防抽搐处理：如果刚从极速状态退出来，慢慢把目标距离拉回正常下限 2.0f
+			if (aState.targetDistance < 2.0f) {
+				aState.targetDistance = 2.0f;
 			}
-		}*/
+
+			if (aState.isSceneViewportHovered || inputSys->IsMouseCaptured()) {
+				float scroll = inputSys->GetScrollY();
+				if (scroll != 0.0f) {
+					float zoomSpeed = 9.0f;
+					aState.targetDistance -= scroll * zoomSpeed;
+
+					// 正常状态下，距离死死卡在 [2.0, 70.0] 之间
+					aState.targetDistance = std::clamp(aState.targetDistance, 2.0f, 70.0f);
+				}
+			}
+
+			// 重新映射百分比。分母是 (70.0 - 2.0) = 68.0f
+			float distRatio = (aState.targetDistance - 2.0f) / (70.0f - 2.0f);
+
+			// 映射 FOV。距离 2.0(Ratio=0) 时 FOV=100，距离 70(Ratio=1) 时 FOV=20
+			aState.targetFov = 100.0f - distRatio * (100.0f - 20.0f);
+		}
+
+		// 确保目标 FOV 不会突破物理极值
+		aState.targetFov = std::clamp(aState.targetFov, 10.0f, 120.0f);
+
 
 		// ==============================================================
 		// 相机输入判定与自动回正逻辑
@@ -133,7 +145,7 @@ void update_user_state(UserState& aState, float aElapsedTime, engine::InputSyste
 		float autoAlignDelay = 0.5f;
 		float minAlignSpeed = 2.0f;
 
-		if (aState.targetFov >=115)
+		if (aState.bikeSpeed >= extremeSpeedThreshold)
 		{
 			aState.isExtremeSpeed = true;
 			
