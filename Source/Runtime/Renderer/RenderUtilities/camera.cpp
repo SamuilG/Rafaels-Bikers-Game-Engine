@@ -27,7 +27,7 @@ namespace lut = labut2;
 #include "../../Input/InputSystem.hpp"
 
 // Removed callbacks, now fully handled by engine::InputSystem
-
+auto const mouseSens = cfg::kCameraMouseSensitivity;
 void update_user_state(UserState& aState, float aElapsedTime, engine::InputSystem* inputSys)
 {
 	auto& cam = aState.camera2world;
@@ -45,8 +45,11 @@ void update_user_state(UserState& aState, float aElapsedTime, engine::InputSyste
 	}
 
 	glm::vec2 gamepadDelta = inputSys->GetGamepadRightStick();
+	// ==============================================================
 
-	auto const mouseSens = cfg::kCameraMouseSensitivity;
+	
+	//auto const mouseSens = cfg::kCameraMouseSensitivity;
+	
 	float const gamepadSens = 2.5f * aElapsedTime;
 
 	auto const dx = (mouseDelta.x * mouseSens) + (gamepadDelta.x * gamepadSens);
@@ -62,6 +65,9 @@ void update_user_state(UserState& aState, float aElapsedTime, engine::InputSyste
 	if (inputSys->IsActionHeld("ZoomOut")) {
 		aState.cameraFov += fovZoomSpeed * aElapsedTime;
 	}
+
+	
+	
 	aState.cameraFov = std::clamp(aState.cameraFov, 10.0f, 120.0f);
 
 	// ==============================================================
@@ -69,15 +75,36 @@ void update_user_state(UserState& aState, float aElapsedTime, engine::InputSyste
 	// ==============================================================
 	if (aState.thirdPersonMode)
 	{
-		// 1. 获取输入，只更新 Target (目标值)
+		// ==============================================================
+		// 2. 滚轮控制：Distance 与 FOV 的完美数学映射 (Dolly Zoom)
+		// ==============================================================
 		if (aState.isSceneViewportHovered || inputSys->IsMouseCaptured()) {
 			float scroll = inputSys->GetScrollY();
 			if (scroll != 0.0f) {
-				float zoomSpeed = 1.5f;
+				// A. 滚轮只负责更新“目标距离 (targetDistance)”
+				float zoomSpeed = 9.0f;
+				aState.targetDistance -= scroll * zoomSpeed;
+				aState.targetDistance = std::clamp(aState.targetDistance, 0.5f, 70.0f);
+
+				// B.出当前距离在 [0.5, 70.0] 区间内的百分比 (0.0 到 1.0)
+				float distRatio = (aState.targetDistance - 0.5f) / (70.0f - 0.5f);
+
+				// C. 强制绑定 FOV：距离最近(Ratio=0)时 FOV 为 120，最远(Ratio=1)时 FOV 为 20
+				aState.targetFov = 120.0f - distRatio * (120.0f - 20.0f);
+			}
+		}
+	
+		// 确保 FOV 不会越界
+		aState.targetFov = std::clamp(aState.targetFov, 10.0f, 120.0f);
+		// 1. 获取输入，只更新 Target (目标值)
+		/*if (aState.isSceneViewportHovered || inputSys->IsMouseCaptured()) {
+			float scroll = inputSys->GetScrollY();
+			if (scroll != 0.0f) {
+				float zoomSpeed = 0.0f;
 				aState.targetDistance -= scroll * zoomSpeed;
 				aState.targetDistance = std::clamp(aState.targetDistance, 0.5f, 70.0f);
 			}
-		}
+		}*/
 
 		// ==============================================================
 		// 相机输入判定与自动回正逻辑
@@ -106,12 +133,26 @@ void update_user_state(UserState& aState, float aElapsedTime, engine::InputSyste
 		float autoAlignDelay = 0.5f;
 		float minAlignSpeed = 2.0f;
 
-		if (aState.cameraIdleTimer > autoAlignDelay && std::abs(aState.bikeSpeed) > minAlignSpeed) {
+		if (aState.targetFov >=115)
+		{
+			aState.isExtremeSpeed = true;
+			
+		}
+		else 
+		{
+			aState.isExtremeSpeed = false; 
+		}
+
+		
+
+
+		// 【核心修改】：只要玩家发呆超时 OR 处于急速状态，就开始回正！
+		if ((aState.cameraIdleTimer > autoAlignDelay || aState.isExtremeSpeed) && std::abs(aState.bikeSpeed) > minAlignSpeed) {
 
 			// ==============================================================
 			// 基于相机距离的衰减因子 (Distance Falloff)
 			// ==============================================================
-			float fullEffectDist = 2.0f;  // 小于 5 米时，100% 自动回正
+			float fullEffectDist = 2.0f;  // 小于 2 米时，100% 自动回正
 			float noEffectDist = 20.0f;   // 大于 20 米时，0% 自动回正（完全不受影响）
 
 			// 计算距离因子：距离越远，factor 越接近 0
@@ -126,8 +167,14 @@ void update_user_state(UserState& aState, float aElapsedTime, engine::InputSyste
 				while (diff > glm::pi<float>())  diff -= 2.0f * glm::pi<float>();
 				while (diff < -glm::pi<float>()) diff += 2.0f * glm::pi<float>();
 
-				// 基础回正速度乘以距离因子，距离越远回正越慢，直到完全不动
+				// 基础回正速度
 				float baseAlignSpeed = 3.0f;
+
+				// 锁住车头，对抗玩家鼠标输入
+				if (aState.isExtremeSpeed) {
+					baseAlignSpeed = 8.0f;
+				}
+
 				float alignSpeed = baseAlignSpeed * distanceFactor;
 
 				// 渐渐将相机的目标 Yaw 修正到车头方向
@@ -139,8 +186,11 @@ void update_user_state(UserState& aState, float aElapsedTime, engine::InputSyste
 			}
 		}
 		// ==============================================================
+		// ==============================================================
 		// 2. camera lerp
 		float smoothness = 6.0f; // 调节这个值：越小越滑(比如8.0f)，越大越跟手(比如20.0f)
+
+		aState.cameraFov += (aState.targetFov - aState.cameraFov) * smoothness * aElapsedTime;
 		aState.Yaw += (aState.targetYaw - aState.Yaw) * smoothness * aElapsedTime;
 		aState.Pitch += (aState.targetPitch - aState.Pitch) * smoothness * aElapsedTime;
 		aState.Distance += (aState.targetDistance - aState.Distance) * smoothness * aElapsedTime;

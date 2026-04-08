@@ -70,6 +70,9 @@ struct UserState
 
 	float bikeSpeed = 0.0f;
 	float bikeSteerAngle = 0.0f;
+	//extreme speed state
+	bool isExtremeSpeed = false;
+
 	BikeTuning bikeTuning{};
 
 	// 记录当前选中的粒子索引 (-1 表示没选中任何粒子)
@@ -85,7 +88,7 @@ struct UserState
 
 
 	float cameraFov = 85.0f;
-
+	float targetFov = 85.0f; // 【新增】用于插值的 FOV 目标值
 	// ==========================================
 	// lerp for camera free look
 	float targetYaw = 0.f;

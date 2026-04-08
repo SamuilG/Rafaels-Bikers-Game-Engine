@@ -20,7 +20,7 @@ namespace cfg
 	constexpr float kCameraFar   = 500.f;
 	constexpr auto kCameraFov    = labut2::literals::operator""_degf(60.0);
 	
-	constexpr float kCameraBaseSpeed = 1.0f;
+	constexpr float kCameraBaseSpeed = 2.0f;
 	constexpr float kCameraFastMult = 5.f;
 	constexpr float kCameraSlowMult = 0.05f;
 	constexpr float kCameraMouseSensitivity = 0.005f;
