@@ -180,7 +180,13 @@ namespace engine
             // 3. 动态计算当前的推力增加率 (AccelRate)
             // 起步时 (curveFactor=1)  6000.0f 
             // 极速时 (curveFactor=0) only 500.0f
-            float currentAccelRate = 300.0f + (1000.0f * curveFactor);
+			float basicAccelRate = 800.0f;
+            if (m_inputSystem->IsActionHeld("Fast"))  basicAccelRate = 1600.0f;
+            else basicAccelRate = 800.0f;
+           
+            float currentAccelRate = basicAccelRate + (800.0f * curveFactor);
+            
+            
 
             // 4. 应用动态增加率
             s_engineForce += currentAccelRate * dt;

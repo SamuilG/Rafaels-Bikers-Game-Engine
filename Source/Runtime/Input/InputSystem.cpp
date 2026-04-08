@@ -78,6 +78,7 @@ namespace engine {
         MapKeyboardAction("MoveBackward", GLFW_KEY_S);
         MapKeyboardAction("MoveBackward", GLFW_KEY_DOWN);
         MapGamepadAxisAction("MoveBackward", GLFW_GAMEPAD_AXIS_LEFT_Y, 1.0f);
+      
 
         // Strafing (Left/Right)
         MapKeyboardAction("StrafeLeft", GLFW_KEY_A);
