@@ -24,13 +24,13 @@ void main()
     // 1. 镜头畸变 (Lens Distortion)
     // 注意这里改成了 push.speedFactor
     // ==========================================================
-    float distortionStrength = 0.2 * push.speedFactor; 
+    float distortionStrength = 0.4 * push.speedFactor; 
     vec2 distortedUV = center + dir * (1.0 - distortionStrength * dist * dist);
 
     // ==========================================================
     // 2. 色差 (Chromatic Aberration)
     // ==============================================================
-    float caStrength = 0.015 * push.speedFactor; 
+    float caStrength = 0.04 * push.speedFactor; 
     vec2 uvR = distortedUV + dir * caStrength;
     vec2 uvG = distortedUV; 
     vec2 uvB = distortedUV - dir * caStrength;
@@ -39,7 +39,7 @@ void main()
     // 3. 径向动态模糊 (Radial Motion Blur)
     // ==========================================================
     int samples = 12; 
-    float blurStrength = 0.08 * push.speedFactor; 
+    float blurStrength = 0.1 * push.speedFactor; 
     
     vec4 finalColor = vec4(0.0);
 

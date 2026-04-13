@@ -24,7 +24,7 @@
 
 namespace lut = labut2;
 
-float extremeSpeedThreshold = 30.0f;
+float extremeSpeedThreshold = 35.0f;
 
 // Removed callbacks, now fully handled by engine::InputSystem
 void update_user_state(UserState& aState, float aElapsedTime, engine::InputSystem* inputSys)
@@ -54,7 +54,7 @@ void update_user_state(UserState& aState, float aElapsedTime, engine::InputSyste
 	// ==============================================================
 	// FOV 手动微调
 	// ==============================================================
-	float fovZoomSpeed = 40.0f; // rad per second
+	float fovZoomSpeed = 70.0f; // rad per second
 	if (inputSys->IsActionHeld("ZoomIn")) {
 		aState.targetFov -= fovZoomSpeed * aElapsedTime;
 	}

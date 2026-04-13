@@ -171,20 +171,38 @@ namespace engine
             // ==============================================================
             //非线性扭矩曲线 Torque Curve
             // ==============================================================
-            // 1. 计算当前速度占极速的比例 (0.0 到 1.0)
+            // 1. 修复速度衰减曲线：去掉那个乘以 10！
+// 这样才能保证速度从 0 到 100% 时，curveFactor 平滑地从 1.0 降到 0.0
             float speedRatio = glm::clamp(speed / maxSpeed, 0.0f, 1.0f);
+            float curveFactor = 1.0f - 2 *(speedRatio * speedRatio);
 
-			// 2. 二次方衰减曲线：start with 1，smooth low in mid，drop to zero at max speed
-            float curveFactor = 1.0f - 10 *(speedRatio * speedRatio);
+            // 2. 核心魔法：引入“随着时间累加”的涡轮增压机制
+            // (注：为了方便演示，这里用了 static 变量。如果代码里有多辆单车，建议把 currentBoost 加进 BicycleState 结构体里)
+            static float currentBoost = 0.0f;
 
-            // 3. 动态计算当前的推力增加率 (AccelRate)
-            // 起步时 (curveFactor=1)  6000.0f 
-            // 极速时 (curveFactor=0) only 500.0f
-			float basicAccelRate = 800.0f;
-            if (m_inputSystem->IsActionHeld("Fast"))  basicAccelRate = 1600.0f;
-            else basicAccelRate = 800.0f;
-           
-            float currentAccelRate = basicAccelRate + (800.0f * curveFactor);
+            float boostRampUpSpeed = 2.0f;   // 踩满加速需要的时间系数（2.0代表0.5秒内推力拉满）
+            float boostRampDownSpeed = 3.0f; // 松开后推力衰减的速度
+
+            if (m_inputSystem->IsActionHeld("Fast")) {
+                // 按住加速键时，推力比例随着时间渐渐攀升，最高到 1.0
+                currentBoost += boostRampUpSpeed * dt;
+                if (currentBoost > 3.0f) currentBoost = 3.0f;
+            }
+            else {
+                // 松开时，推力渐渐衰减回 0.0
+                currentBoost -= boostRampDownSpeed * dt;
+                if (currentBoost < 0.0f) currentBoost = 0.0f;
+            }
+
+            // 3. 计算动态的基础推力
+            // 当不按加速时 (currentBoost = 0)，基础推力是 800
+            // 当按死加速时 (currentBoost = 1)，基础推力渐渐涨到 1400
+            float basicAccelRate = 50.0f + (650.0f * currentBoost);
+
+            // 4. 结合物理扭矩曲线，得出最终的引擎推力
+            float currentAccelRate = basicAccelRate + (500.0f * curveFactor);
+
+            // 接下来把 currentAccelRate 累加到你原本的 s_engineForce 逻辑中即可...
             
             
 
