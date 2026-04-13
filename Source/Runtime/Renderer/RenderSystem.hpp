@@ -1604,7 +1604,7 @@ namespace engine {
             // =========================================================
             // 计算极速特效的平滑系数 (Speed Factor)
             // =========================================================
-            float effectStartSpeed = 30.0f; // 开始出现特效的最低速度
+            float effectStartSpeed = 20.0f; // 开始出现特效的最低速度
             float effectMaxSpeed = 40.0f;  // 特效拉满的极限速度
             float currentSpeed = std::abs(mState->bikeSpeed);
 
