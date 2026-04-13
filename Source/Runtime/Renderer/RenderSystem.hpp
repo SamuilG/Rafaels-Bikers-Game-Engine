@@ -698,7 +698,21 @@ namespace engine {
 
             mCompositePipe = create_composite_pipeline(mWindow, mCompPipeLayout.handle);
             print_time("Composite Pipe");
+            mBlurPipe = create_blur_pipeline(mWindow, mBlurPipeLayout.handle);
+            mCompositePipe = create_composite_pipeline(mWindow, mCompPipeLayout.handle);
 
+            // =========================================================
+            // 【新增】：初始化极速特效管线和缓冲
+            // =========================================================
+            mCompositeOutputImage = create_offscreen_buffer(mWindow, mAllocator);
+            mSpeedPostPipeLayout = create_speed_post_pipeline_layout(mWindow, mBlurDescLayout.handle);
+            mSpeedPostPipe = create_speed_post_pipeline(mWindow, mSpeedPostPipeLayout.handle);
+
+            for (size_t i = 0; i < mCmdBuffers.size(); ++i) {
+                // 将合成完毕的中间图绑定给极速特效作为输入
+                mSpeedPostDescriptors.push_back(BuildSpeedDesc(mCompositeOutputImage.view));
+            }
+            // =========================================================
             //===========================UI System================================
             ImGuiRenderer::InitInfo uiInfo{};
             uiInfo.window = mWindow.window;
@@ -1185,6 +1199,9 @@ namespace engine {
                     mOffscreenImage = create_offscreen_buffer(mWindow, mAllocator);
                     mVisImage = create_vis_image(mWindow, mAllocator);
 
+                    // 重建极速特效中间图
+                    mCompositeOutputImage = create_offscreen_buffer(mWindow, mAllocator);
+                    UpdatePostDescImage(mSpeedPostDescriptors, mCompositeOutputImage.view);
                     // 1。创建严格 1 层 Mipmap 的图像，
                     VkImageCreateInfo imageInfo{};
                     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -1583,6 +1600,28 @@ namespace engine {
             mDebugRenderer.Upload(mAllocator);
 
             float currentBloomStrength = mState->bloomEnabled ? 0.0f : 1.2f;
+
+            // =========================================================
+            // 计算极速特效的平滑系数 (Speed Factor)
+            // =========================================================
+            float effectStartSpeed = 30.0f; // 开始出现特效的最低速度
+            float effectMaxSpeed = 40.0f;  // 特效拉满的极限速度
+            float currentSpeed = std::abs(mState->bikeSpeed);
+
+            float targetSpeedFactor = 0.0f;
+            if (currentSpeed > effectStartSpeed) {
+                targetSpeedFactor = (currentSpeed - effectStartSpeed) / (effectMaxSpeed - effectStartSpeed);
+                targetSpeedFactor = std::clamp(targetSpeedFactor, 0.0f, 1.0f);
+            }
+
+            // 使用 static 变量进行平滑插值，防止掉帧或特效闪烁
+            // 2. 特效弹簧阻尼 (防闪烁)
+            // 【修改这里的 5.0f】：
+            // 调大 (比如 10.0f)：特效响应极其灵敏，一踩油门特效瞬间拉满。
+            // 调小 (比如 2.0f) ：特效会非常缓慢地浮现，有种“逐渐进入超空间”的深邃感
+            static float smoothedSpeedFactor = 0.0f;
+            smoothedSpeedFactor += (targetSpeedFactor - smoothedSpeedFactor) * 5.0f * dt;
+            // =========================================================
             // Record and submit commands for this frame
             // 在 Update 函数末尾找到 record_commands 调用，修改如下：
             record_commands(
@@ -1617,9 +1656,19 @@ namespace engine {
                 ImageAndView{ mBrightImage.image, mBrightImage.view },
                 ImageAndView{ mBlurTempImage.image, mBlurTempImage.view },
                 ImageAndView{ mFinalBloomImage.image, mFinalBloomImage.view },
-                finalSceneTarget,
+                // 【注意这里的变化】：
+                // 原本这里传的是 finalSceneTarget，现在 Composite 必须输出到 mCompositeOutputImage
+                ImageAndView{ mCompositeOutputImage.image, mCompositeOutputImage.view },
+                //finalSceneTarget,
                 clearColor,                    // VkClearColorValue aClearColor
                 currentBloomStrength,
+
+                // 【新增】：将极速管线和目标传给 rendering.cpp
+                mSpeedPostPipe.handle,
+                mSpeedPostPipeLayout.handle,
+                mSpeedPostDescriptors[mFrameIndex],
+                smoothedSpeedFactor, // 传递我们刚算好的平滑因子
+                finalSceneTarget,    // 极速特效输出到最终
                 // --- 剩下的原有参数 ---
                 mPostProcPipe.handle,          // 这里的顺序要核对你的 rendering.cpp
                 mPostDescriptors[mFrameIndex],
@@ -2164,6 +2213,13 @@ namespace engine {
         std::vector<VkDescriptorSet> mBlurHorizDescriptors;
         std::vector<VkDescriptorSet> mBlurVertDescriptors;
         std::vector<VkDescriptorSet> mCompositeDescriptors;
+        // =========================================================
+        // (Speed Post-Process) 的句柄和资源
+        // =========================================================
+        lut::ImageWithView mCompositeOutputImage; // 存放 Composite 合成结果的中间缓冲
+        lut::Pipeline mSpeedPostPipe;
+        lut::PipelineLayout mSpeedPostPipeLayout;
+        std::vector<VkDescriptorSet> mSpeedPostDescriptors;
         private:
             // 存储每个模型专属的照片
             std::unordered_map<std::string, ThumbnailAsset> mThumbnailAssets;
@@ -2184,6 +2240,27 @@ namespace engine {
             void GenerateModelThumbnail(const std::string& modelPath);
             void PreloadModelForPreview(const std::string& path);
 
+            // 【新增】：为极速特效构建 Descriptor Set
+            VkDescriptorSet BuildSpeedDesc(VkImageView inputView) {
+                // 复用 mBlurDescLayout，因为它也是一个 Binding 0 的 Sampler
+                VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, mBlurDescLayout.handle);
+
+                VkDescriptorImageInfo ii{};
+                ii.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                ii.imageView = inputView;
+                ii.sampler = mPostSampler.handle;
+
+                VkWriteDescriptorSet w{};
+                w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                w.dstSet = ds;
+                w.dstBinding = 0;
+                w.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                w.descriptorCount = 1;
+                w.pImageInfo = &ii;
+
+                vkUpdateDescriptorSets(mWindow.device, 1, &w, 0, nullptr);
+                return ds;
+            }
 
     public:
 

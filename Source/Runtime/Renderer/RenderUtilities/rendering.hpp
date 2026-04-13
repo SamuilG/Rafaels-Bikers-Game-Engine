@@ -50,9 +50,20 @@ void record_commands(
 	ImageAndView const& aBrightColor,
 	ImageAndView const& aBlurTemp,
 	ImageAndView const& aFinalBloom,
-	ImageAndView const& aFinalSceneColor,//secen view port
+	ImageAndView const& aCompositeOutput, // 【修改】：原来是 aFinalSceneColor，现在变成中转输出图
 	VkClearColorValue aClearColor,
 	float aBloomStrength,
+
+	// ==============================================================
+	// 极速后期特效参数
+	// ==============================================================
+	VkPipeline aSpeedPipe,
+	VkPipelineLayout aSpeedLayout,
+	VkDescriptorSet aSpeedDesc,
+	float aSpeedFactor,
+	ImageAndView const& aFinalSceneColor, //这才是真正的最终画面（交给 ImGui）
+	// ==============================================================
+
 	// --- 原有后处理与阴影/粒子参数保留 ---
 	VkPipeline aPostProcPipe,
 	VkDescriptorSet aPostProcDescriptors,
@@ -63,10 +74,9 @@ void record_commands(
 	bool particlesEnabled,
 	VkPipeline particlePipe,
 	const std::vector<std::unique_ptr<ParticleSystem>>& allParticles,
-	VkPipeline aDebugLinePipe,              // Debug line rendering pipeline
+	VkPipeline aDebugLinePipe,
 	engine::DebugRenderer& aDebugRenderer
 );
-
 
 void submit_commands( 
 	lut::VulkanContext const& aContext, 

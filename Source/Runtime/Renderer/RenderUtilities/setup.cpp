@@ -2605,5 +2605,161 @@ lut::Pipeline create_alpha_pipeline_1_attachment( lut::VulkanWindow const& aWind
 	}
 
 	return lut::Pipeline( aWindow.device, pipe );
+
+}
+// ==============================================================================
+// 极速特效 (Speed Post-Process) 的管线布局
+// ==============================================================================
+lut::PipelineLayout create_speed_post_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aDescriptorLayout)
+{
+	// 定义 Push Constant 范围，传递一个 4 字节的 float (speedFactor)
+	VkPushConstantRange pushConstant{};
+	pushConstant.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	pushConstant.offset = 0;
+	pushConstant.size = sizeof(float);
+
+	VkDescriptorSetLayout layouts[] = {
+		aDescriptorLayout // set 0: 包含输入渲染好的场景纹理
+	};
+
+	VkPipelineLayoutCreateInfo layoutInfo{};
+	layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	layoutInfo.setLayoutCount = 1;
+	layoutInfo.pSetLayouts = layouts;
+	layoutInfo.pushConstantRangeCount = 1;
+	layoutInfo.pPushConstantRanges = &pushConstant;
+
+	VkPipelineLayout layout = VK_NULL_HANDLE;
+	if (auto const res = vkCreatePipelineLayout(aContext.device, &layoutInfo, nullptr, &layout); VK_SUCCESS != res)
+	{
+		throw lut::Error("Unable to create speed post proc pipeline layout\n"
+			"vkCreatePipelineLayout() returned {}", lut::to_string(res)
+		);
+	}
+
+	return lut::PipelineLayout(aContext.device, layout);
+}
+
+// ==============================================================================
+// 极速特效 (Speed Post-Process) 的管线
+// ==============================================================================
+lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout)
+{
+	// 复用全屏顶点着色器，加载新的极速片段着色器
+	auto const vertSpirV = lut::load_file_u32(cfg::kFullscreenVertShaderPath);
+	auto const fragSpirV = lut::load_file_u32(cfg::kSpeedPostFragShaderPath); // 注意：需要在 cfg 中定义这个路径！
+
+	VkShaderModuleCreateInfo code[2]{};
+	code[0].sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	code[0].codeSize = vertSpirV.size() * sizeof(std::uint32_t);
+	code[0].pCode = vertSpirV.data();
+
+	code[1].sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	code[1].codeSize = fragSpirV.size() * sizeof(std::uint32_t);
+	code[1].pCode = fragSpirV.data();
+
+	VkPipelineShaderStageCreateInfo stages[2]{};
+	stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+	stages[0].pName = "main";
+	stages[0].pNext = &code[0];
+
+	stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	stages[1].pName = "main";
+	stages[1].pNext = &code[1];
+
+	// 没有顶点输入，因为在顶点着色器中通过 gl_VertexIndex 硬编码生成全屏三角形
+	VkPipelineVertexInputStateCreateInfo inputInfo{};
+	inputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+	VkPipelineInputAssemblyStateCreateInfo assemblyInfo{};
+	assemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	assemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	assemblyInfo.primitiveRestartEnable = VK_FALSE;
+
+	VkViewport viewport{};
+	VkRect2D scissor{};
+
+	VkPipelineViewportStateCreateInfo viewportInfo{};
+	viewportInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportInfo.viewportCount = 1;
+	viewportInfo.pViewports = &viewport;
+	viewportInfo.scissorCount = 1;
+	viewportInfo.pScissors = &scissor;
+
+	VkPipelineRasterizationStateCreateInfo rasterInfo{};
+	rasterInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterInfo.depthClampEnable = VK_FALSE;
+	rasterInfo.rasterizerDiscardEnable = VK_FALSE;
+	rasterInfo.polygonMode = VK_POLYGON_MODE_FILL;
+	rasterInfo.cullMode = VK_CULL_MODE_NONE; // 全屏矩形不需要背面剔除
+	rasterInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	rasterInfo.depthBiasEnable = VK_FALSE;
+	rasterInfo.lineWidth = 1.f;
+
+	VkPipelineMultisampleStateCreateInfo samplingInfo{};
+	samplingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	samplingInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+	VkPipelineColorBlendAttachmentState blendStates[1]{};
+	blendStates[0].blendEnable = VK_FALSE; // 直接覆盖，不需要混合
+	blendStates[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
+	VkPipelineColorBlendStateCreateInfo blendInfo{};
+	blendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	blendInfo.logicOpEnable = VK_FALSE;
+	blendInfo.attachmentCount = 1;
+	blendInfo.pAttachments = blendStates;
+
+	// 后期处理不需要深度测试
+	VkPipelineDepthStencilStateCreateInfo depthInfo{};
+	depthInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthInfo.depthTestEnable = VK_FALSE;
+	depthInfo.depthWriteEnable = VK_FALSE;
+	depthInfo.depthCompareOp = VK_COMPARE_OP_ALWAYS;
+	depthInfo.minDepthBounds = 0.f;
+	depthInfo.maxDepthBounds = 1.f;
+
+	VkDynamicState dynamicStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+
+	VkPipelineDynamicStateCreateInfo dynamicInfo{};
+	dynamicInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dynamicInfo.dynamicStateCount = 2;
+	dynamicInfo.pDynamicStates = dynamicStates;
+
+	// 渲染目标：通常后期处理直接输出到 Swapchain
+	VkPipelineRenderingCreateInfo renderingInfo{};
+	renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+	renderingInfo.colorAttachmentCount = 1;
+	renderingInfo.pColorAttachmentFormats = &aWindow.swapchainFormat;
+
+	VkGraphicsPipelineCreateInfo pipeInfo{};
+	pipeInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipeInfo.pNext = &renderingInfo;
+	pipeInfo.stageCount = 2;
+	pipeInfo.pStages = stages;
+	pipeInfo.pVertexInputState = &inputInfo;
+	pipeInfo.pInputAssemblyState = &assemblyInfo;
+	pipeInfo.pTessellationState = nullptr;
+	pipeInfo.pViewportState = &viewportInfo;
+	pipeInfo.pRasterizationState = &rasterInfo;
+	pipeInfo.pMultisampleState = &samplingInfo;
+	pipeInfo.pDepthStencilState = &depthInfo;
+	pipeInfo.pColorBlendState = &blendInfo;
+	pipeInfo.pDynamicState = &dynamicInfo;
+	pipeInfo.layout = aPipelineLayout;
+	pipeInfo.renderPass = VK_NULL_HANDLE;
+	pipeInfo.subpass = 0;
+
+	VkPipeline pipe = VK_NULL_HANDLE;
+	if (auto const res = vkCreateGraphicsPipelines(aWindow.device, VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &pipe); VK_SUCCESS != res)
+	{
+		throw lut::Error("Unable to create speed post proc pipeline\n"
+			"vkCreateGraphicsPipelines() returned {}", lut::to_string(res)
+		);
+	}
+
+	return lut::Pipeline(aWindow.device, pipe);
 }
 

@@ -56,9 +56,20 @@ void record_commands(
 	ImageAndView const& aBrightColor,
 	ImageAndView const& aBlurTemp,
 	ImageAndView const& aFinalBloom,
-	ImageAndView const& aFinalSceneColor,//secen view port
+	ImageAndView const& aCompositeOutput, // 【新增：原 aFinalSceneColor 替换为中转图】
 	VkClearColorValue aClearColor,
 	float aBloomStrength,
+
+	// ==============================================================
+	// 【新增】：极速后期特效参数
+	// ==============================================================
+	VkPipeline aSpeedPipe,
+	VkPipelineLayout aSpeedLayout,
+	VkDescriptorSet aSpeedDesc,
+	float aSpeedFactor,
+	ImageAndView const& aFinalSceneColor, // 【新增：这才是交差给 UI 的最终图】
+	// ==============================================================
+
 	// --- 原有后处理与阴影/粒子参数保留 ---
 	VkPipeline aPostProcPipe,
 	VkDescriptorSet aPostProcDescriptors,
@@ -486,11 +497,13 @@ void record_commands(
 		VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1 }
 	);
 
+	// ==========================================================
+	// 1. Composite Pass (合成阶段: 场景 + Bloom)
+	// ==========================================================
 	VkRenderingAttachmentInfo compAtt{};
 	compAtt.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-	//compAtt.imageView = aSwapchainAttach.view;
-	//compAtt.imageView = aOffscreenColor.view;
-	compAtt.imageView = aFinalSceneColor.view;
+	// 【关键修改 1】：原本这里是 aFinalSceneColor.view，现在改成 aCompositeOutput.view 中转缓冲
+	compAtt.imageView = aCompositeOutput.view;
 	compAtt.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	compAtt.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	compAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -505,40 +518,68 @@ void record_commands(
 
 	vkCmdBeginRendering(aCmdBuff, &compInfo);
 	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aCompositePipe);
-	// 【关键修复】：将 aBlurLayout 替换为 aCompositeLayout
 	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aCompositeLayout, 0, 1, &aCompositeDS, 0, nullptr);
-	// bloom 参数 (示例)
-	// 【修改】：使用传进来的 aBloomStrength
+
+	// Bloom 参数
 	struct BloomPC { float exposure; float strength; float _pad[2]; } bloomPC{ 1.0f, aBloomStrength, {0.0f,0.0f} };
 	vkCmdPushConstants(aCmdBuff, aCompositeLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(BloomPC), &bloomPC);
-
 
 	vkCmdSetViewport(aCmdBuff, 0, 1, &vp);
 	vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
 	vkCmdDraw(aCmdBuff, 3, 1, 0, 0);
 	vkCmdEndRendering(aCmdBuff);
 
-	//// Transition swapchain for present
-	//lut::image_barrier(aCmdBuff, aSwapchainAttach.image,
-	//	VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-	//	VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-	//	VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-	//	VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
-	//	VK_ACCESS_2_NONE,
-	//	VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-	//	VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1 }
-	//);
 	// ==========================================================
-	// UI Render Pass: Render everything onto the actual Swapchain
+	// 【新增】：将 aCompositeOutput 转换为 Shader 可读状态，供下一道工序使用
 	// ==========================================================
 	VkImageSubresourceRange range{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+	lut::image_barrier(aCmdBuff, aCompositeOutput.image,
+		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
 
-	// 1.转换 aFinalSceneColor 的状态，因为它现在是 3D 场景的载体
+
+	// ==========================================================
+	// 2. 【新增】：Speed Post-Process Pass (极速特效阶段: 畸变 + 色散 + 速度模糊)
+	// ==========================================================
+	VkRenderingAttachmentInfo speedAtt{};
+	speedAtt.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	// 【关键修改 2】：极速特效画到最终相纸 aFinalSceneColor 上，交给 UI
+	speedAtt.imageView = aFinalSceneColor.view;
+	speedAtt.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	speedAtt.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	speedAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+	VkRenderingInfo speedInfo{};
+	speedInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+	speedInfo.renderArea.offset = { 0,0 };
+	speedInfo.renderArea.extent = aImageExtent;
+	speedInfo.layerCount = 1;
+	speedInfo.colorAttachmentCount = 1;
+	speedInfo.pColorAttachments = &speedAtt;
+
+	vkCmdBeginRendering(aCmdBuff, &speedInfo);
+	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSpeedPipe);
+	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSpeedLayout, 0, 1, &aSpeedDesc, 0, nullptr);
+
+	// 推送计算好的速度比例 (0.0 到 1.0) 给 Shader
+	vkCmdPushConstants(aCmdBuff, aSpeedLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float), &aSpeedFactor);
+
+	vkCmdSetViewport(aCmdBuff, 0, 1, &vp);
+	vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
+	vkCmdDraw(aCmdBuff, 3, 1, 0, 0);
+	vkCmdEndRendering(aCmdBuff);
+
+
+	// ==========================================================
+	// 3. UI Render Pass: Render everything onto the actual Swapchain
+	// ==========================================================
+
+	// 转换 aFinalSceneColor 的状态，因为它现在是 3D 场景的载体，ImGui 需要把它当贴图读
 	lut::image_barrier(aCmdBuff, aFinalSceneColor.image,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
 
-	// 2. 准备物理屏幕 (Swapchain) 接收 UI 渲染
+	// 准备物理屏幕 (Swapchain) 接收 UI 渲染
 	lut::image_barrier(aCmdBuff, aSwapchainAttach.image,
 		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
@@ -559,7 +600,7 @@ void record_commands(
 
 	vkCmdBeginRendering(aCmdBuff, &uiRenderInfo);
 
-	// 3. 真正触发 ImGui 的渲染！(解决断言失败的核心)
+	// 真正触发 ImGui 的渲染！
 	extern ImGuiRenderer imguiRenderer;
 	imguiRenderer.Render(aCmdBuff);
 
@@ -567,14 +608,8 @@ void record_commands(
 
 	// Transition swapchain for present
 	lut::image_barrier(aCmdBuff, aSwapchainAttach.image,
-		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-		VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
-		VK_ACCESS_2_NONE,
-		VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-		VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1 }
-	);
+		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, range);
 
 	if (auto const res = vkEndCommandBuffer(aCmdBuff); VK_SUCCESS != res)
 	{
@@ -583,6 +618,7 @@ void record_commands(
 		);
 	}
 }
+
 void submit_commands(lut::VulkanContext const& aContext, VkCommandBuffer aCmdBuff, VkFence aFence, VkSemaphore aWaitSemaphore, VkSemaphore aSignalSemaphore)
 {
 	VkSemaphoreSubmitInfo wait[1]{};

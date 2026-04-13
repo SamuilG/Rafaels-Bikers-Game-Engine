@@ -86,6 +86,12 @@ namespace cfg
 	constexpr char const* kDebugLineVertShaderPath = SHADERDIR_"debug_line.vert.spv";
 	constexpr char const* kDebugLineFragShaderPath = SHADERDIR_"debug_line.frag.spv";
 
+
+	constexpr char const* kSpeedPostFragShaderPath = SHADERDIR_"speed_postprocess.frag.spv";
+	
+
+
+
 #	undef SHADERDIR_
 
 	//particle textures
@@ -136,7 +142,8 @@ lut::Pipeline create_composite_pipeline(lut::VulkanWindow const& aWindow, VkPipe
 lut::Pipeline create_overdraw_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_R8G8B8A8_UNORM );
 lut::Pipeline create_overshading_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_R8G8B8A8_UNORM );
 lut::Pipeline create_vis_resolve_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkDescriptorSetLayout );
-
+lut::PipelineLayout create_speed_post_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aDescriptorLayout);
+lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout);
 // p2_1.5 shadow mapping
 lut::Pipeline create_shadow_pipeline( lut::VulkanWindow const&, VkPipelineLayout );
 
