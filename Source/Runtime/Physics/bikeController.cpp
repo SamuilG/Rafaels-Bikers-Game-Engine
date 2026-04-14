@@ -146,7 +146,7 @@ namespace engine
         // ==========================================================
         // 5. Grip and drive power combined 
         // ==========================================================
-        const float maxSpeed = 60.0f;
+        const float maxSpeed = 40.0f;
         float slipAngle = m_bicycle->steerAngle * 0.5f;
         if (signedSpeed < 0.0f) slipAngle = -slipAngle;
         float moveYaw = newYaw + slipAngle;
@@ -169,39 +169,44 @@ namespace engine
 
         if (inputThrottle > 0.1f) {
             // ==============================================================
-            //非线性扭矩曲线 Torque Curve
-            // ==============================================================
-            // 1. 修复速度衰减曲线：去掉那个乘以 10！
-// 这样才能保证速度从 0 到 100% 时，curveFactor 平滑地从 1.0 降到 0.0
+             // 非线性扭矩曲线 Torque Curve (优化版：起步极快，后段漫长)
+             // ==============================================================
+
             float speedRatio = glm::clamp(speed / maxSpeed, 0.0f, 1.0f);
-            float curveFactor = 1.0f - 2 *(speedRatio * speedRatio);
 
-            // 2. 核心魔法：引入“随着时间累加”的涡轮增压机制
-            // (注：为了方便演示，这里用了 static 变量。如果代码里有多辆单车，建议把 currentBoost 加进 BicycleState 结构体里)
+            // 1. 【核心魔法 1：三次幂凹曲线】
+            // 原本是 1.0 - x^2。现在改成 (1.0 - x)^3。
+            // 效果：起步(0.0)时依然是 1.0；但速度到一半(0.5)时，推力瞬间暴跌到 0.125 (12.5%)！
+            float inverseSpeed = 1.0f - speedRatio;
+            float curveFactor = inverseSpeed * inverseSpeed * inverseSpeed * inverseSpeed * inverseSpeed;
+
+            // 2. 涡轮增压机制 (保持你的设定)
             static float currentBoost = 0.0f;
-
-            float boostRampUpSpeed = 2.0f;   // 踩满加速需要的时间系数（2.0代表0.5秒内推力拉满）
-            float boostRampDownSpeed = 3.0f; // 松开后推力衰减的速度
+            float boostRampUpSpeed = 2.0f;
+            float boostRampDownSpeed = 3.0f;
 
             if (m_inputSystem->IsActionHeld("Fast")) {
-                // 按住加速键时，推力比例随着时间渐渐攀升，最高到 1.0
                 currentBoost += boostRampUpSpeed * dt;
                 if (currentBoost > 3.0f) currentBoost = 3.0f;
             }
             else {
-                // 松开时，推力渐渐衰减回 0.0
                 currentBoost -= boostRampDownSpeed * dt;
                 if (currentBoost < 0.0f) currentBoost = 0.0f;
             }
 
-            // 3. 计算动态的基础推力
-            // 当不按加速时 (currentBoost = 0)，基础推力是 800
-            // 当按死加速时 (currentBoost = 1)，基础推力渐渐涨到 1400
-            float basicAccelRate = 50.0f + (650.0f * currentBoost);
+            // 3. 【核心魔法 2：重新分配推力比重】
+            // 想要后段漫长，必须把“无视速度的死力(Basic)”调小，把“受曲线限制的爆发力(Burst)”调大。
 
-            // 4. 结合物理扭矩曲线，得出最终的引擎推力
-            float currentAccelRate = basicAccelRate + (500.0f * curveFactor);
+            // 基础维持力：只要踩踏板就有的底线推力（负责对抗滚阻，维持极速。不能太大）
+            // currentBoost 最大是 3.0，所以这里最大维持力是 100 + 150*3 = 550
+            float basicAccelRate = 50.0f + (150.0f * currentBoost);
 
+            // 起步爆发力：起步时赋予极大的推力 (4000)，但由于 curveFactor，速度一上来它就迅速消失
+            // 加速键按满时，额外再给 1500 的爆发力
+            float burstAccelRate = (4000.0f + 1500.0f * currentBoost) * curveFactor;
+
+            // 4. 得出最终的引擎推力
+            float currentAccelRate = basicAccelRate + burstAccelRate;
             // 接下来把 currentAccelRate 累加到你原本的 s_engineForce 逻辑中即可...
             
             

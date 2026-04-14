@@ -1619,7 +1619,7 @@ namespace engine {
             // 【修改这里的 5.0f】：
             // 调大 (比如 10.0f)：特效响应极其灵敏，一踩油门特效瞬间拉满。
             // 调小 (比如 2.0f) ：特效会非常缓慢地浮现，有种“逐渐进入超空间”的深邃感
-            static float smoothedSpeedFactor = 0.0f;
+            static float smoothedSpeedFactor = 1.0f;
             smoothedSpeedFactor += (targetSpeedFactor - smoothedSpeedFactor) * 5.0f * dt;
             // =========================================================
             // Record and submit commands for this frame
