@@ -5,6 +5,7 @@
 #include "../Physics/bikeController.hpp"
 #include "../Input/InputSystem.hpp"
 #include "../Event/EventSystem.hpp"
+#include "../Animation/AnimationSystem.hpp"
 #include <flecs.h>
 // ================= debug =================
 #include "../Debug/DebugRenderer.hpp"
@@ -36,7 +37,11 @@ namespace engine {
 
 		// 【新增】：把 mState 也传给 SceneManager！
 		sceneManager->SetUserState(&mState);
-		//final render 
+
+		// Animation system (must be added before RenderSystem so Update order is correct)
+		animationSystem = AddSystem<AnimationSystem>();
+
+		//final render
 
 		//AddSystem<CameraSystem>();
 		//AddSystem<UISystem>();
@@ -51,8 +56,11 @@ namespace engine {
             inputSystem->SetWindow(renderSystem->GetGLFWWindow());
             renderSystem->SetInputSystem(inputSystem);
             physicsSystem->SetInputSystem(inputSystem);
-            
         }
+
+        // Wire animation system to scene and renderer
+        animationSystem->set_scene_manager(sceneManager);
+        renderSystem->set_animation_system(animationSystem);
 
 
 
@@ -62,7 +70,7 @@ namespace engine {
 		renderSystem->load_additional_model("Assets/Models/TScene.glb", true, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
 		//renderSystem->load_additional_model("Assets/Models/warehouseSceneWithShelf_opt.glb" , true, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(1.0f)));
 
-
+		
 
 
 		//======trigger box start=====
@@ -103,6 +111,8 @@ namespace engine {
 		glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 10.0f, 30.0f));
 		glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
 		renderSystem->load_additional_model("Assets/Models/tbike.glb", false, 90.0f, tbpos, false, true);
+
+		renderSystem->load_animated_model("Assets/Models/character.glb", tbpos);
 
 
 

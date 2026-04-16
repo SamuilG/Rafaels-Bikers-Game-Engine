@@ -202,6 +202,7 @@ workspace "EngineWorkspace"
             "ThirdParty/imgui",
 			"ThirdParty/imgui/backends",
 			"ThirdParty/imgui/ImGuizmo",
+	    "ThirdParty/ozz-animation/include",
         }
         
         files {
@@ -224,7 +225,7 @@ workspace "EngineWorkspace"
             compileas "C"
         filter "*"
 
-        links { "GLFW", "JoltPhysics" ,"ImGui" }
+        links { "GLFW", "JoltPhysics" ,"ImGui", "OzzAnimation"}
         dependson { "Shaders" } 
 
         filter "system:windows"
@@ -277,3 +278,45 @@ workspace "EngineWorkspace"
             -- Enable fast incremental builds
             buildoutputs { "%{wks.location}/Assets/Shaders/spirv/%{file.name}.spv" }
         filter "*"
+
+-- ==========================================
+    -- Project X: Ozz-Animation Static Library (Runtime Only)
+    -- ==========================================
+    project "OzzAnimation"
+        location "Intermediate/Projects"
+        kind "StaticLib"
+        language "C++"
+        -- ozz 内部大量使用 C++11 特性，由于外层设定了 C++23，这里向下兼容完全没问题
+        
+        targetdir "Intermediate/Bin/%{cfg.buildcfg}-%{cfg.platform}/%{prj.name}"
+
+        -- 禁用特定警告（ozz源码在某些严格编译器下可能会有警告）
+        filter "toolset:msc-*"
+            disablewarnings { "4267", "4244" }
+        filter "*"
+
+        includedirs {
+            "ThirdParty/ozz-animation/include",
+            "ThirdParty/ozz-animation/src" -- ozz 内部源码有时需要 include 自身 src 目录下的私有头文件
+        }
+
+        files {
+            -- 核心基础库
+            "ThirdParty/ozz-animation/src/base/**.cc",
+            "ThirdParty/ozz-animation/src/base/**.h",
+            
+            -- 动画运行时库
+            "ThirdParty/ozz-animation/src/animation/runtime/**.cc",
+            "ThirdParty/ozz-animation/src/animation/runtime/**.h",
+            
+            -- 几何体运行时库 (骨骼显示等功能需要)
+            "ThirdParty/ozz-animation/src/geometry/runtime/**.cc",
+            "ThirdParty/ozz-animation/src/geometry/runtime/**.h"
+        }
+
+        -- 【关键排除】：剔除 offline 离线处理代码，防止引入额外的依赖（如 jsoncpp）
+        removefiles {
+            "ThirdParty/ozz-animation/src/animation/offline/**",
+            "ThirdParty/ozz-animation/src/base/offline/**",
+            "ThirdParty/ozz-animation/src/options/**"
+        }

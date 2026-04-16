@@ -1,7 +1,8 @@
 #include "SceneManager.hpp"
 
 #include <flecs.h>
-#include    <print>
+#include <print>
+#include <cstring>
 #include "../Physics/PhysicsSystem.hpp"
 
 
@@ -522,9 +523,11 @@ std::vector<RenderBatch> SceneManager::get_render_batches(const Frustum * frustu
     mLastFrustumCullingVisible = 0; // frustum culling
 
     // 【修改】：使用指针 (const OpacityComponent*) 使得该组件变为可选！
+    // 排除带有 SkinComponent 的实体（animated entities走skinned pipeline）
     m_world->query<const WorldTransform, const MeshComponent, const MaterialComponent, const EntityStatus, const OpacityComponent*>()
-        .each([&](const WorldTransform& wt, const MeshComponent& mc, const MaterialComponent& matc, const EntityStatus& status, const OpacityComponent* op) {
+        .each([&](flecs::entity e, const WorldTransform& wt, const MeshComponent& mc, const MaterialComponent& matc, const EntityStatus& status, const OpacityComponent* op) {
         if (!status.should_render) return;
+        if (e.has<SkinComponent>()) return; // skinned entities use the skinned pipeline
 
         ++mLastFrustumCullingCandidates; //frustum culling
 
@@ -637,4 +640,103 @@ flecs::entity SceneManager::raycast_entity(const glm::vec3& origin, const glm::v
 //==========UI System======================
 
 
-} // namespace enginea
+void SceneManager::load_animated_model(
+    const EngineModel& model,
+    uint32_t baseMeshIdx, uint32_t baseMatIdx,
+    uint32_t baseSkinIdx, uint32_t baseAnimIdx)
+{
+    std::print("Loading animated model with {} instances, {} skins, {} anims\n",
+               model.scenes.size(), model.skins.size(), model.animations.size());
+    for (size_t i = 0; i < model.meshes.size(); ++i) {
+        std::print("  mesh[{}]: {} verts, {} indices, isSkinned={}\n",
+                   i, model.meshes[i].positions.size(),
+                   model.meshes[i].indices.size(),
+                   model.meshes[i].isSkinned);
+    }
+
+    cache_model_for_culling(model, baseMeshIdx, baseMatIdx);
+
+    int counter = 0;
+    for (const auto& instance : model.scenes) {
+        std::string name = instance.name.empty() ? "AnimatedObject" : instance.name;
+        name += "_" + std::to_string(counter++);
+
+        uint32_t globalMeshIdx = instance.meshIndex + baseMeshIdx;
+        auto e = m_world->entity(name.c_str())
+            .add<DynamicObject>()
+            .set<EntityStatus>({ true, false })  // no individual physics by default
+            .set<LocalTransform>({ instance.transform })
+            .set<WorldTransform>({ instance.transform })
+            .set<MeshComponent>({ globalMeshIdx });
+
+        uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
+        e.set<MaterialComponent>({ matIdx });
+
+        std::print("  entity '{}': globalMesh={}, mat={}, skinIdx={}\n",
+                   name, globalMeshIdx, matIdx, instance.skinIndex);
+
+        if (instance.skinIndex >= 0) {
+            SkinComponent sc{};
+            sc.skinIndex = (int)(baseSkinIdx + instance.skinIndex);
+            // Pre-size bone matrices (actual count set by AnimationSystem on first update)
+            if (instance.skinIndex < (int)model.skins.size())
+                sc.boneMatrices.resize(model.skins[instance.skinIndex].joints.size(), glm::mat4(1.0f));
+            std::print("    SkinComponent: skinIdx={}, joints={}\n",
+                       sc.skinIndex, sc.boneMatrices.size());
+            e.set<SkinComponent>(std::move(sc));
+
+            // Auto-assign first available animation (if any)
+            if (!model.animations.empty()) {
+                AnimationComponent ac{};
+                ac.animIndex  = (int)baseAnimIdx; // first animation
+                ac.playing    = true;
+                ac.looping    = true;
+                ac.speed      = 1.0f;
+                e.set<AnimationComponent>(std::move(ac));
+            }
+        }
+    }
+}
+
+std::vector<RenderBatch> SceneManager::get_skinned_batches(
+    glm::mat4* boneBuffer, size_t maxBones, size_t& outBoneCount)
+{
+    std::vector<RenderBatch> batches;
+    size_t boneOffset = 0;
+
+    m_world->query<WorldTransform, MeshComponent, MaterialComponent, SkinComponent>()
+        .each([&](flecs::entity e,
+                  WorldTransform& wt,
+                  MeshComponent& mc,
+                  MaterialComponent& matc,
+                  SkinComponent& sc)
+    {
+        if (e.has<EntityStatus>() && !e.get<EntityStatus>().should_render)
+            return;
+        if (sc.boneMatrices.empty())
+            return;
+
+        size_t boneCount = sc.boneMatrices.size();
+        if (boneBuffer && (boneOffset + boneCount) <= maxBones) {
+            std::memcpy(boneBuffer + boneOffset,
+                        sc.boneMatrices.data(),
+                        boneCount * sizeof(glm::mat4));
+        }
+
+        RenderBatch batch{};
+        batch.meshIndex      = mc.meshIndex;
+        batch.materialIndex  = matc.materialIndex;
+        batch.transform      = wt.matrix;
+        batch.alphaMultiplier = 1.0f;
+        batch.isSkinned      = true;
+        batch.boneBaseIndex  = static_cast<uint32_t>(boneOffset);
+        batches.push_back(batch);
+
+        boneOffset += boneCount;
+    });
+
+    outBoneCount = boneOffset;
+    return batches;
+}
+
+} // namespace engine

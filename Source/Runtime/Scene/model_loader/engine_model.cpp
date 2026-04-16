@@ -83,7 +83,7 @@ static std::vector<EngineTexture> loadTextures(const tinygltf::Model& gltf)
     return out;
 }
 
-// gltf.texture.index ¡ú image index
+// gltf.texture.index ï¿½ï¿½ image index
 static int texIndex(const tinygltf::Model& gltf, int texIdx) {
     if (texIdx < 0) return -1;
     return gltf.textures[texIdx].source; // image index
@@ -101,13 +101,13 @@ static std::vector<EngineMaterial> loadMaterials(
         EngineMaterial m{};
         auto& pbr = mat.pbrMetallicRoughness;
 
-        // Base color£¨sRGB£©
+        // Base colorï¿½ï¿½sRGBï¿½ï¿½
         int bcIdx = texIndex(gltf, pbr.baseColorTexture.index);
         m.baseColorTexture = bcIdx;
         if (bcIdx >= 0)
             textures[bcIdx].space = ETextureSpace::srgb;
         // ==========================================
-        // --- ¡¾¹Ø¼üÐÞ¸Ä 1¡¿£ºÌáÈ¡»ù´¡ÑÕÉ«ÏµÊý ---
+        // --- ï¿½ï¿½ï¿½Ø¼ï¿½ï¿½Þ¸ï¿½ 1ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½É«Ïµï¿½ï¿½ ---
         // ==========================================
         if (pbr.baseColorFactor.size() == 4) {
             m.baseColorFactor = glm::vec4(
@@ -118,10 +118,10 @@ static std::vector<EngineMaterial> loadMaterials(
             );
         }
         else {
-            m.baseColorFactor = glm::vec4(1.0f); // Ä¬ÈÏ°×É«/²»ÊÜÓ°Ïì
+            m.baseColorFactor = glm::vec4(1.0f); // Ä¬ï¿½Ï°ï¿½É«/ï¿½ï¿½ï¿½ï¿½Ó°ï¿½ï¿½
         }
 
-        // MetalRoughness£¨UNORM£¬G=rough B=metal£¬shared£©
+        // MetalRoughnessï¿½ï¿½UNORMï¿½ï¿½G=rough B=metalï¿½ï¿½sharedï¿½ï¿½
         m.metalRoughTexture = texIndex(gltf, pbr.metallicRoughnessTexture.index);
 
 
@@ -131,7 +131,7 @@ static std::vector<EngineMaterial> loadMaterials(
         //        pbr.baseColorFactor[2], pbr.baseColorFactor[3]);
         //}
 
-        // MetalRoughness£¨UNORM£¬G=rough B=metal£¬shared£©
+        // MetalRoughnessï¿½ï¿½UNORMï¿½ï¿½G=rough B=metalï¿½ï¿½sharedï¿½ï¿½
         //m.metalRoughTexture = texIndex(gltf, pbr.metallicRoughnessTexture.index);
         //m.metallicFactor = static_cast<float>(pbr.metallicFactor);
         //m.roughnessFactor = static_cast<float>(pbr.roughnessFactor);
@@ -139,19 +139,19 @@ static std::vector<EngineMaterial> loadMaterials(
 
 
         // ==========================================
-        // --- ¡¾¹Ø¼üÐÞ¸Ä 2¡¿£ºÌáÈ¡½ðÊô¶ÈÓë´Ö²Ú¶ÈÏµÊý ---
+        // --- ï¿½ï¿½ï¿½Ø¼ï¿½ï¿½Þ¸ï¿½ 2ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö²Ú¶ï¿½Ïµï¿½ï¿½ ---
         // ==========================================
-        // tinygltf ÔÚÃ»ÓÐÊý¾ÝÊ±Í¨³£»á¸øÄ¬ÈÏÖµ 1.0
+        // tinygltf ï¿½ï¿½Ã»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±Í¨ï¿½ï¿½ï¿½ï¿½ï¿½Ä¬ï¿½ï¿½Öµ 1.0
         m.metallicFactor = static_cast<float>(pbr.metallicFactor);
         m.roughnessFactor = static_cast<float>(pbr.roughnessFactor);
 
-        // Normal£¨UNORM£©
+        // Normalï¿½ï¿½UNORMï¿½ï¿½
         m.normalTexture = texIndex(gltf, mat.normalTexture.index);
 
-        // Occlusion£¨UNORM£©
+        // Occlusionï¿½ï¿½UNORMï¿½ï¿½
         m.occlusionTexture = texIndex(gltf, mat.occlusionTexture.index);
 
-        // Emissive£¨sRGB£©
+        // Emissiveï¿½ï¿½sRGBï¿½ï¿½
         int emIdx = texIndex(gltf, mat.emissiveTexture.index);
         m.emissiveTexture = emIdx;
         if (emIdx >= 0)
@@ -185,7 +185,7 @@ static std::vector<EngineMesh> loadMeshes(
     std::vector<std::vector<uint32_t>>& meshMap)
 {
     std::vector<EngineMesh> out;
-    meshMap.resize(gltf.meshes.size()); 
+    meshMap.resize(gltf.meshes.size());
 
     for (size_t i = 0; i < gltf.meshes.size(); ++i) {
         auto& gltfMesh = gltf.meshes[i];
@@ -200,7 +200,7 @@ static std::vector<EngineMesh> loadMeshes(
 
             // POSITION
             auto posIt = prim.attributes.find("POSITION");
-            if (posIt == prim.attributes.end()) continue; // skip useless primitive
+            if (posIt == prim.attributes.end()) continue;
 
             {
                 auto& acc = gltf.accessors[posIt->second];
@@ -211,7 +211,7 @@ static std::vector<EngineMesh> loadMeshes(
                     mesh.positions[k] = *reinterpret_cast<const glm::vec3*>(data + k * stride);
             }
 
-            // NORMAL 
+            // NORMAL
             auto normIt = prim.attributes.find("NORMAL");
             if (normIt != prim.attributes.end()) {
                 auto& acc = gltf.accessors[normIt->second];
@@ -225,7 +225,7 @@ static std::vector<EngineMesh> loadMeshes(
                 mesh.normals.assign(mesh.positions.size(), glm::vec3(0.f, 1.f, 0.f));
             }
 
-            // TEXCOORD_0 
+            // TEXCOORD_0
             auto uvIt = prim.attributes.find("TEXCOORD_0");
             if (uvIt != prim.attributes.end()) {
                 auto& acc = gltf.accessors[uvIt->second];
@@ -258,25 +258,186 @@ static std::vector<EngineMesh> loadMeshes(
                 }
             }
 
-            //frustum culling: cache the mesh's local-space AABB once during import.
+            // JOINTS_0 (bone indices per vertex, up to 4)
+            auto jointsIt = prim.attributes.find("JOINTS_0");
+            if (jointsIt != prim.attributes.end()) {
+                auto& acc = gltf.accessors[jointsIt->second];
+                auto* data = accessorPtr(gltf, acc);
+                size_t stride = accessorStride(gltf, acc);
+                mesh.jointIndices.resize(acc.count, glm::uvec4(0));
+                for (size_t k = 0; k < acc.count; ++k) {
+                    const uint8_t* src = data + k * stride;
+                    if (acc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
+                        mesh.jointIndices[k] = glm::uvec4(src[0], src[1], src[2], src[3]);
+                    } else if (acc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
+                        auto* s = reinterpret_cast<const uint16_t*>(src);
+                        mesh.jointIndices[k] = glm::uvec4(s[0], s[1], s[2], s[3]);
+                    }
+                }
+            }
+
+            // WEIGHTS_0 (influence weights per vertex, sum to 1.0)
+            auto weightsIt = prim.attributes.find("WEIGHTS_0");
+            if (weightsIt != prim.attributes.end()) {
+                auto& acc = gltf.accessors[weightsIt->second];
+                auto* data = accessorPtr(gltf, acc);
+                size_t stride = accessorStride(gltf, acc);
+                mesh.jointWeights.resize(acc.count, glm::vec4(0.0f));
+                for (size_t k = 0; k < acc.count; ++k) {
+                    const uint8_t* src = data + k * stride;
+                    if (acc.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT) {
+                        mesh.jointWeights[k] = *reinterpret_cast<const glm::vec4*>(src);
+                    } else if (acc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
+                        mesh.jointWeights[k] = glm::vec4(src[0], src[1], src[2], src[3]) / 255.0f;
+                    } else if (acc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
+                        auto* s = reinterpret_cast<const uint16_t*>(src);
+                        mesh.jointWeights[k] = glm::vec4(s[0], s[1], s[2], s[3]) / 65535.0f;
+                    }
+                }
+            }
+
+            if (!mesh.jointIndices.empty() && !mesh.jointWeights.empty())
+                mesh.isSkinned = true;
+
+            // Frustum culling AABB
             if (!mesh.positions.empty()) {
                 mesh.localAabbMin = mesh.positions[0];
                 mesh.localAabbMax = mesh.positions[0];
-
                 for (const glm::vec3& position : mesh.positions) {
                     mesh.localAabbMin = glm::min(mesh.localAabbMin, position);
                     mesh.localAabbMax = glm::max(mesh.localAabbMax, position);
                 }
             }
 
-			// record the current EngineMesh index for this glTF mesh
-			// out.size() is the index of the EngineMesh we are about to add
             meshMap[i].push_back(static_cast<uint32_t>(out.size()));
-
             out.push_back(std::move(mesh));
         }
     }
     return out;
+}
+
+// Forward declaration (defined later in this file)
+static glm::mat4 getNodeTransform(const tinygltf::Node& node);
+
+// Build the flat node array with parent indices and default local transforms
+static std::vector<EngineNode> loadNodes(const tinygltf::Model& gltf)
+{
+    std::vector<EngineNode> nodes(gltf.nodes.size());
+
+    // First pass: set default local transforms
+    for (size_t i = 0; i < gltf.nodes.size(); ++i) {
+        nodes[i].name = gltf.nodes[i].name;
+        nodes[i].localTransform = getNodeTransform(gltf.nodes[i]);
+        nodes[i].parentIndex = -1;
+    }
+
+    // Second pass: assign parent indices from children lists
+    for (size_t i = 0; i < gltf.nodes.size(); ++i) {
+        for (int child : gltf.nodes[i].children) {
+            if (child >= 0 && child < (int)nodes.size())
+                nodes[child].parentIndex = (int)i;
+        }
+    }
+
+    return nodes;
+}
+
+// Load skin data (joint lists and inverse bind matrices)
+static std::vector<EngineSkin> loadSkins(const tinygltf::Model& gltf)
+{
+    std::vector<EngineSkin> skins;
+    skins.reserve(gltf.skins.size());
+
+    for (auto& gltfSkin : gltf.skins) {
+        EngineSkin skin;
+        skin.skeletonRoot = gltfSkin.skeleton;
+        skin.joints = gltfSkin.joints;
+
+        // Load inverse bind matrices
+        if (gltfSkin.inverseBindMatrices >= 0) {
+            auto& acc = gltf.accessors[gltfSkin.inverseBindMatrices];
+            auto* data = accessorPtr(gltf, acc);
+            size_t stride = accessorStride(gltf, acc);
+            skin.inverseBindMatrices.resize(acc.count, glm::mat4(1.0f));
+            for (size_t k = 0; k < acc.count; ++k)
+                skin.inverseBindMatrices[k] = *reinterpret_cast<const glm::mat4*>(data + k * stride);
+        } else {
+            // Default: identity matrices for each joint
+            skin.inverseBindMatrices.resize(skin.joints.size(), glm::mat4(1.0f));
+        }
+
+        skins.push_back(std::move(skin));
+    }
+    return skins;
+}
+
+// Load animation clips
+static std::vector<EngineAnimation> loadAnimations(const tinygltf::Model& gltf)
+{
+    std::vector<EngineAnimation> animations;
+    animations.reserve(gltf.animations.size());
+
+    for (auto& gltfAnim : gltf.animations) {
+        EngineAnimation anim;
+        anim.name = gltfAnim.name;
+
+        // Load samplers
+        for (auto& gltfSampler : gltfAnim.samplers) {
+            EngineAnimSampler sampler;
+
+            // Interpolation mode
+            if (gltfSampler.interpolation == "STEP")
+                sampler.interp = 1;
+            else
+                sampler.interp = 0; // LINEAR (default)
+
+            // Input: timestamps
+            if (gltfSampler.input >= 0) {
+                auto& acc = gltf.accessors[gltfSampler.input];
+                auto* data = accessorPtr(gltf, acc);
+                size_t stride = accessorStride(gltf, acc);
+                sampler.times.resize(acc.count);
+                for (size_t k = 0; k < acc.count; ++k)
+                    sampler.times[k] = *reinterpret_cast<const float*>(data + k * stride);
+                if (!sampler.times.empty())
+                    anim.duration = glm::max(anim.duration, sampler.times.back());
+            }
+
+            // Output: TRS values
+            if (gltfSampler.output >= 0) {
+                auto& acc = gltf.accessors[gltfSampler.output];
+                auto* data = accessorPtr(gltf, acc);
+                size_t stride = accessorStride(gltf, acc);
+                sampler.values.resize(acc.count, glm::vec4(0.0f));
+                for (size_t k = 0; k < acc.count; ++k) {
+                    const float* src = reinterpret_cast<const float*>(data + k * stride);
+                    if (acc.type == TINYGLTF_TYPE_VEC3) {
+                        sampler.values[k] = glm::vec4(src[0], src[1], src[2], 0.0f);
+                    } else if (acc.type == TINYGLTF_TYPE_VEC4) {
+                        sampler.values[k] = glm::vec4(src[0], src[1], src[2], src[3]);
+                    }
+                }
+            }
+
+            anim.samplers.push_back(std::move(sampler));
+        }
+
+        // Load channels
+        for (auto& gltfChan : gltfAnim.channels) {
+            EngineAnimChannel chan;
+            chan.samplerIndex = gltfChan.sampler;
+            chan.nodeIndex    = gltfChan.target_node;
+            const std::string& path = gltfChan.target_path;
+            if      (path == "translation") chan.path = 0;
+            else if (path == "rotation")    chan.path = 1;
+            else if (path == "scale")       chan.path = 2;
+            else continue; // skip unknown paths (e.g., "weights" for morph targets)
+            anim.channels.push_back(chan);
+        }
+
+        animations.push_back(std::move(anim));
+    }
+    return animations;
 }
 
 
@@ -314,31 +475,25 @@ static void processNode(
     const std::vector<std::vector<uint32_t>>& meshMap,
     std::vector<EngineInstance>& outInstances)
 {
-    if (nodeIdx < 0 || nodeIdx >= gltf.nodes.size()) return;
+    if (nodeIdx < 0 || nodeIdx >= (int)gltf.nodes.size()) return;
     const tinygltf::Node& node = gltf.nodes[nodeIdx];
 
-    // 1. ¼ÆËãµ±Ç°½ÚµãµÄÈ«¾Ö±ä»»¾ØÕó
-    glm::mat4 localMatrix = getNodeTransform(node);
+    glm::mat4 localMatrix  = getNodeTransform(node);
     glm::mat4 globalMatrix = parentMatrix * localMatrix;
 
-    // 2. Èç¹û½ÚµãÓÐÍø¸ñ£¬´´½¨ÊµÀý
-    if (node.mesh >= 0 && node.mesh < meshMap.size()) {
+    if (node.mesh >= 0 && node.mesh < (int)meshMap.size()) {
         const auto& engineMeshIndices = meshMap[node.mesh];
-        // ÎªÍø¸ñÖÐµÄÃ¿¸ö primitive ´´½¨Ò»¸öÊµÀý
         for (uint32_t meshIndex : engineMeshIndices) {
             EngineInstance instance;
-            instance.meshIndex = meshIndex;
-            instance.transform = globalMatrix;
-
-            // --- ¹Ø¼üÐÞ¸Ä£º±£´æ½ÚµãÃû³Æ ---
-            // Èç¹û glTF ½ÚµãÃ»ÓÐÃû×Ö£¬¸³ÓèÒ»¸öÄ¬ÈÏÖµ·ÀÖ¹ lookup Ê§°Ü
-            instance.name = node.name.empty() ? ("Node_" + std::to_string(nodeIdx)) : node.name;
-
+            instance.meshIndex  = meshIndex;
+            instance.transform  = globalMatrix;
+            instance.name       = node.name.empty() ? ("Node_" + std::to_string(nodeIdx)) : node.name;
+            instance.skinIndex  = node.skin;   // -1 if no skin
+            instance.nodeIndex  = nodeIdx;
             outInstances.push_back(instance);
         }
     }
 
-    // 3. µÝ¹é´¦Àí×Ó½Úµã
     for (int childIdx : node.children) {
         processNode(gltf, childIdx, globalMatrix, meshMap, outInstances);
     }
@@ -352,7 +507,7 @@ EngineModel load_engine_model_glb(const char* path)
     tinygltf::TinyGLTF loader;
     std::string err, warn;
 
-    // --- ¹Ø¼üÐÞ¸Ä£º¸ù¾ÝÎÄ¼þºó×ºÃûÑ¡Ôñ¼ÓÔØ·½Ê½ ---
+    // --- ï¿½Ø¼ï¿½ï¿½Þ¸Ä£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½×ºï¿½ï¿½Ñ¡ï¿½ï¿½ï¿½ï¿½Ø·ï¿½Ê½ ---
     std::string filePath(path);
     bool ret = false;
 
@@ -372,38 +527,33 @@ EngineModel load_engine_model_glb(const char* path)
         fprintf(stderr, "[tinygltf warn] %s\n", warn.c_str());
     EngineModel model;
 
-    // 1. Parse Resources (Textures, Materials, Meshes)
-    model.textures = loadTextures(gltf);
+    // 1. Parse textures, materials, meshes
+    model.textures  = loadTextures(gltf);
     model.materials = loadMaterials(gltf, model.textures);
 
-
-    // Load Meshes and build the ID mapping table
     std::vector<std::vector<uint32_t>> meshMap;
     model.meshes = loadMeshes(gltf, meshMap);
 
-    // 2. Build Scene Graph (Nodes -> Instances)
-    if (gltf.scenes.size() > 0) {
+    // 2. Node hierarchy (needed for animation joint-matrix computation)
+    model.nodes = loadNodes(gltf);
+
+    // 3. Skins and animations
+    model.skins      = loadSkins(gltf);
+    model.animations = loadAnimations(gltf);
+
+    // 4. Build scene instances from node graph
+    if (!gltf.scenes.empty()) {
         int sceneIdx = gltf.defaultScene > -1 ? gltf.defaultScene : 0;
-        const tinygltf::Scene& scene = gltf.scenes[sceneIdx];
-
-        for (int nodeIdx : scene.nodes) {
-            // Process all root nodes
+        for (int nodeIdx : gltf.scenes[sceneIdx].nodes)
             processNode(gltf, nodeIdx, glm::mat4(1.0f), meshMap, model.scenes);
-
-        }
     }
-    // ÔÚ load_engine_model_glb º¯ÊýÔ¼ 260 ÐÐ´¦
     else {
-        // Fallback: Èç¹û²»´æÔÚ³¡¾°£¬ÔòÖ±½ÓÒÔµ¥Î»ÕóÁÐ³öËùÓÐÍø¸ñ
         for (size_t i = 0; i < model.meshes.size(); ++i) {
-            EngineInstance instance;
-            instance.meshIndex = static_cast<uint32_t>(i);
-            instance.transform = glm::mat4(1.0f);
-
-            // --- ¹Ø¼üÐÞ¸Ä£ºÎª»ØÍËÄ£Ê½Ìá¹©Ãû³Æ ---
-            instance.name = "Fallback_Mesh_" + std::to_string(i);
-
-            model.scenes.push_back(instance);
+            EngineInstance inst;
+            inst.meshIndex = static_cast<uint32_t>(i);
+            inst.transform = glm::mat4(1.0f);
+            inst.name      = "Fallback_Mesh_" + std::to_string(i);
+            model.scenes.push_back(inst);
         }
     }
 
