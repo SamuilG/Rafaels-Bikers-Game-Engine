@@ -233,14 +233,14 @@ void update_scene_uniforms(glsl::SceneUniform& aSceneUniforms, std::uint32_t aFr
 		// 【核心修复】：不要把 `cfg::kCameraFar` 传给阴影系统！
 		// 哪怕相机能看 1000 米远，我们的阴影也只包围相机前方 60 米的范围。
 		// 这样无论 FOV 怎么变大，阴影盒子的最大体积都被死死限制住了，分辨率永远集中在车身附近！
-	float shadowFarDistance = 60.0f; // 你可以根据需要调整，50 ~ 80 是赛车游戏常见的阴影距离
+	float shadowFarDistance = 150.0f; 
 
 	engine::ShadowData shadow = engine::compute_csm_matrices(
 		glm::vec3(aSceneUniforms.lightPos),
 		aSceneUniforms.camera,
 		fov, aspect,
 		cfg::kCameraNear,
-		shadowFarDistance // <--- 关键：原来这里是 cfg::kCameraFar
+		shadowFarDistance //  cfg::kCameraFar
 	);
 
 	aSceneUniforms.cascadeSplits = shadow.cascadeSplits;
