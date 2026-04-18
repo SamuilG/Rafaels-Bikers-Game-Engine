@@ -103,9 +103,13 @@ namespace engine {
 		glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 10.0f, 30.0f));
 		glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
 		glm::mat4 bridgeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(100.0f, 0.0f, 60.0f));
+		glm::mat4 CplaneSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(120.0f, 0.0f, 250.0f));
 		renderSystem->load_additional_model("Assets/Models/tbike.glb", false, 90.0f, tbpos, false, true);
 		// 【修复】：只传 path, isStatic=true, mass=0.0f, transform
 		renderSystem->load_additional_model("Assets/Models/testBridge.glb", true, 0.0f, bridgeSpawnPos);
+
+
+		renderSystem->load_additional_model("Assets/Models/testCurvePlane.glb", true, 0.0f, CplaneSpawnPos);
 
 		// ==============================================================
 		// 【新增 2】：实例化并初始化 BikeController！
