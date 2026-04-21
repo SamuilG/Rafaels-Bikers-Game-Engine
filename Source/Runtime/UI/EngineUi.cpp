@@ -467,7 +467,7 @@ namespace engine {
 						if (strstr(droppedPath, "Car")) mass = 1500.0f;
 						else if (strstr(droppedPath, "Helicopter")) mass = 3000.0f;
 						else if (strstr(droppedPath, "BaseballBat")) mass = 1.5f;
-						renderSys->load_additional_model(droppedPath, false, mass, previewTransform);
+						//renderSys->load_additional_model(droppedPath, false, mass, previewTransform);
 						LogPrint("[DragDrop] Deployed %s\n", droppedPath);
 						EngineUi::ShowToast("[ Asset Deployed ]");
 					}
@@ -757,7 +757,7 @@ namespace engine {
 							else if (strstr(currentDragPath, "Helicopter")) mass = 3000.0f;
 							else if (strstr(currentDragPath, "BaseballBat")) mass = 1.5f;*/
 
-							renderSys->load_additional_model(currentDragPath, false, mass, previewTransform);
+							//renderSys->load_additional_model(currentDragPath, false, mass, previewTransform);
 							EngineUi::ShowToast("[ Real Asset Deployed ]");
 						}
 					}
@@ -862,26 +862,26 @@ namespace engine {
 					glm::mat4 spawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(20.0f, spawnHeight, 20.0f));
 
 					if (selectedItem == 0) {
-						renderSys->load_additional_model("Assets/Models/BaseballBat.glb", false, 1.5f, spawnPos);
+						//renderSys->load_additional_model("Assets/Models/BaseballBat.glb", false, 1.5f, spawnPos);
 					}
 					else if (selectedItem == 1) {
 						glm::mat4 carPos = spawnPos * glm::scale(glm::mat4(1.0f), glm::vec3(0.1f));
-						renderSys->load_additional_model("Assets/Models/Car.glb", false, 1500.0f, carPos);
+						//renderSys->load_additional_model("Assets/Models/Car.glb", false, 1500.0f, carPos);
 					}
 					else if (selectedItem == 2) {
-						renderSys->load_additional_model("Assets/Models/Missile.glb", false, 50.0f, spawnPos);
+						//renderSys->load_additional_model("Assets/Models/Missile.glb", false, 50.0f, spawnPos);
 					}
 					else if (selectedItem == 3) {
-						renderSys->load_additional_model("Assets/Models/Police Car.glb", false, 1600.0f, spawnPos);
+						//renderSys->load_additional_model("Assets/Models/Police Car.glb", false, 1600.0f, spawnPos);
 					}
 					else if (selectedItem == 4) {
-						renderSys->load_additional_model("Assets/Models/Animated Character Base.glb", false, 1600.0f, spawnPos);
+						//renderSys->load_additional_model("Assets/Models/Animated Character Base.glb", false, 1600.0f, spawnPos);
 					}
 					else if (selectedItem == 5) {
-						renderSys->load_additional_model("Assets/Models/Helicopter.glb", false, 1600.0f, spawnPos);
+						//renderSys->load_additional_model("Assets/Models/Helicopter.glb", false, 1600.0f, spawnPos);
 					}
 					else if (selectedItem == 6) {
-						renderSys->load_additional_model("Assets/Models/Roman Centurion.glb", false, 1600.0f, spawnPos);
+						//renderSys->load_additional_model("Assets/Models/Roman Centurion.glb", false, 1600.0f, spawnPos);
 					}
 				}
 			}
@@ -1379,7 +1379,7 @@ namespace engine {
 							// 调用渲染系统加载实体// Call the render system to load the model as a new entity in the scene
 							if (renderSys) {
 								LogPrint("[DragDrop] Loading model: %s at (%.1f, %.1f, %.1f)\n", droppedPath, spawnPosVec.x, spawnPosVec.y, spawnPosVec.z);
-								renderSys->load_additional_model(droppedPath, false, 100.0f, spawnTransform);
+								//renderSys->load_additional_model(droppedPath, false, 100.0f, spawnTransform);
 								EngineUi::ShowToast("Model Imported Successfully!");
 							}
 						}

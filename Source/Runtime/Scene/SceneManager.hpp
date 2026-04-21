@@ -38,7 +38,21 @@ namespace cfg
 namespace engine {
     class PhysicsSystem; // forward declare PhysicsSystem
 }
+namespace engine {
+    class RenderSystem; 
 
+    // 在 SceneManager 的头文件中定义清晰的物理类型枚举
+    enum class ModelPhysicsType {
+        Static,   // 静态场景（如桥梁、地面）
+        Dynamic,  // 普通动态刚体（如滚木）
+        Compound, // 复合碰撞体
+        CustomC   // 特殊定制类型（如单车）
+    };
+
+    // 在 SceneManager 类内部新增加载函数
+    // 此时它需要传入一个 RenderSystem 指针来呼叫 GPU 服务
+    // 在 SceneManager.hpp 内部
+}
 // Basic components definition (kept in header as they might be queried by other systems)
 struct LocalTransform { glm::mat4 matrix; };
 struct WorldTransform { glm::mat4 matrix; };
@@ -108,6 +122,12 @@ public:
     void Update(float dt) override;
     void Shutdown() override;
 
+
+
+
+public:
+    // 
+    void LoadModel(engine::RenderSystem* renderSystem, const char* path, ModelPhysicsType physicsType, float mass = 1.0f, const glm::mat4& initialTransform = glm::mat4(1.0f));
     // Load and instantiate all entities from EngineModel as static
     void load_static_model(const EngineModel& model, uint32_t baseMeshIdx = 0, uint32_t baseMatIdx = 0);
 
@@ -119,6 +139,13 @@ public:
     void load_C_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx);
 
 	const EngineModel& get_model() const { return mModel; }//expose the cpu model to other systems (like Vulkan) to upload data to gpu
+
+
+
+
+
+
+
 
     // Get render batches for the current frame
     //frustum culling

@@ -13,9 +13,43 @@
 #include <cmath>
 #include"../Renderer/RenderUtilities/light.hpp"
 #include <glm/gtx/matrix_decompose.hpp> 
+#include "../Renderer/RenderSystem.hpp"
 
 
+namespace engine {
 
+    // 实现我们刚刚在头文件里声明的函数
+    void SceneManager::LoadModel(engine::RenderSystem* renderSystem, const char* path, ModelPhysicsType physicsType, float mass, const glm::mat4& initialTransform)
+    {
+        // 1. 从硬盘读取文件
+        EngineModel newModel = load_engine_model_glb(path);
+
+        // 2. 应用初始矩阵变换
+        for (auto& instance : newModel.scenes) {
+            instance.transform = initialTransform * instance.transform;
+        }
+
+        // 3. 呼叫 RenderSystem 将资源上传至显存，并获取编号
+        auto offsets = renderSystem->RegisterModelAssets(newModel);
+
+        // 4. 使用拿到的编号，构建 ECS 实体和物理世界
+        switch (physicsType) {
+        case ModelPhysicsType::Compound:
+            load_compound_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx);
+            break;
+        case ModelPhysicsType::CustomC:
+            load_C_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx);
+            break;
+        case ModelPhysicsType::Static:
+            load_static_model(newModel, offsets.baseMeshIdx, offsets.baseMaterialIdx);
+            break;
+        case ModelPhysicsType::Dynamic:
+            load_dynamic_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx);
+            break;
+        }
+    }
+
+} // namespace engine
 namespace engine {
     
 SceneManager::SceneManager(PhysicsSystem* physics_system) 

@@ -1737,34 +1737,28 @@ namespace engine {
             return meshIdx;
         }
 
-        // add an entire model file to the renderer and physics scene
-        void load_additional_model(const char* path, bool isStatic, float mass = 1.0f, const glm::mat4& initialTransform = glm::mat4(1.0f), bool isCompound = false, bool isC = false)
+        // 定义一个结构体用于返回偏移量
+        struct ModelAssetOffsets {
+            uint32_t baseMeshIdx;
+            uint32_t baseMaterialIdx;
+        };
+
+        // 【新增】：专注 GPU 上传的纯粹渲染接口
+        ModelAssetOffsets RegisterModelAssets(EngineModel& newModel)
         {
-            EngineModel newModel = load_engine_model_glb(path);
             uint32_t baseTextureIdx = static_cast<uint32_t>(mModelTextures.size());
             uint32_t baseMaterialIdx = static_cast<uint32_t>(mModel.materials.size());
             uint32_t baseMeshIdx = static_cast<uint32_t>(mModel.meshes.size());
 
-            // 1. Appends textures
+            // 1. 上传贴图 (不变)
             for (auto const& tex : newModel.textures) {
-
-
-
                 glfwPollEvents();
                 VkFormat fmt = (tex.space == ETextureSpace::srgb) ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
                 mModelTextures.emplace_back(lut::load_image_texture2d_from_memory(tex.pixels.data(), tex.width, tex.height, mWindow, mCmdPool.handle, mAllocator, fmt));
                 mModelTextureViews.emplace_back(lut::create_image_view_texture2d(mWindow, mModelTextures.back().image, fmt));
             }
 
-            for (size_t i = 0; i < newModel.textures.size(); ++i) {
-                std::printf("[Tex %zu] name='%s' %dx%d\n",
-                    i + baseTextureIdx,
-                    newModel.textures[i].name.c_str(),
-                    newModel.textures[i].width,
-                    newModel.textures[i].height);
-            }
-
-            // 2. Append materials (fixing texture references)
+            // 2. 追加材质并修复贴图索引 (不变)
             for (auto mat : newModel.materials) {
                 if (mat.baseColorTexture >= 0) mat.baseColorTexture += baseTextureIdx;
                 if (mat.normalTexture >= 0) mat.normalTexture += baseTextureIdx;
@@ -1772,58 +1766,116 @@ namespace engine {
                 if (mat.occlusionTexture >= 0) mat.occlusionTexture += baseTextureIdx;
                 if (mat.emissiveTexture >= 0) mat.emissiveTexture += baseTextureIdx;
                 if (mat.alphaMaskTexture >= 0) mat.alphaMaskTexture += baseTextureIdx;
-                
+
                 mModel.materials.push_back(mat);
-                
-                // Add descriptors for new materials
                 AddOneMaterialDescriptor(mDefaultSampler.handle, mMaterialDescriptors, mat);
                 AddOneMaterialDescriptor(mDebugSampler.handle, mDebugMaterialDescriptors, mat);
             }
 
-            std::printf("[LoadModel] %s -> baseMat=%u, added %zu mats, total mats=%zu, total descs=%zu\n",
-                path, baseMaterialIdx,
-                newModel.materials.size(),
-                mModel.materials.size(),
-                mMaterialDescriptors.size());
-
-            // 3. Append meshes (fixing material references)
+            // 3. 追加网格并上传 VBO/IBO (不变)
             for (auto mesh : newModel.meshes) {
                 mesh.materialIndex += baseMaterialIdx;
                 mModel.meshes.push_back(mesh);
                 UploadSingleMesh(mesh);
-                  
             }
 
-
-
-            // 4.1 apply initial transform and create entities via SceneManager, using local mesh indices to build physics.
-            for (auto& instance : newModel.scenes) {
-                instance.transform = initialTransform * instance.transform;
-            }
-            
-            // 4.2 update the scenes to use global mesh indices for the renderer.
-            if (mSceneManager) {
-                if (isCompound) {
-                    mSceneManager->load_compound_model(newModel, mass, baseMeshIdx, baseMaterialIdx);
-				}
-                else if (isC)
-                {
-                    mSceneManager->load_C_model(newModel, mass, baseMeshIdx, baseMaterialIdx);
-                }
-                else if (isStatic) {
-                    mSceneManager->load_static_model(newModel, baseMeshIdx, baseMaterialIdx);
-                } else {
-                    mSceneManager->load_dynamic_model(newModel, mass, baseMeshIdx, baseMaterialIdx);
-                }
-            }
-
-
-            // 5. Update model scenes (fixing mesh references for the global renderer array)
-            for (auto& instance : newModel.scenes) {
+            // 4. 更新渲染器维护的全局场景实例列表 (剥离了物理逻辑)
+            //for (auto& instance : newModel.scenes) {
+            for (auto instance : newModel.scenes) {
                 instance.meshIndex += baseMeshIdx;
                 mModel.scenes.push_back(instance);
             }
+
+            // 把偏移量返回给外面的 SceneManager，让它去配置 ECS
+            return { baseMeshIdx, baseMaterialIdx };
         }
+        // add an entire model file to the renderer and physics scene
+    //    void load_additional_model(const char* path, bool isStatic, float mass = 1.0f, const glm::mat4& initialTransform = glm::mat4(1.0f), bool isCompound = false, bool isC = false)
+    //    {
+    //        EngineModel newModel = load_engine_model_glb(path);
+    //        uint32_t baseTextureIdx = static_cast<uint32_t>(mModelTextures.size());
+    //        uint32_t baseMaterialIdx = static_cast<uint32_t>(mModel.materials.size());
+    //        uint32_t baseMeshIdx = static_cast<uint32_t>(mModel.meshes.size());
+
+    //        // 1. Appends textures
+    //        for (auto const& tex : newModel.textures) {
+
+
+
+    //            glfwPollEvents();
+    //            VkFormat fmt = (tex.space == ETextureSpace::srgb) ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
+    //            mModelTextures.emplace_back(lut::load_image_texture2d_from_memory(tex.pixels.data(), tex.width, tex.height, mWindow, mCmdPool.handle, mAllocator, fmt));
+    //            mModelTextureViews.emplace_back(lut::create_image_view_texture2d(mWindow, mModelTextures.back().image, fmt));
+    //        }
+
+    //        for (size_t i = 0; i < newModel.textures.size(); ++i) {
+    //            std::printf("[Tex %zu] name='%s' %dx%d\n",
+    //                i + baseTextureIdx,
+    //                newModel.textures[i].name.c_str(),
+    //                newModel.textures[i].width,
+    //                newModel.textures[i].height);
+    //        }
+
+    //        // 2. Append materials (fixing texture references)
+    //        for (auto mat : newModel.materials) {
+    //            if (mat.baseColorTexture >= 0) mat.baseColorTexture += baseTextureIdx;
+    //            if (mat.normalTexture >= 0) mat.normalTexture += baseTextureIdx;
+    //            if (mat.metalRoughTexture >= 0) mat.metalRoughTexture += baseTextureIdx;
+    //            if (mat.occlusionTexture >= 0) mat.occlusionTexture += baseTextureIdx;
+    //            if (mat.emissiveTexture >= 0) mat.emissiveTexture += baseTextureIdx;
+    //            if (mat.alphaMaskTexture >= 0) mat.alphaMaskTexture += baseTextureIdx;
+    //            
+    //            mModel.materials.push_back(mat);
+    //            
+    //            // Add descriptors for new materials
+    //            AddOneMaterialDescriptor(mDefaultSampler.handle, mMaterialDescriptors, mat);
+    //            AddOneMaterialDescriptor(mDebugSampler.handle, mDebugMaterialDescriptors, mat);
+    //        }
+
+    //        std::printf("[LoadModel] %s -> baseMat=%u, added %zu mats, total mats=%zu, total descs=%zu\n",
+    //            path, baseMaterialIdx,
+    //            newModel.materials.size(),
+    //            mModel.materials.size(),
+    //            mMaterialDescriptors.size());
+
+    //        // 3. Append meshes (fixing material references)
+    //        for (auto mesh : newModel.meshes) {
+    //            mesh.materialIndex += baseMaterialIdx;
+    //            mModel.meshes.push_back(mesh);
+    //            UploadSingleMesh(mesh);
+    //              
+    //        }
+
+
+
+    //        // 4.1 apply initial transform and create entities via SceneManager, using local mesh indices to build physics.
+    //        for (auto& instance : newModel.scenes) {
+    //            instance.transform = initialTransform * instance.transform;
+    //        }
+    //        
+    //        // 4.2 update the scenes to use global mesh indices for the renderer.
+    //        if (mSceneManager) {
+    //            if (isCompound) {
+    //                mSceneManager->load_compound_model(newModel, mass, baseMeshIdx, baseMaterialIdx);
+				//}
+    //            else if (isC)
+    //            {
+    //                mSceneManager->load_C_model(newModel, mass, baseMeshIdx, baseMaterialIdx);
+    //            }
+    //            else if (isStatic) {
+    //                mSceneManager->load_static_model(newModel, baseMeshIdx, baseMaterialIdx);
+    //            } else {
+    //                mSceneManager->load_dynamic_model(newModel, mass, baseMeshIdx, baseMaterialIdx);
+    //            }
+    //        }
+
+
+    //        // 5. Update model scenes (fixing mesh references for the global renderer array)
+    //        for (auto& instance : newModel.scenes) {
+    //            instance.meshIndex += baseMeshIdx;
+    //            mModel.scenes.push_back(instance);
+    //        }
+    //    }
 
         // returns the material descriptor index assigned to the last add_runtime_mesh() call
         uint32_t get_runtime_mat_index() const { return mRuntimeMatIndex; }
