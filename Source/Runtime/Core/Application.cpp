@@ -113,6 +113,7 @@ namespace engine {
 
 		glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 10.0f, 30.0f));
 		glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
+		glm::mat4 bikeAnchorWorld = glm::mat4(0.0f); // sentinel: [3][3]==0 means anchor not found
 		glm::mat4 bridgeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(100.0f, 0.0f, 60.0f));
 		glm::mat4 CplaneSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(120.0f, 0.0f, 250.0f));
 		glm::mat4 emissivecubeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 3.0f, 10.0f));
@@ -135,7 +136,7 @@ namespace engine {
 		//renderSystem->load_additional_model("Assets/Models/testBridge.glb", true, 0.0f, bridgeSpawnPos);
 		//renderSystem->load_additional_model("Assets/Models/testCurvePlane.glb", true, 0.0f, CplaneSpawnPos);
 		//renderSystem->load_additional_model("Assets/DELETE_LATER/em1.gltf", false, 0.0f, emissivecubeSpawnPos);
-		sceneManager->LoadModel(renderSystem, "Assets/Models/tbike.glb", engine::ModelPhysicsType::CustomC, 90.0f, tbpos);
+		sceneManager->LoadModel(renderSystem, "Assets/Models/tbikeWithAnchor.glb", engine::ModelPhysicsType::CustomC, 90.0f, tbpos);
 		//renderSystem->load_additional_model("Assets/Models/tbikeWithAnchor.glb", false, 90.0f, tbpos, false, true);
 		sceneManager->LoadModel(renderSystem, "Assets/DELETE_LATER/em1.gltf", ModelPhysicsType::Dynamic, 10.0f, emissivecubeSpawnPos);
 
@@ -171,7 +172,7 @@ namespace engine {
 			m_bikeController->Init(bikeBodyID);
 		}
 		else {
-			std::print("[Error] BikeController Init Failed: Could not find Bike_0 entity!\n");
+			printf("[Error] BikeController Init Failed: Could not find Bike_0 entity!\n");
 		}
 
 	
@@ -204,7 +205,7 @@ namespace engine {
 					if (!pedalREntity.is_valid()  && strstr(n, "pedal_right_9"))  pedalREntity  = e;
 				});
 
-			std::print("[App] Bike parts found – handleL:{} handleR:{} pedalL:{} pedalR:{}\n",
+			printf("[App] Bike parts found - handleL:%d handleR:%d pedalL:%d pedalR:%d\n",
 				handleLEntity.is_valid(), handleREntity.is_valid(),
 				pedalLEntity.is_valid(), pedalREntity.is_valid());
 
@@ -221,7 +222,7 @@ namespace engine {
 				// does when it sets up the physics body) then express the anchor in body-local space.
 				glm::mat4 seatOffset;
 				bool anchorFound = (bikeAnchorWorld[3][3] == 1.0f);
-				std::print("[App] Anchor node {}, world pos ({:.3f}, {:.3f}, {:.3f})\n",
+				printf("[App] Anchor node %s, world pos (%.3f, %.3f, %.3f)\n",
 				    anchorFound ? "FOUND" : "NOT FOUND",
 				    bikeAnchorWorld[3][0], bikeAnchorWorld[3][1], bikeAnchorWorld[3][2]);
 				if (anchorFound) {
@@ -329,10 +330,10 @@ namespace engine {
 				// 4. 结束延迟，批量合并修改，表此时已解锁，安全！
 				world.defer_end();
 
-				std::print("[App] Rider bound (2 mesh parts) → bike '{}'\n",
+				printf("[App] Rider bound (2 mesh parts) -> bike '%s'\n",
 					bikeEntity.name() ? bikeEntity.name() : "?");
 			} else {
-				std::print("[App] Warning: rider bind failed (char={} bike={})\n",
+				printf("[App] Warning: rider bind failed (char=%d bike=%d)\n",
 					charEntity.is_valid(), bikeEntity.is_valid());
 			}
 		}
@@ -357,10 +358,10 @@ namespace engine {
 
 		if (bikeEntity.is_valid()) {
 			headlight.child_of(bikeEntity); 
-			std::print("Success: Headlight is now firmly attached to the Bike!\n");
+			printf("Success: Headlight is now firmly attached to the Bike!\n");
 		}
 		else {
-			std::print("Warning: Could not find CPart_0! Check your terminal output for the correct bike entity name.\n");
+			printf("Warning: Could not find CPart_0! Check your terminal output for the correct bike entity name.\n");
 		}
 
 		//=============================================Headlight End ==============================================

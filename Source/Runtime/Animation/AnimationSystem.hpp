@@ -10,10 +10,6 @@
 // Forward declare to avoid circular include
 namespace engine { class SceneManager; }
 
-// ============================================================
-// IK types (defined here so both AnimationSystem and SceneManager
-// can use them without creating circular includes)
-// ============================================================
 
 // One 2-bone IK chain (shoulder→elbow→hand or hip→knee→foot)
 struct IKChainConfig {
