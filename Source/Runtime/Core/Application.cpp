@@ -1,10 +1,12 @@
 #include "Application.hpp"
 #include "../Renderer/RenderSystem.hpp"
 #include "../Scene/SceneManager.hpp"
+#include <glm/gtx/matrix_decompose.hpp>
 #include "../Physics/PhysicsSystem.hpp"
 #include "../Physics/bikeController.hpp"
 #include "../Input/InputSystem.hpp"
 #include "../Event/EventSystem.hpp"
+#include "../Animation/AnimationSystem.hpp"
 #include <flecs.h>
 // ================= debug =================
 #include "../Debug/DebugRenderer.hpp"
@@ -36,7 +38,11 @@ namespace engine {
 
 		// 【新增】：把 mState 也传给 SceneManager！
 		sceneManager->SetUserState(&mState);
-		//final render 
+
+		// Animation system (must be added before RenderSystem so Update order is correct)
+		animationSystem = AddSystem<AnimationSystem>();
+
+		//final render
 
 		//AddSystem<CameraSystem>();
 		//AddSystem<UISystem>();
@@ -51,8 +57,11 @@ namespace engine {
             inputSystem->SetWindow(renderSystem->GetGLFWWindow());
             renderSystem->SetInputSystem(inputSystem);
             physicsSystem->SetInputSystem(inputSystem);
-            
         }
+
+        // Wire animation system to scene and renderer
+        animationSystem->set_scene_manager(sceneManager);
+        renderSystem->set_animation_system(animationSystem);
 
 
 
@@ -64,7 +73,7 @@ namespace engine {
 
 		//renderSystem->load_additional_model("Assets/Models/warehouseSceneWithShelf_opt.glb" , true, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(1.0f)));
 
-
+		
 
 
 		//======trigger box start=====
@@ -107,18 +116,19 @@ namespace engine {
 		glm::mat4 bridgeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(100.0f, 0.0f, 60.0f));
 		glm::mat4 CplaneSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(120.0f, 0.0f, 250.0f));
 		glm::mat4 emissivecubeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 3.0f, 10.0f));
-		
+
 		// 【修复】：只传 path, isStatic=true, mass=0.0f, transform
-		
-	
-		// old load_additional_model is defined in renderSystem, 
-		// but we want to use the new LoadModel in scene manager which will also create physics body for us, 
+
+
+		// old load_additional_model is defined in renderSystem,
+		// but we want to use the new LoadModel in scene manager which will also create physics body for us,
 		// so comment out the old one and use the new one in scene manager
 		//  ModelPhysicsType：
 		//  Static,   // 静态场景（如桥梁、地面）
 		//	Dynamic,  // 普通动态刚体（如滚木）
 		//	Compound, // 复合碰撞体
 		//	CustomC   // 特殊定制类型（如单车）
+		renderSystem->load_animated_model("Assets/Models/character.glb", tbpos);
 
 
 
@@ -167,6 +177,165 @@ namespace engine {
 	
 
 
+		// =======================================================
+		// Rider binding: attach character to bike seat + IK
+		// =======================================================
+		{
+			// --- Find the first skinned entity (the character) ---
+			flecs::entity charEntity;
+			sceneManager->get_world().query<SkinComponent>()
+				.each([&](flecs::entity e, SkinComponent&) {
+					if (!charEntity.is_valid()) charEntity = e;
+				});
+
+			// --- Find specific bike-part entities by name substring ---
+			// Names are GLTF node name + "_N" counter suffix set by load_C_model.
+			flecs::entity handleLEntity;  // handle_left_4  – left handlebar grip
+			flecs::entity handleREntity;  // handle_right_5 – right handlebar grip
+			flecs::entity pedalLEntity;   // pedal_left_8   – left pedal plate
+			flecs::entity pedalREntity;   // pedal_right_9  – right pedal plate
+			sceneManager->get_world().query<CompoundParent>()
+				.each([&](flecs::entity e, CompoundParent&) {
+					const char* n = e.name();
+					if (!n) return;
+					if (!handleLEntity.is_valid() && strstr(n, "handle_left_4"))  handleLEntity = e;
+					if (!handleREntity.is_valid() && strstr(n, "handle_right_5")) handleREntity = e;
+					if (!pedalLEntity.is_valid()  && strstr(n, "pedal_left_8"))   pedalLEntity  = e;
+					if (!pedalREntity.is_valid()  && strstr(n, "pedal_right_9"))  pedalREntity  = e;
+				});
+
+			std::print("[App] Bike parts found – handleL:{} handleR:{} pedalL:{} pedalR:{}\n",
+				handleLEntity.is_valid(), handleREntity.is_valid(),
+				pedalLEntity.is_valid(), pedalREntity.is_valid());
+
+			if (charEntity.is_valid() && bikeEntity.is_valid()) {
+				// Bone names confirmed from debug_print_nodes() output (Mixamo rig):
+				//   Arms:  LeftArm / LeftForeArm / LeftHand
+				//          RightArm / RightForeArm / RightHand
+				//   Legs:  LeftUpLeg / LeftLeg / LeftFoot
+				//          RightUpLeg / RightLeg / RightFoot
+
+				// --- Seat offset: character root placed at the "Anchor" node in bike-local space ---
+				// bikeAnchorWorld[3][3] == 1 means the Anchor node was found in the GLB.
+				// We strip scale from the bike's initial world transform (matching what load_C_model
+				// does when it sets up the physics body) then express the anchor in body-local space.
+				glm::mat4 seatOffset;
+				bool anchorFound = (bikeAnchorWorld[3][3] == 1.0f);
+				std::print("[App] Anchor node {}, world pos ({:.3f}, {:.3f}, {:.3f})\n",
+				    anchorFound ? "FOUND" : "NOT FOUND",
+				    bikeAnchorWorld[3][0], bikeAnchorWorld[3][1], bikeAnchorWorld[3][2]);
+				if (anchorFound) {
+				    glm::mat4 bikeMat = bikeEntity.get<LocalTransform>().matrix;
+				    glm::vec3 s, t, skew; glm::quat r; glm::vec4 persp;
+				    glm::decompose(bikeMat, s, r, t, skew, persp);
+				    glm::mat4 bodyTR = glm::translate(glm::mat4(1.0f), t)
+				                    * glm::mat4_cast(glm::normalize(r));
+				    seatOffset = glm::inverse(bodyTR) * bikeAnchorWorld
+				               * glm::scale(glm::mat4(1.0f), glm::vec3(2.1f));
+				} else {
+				    seatOffset = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -0.7f, 0.0f))
+				               * glm::scale(glm::mat4(1.0f), glm::vec3(2.1f));
+				}
+
+				// --- Build shared IK chains (Mixamo bone names) ---
+				RiderIKComponent rik;
+				rik.bikeEntityId  = bikeEntity.id();
+				rik.leanAngleDeg  = 35.0f; // torso forward lean in degrees
+
+				// handle positions in bike-local space (from startup log):
+				//   handle_left  = (+0.430, +1.265, +0.817)
+				//   handle_right = (-0.424, +1.265, +0.817)
+				// Pole: elbow should point outward and slightly downward for a natural grip.
+
+				// Left hand → handle_left_4
+				{
+					IKChainConfig c;
+					c.rootBone          = "LeftArm";
+					c.midBone           = "LeftForeArm";
+					c.endBone           = "LeftHand";
+					c.targetEntityId    = handleLEntity.is_valid() ? handleLEntity.id() : 0;
+					c.localTargetOffset = glm::vec3(0.0f, 0.06f, 0.0f);     // grip slightly above entity origin
+					c.localBikeTarget   = glm::vec3(0.43f, 1.35f, 0.817f);  // exact handle pos (raised)
+					c.localBikePole     = glm::vec3(0.80f, 0.60f, 0.30f);   // elbow out-left & down
+					c.enabled = true;
+					rik.chains.push_back(c);
+				}
+
+				// Right hand → handle_right_5
+				{
+					IKChainConfig c;
+					c.rootBone          = "RightArm";
+					c.midBone           = "RightForeArm";
+					c.endBone           = "RightHand";
+					c.targetEntityId    = handleREntity.is_valid() ? handleREntity.id() : 0;
+					c.localTargetOffset = glm::vec3(0.0f, 0.06f, 0.0f);      // grip slightly above entity origin
+					c.localBikeTarget   = glm::vec3(-0.424f, 1.35f, 0.817f); // exact handle pos (raised)
+					c.localBikePole     = glm::vec3(-0.80f, 0.60f, 0.30f);   // elbow out-right & down
+					c.enabled = true;
+					rik.chains.push_back(c);
+				}
+
+				// Left foot → pedal_left_8  (pedal_left bike-local ≈ +0.30, 0.01, -0.12)
+				{
+					IKChainConfig c;
+					c.rootBone          = "LeftUpLeg";
+					c.midBone           = "LeftLeg";
+					c.endBone           = "LeftFoot";
+					c.targetEntityId    = pedalLEntity.is_valid() ? pedalLEntity.id() : 0;
+					c.localTargetOffset = glm::vec3(0.0f, 0.06f, 0.0f);    // foot slightly above pedal center
+					c.localBikeTarget   = glm::vec3(0.30f, 0.12f, -0.12f); // pedal pos fallback (raised)
+					c.localBikePole     = glm::vec3(0.45f, 0.2f,  0.40f);  // knee out-left
+					c.enabled = true;
+					rik.chains.push_back(c);
+				}
+
+				// Right foot → pedal_right_9  (pedal_right bike-local ≈ -0.30, -0.29, +0.17)
+				{
+					IKChainConfig c;
+					c.rootBone          = "RightUpLeg";
+					c.midBone           = "RightLeg";
+					c.endBone           = "RightFoot";
+					c.targetEntityId    = pedalREntity.is_valid() ? pedalREntity.id() : 0;
+					c.localTargetOffset = glm::vec3(0.0f, 0.06f, 0.0f);     // foot slightly above pedal center
+					c.localBikeTarget   = glm::vec3(-0.30f, -0.10f, 0.17f); // pedal pos fallback (raised)
+					c.localBikePole     = glm::vec3(-0.45f, 0.2f,  0.40f);  // knee out-right
+					c.enabled = true;
+					rik.chains.push_back(c);
+				}
+
+				// Apply binding + IK to ALL skinned character entities (character has 2 mesh parts).
+				// Also add a dummy AnimationComponent (animIndex=-1) so AnimationSystem's query
+				// picks them up even though this character has no animation clips.
+// 1. 显式获取世界引用
+				flecs::world& world = sceneManager->get_world();
+
+				// 2. 开启延迟修改队列
+				world.defer_begin();
+
+				// 3. 执行遍历（此时所有的 set 操作不会立即生效，而是被压入队列）
+				world.query<SkinComponent>()
+					.each([&](flecs::entity e, SkinComponent&) {
+					e.set<RiderBinding>({ bikeEntity.id(), seatOffset });
+					e.set<RiderIKComponent>(rik);   // copy to each mesh part
+					if (!e.has<AnimationComponent>()) {
+						AnimationComponent ac{};
+						ac.animIndex = -1;   // no clip → rest pose; IK still runs
+						ac.playing = false;
+						ac.looping = false;
+						e.set<AnimationComponent>(ac);
+					}
+						});
+
+				// 4. 结束延迟，批量合并修改，表此时已解锁，安全！
+				world.defer_end();
+
+				std::print("[App] Rider bound (2 mesh parts) → bike '{}'\n",
+					bikeEntity.name() ? bikeEntity.name() : "?");
+			} else {
+				std::print("[App] Warning: rider bind failed (char={} bike={})\n",
+					charEntity.is_valid(), bikeEntity.is_valid());
+			}
+		}
 		//=============================================Headlight ==============================================
 		glm::mat4 localLightOffset = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.7f, 1.7f));
 

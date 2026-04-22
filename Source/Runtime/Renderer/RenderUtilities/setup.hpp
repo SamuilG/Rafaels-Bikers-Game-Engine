@@ -88,8 +88,9 @@ namespace cfg
 
 
 	constexpr char const* kSpeedPostFragShaderPath = SHADERDIR_"speed_postprocess.frag.spv";
-	
 
+	// Skeletal skinning
+	constexpr char const* kSkinnedVertShaderPath = SHADERDIR_"skinned.vert.spv";
 
 
 #	undef SHADERDIR_
@@ -154,3 +155,23 @@ lut::Sampler create_post_proc_sampler( lut::VulkanWindow const& );
 
 // debug render
 lut::Pipeline create_debug_line_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, VkFormat aColorFormat);
+
+// ------- Skeletal animation / skinning -------
+// Descriptor set layout for the bone-matrices SSBO (set = 2, binding = 0)
+lut::DescriptorSetLayout create_bone_descriptor_layout(lut::VulkanContext const& aContext);
+
+// Pipeline layout: [set0=scene, set1=material, set2=bones] + 128-byte push constants
+lut::PipelineLayout create_skinned_pipeline_layout(lut::VulkanContext const& aContext,
+                                                   VkDescriptorSetLayout aSceneLayout,
+                                                   VkDescriptorSetLayout aObjectLayout,
+                                                   VkDescriptorSetLayout aBoneLayout);
+
+// Skinned opaque pipeline (uses skinned.vert.spv + default.frag.spv, 5 vertex bindings)
+lut::Pipeline create_skinned_pipeline(lut::VulkanWindow const& aWindow,
+                                      VkPipelineLayout aPipelineLayout,
+                                      VkFormat aColorFormat = VK_FORMAT_B8G8R8A8_SRGB);
+
+// Skinned alpha-masked pipeline
+lut::Pipeline create_skinned_alpha_pipeline(lut::VulkanWindow const& aWindow,
+                                            VkPipelineLayout aPipelineLayout,
+                                            VkFormat aColorFormat = VK_FORMAT_B8G8R8A8_SRGB);

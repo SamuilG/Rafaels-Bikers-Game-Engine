@@ -82,10 +82,13 @@ struct EntityStatus {
 
 // Render batch data
 struct RenderBatch {
-    uint32_t meshIndex;
-    uint32_t materialIndex;
+    uint32_t  meshIndex;
+    uint32_t  materialIndex;
     glm::mat4 transform;
-    float alphaMultiplier; 
+    float     alphaMultiplier = 1.0f;
+    // Skinning (only valid when isSkinned == true)
+    bool     isSkinned      = false;
+    uint32_t boneBaseIndex  = 0;  // offset into the bone SSBO
 };
 
 // forward declare EngineModel to avoid including engine_model.hpp here
@@ -100,8 +103,29 @@ namespace flecs { class world; }
 
 
 struct OpacityComponent {
-    float currentAlpha = 1.0f; // µ±Ç°Í¸Ã÷¶È
-    float targetAlpha = 1.0f;  // Ä¿±êÍ¸Ã÷¶È (ÓÃÓÚÆ½»¬¹ý¶É)
+    float currentAlpha = 1.0f;
+    float targetAlpha  = 1.0f;
+};
+
+// Binds a character entity to follow a bike entity (seat positioning + orientation)
+struct RiderBinding {
+    uint64_t  bikeEntityId = 0;
+    glm::mat4 seatOffset   = glm::mat4(1.0f); // character root in bike-local space
+};
+
+// Controls which animation clip plays and at what time
+struct AnimationComponent {
+    int   animIndex  = -1;   // index into AnimationSystem's animation list
+    float currentTime = 0.0f;
+    bool  looping    = true;
+    float speed      = 1.0f;
+    bool  playing    = true;
+};
+
+// Skinning component: bone matrices updated each frame by AnimationSystem
+struct SkinComponent {
+    int skinIndex = -1;                     // index into AnimationSystem's skin list
+    std::vector<glm::mat4> boneMatrices;    // one per joint, computed each frame
 };
 
 
@@ -111,7 +135,7 @@ class SceneManager final : public System {
 
 
 private:
-    struct UserState* mState = nullptr; // ¼ÓÉÏÕâ¸öÖ¸Õë (Èç¹û²»Ê¶±ð UserState£¬Çë include ¶ÔÓ¦µÄÍ·ÎÄ¼þ)
+    struct UserState* mState = nullptr; // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¸ï¿½ï¿½ (ï¿½ï¿½ï¿½ï¿½ï¿½Ê¶ï¿½ï¿½ UserStateï¿½ï¿½ï¿½ï¿½ include ï¿½ï¿½Ó¦ï¿½ï¿½Í·ï¿½Ä¼ï¿½)
 
 
 public:
@@ -137,6 +161,18 @@ public:
     void load_compound_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx);
 
     void load_C_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx);
+
+    // Load a skinned/animated model: creates entities with AnimationComponent + SkinComponent.
+    // baseSkinIdx / baseAnimIdx are the indices returned by AnimationSystem::register_model().
+    void load_animated_model(const EngineModel& model,
+                             uint32_t baseMeshIdx, uint32_t baseMatIdx,
+                             uint32_t baseSkinIdx, uint32_t baseAnimIdx);
+
+    // Build render batches for skinned entities.
+    // Packs bone matrices into boneBuffer (up to maxBones mat4s).
+    // outBoneCount receives the total number of matrices written.
+    std::vector<RenderBatch> get_skinned_batches(
+        glm::mat4* boneBuffer, size_t maxBones, size_t& outBoneCount);
 
 	const EngineModel& get_model() const { return mModel; }//expose the cpu model to other systems (like Vulkan) to upload data to gpu
 
@@ -176,13 +212,13 @@ public:
     std::string get_entity_name_from_body_id(uint32_t bodyID);
 
     //==========UI System======================
-    //»ñÈ¡µ±Ç°³¡¾°ÖÐÊµÌåµÄÊýÁ¿£¨ÓÃÓÚµ÷ÊÔºÍUIÏÔÊ¾£©
+    //ï¿½ï¿½È¡ï¿½ï¿½Ç°ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Êµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Úµï¿½ï¿½Ôºï¿½UIï¿½ï¿½Ê¾ï¿½ï¿½
     // Get the count of entities with MeshComponent, which indicates how many renderable entities are in the scene.
     int get_entity_count() {
         if (!m_world) return 0;
         return m_world->count<MeshComponent>();
     }
-    // Raycast from origin in direction, return first hit entity ÉäÏß¼ì²â£¬·µ»ØµÚÒ»¸ö±»»÷ÖÐµÄÊµÌå
+    // Raycast from origin in direction, return first hit entity ï¿½ï¿½ï¿½ß¼ï¿½â£¬ï¿½ï¿½ï¿½Øµï¿½Ò»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ðµï¿½Êµï¿½ï¿½
     flecs::entity raycast_entity(const glm::vec3& origin, const glm::vec3& direction, float max_distance = 1000.0f);
     PhysicsSystem* get_physics_system() const { return m_physics_system; }
 
@@ -192,7 +228,7 @@ public:
     //==========UI System======================
     float speed = 0.0f;
     void print_all_entities();
-    // ÔÚ SceneManager.hpp ÖÐ£º
+    // ï¿½ï¿½ SceneManager.hpp ï¿½Ð£ï¿½
     flecs::entity create_light_entity(
         const char* name,
         LightType type,
@@ -200,7 +236,7 @@ public:
         float intensity,
         const glm::mat4& transform,
         float range = 10.0f,
-        // --- ¡¾ÐÂÔö¡¿¾Û¹âµÆ×¨Êô²ÎÊý£¨´øÄ¬ÈÏÖµ£¬²»Ó°ÏìÒÔÇ°µÄ´úÂë£© ---
+        // --- ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Û¹ï¿½ï¿½×¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¬ï¿½ï¿½Öµï¿½ï¿½ï¿½ï¿½Ó°ï¿½ï¿½ï¿½ï¿½Ç°ï¿½Ä´ï¿½ï¿½ë£© ---
         glm::vec3 direction = glm::vec3(0.0f, 0.0f, -1.0f),
         float innerCutOff = 12.5f,
         float outerCutOff = 17.5f

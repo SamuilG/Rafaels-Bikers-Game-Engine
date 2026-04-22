@@ -78,6 +78,8 @@ namespace lut = labut2;
 #include "../Debug/DebugRenderer.hpp"
 #include "../Trigger/trigger.hpp"
 #include "../Debug/PhysicsDebugDraw.hpp"
+#include "../Animation/AnimationSystem.hpp"
+#include <unordered_map>
 #include "RenderUtilities/frustum.hpp"
 namespace glsl {
     struct MosaicUniform {
@@ -107,6 +109,7 @@ namespace engine {
     private:
         bool& mAppRunning;
         SceneManager* mSceneManager;
+        engine::AnimationSystem* mAnimationSystem = nullptr;
 
         lut::VulkanWindow  mWindow;
         lut::Allocator     mAllocator;
@@ -579,6 +582,18 @@ namespace engine {
             mAlphaPipe = create_alpha_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
             mThumbnailAlphaPipe = create_alpha_pipeline_1_attachment(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
 
+            // Skeletal animation pipeline resources
+            mBoneLayout        = create_bone_descriptor_layout(mWindow);
+            mSkinnedPipeLayout = create_skinned_pipeline_layout(mWindow, mSceneLayout.handle, mObjectLayout.handle, mBoneLayout.handle);
+            mSkinnedPipe       = create_skinned_pipeline(mWindow, mSkinnedPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+            mSkinnedAlphaPipe  = create_skinned_alpha_pipeline(mWindow, mSkinnedPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+
+            // Host-visible bone matrix SSBO (kMaxBoneMatrices mat4s)
+            mBoneSSBO = lut::create_buffer(mAllocator,
+                kMaxBoneMatrices * sizeof(glm::mat4),
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+
             // p2_1.5 Shadow Resources
             mShadowMap = create_shadow_map(mWindow, mAllocator);
             mShadowSampler = create_shadow_sampler(mWindow);
@@ -610,6 +625,20 @@ namespace engine {
             mOffscreenImage = create_offscreen_buffer(mWindow, mAllocator);
             mVisImage = create_vis_image(mWindow, mAllocator); // p2_1.1
             mPostSampler = create_post_proc_sampler(mWindow);
+
+            // Bone descriptor set (set=2, binding=0 → SSBO)
+            {
+                mBoneDescriptorSet = lut::alloc_desc_set(mWindow, mDescPool.handle, mBoneLayout.handle);
+                VkDescriptorBufferInfo boneBI{ mBoneSSBO.buffer, 0, kMaxBoneMatrices * sizeof(glm::mat4) };
+                VkWriteDescriptorSet w{};
+                w.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                w.dstSet          = mBoneDescriptorSet;
+                w.dstBinding      = 0;
+                w.descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                w.descriptorCount = 1;
+                w.pBufferInfo     = &boneBI;
+                vkUpdateDescriptorSets(mWindow.device, 1, &w, 0, nullptr);
+            }
 
             // main scene descriptors need shadow map
             // update scene descriptors
@@ -1618,12 +1647,22 @@ namespace engine {
             // 2. 特效弹簧阻尼 (防闪烁)
             // 【修改这里的 5.0f】：
             // 调大 (比如 10.0f)：特效响应极其灵敏，一踩油门特效瞬间拉满。
-            // 调小 (比如 2.0f) ：特效会非常缓慢地浮现，有种“逐渐进入超空间”的深邃感
+            // 调小 (比如 2.0f) ：特效会非常缓慢地浮现，有种”逐渐进入超空间”的深邃感
             static float smoothedSpeedFactor = 1.0f;
             smoothedSpeedFactor += (targetSpeedFactor - smoothedSpeedFactor) * 5.0f * dt;
             // =========================================================
+            // Upload bone matrices for skinned entities into the SSBO
+            std::vector<RenderBatch> skinnedBatches;
+            if (mSceneManager && mBoneSSBO.buffer != VK_NULL_HANDLE) {
+                void* ptr;
+                vmaMapMemory(mAllocator.allocator, mBoneSSBO.allocation, &ptr);
+                size_t boneCount = 0;
+                skinnedBatches = mSceneManager->get_skinned_batches(
+                    static_cast<glm::mat4*>(ptr), kMaxBoneMatrices, boneCount);
+                vmaUnmapMemory(mAllocator.allocator, mBoneSSBO.allocation);
+            }
+
             // Record and submit commands for this frame
-            // 在 Update 函数末尾找到 record_commands 调用，修改如下：
             record_commands(
                 mCmdBuffers[mFrameIndex],
                 currentOpaque,
@@ -1680,7 +1719,15 @@ namespace engine {
                 mParticlePipe.handle,
                 allParticles,
                 mDebugLinePipe.handle,
-                mDebugRenderer
+                mDebugRenderer,
+                // Skeletal skinning
+                mSkinnedPipe.handle,
+                mSkinnedAlphaPipe.handle,
+                mSkinnedPipeLayout.handle,
+                mBoneDescriptorSet,
+                &mMeshJointIndices,
+                &mMeshJointWeights,
+                &skinnedBatches
             );
 			//clear debug renderer data after uploading
             mDebugRenderer.Clear();
@@ -1887,6 +1934,78 @@ namespace engine {
 
         // Allow application to pass in the input system
         void SetInputSystem(engine::InputSystem* sys) { mInputSystem = sys; }
+
+        // Wire up the animation system so we can call register_model
+        void set_animation_system(engine::AnimationSystem* anim) { mAnimationSystem = anim; }
+
+        // Load a skinned GLB and register it with the animation system.
+        // Creates entities with AnimationComponent + SkinComponent.
+        void load_animated_model(const char* path,
+                                 const glm::mat4& initialTransform = glm::mat4(1.0f))
+        {
+            EngineModel newModel = load_engine_model_glb(path);
+            uint32_t baseTexIdx  = static_cast<uint32_t>(mModelTextures.size());
+            uint32_t baseMatIdx  = static_cast<uint32_t>(mModel.materials.size());
+            uint32_t baseMeshIdx = static_cast<uint32_t>(mModel.meshes.size());
+
+            // 1. Upload textures
+            for (auto const& tex : newModel.textures) {
+                glfwPollEvents();
+                VkFormat fmt = (tex.space == ETextureSpace::srgb)
+                               ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
+                mModelTextures.emplace_back(lut::load_image_texture2d_from_memory(
+                    tex.pixels.data(), tex.width, tex.height,
+                    mWindow, mCmdPool.handle, mAllocator, fmt));
+                mModelTextureViews.emplace_back(lut::create_image_view_texture2d(
+                    mWindow, mModelTextures.back().image, fmt));
+            }
+
+            // 2. Upload materials
+            for (auto mat : newModel.materials) {
+                if (mat.baseColorTexture  >= 0) mat.baseColorTexture  += baseTexIdx;
+                if (mat.normalTexture     >= 0) mat.normalTexture      += baseTexIdx;
+                if (mat.metalRoughTexture >= 0) mat.metalRoughTexture  += baseTexIdx;
+                if (mat.occlusionTexture  >= 0) mat.occlusionTexture   += baseTexIdx;
+                if (mat.emissiveTexture   >= 0) mat.emissiveTexture    += baseTexIdx;
+                if (mat.alphaMaskTexture  >= 0) mat.alphaMaskTexture   += baseTexIdx;
+                mModel.materials.push_back(mat);
+                AddOneMaterialDescriptor(mDefaultSampler.handle, mMaterialDescriptors, mat);
+                AddOneMaterialDescriptor(mDebugSampler.handle, mDebugMaterialDescriptors, mat);
+            }
+
+            // 3. Upload meshes (position/normal/texcoord + skinning buffers)
+            for (auto mesh : newModel.meshes) {
+                mesh.materialIndex += baseMatIdx;
+                mModel.meshes.push_back(mesh);
+                uint32_t meshIdx = static_cast<uint32_t>(mModel.meshes.size() - 1);
+                UploadSingleMesh(mesh);
+                if (mesh.isSkinned) {
+                    UploadSkinningBuffers(mesh, meshIdx);
+                }
+            }
+
+            // 4. Apply initial transform
+            for (auto& inst : newModel.scenes)
+                inst.transform = initialTransform * inst.transform;
+
+            // 5. Register with AnimationSystem and create ECS entities
+            uint32_t baseSkinIdx = 0, baseAnimIdx = 0;
+            if (mAnimationSystem) {
+                auto reg = mAnimationSystem->register_model(newModel);
+                baseSkinIdx = reg.baseSkinIndex;
+                baseAnimIdx = reg.baseAnimIndex;
+            }
+
+            if (mSceneManager)
+                mSceneManager->load_animated_model(newModel, baseMeshIdx, baseMatIdx,
+                                                   baseSkinIdx, baseAnimIdx);
+
+            // 6. Merge scenes into global model
+            for (auto& inst : newModel.scenes) {
+                inst.meshIndex += baseMeshIdx;
+                mModel.scenes.push_back(inst);
+            }
+        }
 
         void SetUserState(UserState* state) { this->mState = state; }
 
@@ -2104,6 +2223,69 @@ namespace engine {
             glfwPollEvents(); // 保持窗口心跳
         } // 函数结束，旧的 ps, ts 等变成空壳被安全销毁，真正的显存已经归 vector 管了
 
+        // Upload joint-index and joint-weight vertex buffers for a skinned mesh
+        void UploadSkinningBuffers(const EngineMesh& mesh, uint32_t meshIdx)
+        {
+            if (mesh.jointIndices.empty() || mesh.jointWeights.empty()) return;
+
+            VkCommandBuffer uploadCmd = lut::alloc_command_buffer(mWindow, mCmdPool.handle);
+            VkCommandBufferBeginInfo bi{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+            bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            vkBeginCommandBuffer(uploadCmd, &bi);
+
+            VkDeviceSize jSz = mesh.jointIndices.size() * sizeof(glm::uvec4);
+            VkDeviceSize wSz = mesh.jointWeights.size() * sizeof(glm::vec4);
+
+            auto mkGpu = [&](VkDeviceSize sz, VkBufferUsageFlags usage) {
+                return lut::create_buffer(mAllocator, sz,
+                    usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                    VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
+            };
+            auto mkStg = [&](VkDeviceSize sz) {
+                return lut::create_buffer(mAllocator, sz,
+                    VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+            };
+
+            lut::Buffer jGpu = mkGpu(jSz, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+            lut::Buffer wGpu = mkGpu(wSz, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+            lut::Buffer jStg = mkStg(jSz);
+            lut::Buffer wStg = mkStg(wSz);
+
+            auto up = [&](lut::Buffer& b, const void* src, VkDeviceSize sz) {
+                void* ptr;
+                vmaMapMemory(mAllocator.allocator, b.allocation, &ptr);
+                std::memcpy(ptr, src, static_cast<std::size_t>(sz));
+                vmaUnmapMemory(mAllocator.allocator, b.allocation);
+            };
+            up(jStg, mesh.jointIndices.data(), jSz);
+            up(wStg, mesh.jointWeights.data(), wSz);
+
+            VkBufferCopy cj{ 0, 0, jSz }, cw{ 0, 0, wSz };
+            vkCmdCopyBuffer(uploadCmd, jStg.buffer, jGpu.buffer, 1, &cj);
+            vkCmdCopyBuffer(uploadCmd, wStg.buffer, wGpu.buffer, 1, &cw);
+
+            lut::buffer_barrier(uploadCmd, jGpu.buffer,
+                VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT, VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT);
+            lut::buffer_barrier(uploadCmd, wGpu.buffer,
+                VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT, VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT);
+
+            vkEndCommandBuffer(uploadCmd);
+
+            VkCommandBufferSubmitInfo ci{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO };
+            ci.commandBuffer = uploadCmd;
+            VkSubmitInfo2 si{ VK_STRUCTURE_TYPE_SUBMIT_INFO_2 };
+            si.commandBufferInfoCount = 1; si.pCommandBufferInfos = &ci;
+            vkQueueSubmit2(mWindow.graphicsQueue, 1, &si, VK_NULL_HANDLE);
+            vkQueueWaitIdle(mWindow.graphicsQueue);
+
+            mMeshJointIndices.emplace(meshIdx, std::move(jGpu));
+            mMeshJointWeights.emplace(meshIdx, std::move(wGpu));
+            glfwPollEvents();
+        }
+
         VkDescriptorSet BuildPostDesc(VkImageView imageView, VkBuffer mosaicBuf)
         {
             VkDescriptorSet ds = lut::alloc_desc_set(
@@ -2197,6 +2379,18 @@ namespace engine {
         std::vector<lut::Buffer> mMeshTexCoords;
         std::vector<lut::Buffer> mMeshNormals;
         std::vector<lut::Buffer> mMeshIndices;
+        // Skinning vertex buffers (indexed by mesh index, only skinned meshes have entries)
+        std::unordered_map<uint32_t, lut::Buffer> mMeshJointIndices;
+        std::unordered_map<uint32_t, lut::Buffer> mMeshJointWeights;
+
+        // Skeletal animation / skinning GPU resources
+        static constexpr size_t kMaxBoneMatrices = 16 * 128; // 16 entities * 128 joints
+        lut::Buffer              mBoneSSBO;           // host-visible, updated each frame
+        lut::DescriptorSetLayout mBoneLayout;
+        VkDescriptorSet          mBoneDescriptorSet = VK_NULL_HANDLE;
+        lut::PipelineLayout      mSkinnedPipeLayout;
+        lut::Pipeline            mSkinnedPipe;
+        lut::Pipeline            mSkinnedAlphaPipe;
 
         // UBOs
         lut::Buffer              mSceneUBO;

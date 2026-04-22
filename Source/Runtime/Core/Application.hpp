@@ -13,6 +13,7 @@ namespace engine {
     class RenderSystem;
     class InputSystem;
     class EventSystem;
+    class AnimationSystem;
 
     class Application {
     public:
@@ -50,6 +51,7 @@ namespace engine {
         InputSystem* inputSystem = nullptr;
         EventSystem* eventSystem = nullptr;
         UserState mState;
+        AnimationSystem* animationSystem = nullptr;
     };
 
 } // namespace engine
