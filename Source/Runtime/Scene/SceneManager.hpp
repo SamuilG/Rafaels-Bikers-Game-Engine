@@ -49,6 +49,18 @@ namespace engine {
         CustomC   // 特殊定制类型（如单车）
     };
 
+    // 1. 定义实体所处的渲染层
+    enum class RenderLayer {
+        Default = 0,
+        Emissive = 1,  // 自发光层（用于跳过阴影计算）
+        Transparent = 2
+    };
+    // 2. 将层级包装为 Flecs 组件
+    struct LayerComponent {
+        RenderLayer layer = RenderLayer::Default;
+    };
+
+
     // 在 SceneManager 类内部新增加载函数
     // 此时它需要传入一个 RenderSystem 指针来呼叫 GPU 服务
     // 在 SceneManager.hpp 内部
@@ -86,6 +98,7 @@ struct RenderBatch {
     uint32_t materialIndex;
     glm::mat4 transform;
     float alphaMultiplier; 
+    bool castShadow; // <--- 【新增】：告诉渲染器这个批次要不要画阴影
 };
 
 // forward declare EngineModel to avoid including engine_model.hpp here
@@ -127,16 +140,16 @@ public:
 
 public:
     // 
-    void LoadModel(engine::RenderSystem* renderSystem, const char* path, ModelPhysicsType physicsType, float mass = 1.0f, const glm::mat4& initialTransform = glm::mat4(1.0f));
+    void LoadModel(engine::RenderSystem* renderSystem, const char* path, ModelPhysicsType physicsType, float mass = 1.0f, const glm::mat4& initialTransform = glm::mat4(1.0f), RenderLayer layer = RenderLayer::Default);
     // Load and instantiate all entities from EngineModel as static
-    void load_static_model(const EngineModel& model, uint32_t baseMeshIdx = 0, uint32_t baseMatIdx = 0);
+    void load_static_model(const EngineModel& model, uint32_t baseMeshIdx = 0, uint32_t baseMatIdx = 0, RenderLayer layer = RenderLayer::Default);
 
     // Load and instantiate all entities from EngineModel as dynamic
-    void load_dynamic_model(const EngineModel& model, float mass = 1.0f, uint32_t baseMeshIdx = 0, uint32_t baseMatIdx = 0);
+    void load_dynamic_model(const EngineModel& model, float mass = 1.0f, uint32_t baseMeshIdx = 0, uint32_t baseMatIdx = 0, RenderLayer layer = RenderLayer::Default);
 
-    void load_compound_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx);
+    void load_compound_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer = RenderLayer::Default);
 
-    void load_C_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx);
+    void load_C_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer = RenderLayer::Default);
 
 	const EngineModel& get_model() const { return mModel; }//expose the cpu model to other systems (like Vulkan) to upload data to gpu
 

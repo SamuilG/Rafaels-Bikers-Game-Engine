@@ -16,10 +16,12 @@
 #include "../Renderer/RenderSystem.hpp"
 
 
+// 在 SceneManager.cpp 中
+
 namespace engine {
 
-    // 实现我们刚刚在头文件里声明的函数
-    void SceneManager::LoadModel(engine::RenderSystem* renderSystem, const char* path, ModelPhysicsType physicsType, float mass, const glm::mat4& initialTransform)
+    
+    void SceneManager::LoadModel(engine::RenderSystem* renderSystem, const char* path, ModelPhysicsType physicsType, float mass, const glm::mat4& initialTransform, RenderLayer layer)
     {
         // 1. 从硬盘读取文件
         EngineModel newModel = load_engine_model_glb(path);
@@ -34,17 +36,17 @@ namespace engine {
 
         // 4. 使用拿到的编号，构建 ECS 实体和物理世界
         switch (physicsType) {
+        case ModelPhysicsType::Dynamic:
+            load_dynamic_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer);
+            break;
         case ModelPhysicsType::Compound:
-            load_compound_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx);
+            load_compound_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer);
             break;
         case ModelPhysicsType::CustomC:
-            load_C_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx);
+            load_C_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer);
             break;
         case ModelPhysicsType::Static:
-            load_static_model(newModel, offsets.baseMeshIdx, offsets.baseMaterialIdx);
-            break;
-        case ModelPhysicsType::Dynamic:
-            load_dynamic_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx);
+            load_static_model(newModel, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer);
             break;
         }
     }
@@ -115,7 +117,7 @@ void SceneManager::cache_model_for_culling(const EngineModel& model, uint32_t ba
     }
 }
 
-void SceneManager::load_static_model(const EngineModel& model, uint32_t baseMeshIdx, uint32_t baseMatIdx) {
+void SceneManager::load_static_model(const EngineModel& model, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer) {
     std::print("Loading static model with {} instances\n", model.scenes.size());
     std::print("[Debug] load_static_model called on SceneManager at: {}\n", (void*)this);
     cache_model_for_culling(model, baseMeshIdx, baseMatIdx); // frustum culling caching
@@ -127,6 +129,7 @@ void SceneManager::load_static_model(const EngineModel& model, uint32_t baseMesh
         auto e = m_world->entity(name.c_str())
             .add<StaticObject>()
             .set<EntityStatus>({ true, true })
+            .set<LayerComponent>({ layer }) // <--- 【新增】：贴上分层标签
             .set<LocalTransform>({ instance.transform })
             .set<WorldTransform>({ instance.transform })
             .set<MeshComponent>({ instance.meshIndex + baseMeshIdx });
@@ -143,7 +146,7 @@ void SceneManager::load_static_model(const EngineModel& model, uint32_t baseMesh
     }
 }
 
-void SceneManager::load_dynamic_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx) {
+void SceneManager::load_dynamic_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer) {
     std::print("Loading dynamic model with {} instances\n", model.scenes.size());
     std::print("[Debug] load_dynamic_model called on SceneManager at: {}\n", (void*)this);
 	cache_model_for_culling(model, baseMeshIdx, baseMatIdx);//frustum culling caching
@@ -155,6 +158,7 @@ void SceneManager::load_dynamic_model(const EngineModel& model, float mass, uint
         auto e = m_world->entity(name.c_str())
             .add<DynamicObject>()
             .set<EntityStatus>({ true, true })
+            .set<LayerComponent>({ layer }) // <--- 【新增】：贴上分层标签
             .set<LocalTransform>({ instance.transform })
             .set<WorldTransform>({ instance.transform })
             .set<MeshComponent>({ instance.meshIndex + baseMeshIdx });
@@ -171,7 +175,7 @@ void SceneManager::load_dynamic_model(const EngineModel& model, float mass, uint
     }
 }
 
-void SceneManager::load_compound_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx) {
+void SceneManager::load_compound_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer) {
     std::print("Loading compound model with {} instances\n", model.scenes.size());
 	cache_model_for_culling(model, baseMeshIdx, baseMatIdx);//  frustum culling caching
     // 1. Create compound body
@@ -204,6 +208,7 @@ void SceneManager::load_compound_model(const EngineModel& model, float mass, uin
         auto e = m_world->entity(name.c_str())
             .add<DynamicObject>()
             .set<EntityStatus>({ true, false })  // No individual physics
+            .set<LayerComponent>({ layer }) // <--- 【新增】：贴上分层标签
             .set<LocalTransform>({ instance.transform })
             .set<WorldTransform>({ instance.transform })
             .set<MeshComponent>({ instance.meshIndex + baseMeshIdx })
@@ -214,7 +219,7 @@ void SceneManager::load_compound_model(const EngineModel& model, float mass, uin
     }
 }
 
-void SceneManager::load_C_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx) {
+void SceneManager::load_C_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer) {
     std::print("Loading compound model with {} instances\n", model.scenes.size());
 	cache_model_for_culling(model, baseMeshIdx, baseMatIdx); // frustum culling caching
     // 1. Create compound body
@@ -261,6 +266,7 @@ void SceneManager::load_C_model(const EngineModel& model, float mass, uint32_t b
         auto e = m_world->entity(name.c_str())
             .add<DynamicObject>()
             .set<EntityStatus>({ true, true })
+            .set<LayerComponent>({ layer }) // <--- 【新增】：贴上分层标签
             .set<LocalTransform>({ instance.transform })
             .set<WorldTransform>({ instance.transform })
             .set<MeshComponent>({ instance.meshIndex + baseMeshIdx })
@@ -555,11 +561,11 @@ std::vector<RenderBatch> SceneManager::get_render_batches(const Frustum * frustu
     mLastFrustumCullingCandidates = 0; // frustum culling
     mLastFrustumCullingVisible = 0; // frustum culling
 
-    // 【修改】：使用指针 (const OpacityComponent*) 使得该组件变为可选！
+    // 【修改 1】：在 Query 中请求 LayerComponent，并且给 Lambda 加上 flecs::entity e 参数以便安全检查
     m_world->query<const WorldTransform, const MeshComponent, const MaterialComponent, const EntityStatus, const OpacityComponent*>()
-        .each([&](const WorldTransform& wt, const MeshComponent& mc, const MaterialComponent& matc, const EntityStatus& status, const OpacityComponent* op) {
-        if (!status.should_render) return;
+        .each([&](flecs::entity e, const WorldTransform& wt, const MeshComponent& mc, const MaterialComponent& matc, const EntityStatus& status, const OpacityComponent* op) {
 
+        if (!status.should_render) return;
         ++mLastFrustumCullingCandidates; //frustum culling
 
         if (frustum && mc.meshIndex < mModel.meshes.size()) {
@@ -578,8 +584,17 @@ std::vector<RenderBatch> SceneManager::get_render_batches(const Frustum * frustu
         ++mLastFrustumCullingVisible; // new frustum culling
             // 如果有 OpacityComponent，提取它的 alpha，否则默认为 1.0f (不透明)
             float alpha = op ? op->currentAlpha : 1.0f;
-            batches.push_back({ mc.meshIndex, matc.materialIndex, wt.matrix, alpha });
-        
+            // 【新增】：检查实体的渲染层
+            bool castsShadow = true;
+            if (e.has<LayerComponent>()) {
+                // 如果实体属于自发光层，则关闭它的阴影投射！
+                if (e.get<LayerComponent>().layer == RenderLayer::Emissive) {
+                    castsShadow = false;
+                }
+            }
+
+            // 【修改 2】：把 castsShadow 塞进 RenderBatch
+            batches.push_back({ mc.meshIndex, matc.materialIndex, wt.matrix, alpha, castsShadow });
             });
     return batches;
 }

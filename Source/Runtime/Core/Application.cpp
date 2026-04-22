@@ -106,8 +106,8 @@ namespace engine {
 		glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
 		glm::mat4 bridgeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(100.0f, 0.0f, 60.0f));
 		glm::mat4 CplaneSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(120.0f, 0.0f, 250.0f));
-		glm::mat4 emissivecubeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 3.0f, 10.0f));
-		
+		glm::mat4 emissivecubeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(60.0f, 3.0f, 200.0f));
+		glm::mat4 darkRoomSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(60.0f, 0.0f, 200.0f));
 		// 【修复】：只传 path, isStatic=true, mass=0.0f, transform
 		
 	
@@ -132,6 +132,7 @@ namespace engine {
 		sceneManager->LoadModel(renderSystem, "Assets/Models/testBridge.glb", engine::ModelPhysicsType::Static, 0.0f, bridgeSpawnPos);
 
 		sceneManager->LoadModel(renderSystem, "Assets/Models/testCurvePlane.glb", engine::ModelPhysicsType::Static, 0.0f, CplaneSpawnPos);
+		sceneManager->LoadModel(renderSystem, "Assets/Models/darkRoom.glb", engine::ModelPhysicsType::Static, 0.0f,darkRoomSpawnPos );
 		// ==============================================================
 		// 【新增 2】：实例化并初始化 BikeController！
 		// ==============================================================
