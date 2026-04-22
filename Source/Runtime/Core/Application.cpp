@@ -127,8 +127,8 @@ namespace engine {
 		//renderSystem->load_additional_model("Assets/DELETE_LATER/em1.gltf", false, 0.0f, emissivecubeSpawnPos);
 		sceneManager->LoadModel(renderSystem, "Assets/Models/tbike.glb", engine::ModelPhysicsType::CustomC, 90.0f, tbpos);
 		//renderSystem->load_additional_model("Assets/Models/tbikeWithAnchor.glb", false, 90.0f, tbpos, false, true);
-		sceneManager->LoadModel(renderSystem, "Assets/DELETE_LATER/em1.gltf", ModelPhysicsType::Dynamic, 10.0f, emissivecubeSpawnPos);
-
+	//	sceneManager->LoadModel(renderSystem, "Assets/DELETE_LATER/em1.gltf", ModelPhysicsType::Dynamic, 10.0f, emissivecubeSpawnPos);
+		//sceneManager->LoadModel(renderSystem, "Assets/DELETE_LATER/em1.gltf", engine::ModelPhysicsType::Dynamic, 10.0f, emissivecubeSpawnPos, engine::RenderLayer::Emissive);
 		sceneManager->LoadModel(renderSystem, "Assets/Models/testBridge.glb", engine::ModelPhysicsType::Static, 0.0f, bridgeSpawnPos);
 
 		sceneManager->LoadModel(renderSystem, "Assets/Models/testCurvePlane.glb", engine::ModelPhysicsType::Static, 0.0f, CplaneSpawnPos);
@@ -257,6 +257,28 @@ namespace engine {
 			20.0f // range
 		);
 
+		glm::mat4 cubeLightSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(20.0f, 3.0f, 30.0f));
+
+		// 1. 加载发光方块，并接收返回的实体
+		flecs::entity emCubeEntity = sceneManager->LoadModel(
+			renderSystem,
+			"Assets/DELETE_LATER/em1.gltf",
+			engine::ModelPhysicsType::Dynamic,
+			1.0f,
+			emissivecubeSpawnPos,
+			engine::RenderLayer::Emissive
+		);
+		// 2. 将点光源作为子节点绑定给方块
+		sceneManager->create_light_entity(
+			"emCubeLight",
+			engine::LightType::Point,
+			glm::vec3(1.0f, 1.0f, 1.0f), // 颜色
+			8.0f,                        // 强度
+			glm::mat4(1.0f),           // 【关键】：局部变换为单位矩阵，意味着偏移量为 0，完全重合于父节点中心！
+			10.0f,                       // 范围
+			glm::vec3(0, -1, 0), 0, 0,     // 方向和切角（点光源用不到）
+			emCubeEntity                 // 【关键】：传入刚才拿到的方块实体作为父节点！
+		);
 
 		// Physics Collision Verification
 		eventSystem->Subscribe(EventType::Collision, [this](Event& e) {

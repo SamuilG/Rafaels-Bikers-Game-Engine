@@ -149,6 +149,10 @@ void record_commands(
 
 			VkDeviceSize kZeroOffset = 0;
 			for (const auto& batch : aBatches) {
+				// 【新增】：如果这个批次被标记为不投射阴影（比如它是发光体），直接跳过它的阴影绘制！
+				if (!batch.castShadow) {
+					continue;
+				}
 				uint32_t meshIdx = batch.meshIndex;
 				uint32_t matIdx = batch.materialIndex;
 				//if (batch.alphaMultiplier < 0.99f) continue;

@@ -3,7 +3,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
 #include <numbers>
-
+#include <flecs.h>
 // X11 defines macros that conflict with flecs
 #ifdef Bool
 #undef Bool
@@ -44,7 +44,7 @@ namespace engine {
     // 在 SceneManager 的头文件中定义清晰的物理类型枚举
     enum class ModelPhysicsType {
         Static,   // 静态场景（如桥梁、地面）
-        Dynamic,  // 普通动态刚体（如滚木）
+        Dynamic,  // 普通动态刚体
         Compound, // 复合碰撞体
         CustomC   // 特殊定制类型（如单车）
     };
@@ -140,17 +140,11 @@ public:
 
 public:
     // 
-    void LoadModel(engine::RenderSystem* renderSystem, const char* path, ModelPhysicsType physicsType, float mass = 1.0f, const glm::mat4& initialTransform = glm::mat4(1.0f), RenderLayer layer = RenderLayer::Default);
-    // Load and instantiate all entities from EngineModel as static
-    void load_static_model(const EngineModel& model, uint32_t baseMeshIdx = 0, uint32_t baseMatIdx = 0, RenderLayer layer = RenderLayer::Default);
-
-    // Load and instantiate all entities from EngineModel as dynamic
-    void load_dynamic_model(const EngineModel& model, float mass = 1.0f, uint32_t baseMeshIdx = 0, uint32_t baseMatIdx = 0, RenderLayer layer = RenderLayer::Default);
-
-    void load_compound_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer = RenderLayer::Default);
-
-    void load_C_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer = RenderLayer::Default);
-
+    flecs::entity LoadModel(engine::RenderSystem* renderSystem, const char* path, ModelPhysicsType physicsType, float mass = 1.0f, const glm::mat4& initialTransform = glm::mat4(1.0f), RenderLayer layer = RenderLayer::Default);
+    flecs::entity load_static_model(const EngineModel& model, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer);
+    flecs::entity load_dynamic_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer);
+    flecs::entity load_compound_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer);
+    flecs::entity load_C_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer);
 	const EngineModel& get_model() const { return mModel; }//expose the cpu model to other systems (like Vulkan) to upload data to gpu
 
 
@@ -206,6 +200,8 @@ public:
     float speed = 0.0f;
     void print_all_entities();
     // 在 SceneManager.hpp 中：
+   // SceneManager.hpp
+
     flecs::entity create_light_entity(
         const char* name,
         LightType type,
@@ -213,10 +209,10 @@ public:
         float intensity,
         const glm::mat4& transform,
         float range = 10.0f,
-        // --- 【新增】聚光灯专属参数（带默认值，不影响以前的代码） ---
         glm::vec3 direction = glm::vec3(0.0f, 0.0f, -1.0f),
         float innerCutOff = 12.5f,
-        float outerCutOff = 17.5f
+        float outerCutOff = 17.5f,
+        flecs::entity parent = flecs::entity::null()
     );
 
     void get_light_data(std::vector<GpuLight>& outLights);

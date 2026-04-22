@@ -21,34 +21,28 @@
 namespace engine {
 
     
-    void SceneManager::LoadModel(engine::RenderSystem* renderSystem, const char* path, ModelPhysicsType physicsType, float mass, const glm::mat4& initialTransform, RenderLayer layer)
+    flecs::entity SceneManager::LoadModel(engine::RenderSystem* renderSystem, const char* path, ModelPhysicsType physicsType, float mass, const glm::mat4& initialTransform, RenderLayer layer)
     {
-        // 1. 从硬盘读取文件
         EngineModel newModel = load_engine_model_glb(path);
 
-        // 2. 应用初始矩阵变换
         for (auto& instance : newModel.scenes) {
             instance.transform = initialTransform * instance.transform;
         }
 
-        // 3. 呼叫 RenderSystem 将资源上传至显存，并获取编号
         auto offsets = renderSystem->RegisterModelAssets(newModel);
 
-        // 4. 使用拿到的编号，构建 ECS 实体和物理世界
+        // 根据类型分发，并直接返回底层函数的结果
         switch (physicsType) {
-        case ModelPhysicsType::Dynamic:
-            load_dynamic_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer);
-            break;
         case ModelPhysicsType::Compound:
-            load_compound_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer);
-            break;
+            return load_compound_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer);
         case ModelPhysicsType::CustomC:
-            load_C_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer);
-            break;
+            return load_C_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer);
         case ModelPhysicsType::Static:
-            load_static_model(newModel, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer);
-            break;
+            return load_static_model(newModel, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer);
+        case ModelPhysicsType::Dynamic:
+            return load_dynamic_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer);
         }
+        return flecs::entity::null();
     }
 
 } // namespace engine
@@ -117,10 +111,11 @@ void SceneManager::cache_model_for_culling(const EngineModel& model, uint32_t ba
     }
 }
 
-void SceneManager::load_static_model(const EngineModel& model, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer) {
+flecs::entity SceneManager::load_static_model(const EngineModel& model, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer) {
     std::print("Loading static model with {} instances\n", model.scenes.size());
     std::print("[Debug] load_static_model called on SceneManager at: {}\n", (void*)this);
     cache_model_for_culling(model, baseMeshIdx, baseMatIdx); // frustum culling caching
+    flecs::entity firstEntity = flecs::entity::null(); // 用于记录第一个生成的实体
     int counter = 0;
     for (const auto& instance : model.scenes) {
         std::string name = instance.name.empty() ? "StaticObject" : instance.name;
@@ -143,15 +138,27 @@ void SceneManager::load_static_model(const EngineModel& model, uint32_t baseMesh
                 e.set<PhysicsBody>({ bodyID.GetIndexAndSequenceNumber() });
             }
         }
+        // ==========================================
+                // 【关键修复 1】：记录第一个实体
+                // ==========================================
+        if (!firstEntity.is_valid()) {
+            firstEntity = e;
+        }
     }
+
+    // ==========================================
+    // 【关键修复 2】：返回这个实体！
+    // ==========================================
+    return firstEntity;
 }
 
-void SceneManager::load_dynamic_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer) {
-    std::print("Loading dynamic model with {} instances\n", model.scenes.size());
-    std::print("[Debug] load_dynamic_model called on SceneManager at: {}\n", (void*)this);
-	cache_model_for_culling(model, baseMeshIdx, baseMatIdx);//frustum culling caching
+flecs::entity SceneManager::load_dynamic_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer) {
+    cache_model_for_culling(model, baseMeshIdx, baseMatIdx);
+    flecs::entity firstEntity = flecs::entity::null(); // 用于记录第一个生成的实体
     int counter = 0;
-    for (const auto& instance : model.scenes) {
+
+    for (const auto& instance : model.scenes) 
+    {
         std::string name = instance.name.empty() ? "DynamicObject" : instance.name;
         name += "_" + std::to_string(counter++);
 
@@ -172,13 +179,26 @@ void SceneManager::load_dynamic_model(const EngineModel& model, float mass, uint
                 e.set<PhysicsBody>({ bodyID.GetIndexAndSequenceNumber() });
             }
         }
+
+        // ==========================================
+        // 【关键修复 1】：记录第一个实体
+        // ==========================================
+        if (!firstEntity.is_valid()) {
+            firstEntity = e;
+        }
     }
+
+    // ==========================================
+    // 【关键修复 2】：返回这个实体！
+    // ==========================================
+    return firstEntity;
 }
 
-void SceneManager::load_compound_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer) {
+flecs::entity SceneManager::load_compound_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer) {
     std::print("Loading compound model with {} instances\n", model.scenes.size());
 	cache_model_for_culling(model, baseMeshIdx, baseMatIdx);//  frustum culling caching
     // 1. Create compound body
+    flecs::entity firstEntity = flecs::entity::null(); // 用于记录第一个生成的实体
     JPH::BodyID compoundBodyID;
     glm::mat4 bodyWorldTransform = model.scenes.empty() ? glm::mat4(1.0f) : model.scenes[0].transform;
 
@@ -216,11 +236,22 @@ void SceneManager::load_compound_model(const EngineModel& model, float mass, uin
 
         uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
         e.set<MaterialComponent>({ matIdx });
+        // ==========================================
+        // 【关键修复 1】：记录第一个实体
+        // ==========================================
+        if (!firstEntity.is_valid()) {
+            firstEntity = e;
+        }
     }
+    // ==========================================
+    // 【关键修复 2】：返回这个实体！
+    // ==========================================
+    return firstEntity;
 }
 
-void SceneManager::load_C_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer) {
+flecs::entity SceneManager::load_C_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer) {
     std::print("Loading compound model with {} instances\n", model.scenes.size());
+    flecs::entity firstEntity = flecs::entity::null(); // 用于记录第一个生成的实体
 	cache_model_for_culling(model, baseMeshIdx, baseMatIdx); // frustum culling caching
     // 1. Create compound body
 
@@ -274,7 +305,19 @@ void SceneManager::load_C_model(const EngineModel& model, float mass, uint32_t b
 
         uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
         e.set<MaterialComponent>({ matIdx });
+
+        // ==========================================
+        // 【关键修复 1】：记录第一个实体（通常是单车的主车架）
+        // ==========================================
+        if (!firstEntity.is_valid()) {
+            firstEntity = e;
+        }
     }
+
+    // ==========================================
+    // 【关键修复 2】：将句柄返回给外部
+    // ==========================================
+    return firstEntity;
 }
 
 
@@ -507,17 +550,23 @@ flecs::entity SceneManager::create_light_entity(
     float intensity,
     const glm::mat4& transform,
     float range,
-    // --- 【新增参数】 ---
     glm::vec3 direction,
     float innerCutOff,
-    float outerCutOff)
+    float outerCutOff,
+    flecs::entity parent) // <--- 正确：干净的右括号，没有多余的符号
 {
-    return m_world->entity(name)
-        .set<EntityStatus>({ true, false }) // 光源通常不需要参与物理同步
-        .set<LocalTransform>({ transform })
+    auto e = m_world->entity(name)
+        .set<EntityStatus>({ true, false })
+        .set<LocalTransform>({ transform }) // 相对位置
         .set<WorldTransform>({ transform })
-        // --- 【关键修改】：按顺序把新参数全部塞进去 ---
         .set<LightComponent>({ color, intensity, type, range, direction, innerCutOff, outerCutOff });
+
+    // 【核心逻辑】：如果传入了父节点，就将自己设为它的子节点！
+    if (parent.is_valid()) {
+        e.child_of(parent);
+    }
+
+    return e;
 }
 
 
