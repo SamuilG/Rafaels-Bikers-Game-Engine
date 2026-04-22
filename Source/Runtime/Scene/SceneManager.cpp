@@ -4,6 +4,7 @@
 #include <print>
 #include <cstring>
 #include "../Physics/PhysicsSystem.hpp"
+#include "../Animation/AnimationSystem.hpp" // for RiderIKComponent + IKChainConfig
 
 
 
@@ -311,16 +312,18 @@ void SceneManager::Update(float dt) {
                 const char* name = e.name();
 
                 if (name != nullptr) {
-                    // 1. 处理车把手和前轮的【转向 (Steer)】
+                    // 1. Steer rotation: steer assembly and front wheel only
+                    // (handle_left/right inherit from steer in a second pass below)
                     if (strstr(name, "steer.001_2") || strstr(name, "frontwheel.001_3")) {
                         float steerAngle = mState ? mState->bikeSteerAngle : 0.0f;
                         glm::mat4 steerRot = glm::rotate(glm::mat4(1.0f), steerAngle, glm::vec3(0.0f, 1.0f, 0.0f));
-                        // 叠加转向旋转
                         finalOffset = finalOffset * steerRot;
                     }
 
-                    // 2. 处理所有轮子和踏板的【滚动 (Roll)】
-                    if (strstr(name, "frontwheel.001_3") || strstr(name, "Rear wheel_1") || strstr(name, "Pedal.002_5") || strstr(name, "WholePedal_4")) {
+                    // 2. Crank/roll rotation: wheels and crank assemblies only
+                    // (pedal_left/right inherit from WholePedal in a second pass below)
+                    if (strstr(name, "frontwheel.001_3") || strstr(name, "Rear wheel_1") ||
+                        strstr(name, "Pedal.002_7")      || strstr(name, "WholePedal_6")) {
                         float currentSpeed = mState ? mState->bikeSpeed : 0.0f;
                         speed += 0.001f * currentSpeed; // speed 是 SceneManager 的成员变量，用来累计旋转角度
 
@@ -335,8 +338,42 @@ void SceneManager::Update(float dt) {
             }
                 });
         // =========================================================
+        // Pass 2: child-part inheritance
+        // handle_left/right follow steer.001_2; pedal_left/right follow WholePedal_6
+        // Formula: childWorld = parentWorld * inv(parentLocalOff) * childLocalOff
+        // =========================================================
+        {
+            auto inherit_from_parent = [&](const char* parentName,
+                                           std::initializer_list<const char*> childNames)
+            {
+                flecs::entity parentEnt = find_entity(parentName);
+                if (!parentEnt.is_valid() ||
+                    !parentEnt.has<LocalTransform>() ||
+                    !parentEnt.has<CompoundParent>()) return;
 
-         
+                const glm::mat4  parentWorld    = parentEnt.get<LocalTransform>().matrix;
+                const glm::mat4  parentLocalOff = parentEnt.get<CompoundParent>().localOffset;
+                const glm::mat4  invParentOff   = glm::inverse(parentLocalOff);
+
+                m_world->query<LocalTransform, const CompoundParent>()
+                    .each([&](flecs::entity e, LocalTransform& lt, const CompoundParent& cp) {
+                        const char* n = e.name();
+                        if (!n) return;
+                        for (const char* child : childNames) {
+                            if (strstr(n, child)) {
+                                lt.matrix = parentWorld * invParentOff * cp.localOffset;
+                                break;
+                            }
+                        }
+                    });
+            };
+
+            inherit_from_parent("steer.001_2",  {"handle_left_4", "handle_right_5"});
+            inherit_from_parent("WholePedal_6", {"pedal_left_8",  "pedal_right_9"});
+        }
+        // =========================================================
+
+
         // ========================================================
          // --- 3. 【新增】：第三人称相机遮挡透视 (X-Ray) 逻辑 ---
          // ========================================================
@@ -420,6 +457,47 @@ void SceneManager::Update(float dt) {
 
 
     }
+
+    // =========================================================
+    // Rider binding: keep character at bike seat each frame
+    // =========================================================
+    m_world->query<LocalTransform, const RiderBinding>()
+        .each([&](flecs::entity /*e*/, LocalTransform& lt, const RiderBinding& rb) {
+            flecs::entity bikeEnt = m_world->entity(rb.bikeEntityId);
+            // Use LocalTransform (updated above from physics) so there is no 1-frame lag
+            if (bikeEnt.is_valid() && bikeEnt.has<LocalTransform>()) {
+                lt.matrix = bikeEnt.get<LocalTransform>().matrix * rb.seatOffset;
+            }
+        });
+
+    // =========================================================
+    // RiderIK: update world-space IK targets from bike/part transforms
+    // =========================================================
+    m_world->query<RiderIKComponent>()
+        .each([&](flecs::entity /*e*/, RiderIKComponent& rik) {
+            flecs::entity bikeEnt = m_world->entity(rik.bikeEntityId);
+            if (!bikeEnt.is_valid() || !bikeEnt.has<LocalTransform>()) return;
+            const glm::mat4& bikeWorld = bikeEnt.get<LocalTransform>().matrix;
+
+            for (auto& chain : rik.chains) {
+                // Pole always relative to bike
+                chain.worldPole = glm::vec3(bikeWorld * glm::vec4(chain.localBikePole, 1.0f));
+
+                // Target: prefer specific bike-part entity (steer, pedal…)
+                if (chain.targetEntityId != 0) {
+                    flecs::entity partEnt = m_world->entity(chain.targetEntityId);
+                    if (partEnt.is_valid() && partEnt.has<LocalTransform>()) {
+                        // Use the part's live LocalTransform (already has steer/crank rotation baked in)
+                        const glm::mat4& partWorld = partEnt.get<LocalTransform>().matrix;
+                        chain.worldTarget = glm::vec3(partWorld * glm::vec4(chain.localTargetOffset, 1.0f));
+                        continue;
+                    }
+                }
+                // Fallback: use bike-local offset
+                chain.worldTarget = glm::vec3(bikeWorld * glm::vec4(chain.localBikeTarget, 1.0f));
+            }
+        });
+
     m_world->progress(dt);
 }
 

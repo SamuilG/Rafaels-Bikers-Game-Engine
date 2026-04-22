@@ -93,6 +93,12 @@ struct OpacityComponent {
     float targetAlpha  = 1.0f;
 };
 
+// Binds a character entity to follow a bike entity (seat positioning + orientation)
+struct RiderBinding {
+    uint64_t  bikeEntityId = 0;
+    glm::mat4 seatOffset   = glm::mat4(1.0f); // character root in bike-local space
+};
+
 // Controls which animation clip plays and at what time
 struct AnimationComponent {
     int   animIndex  = -1;   // index into AnimationSystem's animation list

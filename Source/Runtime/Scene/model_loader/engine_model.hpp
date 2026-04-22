@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <map>
 #include <vector>
 #include <cstdint>
 #include <glm/glm.hpp>
@@ -111,6 +112,8 @@ struct EngineModel {
     std::vector<EngineNode>      nodes;
     std::vector<EngineSkin>      skins;
     std::vector<EngineAnimation> animations;
+    // Named empty nodes (e.g. "Anchor" for rider seating position)
+    std::map<std::string, glm::mat4> namedTransforms;
 };
 
 EngineModel load_engine_model_glb(const char* path);

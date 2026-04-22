@@ -1737,7 +1737,8 @@ namespace engine {
         }
 
         // add an entire model file to the renderer and physics scene
-        void load_additional_model(const char* path, bool isStatic, float mass = 1.0f, const glm::mat4& initialTransform = glm::mat4(1.0f), bool isCompound = false, bool isC = false)
+        // outAnchorTransform: if non-null, receives the world-space transform of a node named "Anchor"
+        void load_additional_model(const char* path, bool isStatic, float mass = 1.0f, const glm::mat4& initialTransform = glm::mat4(1.0f), bool isCompound = false, bool isC = false, glm::mat4* outAnchorTransform = nullptr)
         {
             EngineModel newModel = load_engine_model_glb(path);
             uint32_t baseTextureIdx = static_cast<uint32_t>(mModelTextures.size());
@@ -1799,6 +1800,20 @@ namespace engine {
             for (auto& instance : newModel.scenes) {
                 instance.transform = initialTransform * instance.transform;
             }
+            // Apply initial transform to named (anchor) nodes and expose the "Anchor" node if requested
+            for (auto& [name, t] : newModel.namedTransforms)
+                t = initialTransform * t;
+            if (outAnchorTransform) {
+                auto it = newModel.namedTransforms.find("Anchor");
+                if (it != newModel.namedTransforms.end())
+                    *outAnchorTransform = it->second;
+                else
+                    *outAnchorTransform = glm::mat4(0.0f); // sentinel: [3][3]==0 means not found
+            }
+            // Debug: print all named empty nodes found in this model
+            for (auto& [name, t] : newModel.namedTransforms)
+                std::printf("[Model] named node '%s' at (%.3f, %.3f, %.3f)\n",
+                            name.c_str(), t[3][0], t[3][1], t[3][2]);
             
             // 4.2 update the scenes to use global mesh indices for the renderer.
             if (mSceneManager) {

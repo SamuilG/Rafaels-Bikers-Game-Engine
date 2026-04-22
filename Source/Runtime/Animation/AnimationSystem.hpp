@@ -3,10 +3,47 @@
 #include "../Core/System.h"
 #include "../Scene/model_loader/engine_model.hpp"
 #include <vector>
+#include <string>
+#include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 
 // Forward declare to avoid circular include
 namespace engine { class SceneManager; }
+
+// ============================================================
+// IK types (defined here so both AnimationSystem and SceneManager
+// can use them without creating circular includes)
+// ============================================================
+
+// One 2-bone IK chain (shoulder→elbow→hand or hip→knee→foot)
+struct IKChainConfig {
+    std::string rootBone;               // e.g. "upper_arm.L"
+    std::string midBone;                // e.g. "forearm.L"
+    std::string endBone;                // e.g. "hand.L"
+    glm::vec3   localBikeTarget{0,0,0}; // target position in bike-local space (fallback)
+    glm::vec3   localBikePole  {0,1,0}; // pole/elbow hint in bike-local space
+    bool        enabled = true;
+
+    // If set, the IK target is derived from this specific bike-part entity's
+    // LocalTransform + localTargetOffset (e.g. steer, pedal).
+    // Takes priority over localBikeTarget when non-zero.
+    uint64_t  targetEntityId   = 0;
+    glm::vec3 localTargetOffset{0,0,0}; // offset inside the target entity's local space
+
+    // Filled by SceneManager each frame before AnimationSystem runs
+    glm::vec3 worldTarget{0,0,0};
+    glm::vec3 worldPole  {0,1,0};
+};
+
+// Rider IK component – attach to the character entity
+struct RiderIKComponent {
+    uint64_t bikeEntityId = 0;
+    std::vector<IKChainConfig> chains;
+
+    // Forward lean: degrees the spine tilts toward the handlebars (positive = lean forward).
+    // Split evenly across Spine / Spine1 / Spine2 bones before IK is solved.
+    float leanAngleDeg = 30.0f;
+};
 
 namespace engine {
 
@@ -36,6 +73,12 @@ public:
     size_t anim_count()  const { return mAnims.size(); }
     size_t node_count()  const { return mNodes.size(); }
 
+    // Find a node by name; returns -1 if not found
+    int find_node_by_name(const std::string& name) const;
+
+    // Debug: print all registered node names (call after loading to discover bone names)
+    void debug_print_nodes() const;
+
 private:
     SceneManager* mSceneManager = nullptr;
 
@@ -63,8 +106,25 @@ private:
                              const std::vector<NodeState>& states) const;
 
     // Evaluate a skin at time t using the given animation; writes into outMatrices
+    // Optionally applies IK chains (pass rik + character world transform)
     void evaluate_skin(int skinIdx, int animIdx, float t,
-                       std::vector<glm::mat4>& outMatrices);
+                       std::vector<glm::mat4>& outMatrices,
+                       const RiderIKComponent* rik = nullptr,
+                       const glm::mat4& charWorld = glm::mat4(1.0f));
+
+    // --- IK helpers ---
+    // Rotate nodeIdx so its child direction rotates from oldDir to newDir (model space)
+    void rotate_bone_from_to(int nodeIdx,
+                             const glm::vec3& oldDir, const glm::vec3& newDir,
+                             std::vector<NodeState>& states);
+
+    // Apply one 2-bone analytic IK chain; modifies states in place
+    void apply_two_bone_ik(const IKChainConfig& chain,
+                           const glm::mat4& worldToModel,
+                           std::vector<NodeState>& states);
+
+    // Rotate spine bones (Spine/Spine1/Spine2) by leanAngleDeg in the character's local +X axis
+    void apply_spine_lean(float leanAngleDeg, std::vector<NodeState>& states);
 };
 
 } // namespace engine
