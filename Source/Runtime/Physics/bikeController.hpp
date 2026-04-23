@@ -8,13 +8,8 @@
 // 前向声明 Jolt 物理系统
 namespace JPH { class PhysicsSystem; }
 
-// ==========================================
-// 【关键修复】：把 UserState 的前向声明放在全局命名空间（namespace engine 外面）！
-struct UserState;
-// ==========================================
-
 namespace engine {
-
+    struct UserState; // 加上这个前向声明！
     // InputSystem 应该还是在 engine 里面的
     class InputSystem;
 
@@ -29,7 +24,7 @@ namespace engine {
     class BikeController {
     public:
         // 构造函数，注意这里使用的是全局的 UserState
-        BikeController(JPH::PhysicsSystem* joltPhysics, InputSystem* input, ::UserState* state);
+        BikeController(JPH::PhysicsSystem* joltPhysics, InputSystem* input, UserState* state);
         ~BikeController() = default;
 
         void Init(uint32_t chassisBodyID);
@@ -41,9 +36,9 @@ namespace engine {
     private:
         JPH::PhysicsSystem* m_joltPhysics = nullptr;
         InputSystem* m_inputSystem = nullptr;
+        // 【关键修复】：必须在这里加上 m_state 的声明！
+        UserState* m_state = nullptr;
 
-        // 这里也明确指明是全局的 UserState
-        ::UserState* m_state = nullptr;
 
         std::unique_ptr<BicycleState> m_bicycle;
     };

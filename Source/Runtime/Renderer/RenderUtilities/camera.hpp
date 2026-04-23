@@ -28,20 +28,16 @@ namespace cfg
 
 
 
-
+namespace engine {
+	struct UserState;
+}
 
 
 namespace engine { class InputSystem; }
 
-void update_user_state( UserState& aState, float aElapsedTime, engine::InputSystem* inputSys );
+void update_user_state(engine::UserState& aState, float aElapsedTime, engine::InputSystem* inputSys);
 
-void update_scene_uniforms(
-	glsl::SceneUniform& aSceneUniforms,
-	std::uint32_t aFramebufferWidth,
-	std::uint32_t aFramebufferHeight,
-	
-	UserState const& aState
-);
+void update_scene_uniforms(glsl::SceneUniform& aSceneUniforms, std::uint32_t aFramebufferWidth, std::uint32_t aFramebufferHeight, const engine::UserState& aState);
 
 
 

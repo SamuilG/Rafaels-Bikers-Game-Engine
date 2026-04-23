@@ -940,10 +940,7 @@ namespace engine {
                 // 确保高度不为 0
                 if (height < 0.1f) height = 0.1f;
                 // 2. 替换掉原来的 mWindow.swapchainExtent
-                update_scene_uniforms(sceneUniforms,
-                    (uint32_t)vpSize.x,  // 使用 UI 宽度
-                    (uint32_t)vpSize.y,  // 使用 UI 高度
-                    *mState);
+                void update_scene_uniforms(glsl::SceneUniform & aSceneUniforms, std::uint32_t aFramebufferWidth, std::uint32_t aFramebufferHeight, const engine::UserState & aState);
 
                 //View 矩阵
                 glm::mat4 view = glm::inverse(mState->camera2world);
@@ -1405,15 +1402,17 @@ namespace engine {
             glsl::SceneUniform sceneUniforms{};
 
 			//重新获取一次 UI 视口尺寸//re-fetch UI viewport size
+         
             ImVec2 finalVpSize = EngineUi::GetSceneViewportSize();
             float finalWidth = std::max(1.0f, std::abs(finalVpSize.x));
             float finalHeight = std::max(1.0f, std::abs(finalVpSize.y));
-
-            update_scene_uniforms(sceneUniforms,
-                (uint32_t)finalWidth,
-                (uint32_t)finalHeight,
-                *mState);
-
+            // 【关键修复】：删掉带 void 的声明，换成真正的函数调用！
+            update_scene_uniforms(
+                sceneUniforms,
+                static_cast<uint32_t>(finalWidth),
+                static_cast<uint32_t>(finalHeight),
+                *mState
+            );
             //frustum culling: keep separate smoothed FPS samples for culling ON vs OFF.
             if (dt > 0.0001f) {
                 float currentFps = 1.0f / dt;

@@ -21,13 +21,13 @@
 #include <imgui.h>
 #include "../../Input/InputSystem.hpp"
 
-
+#include "../../UserState/UserState.hpp" // 请根据你的实际目录层级确认路径
 namespace lut = labut2;
 
 float extremeSpeedThreshold = 35.0f;
 
 // Removed callbacks, now fully handled by engine::InputSystem
-void update_user_state(UserState& aState, float aElapsedTime, engine::InputSystem* inputSys)
+void update_user_state(engine::UserState& aState, float aElapsedTime, engine::InputSystem* inputSys)
 {
 	auto& cam = aState.camera2world;
 
@@ -212,7 +212,7 @@ void update_user_state(UserState& aState, float aElapsedTime, engine::InputSyste
 	}
 }
 
-void update_scene_uniforms(glsl::SceneUniform& aSceneUniforms, std::uint32_t aFramebufferWidth, std::uint32_t aFramebufferHeight, UserState const& aState)
+void update_scene_uniforms(glsl::SceneUniform& aSceneUniforms, std::uint32_t aFramebufferWidth, std::uint32_t aFramebufferHeight, engine::UserState const& aState)
 {
 	float const aspect = float(aFramebufferWidth) / float(aFramebufferHeight);
 	float const fov = glm::radians(aState.cameraFov);
