@@ -1,0 +1,28 @@
+﻿  animation.cc
+  animation_utils.cc
+  blending_job.cc
+  ik_aim_job.cc
+  ik_two_bone_job.cc
+  local_to_model_job.cc
+  motion_blending_job.cc
+  sampling_job.cc
+  skeleton.cc
+  skeleton_utils.cc
+  track.cc
+  track_sampling_job.cc
+  track_triggering_job.cc
+  string_archive.cc
+  group_varint.cc
+  archive.cc
+  stream.cc
+  log.cc
+  box.cc
+  math_archive.cc
+  simd_math.cc
+  simd_math_archive.cc
+  soa_math_archive.cc
+  allocator.cc
+  platform.cc
+  skinning_job.cc
+  Ozz libraries were built with SSE2 math implementation
+  OzzAnimation.vcxproj -> D:\csc\groupEngine1.0\Rafaels-Bikers-Game-Engine-charANI\Intermediate\Bin\Debug-x64\OzzAnimation\OzzAnimation.lib

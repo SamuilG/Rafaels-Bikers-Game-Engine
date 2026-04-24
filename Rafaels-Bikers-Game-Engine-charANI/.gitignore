@@ -1,0 +1,7 @@
+.vs/
+_build_/
+bin/
+lib/
+*.vsidx
+*.suo
+*.user

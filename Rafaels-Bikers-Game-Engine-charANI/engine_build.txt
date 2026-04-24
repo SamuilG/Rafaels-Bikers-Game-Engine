@@ -1,0 +1,235 @@
+==== Building GLFW (debug_x64) ====
+==== Building JoltPhysics (debug_x64) ====
+==== Building Shaders (debug_x64) ====
+Creating ../Obj/GLFW/Debug-x64
+context.c
+egl_context.c
+glx_context.c
+init.c
+input.c
+linux_joystick.c
+monitor.c
+null_init.c
+null_joystick.c
+null_monitor.c
+null_window.c
+osmesa_context.c
+platform.c
+posix_module.c
+posix_poll.c
+Creating ../Obj/JoltPhysics/Debug-x64
+AABBTreeBuilder.cpp
+Body.cpp
+posix_thread.c
+BodyCreationSettings.cpp
+posix_time.c
+BodyInterface.cpp
+vulkan.c
+BodyManager.cpp
+window.c
+BoxShape.cpp
+BroadPhase.cpp
+BroadPhaseBruteForce.cpp
+x11_init.c
+BroadPhaseQuadTree.cpp
+CapsuleShape.cpp
+CastConvexVsTriangles.cpp
+CastSphereVsTriangles.cpp
+Character.cpp
+CharacterBase.cpp
+CharacterVirtual.cpp
+x11_monitor.c
+x11_window.c
+xkb_unicode.c
+Linking GLFW
+CollideConvexVsTriangles.cpp
+CollideSphereVsTriangles.cpp
+CollisionDispatch.cpp
+CollisionGroup.cpp
+Color.cpp
+CompoundShape.cpp
+ComputeBufferCPU.cpp
+ComputeBufferDX12.cpp
+ComputeBufferVK.cpp
+ComputeQueueCPU.cpp
+ComputeQueueDX12.cpp
+ComputeQueueVK.cpp
+ComputeShaderVK.cpp
+ComputeSystem.cpp
+ComputeSystemCPU.cpp
+ComputeSystemDX12.cpp
+ComputeSystemDX12Impl.cpp
+ComputeSystemVK.cpp
+ComputeSystemVKImpl.cpp
+ComputeSystemVKWithAllocator.cpp
+ConeConstraint.cpp
+Constraint.cpp
+ConstraintManager.cpp
+ContactConstraintManager.cpp
+ConvexHullBuilder.cpp
+ConvexHullBuilder2D.cpp
+ConvexHullShape.cpp
+ConvexShape.cpp
+CylinderShape.cpp
+DebugRenderer.cpp
+DebugRendererPlayback.cpp
+DebugRendererRecorder.cpp
+DebugRendererSimple.cpp
+DecoratedShape.cpp
+DeterminismLog.cpp
+DistanceConstraint.cpp
+EmptyShape.cpp
+EstimateCollisionResponse.cpp
+Factory.cpp
+FixedConstraint.cpp
+GearConstraint.cpp
+GroupFilter.cpp
+GroupFilterTable.cpp
+Hair.cpp
+HairSettings.cpp
+HairShaders.cpp
+HairWrapper.cpp
+HeightFieldShape.cpp
+HingeConstraint.cpp
+Indexify.cpp
+IslandBuilder.cpp
+IssueReporting.cpp
+JobSystemSingleThreaded.cpp
+JobSystemThreadPool.cpp
+JobSystemWithBarrier.cpp
+LargeIslandSplitter.cpp
+LinearCurve.cpp
+ManifoldBetweenTwoFaces.cpp
+MassProperties.cpp
+Memory.cpp
+MeshShape.cpp
+MotionProperties.cpp
+MotorSettings.cpp
+MotorcycleController.cpp
+MutableCompoundShape.cpp
+NarrowPhaseQuery.cpp
+NarrowPhaseStats.cpp
+ObjectStream.cpp
+ObjectStreamBinaryIn.cpp
+ObjectStreamBinaryOut.cpp
+ObjectStreamIn.cpp
+ObjectStreamOut.cpp
+ObjectStreamTextIn.cpp
+ObjectStreamTextOut.cpp
+OffsetCenterOfMassShape.cpp
+OrientedBox.cpp
+PathConstraint.cpp
+PathConstraintPath.cpp
+PathConstraintPathHermite.cpp
+PhysicsMaterial.cpp
+PhysicsMaterialSimple.cpp
+PhysicsScene.cpp
+PhysicsSystem.cpp
+PhysicsUpdateContext.cpp
+PlaneShape.cpp
+PointConstraint.cpp
+Profiler.cpp
+PulleyConstraint.cpp
+QuadTree.cpp
+RTTI.cpp
+RackAndPinionConstraint.cpp
+Ragdoll.cpp
+RegisterTypes.cpp
+RotatedTranslatedShape.cpp
+ScaledShape.cpp
+Semaphore.cpp
+SerializableObject.cpp
+Shape.cpp
+SixDOFConstraint.cpp
+SkeletalAnimation.cpp
+Skeleton.cpp
+SkeletonMapper.cpp
+SkeletonPose.cpp
+SliderConstraint.cpp
+SoftBodyCreationSettings.cpp
+SoftBodyMotionProperties.cpp
+SoftBodyShape.cpp
+SoftBodySharedSettings.cpp
+SphereShape.cpp
+SpringSettings.cpp
+StateRecorderImpl.cpp
+StaticCompoundShape.cpp
+StringTools.cpp
+SwingTwistConstraint.cpp
+TaperedCapsuleShape.cpp
+TaperedCylinderShape.cpp
+TestComputeWrapper.cpp
+TickCounter.cpp
+TrackedVehicleController.cpp
+TransformedShape.cpp
+TriangleShape.cpp
+TriangleSplitter.cpp
+TriangleSplitterBinning.cpp
+TriangleSplitterMean.cpp
+TwoBodyConstraint.cpp
+TypeDeclarations.cpp
+Vec3.cpp
+VehicleAntiRollBar.cpp
+VehicleCollisionTester.cpp
+VehicleConstraint.cpp
+VehicleController.cpp
+VehicleDifferential.cpp
+VehicleEngine.cpp
+VehicleTrack.cpp
+VehicleTransmission.cpp
+Wheel.cpp
+WheeledVehicleController.cpp
+Linking JoltPhysics
+==== Building Engine (debug_x64) ====
+Creating ../Obj/Engine/Debug-x64
+Application.cpp
+PhysicsSystem.cpp
+SceneManager.cpp
+allocator.cpp
+camera.cpp
+context_helpers.cpp
+commands.cpp
+debug.c
+descriptors.cpp
+engine_model.cpp
+error.cpp
+entropy_common.c
+error_private.c
+flecs.c
+fse_decompress.c
+huf_decompress.c
+load.cpp
+main.cpp
+pool.c
+rendering.cpp
+setup.cpp
+synch.cpp
+textures.cpp
+tgen.cpp
+threading.c
+to_string.cpp
+vk_mem_alloc.cpp
+vkbuffer.cpp
+vkimage.cpp
+vkobject.cpp
+volk.c
+vulkan_context.cpp
+vulkan_window.cpp
+In file included from ../../ThirdParty/VulkanMemoryAllocator/src/vk_mem_alloc.cpp:7:
+../../ThirdParty/VulkanMemoryAllocator/include/vk_mem_alloc.h: In member function ‘void VmaBlockMetadata::DebugLogAllocation(VkDeviceSize, VkDeviceSize, void*) const’:
+../../ThirdParty/VulkanMemoryAllocator/include/vk_mem_alloc.h:6841:21: warning: unused variable ‘name’ [-Wunused-variable]
+ 6841 |         const char* name = allocation->GetName();
+      |                     ^~~~
+xxhash.c
+zstd_common.c
+zstd_ddict.c
+zstd_decompress.c
+zstd_decompress_block.c
+../../Source/Runtime/Renderer/RenderUtilities/engine_model.cpp: In function ‘void processNode(const tinygltf::Model&, int, const glm::mat4&, const std::vector<std::vector<unsigned int> >&, std::vector<EngineInstance>&)’:
+../../Source/Runtime/Renderer/RenderUtilities/engine_model.cpp:278:32: warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::vector<tinygltf::Node>::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+  278 |     if (nodeIdx < 0 || nodeIdx >= gltf.nodes.size()) return;
+      |                        ~~~~~~~~^~~~~~~~~~~~~~~~~~~~
+../../Source/Runtime/Renderer/RenderUtilities/engine_model.cpp:286:37: warning: comparison of integer expressions of different signedness: ‘const int’ and ‘std::vector<std::vector<unsigned int> >::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+  286 |     if (node.mesh >= 0 && node.mesh < meshMap.size()) {
+      |                           ~~~~~~~~~~^~~~~~~~~~~~~~~~
+Linking Engine
