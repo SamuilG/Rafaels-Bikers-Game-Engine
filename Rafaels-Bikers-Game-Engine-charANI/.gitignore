@@ -1,7 +1,11 @@
 .vs/
-_build_/
+Intermediate/
+Bin/
 bin/
-lib/
-*.vsidx
-*.suo
-*.user
+bin-int/
+Build/
+Cache/
+*.spv
+.xmake/
+*.sln
+*.vcxproj
