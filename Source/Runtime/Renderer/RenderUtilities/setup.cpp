@@ -2589,7 +2589,7 @@ lut::Pipeline create_alpha_pipeline_1_attachment( lut::VulkanWindow const& aWind
 	pipeInfo.pViewportState = &viewportInfo;
 	pipeInfo.pRasterizationState = &rasterInfo;
 	pipeInfo.pMultisampleState = &samplingInfo;
-	pipeInfo.pDepthStencilState = &depthInfo; 
+	pipeInfo.pDepthStencilState = &depthInfo;
 	pipeInfo.pColorBlendState = &blendInfo;
 	pipeInfo.pDynamicState = &dynamicInfo; // dynamic states
 
@@ -2761,5 +2761,206 @@ lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPip
 	}
 
 	return lut::Pipeline(aWindow.device, pipe);
+}
+
+// =============================================================================
+// Bone-matrices SSBO descriptor layout  (set = 2, binding = 0)
+// =============================================================================
+lut::DescriptorSetLayout create_bone_descriptor_layout(lut::VulkanContext const& aContext)
+{
+    VkDescriptorSetLayoutBinding binding{};
+    binding.binding         = 0;
+    binding.descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    binding.descriptorCount = 1;
+    binding.stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
+
+    VkDescriptorSetLayoutCreateInfo info{};
+    info.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    info.bindingCount = 1;
+    info.pBindings    = &binding;
+
+    VkDescriptorSetLayout layout = VK_NULL_HANDLE;
+    if (auto res = vkCreateDescriptorSetLayout(aContext.device, &info, nullptr, &layout);
+        VK_SUCCESS != res)
+        throw lut::Error("create_bone_descriptor_layout: {}", lut::to_string(res));
+
+    return lut::DescriptorSetLayout(aContext.device, layout);
+}
+
+// =============================================================================
+// Skinned pipeline layout: [set0=scene, set1=material, set2=bones] + 128-byte PC
+// =============================================================================
+lut::PipelineLayout create_skinned_pipeline_layout(
+    lut::VulkanContext const& aContext,
+    VkDescriptorSetLayout aSceneLayout,
+    VkDescriptorSetLayout aObjectLayout,
+    VkDescriptorSetLayout aBoneLayout)
+{
+    VkDescriptorSetLayout layouts[] = { aSceneLayout, aObjectLayout, aBoneLayout };
+
+    VkPushConstantRange pc{};
+    pc.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    pc.offset     = 0;
+    pc.size       = 128;
+
+    VkPipelineLayoutCreateInfo info{};
+    info.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    info.setLayoutCount         = 3;
+    info.pSetLayouts            = layouts;
+    info.pushConstantRangeCount = 1;
+    info.pPushConstantRanges    = &pc;
+
+    VkPipelineLayout layout = VK_NULL_HANDLE;
+    if (auto res = vkCreatePipelineLayout(aContext.device, &info, nullptr, &layout);
+        VK_SUCCESS != res)
+        throw lut::Error("create_skinned_pipeline_layout: {}", lut::to_string(res));
+
+    return lut::PipelineLayout(aContext.device, layout);
+}
+
+// =============================================================================
+// Internal helper: build opaque or alpha-blend skinned pipeline
+// =============================================================================
+static lut::Pipeline make_skinned_pipeline(
+    lut::VulkanWindow const& aWindow,
+    VkPipelineLayout aPipelineLayout,
+    bool alphaBlend)
+{
+    auto const vertSpirV = lut::load_file_u32(cfg::kSkinnedVertShaderPath);
+    auto const fragSpirV = lut::load_file_u32(cfg::kFragShaderPath);
+
+    VkShaderModuleCreateInfo code[2]{};
+    code[0].sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    code[0].codeSize = vertSpirV.size() * sizeof(uint32_t);
+    code[0].pCode    = vertSpirV.data();
+    code[1].sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    code[1].codeSize = fragSpirV.size() * sizeof(uint32_t);
+    code[1].pCode    = fragSpirV.data();
+
+    VkPipelineShaderStageCreateInfo stages[2]{};
+    stages[0].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    stages[0].stage  = VK_SHADER_STAGE_VERTEX_BIT;
+    stages[0].pName  = "main";
+    stages[0].pNext  = &code[0];
+    stages[1].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    stages[1].stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
+    stages[1].pName  = "main";
+    stages[1].pNext  = &code[1];
+
+    // 5 vertex bindings: position, texcoord, normal, joints (uvec4), weights (vec4)
+    VkVertexInputBindingDescription bindings[5]{};
+    bindings[0] = { 0, sizeof(float)*3,    VK_VERTEX_INPUT_RATE_VERTEX };
+    bindings[1] = { 1, sizeof(float)*2,    VK_VERTEX_INPUT_RATE_VERTEX };
+    bindings[2] = { 2, sizeof(float)*3,    VK_VERTEX_INPUT_RATE_VERTEX };
+    bindings[3] = { 3, sizeof(uint32_t)*4, VK_VERTEX_INPUT_RATE_VERTEX };
+    bindings[4] = { 4, sizeof(float)*4,    VK_VERTEX_INPUT_RATE_VERTEX };
+
+    VkVertexInputAttributeDescription attrs[5]{};
+    attrs[0] = { 0, 0, VK_FORMAT_R32G32B32_SFLOAT,    0 };
+    attrs[1] = { 1, 1, VK_FORMAT_R32G32_SFLOAT,       0 };
+    attrs[2] = { 2, 2, VK_FORMAT_R32G32B32_SFLOAT,    0 };
+    attrs[3] = { 3, 3, VK_FORMAT_R32G32B32A32_UINT,   0 };
+    attrs[4] = { 4, 4, VK_FORMAT_R32G32B32A32_SFLOAT, 0 };
+
+    VkPipelineVertexInputStateCreateInfo inputInfo{};
+    inputInfo.sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    inputInfo.vertexBindingDescriptionCount   = 5;
+    inputInfo.pVertexBindingDescriptions      = bindings;
+    inputInfo.vertexAttributeDescriptionCount = 5;
+    inputInfo.pVertexAttributeDescriptions    = attrs;
+
+    VkPipelineInputAssemblyStateCreateInfo assemblyInfo{};
+    assemblyInfo.sType    = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    assemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+    VkViewport vp{ 0,0,(float)aWindow.swapchainExtent.width,(float)aWindow.swapchainExtent.height,0,1 };
+    VkRect2D sc{ {0,0}, aWindow.swapchainExtent };
+    VkPipelineViewportStateCreateInfo vpInfo{};
+    vpInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    vpInfo.viewportCount = 1; vpInfo.pViewports = &vp;
+    vpInfo.scissorCount  = 1; vpInfo.pScissors  = &sc;
+
+    VkPipelineRasterizationStateCreateInfo raster{};
+    raster.sType       = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    raster.polygonMode = VK_POLYGON_MODE_FILL;
+    raster.cullMode    = VK_CULL_MODE_BACK_BIT;
+    raster.frontFace   = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    raster.lineWidth   = 1.f;
+
+    VkPipelineMultisampleStateCreateInfo ms{};
+    ms.sType                = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    VkPipelineColorBlendAttachmentState blendAtt[2]{};
+    blendAtt[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT|VK_COLOR_COMPONENT_G_BIT|VK_COLOR_COMPONENT_B_BIT|VK_COLOR_COMPONENT_A_BIT;
+    blendAtt[1].colorWriteMask = blendAtt[0].colorWriteMask;
+    if (alphaBlend) {
+        blendAtt[0].blendEnable         = VK_TRUE;
+        blendAtt[0].srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        blendAtt[0].dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        blendAtt[0].colorBlendOp        = VK_BLEND_OP_ADD;
+        blendAtt[0].srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        blendAtt[0].dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+        blendAtt[0].alphaBlendOp        = VK_BLEND_OP_ADD;
+    }
+    VkPipelineColorBlendStateCreateInfo blendInfo{};
+    blendInfo.sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    blendInfo.attachmentCount = 2;
+    blendInfo.pAttachments    = blendAtt;
+
+    VkFormat colorFmts[2] = { VK_FORMAT_R16G16B16A16_SFLOAT, VK_FORMAT_R16G16B16A16_SFLOAT };
+    VkPipelineRenderingCreateInfo renderInfo{};
+    renderInfo.sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+    renderInfo.colorAttachmentCount    = 2;
+    renderInfo.pColorAttachmentFormats = colorFmts;
+    renderInfo.depthAttachmentFormat   = cfg::kDepthFormat;
+
+    VkPipelineDepthStencilStateCreateInfo depth{};
+    depth.sType            = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depth.depthTestEnable  = VK_TRUE;
+    depth.depthWriteEnable = alphaBlend ? VK_FALSE : VK_TRUE;
+    depth.depthCompareOp   = VK_COMPARE_OP_LESS_OR_EQUAL;
+
+    VkDynamicState dynS[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+    VkPipelineDynamicStateCreateInfo dynInfo{};
+    dynInfo.sType             = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynInfo.dynamicStateCount = 2;
+    dynInfo.pDynamicStates    = dynS;
+
+    VkGraphicsPipelineCreateInfo pipeInfo{};
+    pipeInfo.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipeInfo.pNext               = &renderInfo;
+    pipeInfo.stageCount          = 2;
+    pipeInfo.pStages             = stages;
+    pipeInfo.pVertexInputState   = &inputInfo;
+    pipeInfo.pInputAssemblyState = &assemblyInfo;
+    pipeInfo.pViewportState      = &vpInfo;
+    pipeInfo.pRasterizationState = &raster;
+    pipeInfo.pMultisampleState   = &ms;
+    pipeInfo.pDepthStencilState  = &depth;
+    pipeInfo.pColorBlendState    = &blendInfo;
+    pipeInfo.pDynamicState       = &dynInfo;
+    pipeInfo.layout              = aPipelineLayout;
+
+    VkPipeline pipe = VK_NULL_HANDLE;
+    if (auto res = vkCreateGraphicsPipelines(aWindow.device, VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &pipe);
+        VK_SUCCESS != res)
+        throw lut::Error("make_skinned_pipeline: {}", lut::to_string(res));
+
+    return lut::Pipeline(aWindow.device, pipe);
+}
+
+lut::Pipeline create_skinned_pipeline(lut::VulkanWindow const& aWindow,
+                                      VkPipelineLayout aPipelineLayout,
+                                      VkFormat /*aColorFormat*/)
+{
+    return make_skinned_pipeline(aWindow, aPipelineLayout, false);
+}
+
+lut::Pipeline create_skinned_alpha_pipeline(lut::VulkanWindow const& aWindow,
+                                            VkPipelineLayout aPipelineLayout,
+                                            VkFormat /*aColorFormat*/)
+{
+    return make_skinned_pipeline(aWindow, aPipelineLayout, true);
 }
 

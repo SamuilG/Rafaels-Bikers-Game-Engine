@@ -4,6 +4,7 @@
 #include "../Physics/PhysicsSystem.hpp"
 #include "../Input/InputSystem.hpp"
 #include "../Event/EventSystem.hpp"
+#include "../Animation/AnimationSystem.hpp"
 #include "../Scene/TestScene.hpp" // 引入你的测试关卡
 
 namespace engine {
@@ -15,13 +16,16 @@ namespace engine {
         physicsSystem = AddSystem<PhysicsSystem>();
         physicsSystem->SetEventSystem(eventSystem);
         physicsSystem->SetUserState(&mState);
-        
+
         sceneManager = AddSystem<SceneManager>(physicsSystem);
         sceneManager->SetUserState(&mState);
 
+        animationSystem = AddSystem<AnimationSystem>();
+        animationSystem->set_scene_manager(sceneManager);
+
         renderSystem = AddSystem<RenderSystem>(Running, sceneManager);
         renderSystem->SetUserState(&mState);
-
+        renderSystem->set_animation_system(animationSystem);
         for (auto& sys : Systems) {
             sys->Init();
         }
@@ -36,13 +40,13 @@ namespace engine {
         eventSystem->Subscribe(EventType::Collision, [this](Event& e) {
             auto& collisionE = static_cast<CollisionEvent&>(e);
             // ... 你的碰撞日志打印逻辑 ...
-        });
+            });
 
         // ==============================================================
         // 【核心】：加载当前关卡 (未来切换关卡，只需要 new 不同的 Scene 即可)
         // ==============================================================
         m_currentScene = std::make_unique<TestScene>();
-        m_currentScene->Init(renderSystem, sceneManager, physicsSystem, inputSystem, eventSystem, &mState);
+        m_currentScene->Init(renderSystem, sceneManager, physicsSystem, inputSystem, eventSystem, &mState, animationSystem);
     }
 
     Application::~Application() {
@@ -59,7 +63,7 @@ namespace engine {
 
     void Application::Run() {
         mLastTime = std::chrono::steady_clock::now();
-        constexpr float kMaxDt = 0.05f; 
+        constexpr float kMaxDt = 0.05f;
 
         while (Running) {
             float dt = std::min(CalcDeltaTime(), kMaxDt);

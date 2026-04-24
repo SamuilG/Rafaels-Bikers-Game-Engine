@@ -3,13 +3,13 @@
 #include <volk/volk.h>
 #include <vector>
 #include <memory>
+#include <unordered_map>
 
 #include "setup.hpp"
 #include "camera.hpp"
-//#include "engine_model.hpp"
 #include "../../Rhi/vkobject.hpp"
 #include "../../Rhi/vulkan_window.hpp"
-#include "../../Rhi/vkbuffer.hpp" 
+#include "../../Rhi/vkbuffer.hpp"
 #include "../../Scene/SceneManager.hpp"
 #include "../../Particle/ParticleSystem.hpp"
 #include "../../Debug/DebugRenderer.hpp"
@@ -17,8 +17,6 @@
 namespace lut = labut2;
 
 
-
-// ±ØĞëÓë .cpp ÖĞµÄÇ©ÃûÍêÈ«Æ¥Åä
 void record_commands(
 	VkCommandBuffer aCmdBuff,
 	VkPipeline aGraphicsPipe,
@@ -38,7 +36,7 @@ void record_commands(
 	std::vector<EngineMaterial> const& aMaterials,
 	std::vector<VkDescriptorSet> const& aMaterialDescriptors,
 	std::vector<RenderBatch> const& aBatches,
-	// --- Bloom / blur / composite ĞÂÔö²ÎÊı ---
+	// --- Bloom / blur / composite ---
 	VkPipeline aBlurPipe,
 	VkPipelineLayout aBlurLayout,
 	VkPipeline aCompositePipe,
@@ -50,21 +48,21 @@ void record_commands(
 	ImageAndView const& aBrightColor,
 	ImageAndView const& aBlurTemp,
 	ImageAndView const& aFinalBloom,
-	ImageAndView const& aCompositeOutput, // ¡¾ĞŞ¸Ä¡¿£ºÔ­À´ÊÇ aFinalSceneColor£¬ÏÖÔÚ±ä³ÉÖĞ×ªÊä³öÍ¼
+	ImageAndView const& aCompositeOutput, // modified from aFinalSceneColor; used for bloom transfer
 	VkClearColorValue aClearColor,
 	float aBloomStrength,
 
 	// ==============================================================
-	// ¼«ËÙºóÆÚÌØĞ§²ÎÊı
+	// æé€Ÿåå¤„ç†æ•ˆæœ
 	// ==============================================================
 	VkPipeline aSpeedPipe,
 	VkPipelineLayout aSpeedLayout,
 	VkDescriptorSet aSpeedDesc,
 	float aSpeedFactor,
-	ImageAndView const& aFinalSceneColor, //Õâ²ÅÊÇÕæÕıµÄ×îÖÕ»­Ãæ£¨½»¸ø ImGui£©
+	ImageAndView const& aFinalSceneColor, // æœ€ç»ˆåœºæ™¯æ¸²æŸ“ç¼“å†²åŒºï¼ˆè¾“å‡ºåˆ° ImGuiï¼‰
 	// ==============================================================
 
-	// --- Ô­ÓĞºó´¦ÀíÓëÒõÓ°/Á£×Ó²ÎÊı±£Áô ---
+	// --- åŸæœ‰åå¤„ç†/é˜´å½±/ç²’å­å‚æ•° ---
 	VkPipeline aPostProcPipe,
 	VkDescriptorSet aPostProcDescriptors,
 	VkPipelineLayout aPostProcLayout,
@@ -75,21 +73,30 @@ void record_commands(
 	VkPipeline particlePipe,
 	const std::vector<std::unique_ptr<ParticleSystem>>& allParticles,
 	VkPipeline aDebugLinePipe,
-	engine::DebugRenderer& aDebugRenderer
+	engine::DebugRenderer& aDebugRenderer,
+	// --- Skeletal skinning (optional; pass VK_NULL_HANDLE to skip) ---
+	VkPipeline aSkinnedPipe                                          = VK_NULL_HANDLE,
+	VkPipeline aSkinnedAlphaPipe                                     = VK_NULL_HANDLE,
+	VkPipelineLayout aSkinnedPipeLayout                              = VK_NULL_HANDLE,
+	VkDescriptorSet  aBoneDescriptorSet                              = VK_NULL_HANDLE,
+	const std::unordered_map<uint32_t, lut::Buffer>* aMeshJoints    = nullptr,
+	const std::unordered_map<uint32_t, lut::Buffer>* aMeshWeights   = nullptr,
+	const std::vector<RenderBatch>*                  aSkinnedBatches = nullptr
 );
 
-void submit_commands( 
-	lut::VulkanContext const& aContext, 
-	VkCommandBuffer aCmdBuff, 
-	VkFence aFence, 
-	VkSemaphore aWaitSemaphore, 
-	VkSemaphore aSignalSemaphore 
+
+void submit_commands(
+	lut::VulkanContext const& aContext,
+	VkCommandBuffer aCmdBuff,
+	VkFence aFence,
+	VkSemaphore aWaitSemaphore,
+	VkSemaphore aSignalSemaphore
 );
 
-void present_results( 
-	VkQueue aPresentQueue, 
-	VkSwapchainKHR aSwapchain, 
-	std::uint32_t aImageIndex, 
-	VkSemaphore aRenderFinished, 
-	bool& aNeedToRecreateSwapchain 
+void present_results(
+	VkQueue aPresentQueue,
+	VkSwapchainKHR aSwapchain,
+	std::uint32_t aImageIndex,
+	VkSemaphore aRenderFinished,
+	bool& aNeedToRecreateSwapchain
 );

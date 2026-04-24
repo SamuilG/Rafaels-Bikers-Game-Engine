@@ -12,8 +12,9 @@ namespace labut2
     {   // create descriptor pool
         
 		VkDescriptorPoolSize const pools[] = {
-			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, aMaxDescriptors },
-			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, aMaxDescriptors }
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         aMaxDescriptors },
+			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, aMaxDescriptors },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         aMaxDescriptors }  // for bone-matrix SSBO
 		};
 
 		VkDescriptorPoolCreateInfo poolInfo{};

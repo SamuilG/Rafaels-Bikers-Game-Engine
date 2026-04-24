@@ -212,7 +212,7 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 	}
 }
 
-void update_scene_uniforms(glsl::SceneUniform& aSceneUniforms, std::uint32_t aFramebufferWidth, std::uint32_t aFramebufferHeight, engine::UserState const& aState)
+void update_scene_uniforms(glsl::SceneUniform& aSceneUniforms, std::uint32_t aFramebufferWidth, std::uint32_t aFramebufferHeight, const engine::UserState& aState)
 {
 	float const aspect = float(aFramebufferWidth) / float(aFramebufferHeight);
 	float const fov = glm::radians(aState.cameraFov);
