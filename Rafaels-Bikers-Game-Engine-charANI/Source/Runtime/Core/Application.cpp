@@ -15,7 +15,7 @@ namespace engine {
         physicsSystem = AddSystem<PhysicsSystem>();
         physicsSystem->SetEventSystem(eventSystem);
         physicsSystem->SetUserState(&mState);
-        
+
         sceneManager = AddSystem<SceneManager>(physicsSystem);
         sceneManager->SetUserState(&mState);
 
@@ -36,7 +36,7 @@ namespace engine {
         eventSystem->Subscribe(EventType::Collision, [this](Event& e) {
             auto& collisionE = static_cast<CollisionEvent&>(e);
             // ... 你的碰撞日志打印逻辑 ...
-        });
+            });
 
         // ==============================================================
         // 【核心】：加载当前关卡 (未来切换关卡，只需要 new 不同的 Scene 即可)
@@ -59,7 +59,7 @@ namespace engine {
 
     void Application::Run() {
         mLastTime = std::chrono::steady_clock::now();
-        constexpr float kMaxDt = 0.05f; 
+        constexpr float kMaxDt = 0.05f;
 
         while (Running) {
             float dt = std::min(CalcDeltaTime(), kMaxDt);
