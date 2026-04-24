@@ -4,6 +4,7 @@
 #include "../Physics/PhysicsSystem.hpp"
 #include "../Input/InputSystem.hpp"
 #include "../Event/EventSystem.hpp"
+#include "../Animation/AnimationSystem.hpp"
 #include "../Scene/TestScene.hpp" // 引入你的测试关卡
 
 namespace engine {
@@ -19,9 +20,12 @@ namespace engine {
         sceneManager = AddSystem<SceneManager>(physicsSystem);
         sceneManager->SetUserState(&mState);
 
+        animationSystem = AddSystem<AnimationSystem>();
+        animationSystem->set_scene_manager(sceneManager);
+
         renderSystem = AddSystem<RenderSystem>(Running, sceneManager);
         renderSystem->SetUserState(&mState);
-
+        renderSystem->set_animation_system(animationSystem);
         for (auto& sys : Systems) {
             sys->Init();
         }
@@ -42,7 +46,7 @@ namespace engine {
         // 【核心】：加载当前关卡 (未来切换关卡，只需要 new 不同的 Scene 即可)
         // ==============================================================
         m_currentScene = std::make_unique<TestScene>();
-        m_currentScene->Init(renderSystem, sceneManager, physicsSystem, inputSystem, eventSystem, &mState);
+        m_currentScene->Init(renderSystem, sceneManager, physicsSystem, inputSystem, eventSystem, &mState, animationSystem);
     }
 
     Application::~Application() {

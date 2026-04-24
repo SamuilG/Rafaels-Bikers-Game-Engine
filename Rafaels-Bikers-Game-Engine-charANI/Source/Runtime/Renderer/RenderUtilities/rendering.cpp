@@ -386,6 +386,112 @@ void record_commands(
 	
 	aDebugRenderer.Render(aCmdBuff, aDebugLinePipe, aGraphicsLayout, aSceneDescriptors);
 
+	if (aSkinnedPipe != VK_NULL_HANDLE &&
+		aSkinnedBatches && !aSkinnedBatches->empty() &&
+		aMeshJoints && aMeshWeights &&
+		aBoneDescriptorSet != VK_NULL_HANDLE)
+	{
+		struct alignas(16) SkinnedPC {
+			glm::mat4 transform;
+			glm::vec4 baseColorFactor;
+			float metallicFactor;
+			float roughnessFactor;
+			uint32_t boneBaseIndex;
+			float _pad;
+		};
+
+		// -- opaque skinned --
+		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipe);
+		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
+		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 2, 1, &aBoneDescriptorSet, 0, nullptr);
+
+		for (const auto& batch : *aSkinnedBatches)
+		{
+			uint32_t meshIdx = batch.meshIndex;
+			uint32_t matIdx = batch.materialIndex;
+			bool     isAlpha = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0)
+				|| (batch.alphaMultiplier < 0.99f);
+			if (isAlpha) continue; // draw in alpha pass below
+
+			auto jIt = aMeshJoints->find(meshIdx);
+			auto wIt = aMeshWeights->find(meshIdx);
+			if (jIt == aMeshJoints->end() || wIt == aMeshWeights->end()) continue;
+
+			SkinnedPC pc{};
+			pc.transform = batch.transform;
+			pc.boneBaseIndex = batch.boneBaseIndex;
+			if (matIdx < aMaterials.size()) {
+				pc.baseColorFactor = aMaterials[matIdx].baseColorFactor;
+				pc.metallicFactor = aMaterials[matIdx].metallicFactor;
+				pc.roughnessFactor = aMaterials[matIdx].roughnessFactor;
+			}
+			else {
+				pc.baseColorFactor = glm::vec4(1.0f);
+				pc.metallicFactor = pc.roughnessFactor = 1.0f;
+			}
+
+			vkCmdPushConstants(aCmdBuff, aSkinnedPipeLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(SkinnedPC), &pc);
+			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
+
+			VkDeviceSize z = 0;
+			vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &z);
+			vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &z);
+			vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &z);
+			vkCmdBindVertexBuffers(aCmdBuff, 3, 1, &jIt->second.buffer, &z);
+			vkCmdBindVertexBuffers(aCmdBuff, 4, 1, &wIt->second.buffer, &z);
+			vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
+			vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(aMeshInfos[meshIdx].indices.size()), 1, 0, 0, 0);
+		}
+
+		// -- alpha-masked skinned --
+		if (aSkinnedAlphaPipe != VK_NULL_HANDLE) {
+			vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedAlphaPipe);
+			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
+			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 2, 1, &aBoneDescriptorSet, 0, nullptr);
+
+			for (const auto& batch : *aSkinnedBatches)
+			{
+				uint32_t meshIdx = batch.meshIndex;
+				uint32_t matIdx = batch.materialIndex;
+				bool     isAlpha = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0)
+					|| (batch.alphaMultiplier < 0.99f);
+				if (!isAlpha) continue;
+
+				auto jIt = aMeshJoints->find(meshIdx);
+				auto wIt = aMeshWeights->find(meshIdx);
+				if (jIt == aMeshJoints->end() || wIt == aMeshWeights->end()) continue;
+
+				SkinnedPC pc{};
+				pc.transform = batch.transform;
+				pc.boneBaseIndex = batch.boneBaseIndex;
+				if (matIdx < aMaterials.size()) {
+					pc.baseColorFactor = aMaterials[matIdx].baseColorFactor;
+					pc.metallicFactor = aMaterials[matIdx].metallicFactor;
+					pc.roughnessFactor = aMaterials[matIdx].roughnessFactor;
+				}
+				else {
+					pc.baseColorFactor = glm::vec4(1.0f);
+					pc.metallicFactor = pc.roughnessFactor = 1.0f;
+				}
+				pc.baseColorFactor.a *= batch.alphaMultiplier;
+
+				vkCmdPushConstants(aCmdBuff, aSkinnedPipeLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(SkinnedPC), &pc);
+				vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
+
+				VkDeviceSize z = 0;
+				vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &z);
+				vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &z);
+				vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &z);
+				vkCmdBindVertexBuffers(aCmdBuff, 3, 1, &jIt->second.buffer, &z);
+				vkCmdBindVertexBuffers(aCmdBuff, 4, 1, &wIt->second.buffer, &z);
+				vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
+				vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(aMeshInfos[meshIdx].indices.size()), 1, 0, 0, 0);
+			}
+		}
+	}
+
+
+
 	vkCmdEndRendering(aCmdBuff);
 
 

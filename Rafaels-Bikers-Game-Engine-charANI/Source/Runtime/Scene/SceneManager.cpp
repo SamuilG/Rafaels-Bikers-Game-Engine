@@ -2,8 +2,10 @@
 #include <flecs.h>
 #include <print>
 #include <cmath>
+#include <cstring>
 
 #include "../Physics/PhysicsSystem.hpp"
+#include "../Animation/AnimationSystem.hpp" // for RiderIKComponent + IKChainConfig
 #include "../Renderer/RenderSystem.hpp"
 #include "../Renderer/RenderUtilities/light.hpp"
 
@@ -61,7 +63,8 @@ namespace engine {
         Shutdown();
     }
 
-    void SceneManager::Init() {
+    void SceneManager::Init() 
+    {
         m_world = new flecs::world();
 
         // Robust hierarchical transform system
@@ -378,6 +381,105 @@ namespace engine {
         return hitEntity;
     }
 
+    void SceneManager::load_animated_model(
+        const EngineModel& model,
+        uint32_t baseMeshIdx, uint32_t baseMatIdx,
+        uint32_t baseSkinIdx, uint32_t baseAnimIdx)
+    {
+        std::print("Loading animated model with {} instances, {} skins, {} anims\n",
+            model.scenes.size(), model.skins.size(), model.animations.size());
+        for (size_t i = 0; i < model.meshes.size(); ++i) {
+            std::print("  mesh[{}]: {} verts, {} indices, isSkinned={}\n",
+                i, model.meshes[i].positions.size(),
+                model.meshes[i].indices.size(),
+                model.meshes[i].isSkinned);
+        }
+
+        cache_model_for_culling(model, baseMeshIdx, baseMatIdx);
+
+        int counter = 0;
+        for (const auto& instance : model.scenes) {
+            std::string name = instance.name.empty() ? "AnimatedObject" : instance.name;
+            name += "_" + std::to_string(counter++);
+
+            uint32_t globalMeshIdx = instance.meshIndex + baseMeshIdx;
+            auto e = m_world->entity(name.c_str())
+                .add<DynamicObject>()
+                .set<EntityStatus>({ true, false })  // no individual physics by default
+                .set<LocalTransform>({ instance.transform })
+                .set<WorldTransform>({ instance.transform })
+                .set<MeshComponent>({ globalMeshIdx });
+
+            uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
+            e.set<MaterialComponent>({ matIdx });
+
+            std::print("  entity '{}': globalMesh={}, mat={}, skinIdx={}\n",
+                name, globalMeshIdx, matIdx, instance.skinIndex);
+
+            if (instance.skinIndex >= 0) {
+                SkinComponent sc{};
+                sc.skinIndex = (int)(baseSkinIdx + instance.skinIndex);
+                // Pre-size bone matrices (actual count set by AnimationSystem on first update)
+                if (instance.skinIndex < (int)model.skins.size())
+                    sc.boneMatrices.resize(model.skins[instance.skinIndex].joints.size(), glm::mat4(1.0f));
+                std::print("    SkinComponent: skinIdx={}, joints={}\n",
+                    sc.skinIndex, sc.boneMatrices.size());
+                e.set<SkinComponent>(std::move(sc));
+
+                // Auto-assign first available animation (if any)
+                if (!model.animations.empty()) {
+                    AnimationComponent ac{};
+                    ac.animIndex = (int)baseAnimIdx; // first animation
+                    ac.playing = true;
+                    ac.looping = true;
+                    ac.speed = 1.0f;
+                    e.set<AnimationComponent>(std::move(ac));
+                }
+            }
+        }
+    }
+
+    std::vector<RenderBatch> SceneManager::get_skinned_batches(
+        glm::mat4* boneBuffer, size_t maxBones, size_t& outBoneCount)
+    {
+        std::vector<RenderBatch> batches;
+        size_t boneOffset = 0;
+
+        m_world->query<WorldTransform, MeshComponent, MaterialComponent, SkinComponent>()
+            .each([&](flecs::entity e,
+                WorldTransform& wt,
+                MeshComponent& mc,
+                MaterialComponent& matc,
+                SkinComponent& sc)
+                {
+                    if (e.has<EntityStatus>() && !e.get<EntityStatus>().should_render)
+                        return;
+                    if (sc.boneMatrices.empty())
+                        return;
+
+                    size_t boneCount = sc.boneMatrices.size();
+                    if (boneBuffer && (boneOffset + boneCount) <= maxBones) {
+                        std::memcpy(boneBuffer + boneOffset,
+                            sc.boneMatrices.data(),
+                            boneCount * sizeof(glm::mat4));
+                    }
+
+                    RenderBatch batch{};
+                    batch.meshIndex = mc.meshIndex;
+                    batch.materialIndex = matc.materialIndex;
+                    batch.transform = wt.matrix;
+                    batch.alphaMultiplier = 1.0f;
+                    batch.isSkinned = true;
+                    batch.boneBaseIndex = static_cast<uint32_t>(boneOffset);
+                    batches.push_back(batch);
+
+                    boneOffset += boneCount;
+                });
+
+        outBoneCount = boneOffset;
+        return batches;
+    }
+
 
     // =========================================================================
     // 灯光与渲染数据提取
@@ -407,6 +509,7 @@ namespace engine {
         m_world->query<const WorldTransform, const LightComponent, const EntityStatus>()
             .each([&](const WorldTransform& wt, const LightComponent& lc, const EntityStatus& status) {
             if (!status.should_render) return;
+
             if (outLights.size() >= 16) return;
 
             GpuLight gpuLight{};
@@ -433,6 +536,7 @@ namespace engine {
             .each([&](flecs::entity e, const WorldTransform& wt, const MeshComponent& mc, const MaterialComponent& matc, const EntityStatus& status, const OpacityComponent* op) {
 
             if (!status.should_render) return;
+            if (e.has<SkinComponent>()) return;
             ++mLastFrustumCullingCandidates;
 
             if (frustum && mc.meshIndex < mModel.meshes.size()) {
@@ -517,7 +621,7 @@ namespace engine {
                             finalOffset = finalOffset * steerRot;
                         }
 
-                        if (strstr(name, "frontwheel.001_3") || strstr(name, "Rear wheel_1") || strstr(name, "Pedal.002_5") || strstr(name, "WholePedal_4")) {
+                        if (strstr(name, "frontwheel.001_3") || strstr(name, "Rear wheel_1") || strstr(name, "Pedal.002_7") || strstr(name, "WholePedal_6")) {
                             float currentSpeed = mState ? mState->bikeSpeed : 0.0f;
                             speed += 0.001f * currentSpeed;
                             glm::mat4 selfRot = glm::rotate(glm::mat4(1.0f), speed, glm::vec3(1.0f, 0.0f, 0.0f));
@@ -527,6 +631,42 @@ namespace engine {
                     lt.matrix = bodyWorld * finalOffset;
                 }
                     });
+
+            // =========================================================
+       // Pass 2: child-part inheritance
+       // handle_left/right follow steer.001_2; pedal_left/right follow WholePedal_6
+       // Formula: childWorld = parentWorld * inv(parentLocalOff) * childLocalOff
+       // =========================================================
+            {
+                auto inherit_from_parent = [&](const char* parentName,
+                    std::initializer_list<const char*> childNames)
+                    {
+                        flecs::entity parentEnt = find_entity(parentName);
+                        if (!parentEnt.is_valid() ||
+                            !parentEnt.has<LocalTransform>() ||
+                            !parentEnt.has<CompoundParent>()) return;
+
+                        const glm::mat4  parentWorld = parentEnt.get<LocalTransform>().matrix;
+                        const glm::mat4  parentLocalOff = parentEnt.get<CompoundParent>().localOffset;
+                        const glm::mat4  invParentOff = glm::inverse(parentLocalOff);
+
+                        m_world->query<LocalTransform, const CompoundParent>()
+                            .each([&](flecs::entity e, LocalTransform& lt, const CompoundParent& cp) {
+                            const char* n = e.name();
+                            if (!n) return;
+                            for (const char* child : childNames) {
+                                if (strstr(n, child)) {
+                                    lt.matrix = parentWorld * invParentOff * cp.localOffset;
+                                    break;
+                                }
+                            }
+                                });
+                    };
+
+                inherit_from_parent("steer.001_2", { "handle_left_4", "handle_right_5" });
+                inherit_from_parent("WholePedal_6", { "pedal_left_8",  "pedal_right_9" });
+            }
+            // =========================================================
 
             // 3. 第三人称相机遮挡透视 (X-Ray) 逻辑
             if (mState && mState->thirdPersonMode) {
@@ -590,6 +730,42 @@ namespace engine {
                 }
             }
         }
+        m_world->query<LocalTransform, const RiderBinding>()
+            .each([&](flecs::entity /*e*/, LocalTransform& lt, const RiderBinding& rb) {
+            flecs::entity bikeEnt = m_world->entity(rb.bikeEntityId);
+            // Use LocalTransform (updated above from physics) so there is no 1-frame lag
+            if (bikeEnt.is_valid() && bikeEnt.has<LocalTransform>()) {
+                lt.matrix = bikeEnt.get<LocalTransform>().matrix * rb.seatOffset;
+            }
+                });
+
+        // =========================================================
+        // RiderIK: update world-space IK targets from bike/part transforms
+        // =========================================================
+        m_world->query<RiderIKComponent>()
+            .each([&](flecs::entity /*e*/, RiderIKComponent& rik) {
+            flecs::entity bikeEnt = m_world->entity(rik.bikeEntityId);
+            if (!bikeEnt.is_valid() || !bikeEnt.has<LocalTransform>()) return;
+            const glm::mat4& bikeWorld = bikeEnt.get<LocalTransform>().matrix;
+
+            for (auto& chain : rik.chains) {
+                // Pole always relative to bike
+                chain.worldPole = glm::vec3(bikeWorld * glm::vec4(chain.localBikePole, 1.0f));
+
+                // Target: prefer specific bike-part entity (steer, pedal…)
+                if (chain.targetEntityId != 0) {
+                    flecs::entity partEnt = m_world->entity(chain.targetEntityId);
+                    if (partEnt.is_valid() && partEnt.has<LocalTransform>()) {
+                        // Use the part's live LocalTransform (already has steer/crank rotation baked in)
+                        const glm::mat4& partWorld = partEnt.get<LocalTransform>().matrix;
+                        chain.worldTarget = glm::vec3(partWorld * glm::vec4(chain.localTargetOffset, 1.0f));
+                        continue;
+                    }
+                }
+                // Fallback: use bike-local offset
+                chain.worldTarget = glm::vec3(bikeWorld * glm::vec4(chain.localBikeTarget, 1.0f));
+            }
+                });
         m_world->progress(dt);
     }
 

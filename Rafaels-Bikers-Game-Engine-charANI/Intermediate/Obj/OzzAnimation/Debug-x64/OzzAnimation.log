@@ -25,4 +25,4 @@
   platform.cc
   skinning_job.cc
   Ozz libraries were built with SSE2 math implementation
-  OzzAnimation.vcxproj -> D:\csc\groupEngine1.0\Rafaels-Bikers-Game-Engine-charANI\Intermediate\Bin\Debug-x64\OzzAnimation\OzzAnimation.lib
+  OzzAnimation.vcxproj -> D:\code\GroupProject\personal version\ecs-changing\Rafaels-Bikers-Game-Engine-ani\Rafaels-Bikers-Game-Engine-charANI\Intermediate\Bin\Debug-x64\OzzAnimation\OzzAnimation.lib
