@@ -224,7 +224,7 @@ lut::Pipeline create_triangle_pipeline( lut::VulkanWindow const& aWindow, VkPipe
 	rasterInfo.depthClampEnable = VK_FALSE;
 	rasterInfo.rasterizerDiscardEnable = VK_FALSE;
 	rasterInfo.polygonMode = VK_POLYGON_MODE_FILL;
-	rasterInfo.cullMode = VK_CULL_MODE_BACK_BIT;
+	rasterInfo.cullMode = VK_CULL_MODE_NONE;
 
 	rasterInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	rasterInfo.depthBiasEnable = VK_FALSE;
@@ -2762,6 +2762,200 @@ lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPip
 
 	return lut::Pipeline(aWindow.device, pipe);
 }
+
+
+
+// ==============================================================================
+// SkyBox 的管线
+// ==============================================================================
+lut::DescriptorSetLayout create_skybox_descriptor_layout(lut::VulkanWindow const& window) {
+	VkDescriptorSetLayoutBinding bindings[2]{};
+	bindings[0].binding = 0;
+	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	bindings[0].descriptorCount = 1;
+	bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+	bindings[1].binding = 1;
+	bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[1].descriptorCount = 1;
+	bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	VkDescriptorSetLayoutCreateInfo layoutInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+	layoutInfo.bindingCount = 2; layoutInfo.pBindings = bindings;
+
+	VkDescriptorSetLayout layout = VK_NULL_HANDLE;
+	vkCreateDescriptorSetLayout(window.device, &layoutInfo, nullptr, &layout);
+	return lut::DescriptorSetLayout(window.device, layout);
+}
+
+lut::PipelineLayout create_skybox_pipeline_layout(lut::VulkanWindow const& window, VkDescriptorSetLayout dsetLayout) {
+	VkPipelineLayoutCreateInfo layoutInfo{ VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+	layoutInfo.setLayoutCount = 1; layoutInfo.pSetLayouts = &dsetLayout;
+
+	VkPipelineLayout layout = VK_NULL_HANDLE;
+	vkCreatePipelineLayout(window.device, &layoutInfo, nullptr, &layout);
+	return lut::PipelineLayout(window.device, layout);
+}
+
+lut::Pipeline create_skybox_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, VkFormat colorFormat) {
+	// 加载 Shader
+	auto const vertSpirV = lut::load_file_u32(cfg::skyboxVertShaderPath);
+	auto const fragSpirV = lut::load_file_u32(cfg::skyboxFragShaderPath);
+
+	VkShaderModuleCreateInfo code[2]{};
+	code[0].sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	code[0].codeSize = vertSpirV.size() * sizeof(std::uint32_t);
+	code[0].pCode = vertSpirV.data();
+
+	code[1].sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	code[1].codeSize = fragSpirV.size() * sizeof(std::uint32_t);
+	code[1].pCode = fragSpirV.data();
+
+	VkPipelineShaderStageCreateInfo stages[2]{};
+	stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+	stages[0].pName = "main";
+	stages[0].pNext = &code[0];
+
+	stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	stages[1].pName = "main";
+	stages[1].pNext = &code[1];
+
+	// ==========================================================
+	// 【关键修复 1】：极简的顶点输入（只有一个 vec3）
+	// ==========================================================
+	VkVertexInputBindingDescription vertexInputs[1]{};
+	vertexInputs[0].binding = 0;
+	vertexInputs[0].stride = sizeof(float) * 3; // 只占 3 个 float (x,y,z)
+	vertexInputs[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+	VkVertexInputAttributeDescription vertexAttributes[1]{};
+	vertexAttributes[0].binding = 0;
+	vertexAttributes[0].location = 0;
+	vertexAttributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+	vertexAttributes[0].offset = 0;
+
+	VkPipelineVertexInputStateCreateInfo inputInfo{};
+	inputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	inputInfo.vertexBindingDescriptionCount = 1; // 变成 1
+	inputInfo.pVertexBindingDescriptions = vertexInputs;
+	inputInfo.vertexAttributeDescriptionCount = 1; // 变成 1
+	inputInfo.pVertexAttributeDescriptions = vertexAttributes;
+
+	VkPipelineInputAssemblyStateCreateInfo assemblyInfo{};
+	assemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	assemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	assemblyInfo.primitiveRestartEnable = VK_FALSE;
+
+	VkViewport viewport{};
+	viewport.x = 0.f; viewport.y = 0.f;
+	viewport.width = float(aWindow.swapchainExtent.width);
+	viewport.height = float(aWindow.swapchainExtent.height);
+	viewport.minDepth = 0.f; viewport.maxDepth = 1.f;
+
+	VkRect2D scissor{};
+	scissor.offset = VkOffset2D{ 0, 0 };
+	scissor.extent = aWindow.swapchainExtent;
+
+	VkPipelineViewportStateCreateInfo viewportInfo{};
+	viewportInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportInfo.viewportCount = 1; viewportInfo.pViewports = &viewport;
+	viewportInfo.scissorCount = 1; viewportInfo.pScissors = &scissor;
+
+	// 1. 光栅化状态 (Rasterization)
+	VkPipelineRasterizationStateCreateInfo rasterInfo{};
+	rasterInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterInfo.depthClampEnable = VK_FALSE;
+	rasterInfo.rasterizerDiscardEnable = VK_FALSE;
+	rasterInfo.polygonMode = VK_POLYGON_MODE_FILL;
+
+	// 【关键修复 1】：把 FRONT_BIT 改成 NONE！无视正反面，强行全部渲染，破解翻转引起的剔除问题
+	rasterInfo.cullMode = VK_CULL_MODE_NONE;
+
+	rasterInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	rasterInfo.depthBiasEnable = VK_FALSE;
+	rasterInfo.lineWidth = 1.f;
+
+	VkPipelineMultisampleStateCreateInfo samplingInfo{};
+	samplingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	samplingInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+	// ==========================================================
+	// 【关键修复 2】：防止天空盒产生诡异的 Bloom
+	// ==========================================================
+	VkPipelineColorBlendAttachmentState blendStates[2]{};
+	// Attachment 0: 主颜色照常输出天空
+	blendStates[0].blendEnable = VK_FALSE;
+	blendStates[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
+	// Attachment 1: 亮度提取层直接屏蔽写入！(Mask = 0)
+	blendStates[1].blendEnable = VK_FALSE;
+	blendStates[1].colorWriteMask = 0;
+
+	VkPipelineColorBlendStateCreateInfo blendInfo{};
+	blendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	blendInfo.logicOpEnable = VK_FALSE;
+	blendInfo.attachmentCount = 2;
+	blendInfo.pAttachments = blendStates;
+
+	VkFormat colorFormats[] = {
+		VK_FORMAT_R16G16B16A16_SFLOAT,
+		VK_FORMAT_R16G16B16A16_SFLOAT
+	};
+
+	VkPipelineRenderingCreateInfo renderingInfo{};
+	renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+	renderingInfo.colorAttachmentCount = 2;
+	renderingInfo.pColorAttachmentFormats = colorFormats;
+	renderingInfo.depthAttachmentFormat = cfg::kDepthFormat;
+
+	// 2. 深度测试状态 (Depth Stencil)
+	VkPipelineDepthStencilStateCreateInfo depthInfo{};
+	depthInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthInfo.depthTestEnable = VK_TRUE;
+	depthInfo.depthWriteEnable = VK_FALSE; // 天空盒绝对不准写入深度
+
+	// 【关键修复 2】：改成 ALWAYS！无视深度遮挡，强行画在屏幕上
+	depthInfo.depthCompareOp = VK_COMPARE_OP_ALWAYS;
+
+	depthInfo.minDepthBounds = 0.f;
+	depthInfo.maxDepthBounds = 1.f;
+
+	VkDynamicState dynamicStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+	VkPipelineDynamicStateCreateInfo dynamicInfo{};
+	dynamicInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dynamicInfo.dynamicStateCount = 2;
+	dynamicInfo.pDynamicStates = dynamicStates;
+
+	VkGraphicsPipelineCreateInfo pipeInfo{};
+	pipeInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipeInfo.pNext = &renderingInfo;
+	pipeInfo.stageCount = 2;
+	pipeInfo.pStages = stages;
+	pipeInfo.pVertexInputState = &inputInfo;
+	pipeInfo.pInputAssemblyState = &assemblyInfo;
+	pipeInfo.pTessellationState = nullptr;
+	pipeInfo.pViewportState = &viewportInfo;
+	pipeInfo.pRasterizationState = &rasterInfo;
+	pipeInfo.pMultisampleState = &samplingInfo;
+	pipeInfo.pDepthStencilState = &depthInfo;
+	pipeInfo.pColorBlendState = &blendInfo;
+	pipeInfo.pDynamicState = &dynamicInfo;
+	pipeInfo.layout = aPipelineLayout;
+	pipeInfo.subpass = 0;
+
+	VkPipeline pipe = VK_NULL_HANDLE;
+	if (auto const res = vkCreateGraphicsPipelines(aWindow.device, VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &pipe); VK_SUCCESS != res)
+	{
+		throw lut::Error("Unable to create skybox pipeline\n"
+			"vkCreateGraphicsPipelines() returned {}", lut::to_string(res)
+		);
+	}
+
+	return lut::Pipeline(aWindow.device, pipe);
+}
+
 
 // =============================================================================
 // Bone-matrices SSBO descriptor layout  (set = 2, binding = 0)

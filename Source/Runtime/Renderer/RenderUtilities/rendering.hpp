@@ -81,7 +81,13 @@ void record_commands(
 	VkDescriptorSet  aBoneDescriptorSet                              = VK_NULL_HANDLE,
 	const std::unordered_map<uint32_t, lut::Buffer>* aMeshJoints    = nullptr,
 	const std::unordered_map<uint32_t, lut::Buffer>* aMeshWeights   = nullptr,
-	const std::vector<RenderBatch>*                  aSkinnedBatches = nullptr
+	const std::vector<RenderBatch>*                  aSkinnedBatches = nullptr,
+
+	// 在 record_commands 的最后追加：
+	VkPipeline skyboxPipe = VK_NULL_HANDLE,
+	VkPipelineLayout skyboxPipeLayout = VK_NULL_HANDLE,
+	VkDescriptorSet skyboxDescSet = VK_NULL_HANDLE,
+	VkBuffer skyboxVBO = VK_NULL_HANDLE
 );
 
 

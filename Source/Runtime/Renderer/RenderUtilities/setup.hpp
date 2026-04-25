@@ -89,6 +89,9 @@ namespace cfg
 
 	constexpr char const* kSpeedPostFragShaderPath = SHADERDIR_"speed_postprocess.frag.spv";
 
+	//skybox
+	constexpr char const* skyboxVertShaderPath = SHADERDIR_"skybox.vert.spv";
+	constexpr char const* skyboxFragShaderPath = SHADERDIR_"skybox.frag.spv";
 	// Skeletal skinning
 	constexpr char const* kSkinnedVertShaderPath = SHADERDIR_"skinned.vert.spv";
 
@@ -152,6 +155,13 @@ lut::Pipeline create_particle_pipeline(lut::VulkanWindow const&, VkPipelineLayou
 
 lut::Sampler create_debug_sampler( lut::VulkanWindow const& );
 lut::Sampler create_post_proc_sampler( lut::VulkanWindow const& );
+
+
+lut::DescriptorSetLayout create_skybox_descriptor_layout(lut::VulkanWindow const& window);
+lut::PipelineLayout create_skybox_pipeline_layout(lut::VulkanWindow const& window, VkDescriptorSetLayout dsetLayout);
+lut::Pipeline create_skybox_pipeline(lut::VulkanWindow const& window, VkPipelineLayout pipeLayout, VkFormat colorFormat);
+
+
 
 // debug render
 lut::Pipeline create_debug_line_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, VkFormat aColorFormat);
