@@ -264,6 +264,7 @@ namespace engine
 
         
         m_state->bikeYaw = newYaw;
+        m_state->bikeLeanAngle = m_bicycle->leanAngle;
     }
 
 } // namespace engine

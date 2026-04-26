@@ -2870,9 +2870,8 @@ lut::Pipeline create_skybox_pipeline(lut::VulkanWindow const& aWindow, VkPipelin
 	rasterInfo.rasterizerDiscardEnable = VK_FALSE;
 	rasterInfo.polygonMode = VK_POLYGON_MODE_FILL;
 
-	// 【关键修复 1】：把 FRONT_BIT 改成 NONE！无视正反面，强行全部渲染，破解翻转引起的剔除问题
-	rasterInfo.cullMode = VK_CULL_MODE_NONE;
-
+	// 尝试改成 FRONT_BIT 或 BACK_BIT
+	rasterInfo.cullMode = VK_CULL_MODE_BACK_BIT;
 	rasterInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	rasterInfo.depthBiasEnable = VK_FALSE;
 	rasterInfo.lineWidth = 1.f;
@@ -2899,9 +2898,10 @@ lut::Pipeline create_skybox_pipeline(lut::VulkanWindow const& aWindow, VkPipelin
 	blendInfo.attachmentCount = 2;
 	blendInfo.pAttachments = blendStates;
 
+	// 让管线自动适应引擎传进来的颜色格式
 	VkFormat colorFormats[] = {
-		VK_FORMAT_R16G16B16A16_SFLOAT,
-		VK_FORMAT_R16G16B16A16_SFLOAT
+		colorFormat, // Location 0: 主颜色 (使用传入的格式)
+		colorFormat  // Location 1: Bloom 亮度 (通常与主颜色一致)
 	};
 
 	VkPipelineRenderingCreateInfo renderingInfo{};

@@ -167,7 +167,21 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 		aState.Pitch += (aState.targetPitch - aState.Pitch) * smoothness * aElapsedTime;
 		aState.Distance += (aState.targetDistance - aState.Distance) * smoothness * aElapsedTime;
 
-		// 计算最终的相机矩阵
+		float rollMultiplier = 0.6f;
+		if (aState.isExtremeSpeed) {
+			// 极速状态下，镜头跟随单车压弯
+			aState.targetCameraRoll = aState.bikeLeanAngle * rollMultiplier;
+		}
+		else {
+			// 普通状态下，目标倾角归零（保持地平线水平）
+			aState.targetCameraRoll = 0.0f;
+		}
+
+		// 【注意】：这行插值代码必须放在 if-else 外面！
+		// 这样当玩家从极速降回普通速度时，镜头会带着重量感“缓缓回正”，而不是瞬间闪回 0 度。
+		aState.cameraRoll += (aState.targetCameraRoll - aState.cameraRoll) * smoothness * aElapsedTime;
+
+		// 计算相机位置
 		glm::vec3 char_pos = aState.followTargetPos;
 		glm::vec3 eye_offset(0.f, 1.6f, 0.f);
 		glm::vec3 target_pos = char_pos + eye_offset;
@@ -178,7 +192,17 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 		offset.z = aState.Distance * std::cos(aState.Pitch) * std::cos(aState.Yaw);
 
 		glm::vec3 cam_pos = target_pos + offset;
-		glm::mat4 view_matrix = glm::lookAt(cam_pos, target_pos, glm::vec3(0.f, 1.f, 0.f));
+
+		// 【致命检查点】：确保下面这段逻辑是这个代码块的绝对结尾！
+		glm::vec3 forwardDir = glm::normalize(target_pos - cam_pos);
+		glm::vec3 globalUp(0.f, 1.f, 0.f);
+
+		// 绕视线旋转 Up 向量
+		glm::mat4 rollTransform = glm::rotate(glm::mat4(1.0f), aState.cameraRoll, forwardDir);
+		glm::vec3 dynamicUp = glm::vec3(rollTransform * glm::vec4(globalUp, 0.0f));
+
+		// 唯一的 lookAt 调用，传入倾斜的 dynamicUp
+		glm::mat4 view_matrix = glm::lookAt(cam_pos, target_pos, dynamicUp);
 		cam = glm::inverse(view_matrix);
 	}
 	else

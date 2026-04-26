@@ -102,6 +102,10 @@ namespace engine {
 		// 【新增】：相机自动回正所需变量
 		float cameraIdleTimer = 0.0f; // 记录玩家多久没碰相机了
 		float bikeYaw = 0.0f;         // 记录单车当前的车头真实朝向
+		
+		float bikeLeanAngle = 0.0f;    // 接收来自物理系统的压弯角度
+		float cameraRoll = 0.0f;       // 相机当前的 Roll 角度
+		float targetCameraRoll = 0.0f; // 相机目标的 Roll 角度
 		// ==========================================
 	};
 } // namespace engine
