@@ -2155,44 +2155,72 @@ namespace engine {
 
         // 【新增】：加载并初始化整个天空盒
 void InitSkybox() {
-    // 1. 准备 6 张贴图的路径 (请确保你在 Assets 目录下建了这个文件夹并放了图！)
-    std::vector<std::string> faces = {
-        "Assets/Skybox/right.jpg", "Assets/Skybox/left.jpg",
-        "Assets/Skybox/top.jpg",   "Assets/Skybox/bottom.jpg",
-        "Assets/Skybox/front.jpg", "Assets/Skybox/back.jpg"
-    };
+    // 1. 加载单张十字天空盒图片
+    stbi_set_flip_vertically_on_load(0);
+    int fullWidth, fullHeight, channels;
+    // 换成你的十字图路径
+    stbi_uc* pixels = stbi_load("Assets/Skybox/skybox.png", &fullWidth, &fullHeight, &channels, STBI_rgb_alpha);
+    if (!pixels) throw std::runtime_error("Failed to load cross skybox image!");
 
-    stbi_set_flip_vertically_on_load(0); // 天空盒通常不需要翻转
-    int width, height, channels;
-    stbi_uc* pixels[6];
-    VkDeviceSize layerSize = 0, imageSize = 0;
+    // 计算单个面的大小 (十字图是 4 列 3 行)
+    uint32_t faceW = fullWidth / 4;
+    uint32_t faceH = fullHeight / 3;
+    VkDeviceSize layerSize = faceW * faceH * 4;
+    VkDeviceSize imageSize = layerSize * 6;
 
-    for (int i = 0; i < 6; i++) {
-        pixels[i] = stbi_load(faces[i].c_str(), &width, &height, &channels, STBI_rgb_alpha);
-        if (!pixels[i]) throw std::runtime_error("Failed to load skybox face: " + faces[i]);
-        if (i == 0) {
-            layerSize = width * height * 4;
-            imageSize = layerSize * 6;
-        }
-    }
-
-    // 2. 创建 Staging Buffer
+    // 2. 创建 Staging Buffer 并手工“切图”
     lut::Buffer stgBuf = lut::create_buffer(mAllocator, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
     void* data;
     vmaMapMemory(mAllocator.allocator, stgBuf.allocation, &data);
-    for (int i = 0; i < 6; i++) {
-        std::memcpy(static_cast<stbi_uc*>(data) + (layerSize * i), pixels[i], static_cast<size_t>(layerSize));
-        stbi_image_free(pixels[i]);
-    }
-    vmaUnmapMemory(mAllocator.allocator, stgBuf.allocation);
+    stbi_uc* dst = static_cast<stbi_uc*>(data);
 
-    // 3. 创建 Cube Image (必须带 VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT)
+   
+
+// 定义 Vulkan 6个面在十字图中的 (列, 行) 坐标
+    // 顺序必须是: +X(右), -X(左), +Y(上), -Y(下), +Z(前), -Z(后)
+    struct FaceCoord { int col, row; };
+    FaceCoord coords[6] = {
+        {2, 1}, // Right
+        {0, 1}, // Left
+        {1, 0}, // Top
+        {1, 2}, // Bottom
+        {1, 1}, // Front
+        {3, 1}  // Back
+    };
+    // 逐个面、逐行拷贝像素
+    for (int i = 0; i < 6; i++) {
+        int startX = coords[i].col * faceW;
+        int startY = coords[i].row * faceH;
+        stbi_uc* faceDst = dst + (i * layerSize);
+
+        for (uint32_t y = 0; y < faceH; y++) {
+            stbi_uc* srcRow = pixels + ((startY + y) * fullWidth + startX) * 4;
+            stbi_uc* dstRow = faceDst + (y * faceW) * 4;
+            memcpy(dstRow, srcRow, faceW * 4);
+        }
+    }
+
+    vmaUnmapMemory(mAllocator.allocator, stgBuf.allocation);
+    stbi_image_free(pixels); // 释放原始图片内存
+
+    // ==========================================
+    // ⚠️ 注意：接下来的第 3 步创建 Image 时，
+    // imgInfo.extent 必须改成单个面的尺寸：
+    // imgInfo.extent = { faceW, faceH, 1 }; 
+    // ==========================================
+
+  // 3. 创建 Cube Image (必须带 VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT)
     VkImageCreateInfo imgInfo{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
     imgInfo.imageType = VK_IMAGE_TYPE_2D;
     imgInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
-    imgInfo.extent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1 };
+
+    // 【致命修复】：把原来的 width 和 height 换成刚才算好的 faceW 和 faceH！
+    // 因为对于 Vulkan 的 Cube Image 来说，它需要知道的是【单个面】的尺寸！
+    imgInfo.extent = { faceW, faceH, 1 };
+
     imgInfo.mipLevels = 1;
     imgInfo.arrayLayers = 6;
+  
     imgInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     imgInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
     imgInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
