@@ -278,11 +278,11 @@ void record_commands(
 	// =====================================================================
 	// 阶段 0：优先画【天空盒】 (必须在 vkCmdBeginRendering 之后第一个画)
 	// =====================================================================
+
 	if (skyboxPipe != VK_NULL_HANDLE && skyboxVBO != VK_NULL_HANDLE) {
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipe);
 
-		// 【致命修复】：显式设置视口和裁剪区域！(假设你传入的分辨率变量叫 aExtent)
-		// 如果这里不设置，天空盒可能被画进 0x0 的区域导致看不见！
+
 		VkViewport viewport{};
 		viewport.x = 0.0f;
 		viewport.y = 0.0f;
