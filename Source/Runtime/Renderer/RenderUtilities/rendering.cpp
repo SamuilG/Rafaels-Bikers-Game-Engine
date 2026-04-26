@@ -89,7 +89,12 @@ void record_commands(
 	VkDescriptorSet  aBoneDescriptorSet ,
 	const std::unordered_map<uint32_t, lut::Buffer>* aMeshJoints ,
 	const std::unordered_map<uint32_t, lut::Buffer>* aMeshWeights,
-	const std::vector<RenderBatch>* aSkinnedBatches 
+	const std::vector<RenderBatch>* aSkinnedBatches ,
+	// 在 record_commands 的最后追加：
+	VkPipeline skyboxPipe,
+	VkPipelineLayout skyboxPipeLayout,
+	VkDescriptorSet skyboxDescSet,
+	VkBuffer skyboxVBO
 )
 {
 	// Begin command buffer
@@ -270,11 +275,41 @@ void record_commands(
 
 	VkPipeline currentPipeline = aGraphicsPipe;
 	VkDeviceSize kZeroOffset = 0;
+	// =====================================================================
+	// 阶段 0：优先画【天空盒】 (必须在 vkCmdBeginRendering 之后第一个画)
+	// =====================================================================
+	if (skyboxPipe != VK_NULL_HANDLE && skyboxVBO != VK_NULL_HANDLE) {
+		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipe);
+
+		// 【致命修复】：显式设置视口和裁剪区域！(假设你传入的分辨率变量叫 aExtent)
+		// 如果这里不设置，天空盒可能被画进 0x0 的区域导致看不见！
+		VkViewport viewport{};
+		viewport.x = 0.0f;
+		viewport.y = 0.0f;
+		viewport.width = (float)aImageExtent.width;   // 请使用你 record_commands 里的视口宽度变量
+		viewport.height = (float)aImageExtent.height; // 请使用你 record_commands 里的视口高度变量
+		viewport.minDepth = 0.0f;
+		viewport.maxDepth = 1.0f;
+		vkCmdSetViewport(aCmdBuff, 0, 1, &viewport);
+
+		VkRect2D scissor{};
+		scissor.offset = { 0, 0 };
+		scissor.extent = aImageExtent;
+		vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
+
+		// 绑定资源并绘制
+		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipeLayout, 0, 1, &skyboxDescSet, 0, nullptr);
+		VkDeviceSize offsets[1] = { 0 };
+		vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &skyboxVBO, offsets);
+
+		vkCmdDraw(aCmdBuff, 36, 1, 0, 0);
+	}
 
 	// =====================================================================
 	// 阶段 1：只画【实心】物体 (使用 aGraphicsPipe)
 	// =====================================================================
 	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsPipe);
+	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
 	for (const auto& batch : aBatches)
 	{
 		uint32_t meshIdx = batch.meshIndex;
@@ -311,12 +346,15 @@ void record_commands(
 		vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
 
 		vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(meshInfo.indices.size()), 1, 0, 0, 0);
-	}
 
+	}
+	
 	// =====================================================================
-	// 阶段 2：只画【半透明】物体 (使用 aAlphaPipe，叠加在实心物体之上)
-	// =====================================================================
-	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aAlphaPipe);
+    // 阶段 2：只画【半透明】物体 (使用 aAlphaPipe)
+    // =====================================================================
+    vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aAlphaPipe);
+    // 【重要】：记得把主场景的数据抢回来！
+    vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
 	for (const auto& batch : aBatches)
 	{
 		uint32_t meshIdx = batch.meshIndex;
@@ -345,6 +383,7 @@ void record_commands(
 		pcData.baseColorFactor.a *= batch.alphaMultiplier; // 此时它是 0.3 !
 		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ObjectPC), &pcData);
 
+		// 这里依然只更新 set=1 的材质
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
 		vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset);
 		vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &kZeroOffset);

@@ -825,6 +825,9 @@ namespace engine {
             //初始化缩略图管线
             InitThumbnailPipeline();
 
+			//初始化天空盒资源
+            InitSkybox();
+
             //扫描 Assets/Models 生成缩略图
             namespace fs = std::filesystem;
             std::string modelFolder = "Assets/Models";
@@ -1724,7 +1727,11 @@ namespace engine {
                 mBoneDescriptorSet,
                 & mMeshJointIndices,
                 & mMeshJointWeights,
-                & skinnedBatches
+                & skinnedBatches,
+                mSkyboxPipe.handle,
+                mSkyboxPipeLayout.handle,
+                mSkyboxDescSet,
+                mSkyboxVBO.buffer
             );
 			//clear debug renderer data after uploading
             mDebugRenderer.Clear();
@@ -2143,6 +2150,190 @@ namespace engine {
             out.emplace_back(ds);
         }
 
+
+
+
+        // 【新增】：加载并初始化整个天空盒
+void InitSkybox() {
+    // 1. 准备 6 张贴图的路径 (请确保你在 Assets 目录下建了这个文件夹并放了图！)
+    std::vector<std::string> faces = {
+        "Assets/Skybox/right.jpg", "Assets/Skybox/left.jpg",
+        "Assets/Skybox/top.jpg",   "Assets/Skybox/bottom.jpg",
+        "Assets/Skybox/front.jpg", "Assets/Skybox/back.jpg"
+    };
+
+    stbi_set_flip_vertically_on_load(0); // 天空盒通常不需要翻转
+    int width, height, channels;
+    stbi_uc* pixels[6];
+    VkDeviceSize layerSize = 0, imageSize = 0;
+
+    for (int i = 0; i < 6; i++) {
+        pixels[i] = stbi_load(faces[i].c_str(), &width, &height, &channels, STBI_rgb_alpha);
+        if (!pixels[i]) throw std::runtime_error("Failed to load skybox face: " + faces[i]);
+        if (i == 0) {
+            layerSize = width * height * 4;
+            imageSize = layerSize * 6;
+        }
+    }
+
+    // 2. 创建 Staging Buffer
+    lut::Buffer stgBuf = lut::create_buffer(mAllocator, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+    void* data;
+    vmaMapMemory(mAllocator.allocator, stgBuf.allocation, &data);
+    for (int i = 0; i < 6; i++) {
+        std::memcpy(static_cast<stbi_uc*>(data) + (layerSize * i), pixels[i], static_cast<size_t>(layerSize));
+        stbi_image_free(pixels[i]);
+    }
+    vmaUnmapMemory(mAllocator.allocator, stgBuf.allocation);
+
+    // 3. 创建 Cube Image (必须带 VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT)
+    VkImageCreateInfo imgInfo{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+    imgInfo.imageType = VK_IMAGE_TYPE_2D;
+    imgInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+    imgInfo.extent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1 };
+    imgInfo.mipLevels = 1;
+    imgInfo.arrayLayers = 6;
+    imgInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    imgInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    imgInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    imgInfo.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+
+    VmaAllocationCreateInfo allocInfo{ .usage = VMA_MEMORY_USAGE_GPU_ONLY };
+    VkImage rawImg; VmaAllocation rawAlloc;
+    vmaCreateImage(mAllocator.allocator, &imgInfo, &allocInfo, &rawImg, &rawAlloc, nullptr);
+    mSkyboxTex = lut::Image(mAllocator.allocator, rawImg, rawAlloc);
+
+    // 4. 录制命令拷贝数据
+    VkCommandBuffer cmd = lut::alloc_command_buffer(mWindow, mCmdPool.handle);
+    VkCommandBufferBeginInfo bi{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(cmd, &bi);
+
+    // 【修复】：显式创建 Range 结构体
+    VkImageSubresourceRange range{};
+    range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    range.baseMipLevel = 0;
+    range.levelCount = 1;
+    range.baseArrayLayer = 0;
+    range.layerCount = 6;
+
+    // 第一次屏障：UNDEFINED -> TRANSFER_DST
+    lut::image_barrier(cmd, mSkyboxTex.image,
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        range);
+    
+    std::vector<VkBufferImageCopy> regions;
+    for (uint32_t i = 0; i < 6; i++) {
+        VkBufferImageCopy region{};
+        region.bufferOffset = layerSize * i;
+        region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.imageSubresource.baseArrayLayer = i;
+        region.imageSubresource.layerCount = 1;
+        region.imageExtent = imgInfo.extent;
+        regions.push_back(region);
+    }
+    vkCmdCopyBufferToImage(cmd, stgBuf.buffer, mSkyboxTex.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 6, regions.data());
+
+    // 第二次屏障：TRANSFER_DST -> SHADER_READ_ONLY
+    lut::image_barrier(cmd, mSkyboxTex.image,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        range);
+
+    vkEndCommandBuffer(cmd);
+
+    VkSubmitInfo si{ VK_STRUCTURE_TYPE_SUBMIT_INFO };
+    si.commandBufferCount = 1; si.pCommandBuffers = &cmd;
+    vkQueueSubmit(mWindow.graphicsQueue, 1, &si, VK_NULL_HANDLE);
+    vkQueueWaitIdle(mWindow.graphicsQueue);
+
+    // 5. 创建 Cube ImageView
+    VkImageViewCreateInfo viewInfo{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+    viewInfo.image = mSkyboxTex.image;
+    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE; // 关键！
+    viewInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    viewInfo.subresourceRange.levelCount = 1;
+    viewInfo.subresourceRange.layerCount = 6;
+    VkImageView rawView;
+    vkCreateImageView(mWindow.device, &viewInfo, nullptr, &rawView);
+    mSkyboxView = lut::ImageView(mWindow.device, rawView);
+
+    // 6. 创建 1x1x1 的极简 VBO
+    float skyboxVertices[] = {
+        -1.0f,  1.0f, -1.0f,  -1.0f, -1.0f, -1.0f,   1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,   1.0f,  1.0f, -1.0f,  -1.0f,  1.0f, -1.0f,
+        -1.0f, -1.0f,  1.0f,  -1.0f, -1.0f, -1.0f,  -1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,  -1.0f,  1.0f,  1.0f,  -1.0f, -1.0f,  1.0f,
+         1.0f, -1.0f, -1.0f,   1.0f, -1.0f,  1.0f,   1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,   1.0f,  1.0f, -1.0f,   1.0f, -1.0f, -1.0f,
+        -1.0f, -1.0f,  1.0f,  -1.0f,  1.0f,  1.0f,   1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,   1.0f, -1.0f,  1.0f,  -1.0f, -1.0f,  1.0f,
+        -1.0f,  1.0f, -1.0f,   1.0f,  1.0f, -1.0f,   1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,  -1.0f,  1.0f,  1.0f,  -1.0f,  1.0f, -1.0f,
+        -1.0f, -1.0f, -1.0f,  -1.0f, -1.0f,  1.0f,   1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,  -1.0f, -1.0f,  1.0f,   1.0f, -1.0f,  1.0f
+    };
+    VkDeviceSize vboSize = sizeof(skyboxVertices);
+
+    mSkyboxVBO = lut::create_buffer(mAllocator, vboSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
+    lut::Buffer stgVbo = lut::create_buffer(mAllocator, vboSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+
+    void* vboData;
+    vmaMapMemory(mAllocator.allocator, stgVbo.allocation, &vboData);
+    memcpy(vboData, skyboxVertices, (size_t)vboSize);
+    vmaUnmapMemory(mAllocator.allocator, stgVbo.allocation);
+
+    // 【关键修复】：正式将顶点数据推送到 GPU
+    VkCommandBuffer cmdVbo = lut::alloc_command_buffer(mWindow, mCmdPool.handle);
+    VkCommandBufferBeginInfo biVbo{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+    biVbo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(cmdVbo, &biVbo);
+
+    VkBufferCopy copyRegion{};
+    copyRegion.size = vboSize;
+    vkCmdCopyBuffer(cmdVbo, stgVbo.buffer, mSkyboxVBO.buffer, 1, &copyRegion);
+
+    lut::buffer_barrier(cmdVbo, mSkyboxVBO.buffer,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+        VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT);
+
+    vkEndCommandBuffer(cmdVbo);
+
+    VkSubmitInfo siVbo{ VK_STRUCTURE_TYPE_SUBMIT_INFO };
+    siVbo.commandBufferCount = 1;
+    siVbo.pCommandBuffers = &cmdVbo;
+    vkQueueSubmit(mWindow.graphicsQueue, 1, &siVbo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(mWindow.graphicsQueue);
+    
+    // 7. 在 setup.cpp 中获取并调用 Layout 和 Pipeline (见下一步)
+    mSkyboxDescLayout = create_skybox_descriptor_layout(mWindow);
+    mSkyboxPipeLayout = create_skybox_pipeline_layout(mWindow, mSkyboxDescLayout.handle);
+    mSkyboxPipe = create_skybox_pipeline(mWindow, mSkyboxPipeLayout.handle, mWindow.swapchainFormat);
+
+    // 8. 填充描述符
+    mSkyboxDescSet = lut::alloc_desc_set(mWindow, mDescPool.handle, mSkyboxDescLayout.handle);
+    VkDescriptorBufferInfo uboInfo{ mSceneUBO.buffer, 0, VK_WHOLE_SIZE };
+// --- 修改为： ---
+    VkDescriptorImageInfo descImgInfo{ mDefaultSampler.handle, mSkyboxView.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+
+    VkWriteDescriptorSet writes[2]{};
+    writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[0].dstSet = mSkyboxDescSet; writes[0].dstBinding = 0;
+    writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    writes[0].descriptorCount = 1; writes[0].pBufferInfo = &uboInfo;
+
+    writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[1].dstSet = mSkyboxDescSet; writes[1].dstBinding = 1;
+    writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    writes[1].descriptorCount = 1; 
+    writes[1].pImageInfo = &descImgInfo; // <--- 名字换成 descImgInfo！
+
+    vkUpdateDescriptorSets(mWindow.device, 2, writes, 0, nullptr);
+}
+
+
         // upload a single mesh to GPU, appending to the mesh buffer vectors
         void UploadSingleMesh(const EngineMesh& mesh)
         {
@@ -2363,6 +2554,18 @@ namespace engine {
 
         lut::Image     mDefaultNormalTex;  // 【新增】：正确的法线占位图
         lut::ImageView mDefaultNormalView; // 【新增】
+
+
+        // =========================================================
+        // 天空盒资源 (Skybox Resources)
+        // =========================================================
+        lut::Image               mSkyboxTex;
+        lut::ImageView           mSkyboxView;
+        lut::Buffer              mSkyboxVBO;
+        lut::DescriptorSetLayout mSkyboxDescLayout;
+        lut::PipelineLayout      mSkyboxPipeLayout;
+        lut::Pipeline            mSkyboxPipe;
+        VkDescriptorSet          mSkyboxDescSet = VK_NULL_HANDLE;
 
         lut::Pipeline mThumbnailAlphaPipe;
 
