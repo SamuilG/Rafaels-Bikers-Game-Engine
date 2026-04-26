@@ -1,4 +1,4 @@
-#include "bikeController.hpp"
+ #include "bikeController.hpp"
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Physics/Body/BodyInterface.h>
 #include <iostream>
@@ -30,9 +30,9 @@ namespace engine
 
         m_bicycle = std::make_unique<BicycleState>();
         m_bicycle->chassisID = JPH::BodyID(chassisBodyID);
-
+        
         JPH::BodyInterface& bi = m_joltPhysics->GetBodyInterface();
-        bi.SetGravityFactor(m_bicycle->chassisID, 3.0f);
+        bi.SetGravityFactor(m_bicycle->chassisID, 1.5f);
 
         std::cout << "[Bicycle] bicycle created via BikeController." << std::endl;
     }
@@ -199,7 +199,7 @@ namespace engine
 
             // 基础维持力：只要踩踏板就有的底线推力（负责对抗滚阻，维持极速。不能太大）
             // currentBoost 最大是 3.0，所以这里最大维持力是 100 + 150*3 = 550
-            float basicAccelRate = 50.0f + (150.0f * currentBoost);
+            float basicAccelRate = 100.0f + (150.0f * currentBoost);
 
             // 起步爆发力：起步时赋予极大的推力 (4000)，但由于 curveFactor，速度一上来它就迅速消失
             // 加速键按满时，额外再给 1500 的爆发力

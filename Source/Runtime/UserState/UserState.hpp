@@ -68,6 +68,9 @@ namespace engine {
 		uint32_t frustumCullingVisibleCandidates = 0; // new frustum culling
 		float frustumCullingPadding = 0.5f; // new frustum culling
 
+		bool  lodEnabled       = false;    // distance-based LOD selection
+		float lodDebugDistance = -1.0f;   // -1 = inactive; positive value overrides distance for testing
+
 		float bikeSpeed = 0.0f;
 		float bikeSteerAngle = 0.0f;
 		//extreme speed state

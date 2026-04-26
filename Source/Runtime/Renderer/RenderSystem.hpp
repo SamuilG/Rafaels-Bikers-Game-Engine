@@ -1582,7 +1582,8 @@ namespace engine {
             }
 
             //std::vector<RenderBatch> finalBatches = mSceneManager ? mSceneManager->get_render_batches(activeFrustum) : std::vector<RenderBatch>{};
-            std::vector<RenderBatch> finalBatches = mSceneManager ? mSceneManager->get_render_batches(activeFrustum, mState->frustumCullingPadding) : std::vector<RenderBatch>{};
+            glm::vec3 camPosWorld = glm::vec3(sceneUniforms.cameraPos);
+            std::vector<RenderBatch> finalBatches = mSceneManager ? mSceneManager->get_render_batches(activeFrustum, mState->frustumCullingPadding, camPosWorld) : std::vector<RenderBatch>{};
             if (mSceneManager) {
                 mState->frustumCullingTotalCandidates = mSceneManager->get_last_frustum_culling_candidates(); // new frustum culling
                 mState->frustumCullingVisibleCandidates = mSceneManager->get_last_frustum_culling_visible(); // new frustum culling

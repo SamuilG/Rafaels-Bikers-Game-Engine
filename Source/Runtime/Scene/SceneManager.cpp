@@ -67,6 +67,8 @@ namespace engine {
     {
         m_world = new flecs::world();
 
+        m_world->component<LODComponent>();
+
         // Robust hierarchical transform system
         m_world->system<WorldTransform, const LocalTransform>("UpdateWorldTransform")
             .kind(flecs::OnUpdate)
@@ -527,13 +529,15 @@ namespace engine {
                 });
     }
 
-    std::vector<RenderBatch> SceneManager::get_render_batches(const Frustum* frustum, float frustumPadding) {
+    std::vector<RenderBatch> SceneManager::get_render_batches(const Frustum* frustum, float frustumPadding, glm::vec3 cameraPos) {
         std::vector<RenderBatch> batches;
         mLastFrustumCullingCandidates = 0;
         mLastFrustumCullingVisible = 0;
 
-        m_world->query<const WorldTransform, const MeshComponent, const MaterialComponent, const EntityStatus, const OpacityComponent*>()
-            .each([&](flecs::entity e, const WorldTransform& wt, const MeshComponent& mc, const MaterialComponent& matc, const EntityStatus& status, const OpacityComponent* op) {
+        const bool doLOD = mState && mState->lodEnabled;
+
+        m_world->query<const WorldTransform, const MeshComponent, const MaterialComponent, const EntityStatus, const OpacityComponent*, const LODComponent*>()
+            .each([&](flecs::entity e, const WorldTransform& wt, const MeshComponent& mc, const MaterialComponent& matc, const EntityStatus& status, const OpacityComponent* op, const LODComponent* lod) {
 
             if (!status.should_render) return;
             if (e.has<SkinComponent>()) return;
@@ -553,6 +557,21 @@ namespace engine {
 
             ++mLastFrustumCullingVisible;
 
+            // --- LOD selection ---
+            uint32_t selectedMesh = mc.meshIndex;
+            if (doLOD && lod && lod->levelCount > 0) {
+                glm::vec3 entityPos = glm::vec3(wt.matrix[3]);
+                float dist = mState->lodDebugDistance >= 0.0f
+                    ? mState->lodDebugDistance
+                    : glm::length(entityPos - cameraPos);
+                float distSq = dist * dist;
+                float biasSq = lod->lodBias * lod->lodBias;
+                for (int i = 0; i < lod->levelCount; ++i) {
+                    if (distSq > lod->levels[i].maxDistSq * biasSq)
+                        selectedMesh = lod->levels[i].meshIndex;
+                }
+            }
+
             float alpha = op ? op->currentAlpha : 1.0f;
 
             // 检查实体的渲染层决定是否投射阴影
@@ -563,9 +582,32 @@ namespace engine {
                 }
             }
 
-            batches.push_back({ mc.meshIndex, matc.materialIndex, wt.matrix, alpha, castsShadow });
+            batches.push_back({ selectedMesh, matc.materialIndex, wt.matrix, alpha, castsShadow });
                 });
         return batches;
+    }
+
+    void SceneManager::SetupEntityLOD(flecs::entity e,
+                                       std::initializer_list<uint32_t> lodMeshIndices,
+                                       std::initializer_list<float>    distanceThresholds)
+    {
+        if (!e.is_valid()) return;
+
+        const size_t count = lodMeshIndices.size();
+        if (count == 0 || count != distanceThresholds.size()) return;
+        if (count > static_cast<size_t>(LODComponent::kMaxLevels)) return;
+
+        LODComponent lod{};
+        lod.levelCount = static_cast<int>(count);
+
+        auto meshIt = lodMeshIndices.begin();
+        auto distIt = distanceThresholds.begin();
+        for (int i = 0; i < lod.levelCount; ++i, ++meshIt, ++distIt) {
+            lod.levels[i].meshIndex = *meshIt;
+            lod.levels[i].maxDistSq = (*distIt) * (*distIt);
+        }
+
+        e.set<LODComponent>(lod);
     }
 
 
