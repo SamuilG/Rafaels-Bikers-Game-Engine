@@ -2160,6 +2160,7 @@ void InitSkybox() {
     int fullWidth, fullHeight, channels;
     // 换成你的十字图路径
     stbi_uc* pixels = stbi_load("Assets/Skybox/skybox.png", &fullWidth, &fullHeight, &channels, STBI_rgb_alpha);
+    //stbi_uc* pixels = stbi_load("Assets/Skybox/StandardCubeMap.png", &fullWidth, &fullHeight, &channels, STBI_rgb_alpha);
     if (!pixels) throw std::runtime_error("Failed to load cross skybox image!");
 
     // 计算单个面的大小 (十字图是 4 列 3 行)

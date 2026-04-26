@@ -276,49 +276,20 @@ void record_commands(
 	VkPipeline currentPipeline = aGraphicsPipe;
 	VkDeviceSize kZeroOffset = 0;
 	// =====================================================================
-	// 阶段 0：优先画【天空盒】 (必须在 vkCmdBeginRendering 之后第一个画)
-	// =====================================================================
-
-	if (skyboxPipe != VK_NULL_HANDLE && skyboxVBO != VK_NULL_HANDLE) {
-		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipe);
-
-
-		VkViewport viewport{};
-		viewport.x = 0.0f;
-		viewport.y = 0.0f;
-		viewport.width = (float)aImageExtent.width;   // 请使用你 record_commands 里的视口宽度变量
-		viewport.height = (float)aImageExtent.height; // 请使用你 record_commands 里的视口高度变量
-		viewport.minDepth = 0.0f;
-		viewport.maxDepth = 1.0f;
-		vkCmdSetViewport(aCmdBuff, 0, 1, &viewport);
-
-		VkRect2D scissor{};
-		scissor.offset = { 0, 0 };
-		scissor.extent = aImageExtent;
-		vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
-
-		// 绑定资源并绘制
-		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipeLayout, 0, 1, &skyboxDescSet, 0, nullptr);
-		VkDeviceSize offsets[1] = { 0 };
-		vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &skyboxVBO, offsets);
-
-		vkCmdDraw(aCmdBuff, 36, 1, 0, 0);
-	}
-
-	// =====================================================================
-	// 阶段 1：只画【实心】物体 (使用 aGraphicsPipe)
-	// =====================================================================
+// 阶段 1：先画【实心】物体 (填充深度缓冲，利用 Early-Z 挡住后面的天空)
+// =====================================================================
 	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsPipe);
+	// 绑定主场景描述符到 Set 0
 	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
+
 	for (const auto& batch : aBatches)
 	{
 		uint32_t meshIdx = batch.meshIndex;
 		uint32_t matIdx = batch.materialIndex;
 
-		// 判断材质是否带透明遮罩
 		bool isMatTransparent = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0);
 
-		// 【拦截器】：如果这个物体是半透明的，或者材质带透明度，直接跳过！等会儿再画！
+		// 【拦截器】：跳过半透明
 		if (isMatTransparent || batch.alphaMultiplier < 0.99f) {
 			continue;
 		}
@@ -336,7 +307,7 @@ void record_commands(
 			pcData.baseColorFactor = glm::vec4(1.0f); pcData.metallicFactor = 1.0f; pcData.roughnessFactor = 1.0f;
 		}
 
-		pcData.baseColorFactor.a *= batch.alphaMultiplier; // 此时肯定是 1.0
+		pcData.baseColorFactor.a *= batch.alphaMultiplier;
 		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ObjectPC), &pcData);
 
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
@@ -346,15 +317,45 @@ void record_commands(
 		vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
 
 		vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(meshInfo.indices.size()), 1, 0, 0, 0);
-
 	}
-	
+
 	// =====================================================================
-    // 阶段 2：只画【半透明】物体 (使用 aAlphaPipe)
-    // =====================================================================
-    vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aAlphaPipe);
-    // 【重要】：记得把主场景的数据抢回来！
-    vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
+	// 阶段 1.5：画【天空盒】 (此时利用 Early-Z 剔除被建筑挡住的天空像素，性能极高！)
+	// =====================================================================
+	if (skyboxPipe != VK_NULL_HANDLE && skyboxVBO != VK_NULL_HANDLE) {
+		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipe);
+
+		// 显式设置视口和裁剪区域
+		VkViewport viewport{};
+		viewport.x = 0.0f;
+		viewport.y = 0.0f;
+		viewport.width = (float)aImageExtent.width;
+		viewport.height = (float)aImageExtent.height;
+		viewport.minDepth = 0.0f;
+		viewport.maxDepth = 1.0f;
+		vkCmdSetViewport(aCmdBuff, 0, 1, &viewport);
+
+		VkRect2D scissor{};
+		scissor.offset = { 0, 0 };
+		scissor.extent = aImageExtent;
+		vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
+
+		// 绑定天空盒的管线布局和描述符，占用 Set 0
+		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipeLayout, 0, 1, &skyboxDescSet, 0, nullptr);
+		VkDeviceSize offsets[1] = { 0 };
+		vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &skyboxVBO, offsets);
+
+		vkCmdDraw(aCmdBuff, 36, 1, 0, 0);
+	}
+
+	// =====================================================================
+	// 阶段 2：最后画【半透明】物体 (使用 aAlphaPipe，叠加在所有东西之上)
+	// =====================================================================
+	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aAlphaPipe);
+
+	// 【极其重要】：因为上面阶段 1.5 把 Set 0 变成了天空盒，现在必须把相机的 UBO 抢回来！
+	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
+
 	for (const auto& batch : aBatches)
 	{
 		uint32_t meshIdx = batch.meshIndex;
@@ -362,7 +363,7 @@ void record_commands(
 
 		bool isMatTransparent = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0);
 
-		// 【拦截器】：如果这个物体是实心的，直接跳过！(因为刚才已经画过了)
+		// 【拦截器】：跳过实心
 		if (!isMatTransparent && batch.alphaMultiplier >= 0.99f) {
 			continue;
 		}
@@ -380,10 +381,10 @@ void record_commands(
 			pcData.baseColorFactor = glm::vec4(1.0f); pcData.metallicFactor = 1.0f; pcData.roughnessFactor = 1.0f;
 		}
 
-		pcData.baseColorFactor.a *= batch.alphaMultiplier; // 此时它是 0.3 !
+		pcData.baseColorFactor.a *= batch.alphaMultiplier;
 		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ObjectPC), &pcData);
 
-		// 这里依然只更新 set=1 的材质
+		// 更新 set 1 的材质
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
 		vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset);
 		vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &kZeroOffset);

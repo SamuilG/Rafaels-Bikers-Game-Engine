@@ -2915,10 +2915,8 @@ lut::Pipeline create_skybox_pipeline(lut::VulkanWindow const& aWindow, VkPipelin
 	depthInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
 	depthInfo.depthTestEnable = VK_TRUE;
 	depthInfo.depthWriteEnable = VK_FALSE; // 天空盒绝对不准写入深度
-
-	// 【关键修复 2】：改成 ALWAYS！无视深度遮挡，强行画在屏幕上
-	depthInfo.depthCompareOp = VK_COMPARE_OP_ALWAYS;
-
+	depthInfo.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL; 
+	
 	depthInfo.minDepthBounds = 0.f;
 	depthInfo.maxDepthBounds = 1.f;
 
