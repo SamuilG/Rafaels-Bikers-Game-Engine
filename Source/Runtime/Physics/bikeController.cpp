@@ -53,218 +53,188 @@ namespace engine
         if (m_inputSystem->IsActionHeld("StrafeLeft"))   inputSteer += 1.0f;
         if (m_inputSystem->IsActionHeld("StrafeRight"))  inputSteer -= 1.0f;
 
-        // 1. Get current attitude and velocity
-        JPH::Quat currentRot = bi.GetRotation(id);
-        JPH::Vec3 fwd = currentRot.RotateAxisZ();
-        float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
+		// ==============================================================
+		// 1. 获取物理姿态 (全面拥抱 +Z 作为正前方)
+		// ==============================================================
+		JPH::Quat currentRot = bi.GetRotation(id);
 
-        JPH::Vec3 vel = bi.GetLinearVelocity(id);
-         speed = std::sqrt(vel.GetX() * vel.GetX() + vel.GetZ() * vel.GetZ());
-        float forwardX = -std::sin(currentYaw);
-        float forwardZ = -std::cos(currentYaw);
-        float signedSpeed = vel.GetX() * forwardX + vel.GetZ() * forwardZ;
-        m_bicycle->currentSpeed = signedSpeed;
+		// 【核心重构】：顺应你的 3D 模型，正前方就是 +Z！
+		JPH::Vec3 fwdLocalUnit(0.0f, 0.0f, 1.0f);
+		JPH::Vec3 physFwd = currentRot * fwdLocalUnit;
 
-        JPH::RVec3 centerPos = bi.GetPosition(id);
-        JPH::RRayCast ray{centerPos, JPH::Vec3(0.0f, -1.8f, 0.0f)}; // Check 1.8 units below center of mass
-        JPH::RayCastResult hit;
-        JPH::IgnoreSingleBodyFilter bodyFilter(id);
-        bool isGrounded = m_joltPhysics->GetNarrowPhaseQuery().CastRay(ray, hit, { }, { }, bodyFilter);
+		// 计算 Yaw (直接使用原生的 atan2，没有任何负号修饰)
+		float currentYaw = std::atan2(physFwd.GetX(), physFwd.GetZ());
 
-        if (isGrounded && m_inputSystem->IsActionPressed("Jump")) {
-            vel.SetY(vel.GetY() + 16.0f); // Higher impulse to counteract the 3x gravity
-            bi.SetLinearVelocity(id, vel);
-        }
-        // ==============================================================
-        //  (Speed Blend Factor)
-        // 假设 5.0f 以下完全靠车把，40.0f 以上完全靠压弯
-        // the steering mechanics. 
-        // In my design, steering is achieved through two methods: rotating the handlebars and leaning the vehicle body. I have implemented both, but they aren't quite polished yet.
-        //My ideal results are :
-        //      1. Handlebar Steering : This is characterized by a wide turning angle, but it causes a loss of speed.
-        //      2.Leaning : This method results in no speed loss, but the turning angle is more restricted.
-        //   Both methods should be applied simultaneously, but their influence should shift based on velocity : 
-        // the slower the speed, the higher the contribution of handlebar steering; conversely, the higher the speed, the higher the contribution of leaning.
-        // 
-        // ==============================================================
-		float leanBlend = glm::clamp((speed - 5.0f) / 30.0f, 0.0f, 1.0f);// 0.0f at 5.0f speed, 1.0f at 35.0f speed
-        float steerBlend = 1.0f - leanBlend;
+		JPH::Vec3 vel = bi.GetLinearVelocity(id);
+		speed = std::sqrt(vel.GetX() * vel.GetX() + vel.GetZ() * vel.GetZ());
 
-        // ==============================================================
-        // 2. steering
-        // ==============================================================
-		const float maxSteerAngle = glm::radians(45.0f); // big turning angle for handlebar
-        const float steerSpeed = glm::radians(150.0f);
+		// 纯正的三角函数推导
+		float forwardX = std::sin(currentYaw);
+		float forwardZ = std::cos(currentYaw);
 
-		//faster you go, the less you can steer with the handlebar, but the more you can turn by leaning. At very high speeds, the handlebar is almost locked, and you have to rely on leaning to turn.
-        float targetSteer = inputSteer * maxSteerAngle * steerBlend;
-        float steerDiff = targetSteer - m_bicycle->steerAngle;
-        float maxDelta = steerSpeed * dt;
-        m_bicycle->steerAngle += glm::clamp(steerDiff, -maxDelta, maxDelta);
+		// 点乘判断真实的前进/后退
+		float dotProduct = vel.GetX() * physFwd.GetX() + vel.GetZ() * physFwd.GetZ();
+		float signedSpeed = (dotProduct >= 0.0f) ? speed : -speed;
+		m_bicycle->currentSpeed = signedSpeed;
 
-        // ==============================================================
-        // 3. leaning   
-        // ==============================================================
-        const float maxLeanAngle = glm::radians(40.0f);
-        const float leanSpeed = glm::radians(90.0f);
-        float maxLeanDelta = leanSpeed * dt;
+		JPH::RVec3 centerPos = bi.GetPosition(id);
+		JPH::RRayCast ray{ centerPos, JPH::Vec3(0.0f, -1.8f, 0.0f) };
+		// ... 接下来的 RayCast 和 Jump 逻辑保持不变 ...
+		JPH::RayCastResult hit;
+		JPH::IgnoreSingleBodyFilter bodyFilter(id);
+		bool isGrounded = m_joltPhysics->GetNarrowPhaseQuery().CastRay(ray, hit, { }, { }, bodyFilter);
 
-        // 速度越快，leanBlend 越大，压弯幅度越深
-        float targetLean = -inputSteer * maxLeanAngle * leanBlend;
-        float leanDiff = targetLean - m_bicycle->leanAngle;
-        m_bicycle->leanAngle += glm::clamp(leanDiff, -maxLeanDelta, maxLeanDelta);
+		// 【关键修复 1】：离开地面后，切断油门和转向输入！
+		if (!isGrounded) {
+			inputThrottle = 0.0f;
+			inputSteer = 0.0f;
+		}
 
-        // ==============================================================
-        // 4. Yaw Rate Combined
-        // ==============================================================
-        const float wheelBase = 1.6f;
+		if (isGrounded && m_inputSystem->IsActionPressed("Jump")) {
+			vel.SetY(vel.GetY() + 16.0f);
+			bi.SetLinearVelocity(id, vel);
+		}
 
-        // 4.1 来自握把的转向率 (几何转向)
-        float steerYawRate = 0.0f;
-        if (std::abs(signedSpeed) > 0.1f) {
-            steerYawRate = (signedSpeed * std::tan(m_bicycle->steerAngle)) / wheelBase;
-        }
+		// ==============================================================
+		// 1.5 提取真实 Pitch
+		// ==============================================================
+		JPH::Vec3 currentNose = currentRot * fwdLocalUnit;
+		float currentPitch = std::asin(std::clamp(currentNose.GetY(), -1.0f, 1.0f));
 
-        // 4.2 来自压弯的转向率 
-        // 倾角越大，转向越快；系数 1.5f 控制压弯的敏锐度
-        float leanYawRate = -m_bicycle->leanAngle * 1.5f * leanBlend;
+		// ==============================================================
+		// 2. 转向与压弯 (恢复最纯净的输入映射)
+		// ==============================================================
+		float leanBlend = glm::clamp((speed - 5.0f) / 30.0f, 0.0f, 1.0f);
+		float steerBlend = 1.0f - leanBlend;
 
-        // combine
-        float yawRate = steerYawRate + leanYawRate;
-        float newYaw = currentYaw + yawRate * dt;
+		const float maxSteerAngle = glm::radians(45.0f);
+		const float steerSpeed = glm::radians(150.0f);
 
-        JPH::Vec3 fwdLocalUnit(0.0f, 0.0f, -1.0f);
-        JPH::Vec3 currentNose = currentRot * fwdLocalUnit;
-        float currentPitch = std::asin(std::clamp(currentNose.GetY(), -1.0f, 1.0f));
+		// A 键 (+1.0) -> 正角度 (左转)
+		float targetSteer = inputSteer * maxSteerAngle * steerBlend;
+		float steerDiff = targetSteer - m_bicycle->steerAngle;
+		m_bicycle->steerAngle += glm::clamp(steerDiff, -steerSpeed * dt, steerSpeed * dt);
 
-        JPH::Quat yawQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), newYaw + JPH::JPH_PI);
-        JPH::Quat leanQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisZ(), m_bicycle->leanAngle);
-        JPH::Quat pitchQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisX(), currentPitch);
+		const float maxLeanAngle = glm::radians(40.0f);
+		const float leanSpeed = glm::radians(90.0f);
 
-        JPH::Quat finalRot = yawQuat * leanQuat * pitchQuat;
-        bi.SetRotation(id, finalRot, JPH::EActivation::Activate);
-        // ==========================================================
-        // 5. Grip and drive power combined 
-        // ==========================================================
-        const float maxSpeed = 40.0f;
-        float slipAngle = m_bicycle->steerAngle * 0.5f;
-        if (signedSpeed < 0.0f) slipAngle = -slipAngle;
-        float moveYaw = newYaw + slipAngle;
-        glm::vec3 moveDir(-std::sin(moveYaw), 0.0f, -std::cos(moveYaw));
+		// A 键 (+1.0) -> 负角度 (向左压弯)
+		float targetLean = -inputSteer * maxLeanAngle * leanBlend;
+		float leanDiff = targetLean - m_bicycle->leanAngle;
+		m_bicycle->leanAngle += glm::clamp(leanDiff, -leanSpeed * dt, leanSpeed * dt);
 
-        if (speed > 0.1f) {
-            if (speed > maxSpeed) speed = maxSpeed;
-            float driveSpeed = signedSpeed > 0 ? speed : -speed;
-            bi.SetLinearVelocity(id, JPH::Vec3(
-                moveDir.x * driveSpeed,
-                bi.GetLinearVelocity(id).GetY(),
-                moveDir.z * driveSpeed
-            ));
-        }
+		const float wheelBase = 1.6f;
+		float steerYawRate = 0.0f;
+		if (std::abs(signedSpeed) > 0.1f) {
+			steerYawRate = (signedSpeed * std::tan(m_bicycle->steerAngle)) / wheelBase;
+		}
+		float leanYawRate = -m_bicycle->leanAngle * 1.5f * leanBlend;
+		float newYaw = currentYaw + (steerYawRate + leanYawRate) * dt;
 
-		// virtual force pool for engine acceleration and braking, with inertia and dynamic torque curve
-        static float s_engineForce = 0.0f;
+		// ==============================================================
+		// 3. 干净的矩阵组装 (无 PI，无翻转)
+		// ==============================================================
+		JPH::Quat yawQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), newYaw);
 
-        float targetMaxForce = 3000.0f + (speed * 30.0f); // 最高挡位推力
+		// 【关键修复】：由于朝向是 +Z，车头向上抬起时，绕 X 轴是负向旋转
+		JPH::Quat pitchQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisX(), -currentPitch);
+		JPH::Quat leanQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisZ(), m_bicycle->leanAngle);
 
-        if (inputThrottle > 0.1f) {
-            // ==============================================================
-             // 非线性扭矩曲线 Torque Curve (优化版：起步极快，后段漫长)
-             // ==============================================================
+		JPH::Quat finalRot = yawQuat * pitchQuat * leanQuat;
+		bi.SetRotation(id, finalRot, JPH::EActivation::Activate);
+		// ==========================================================
+		// 4. 抓地力与推力矢量
+		// ==========================================================
+		const float maxSpeed = 40.0f;
+		float slipAngle = m_bicycle->steerAngle * 0.5f;
+		if (signedSpeed < 0.0f) slipAngle = -slipAngle;
+		float moveYaw = newYaw + slipAngle;
 
-            float speedRatio = glm::clamp(speed / maxSpeed, 0.0f, 1.0f);
+		JPH::Quat moveYawQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), moveYaw);
+		JPH::Quat noLeanRot = moveYawQuat * pitchQuat;
 
-            // 1. 【核心魔法 1：三次幂凹曲线】
-            // 原本是 1.0 - x^2。现在改成 (1.0 - x)^3。
-            // 效果：起步(0.0)时依然是 1.0；但速度到一半(0.5)时，推力瞬间暴跌到 0.125 (12.5%)！
-            float inverseSpeed = 1.0f - speedRatio;
-            float curveFactor = inverseSpeed * inverseSpeed * inverseSpeed * inverseSpeed * inverseSpeed;
+		// 顺着模型 +Z 完美向前的推力向量
+		JPH::Vec3 forceDir = noLeanRot * fwdLocalUnit;
 
-            // 2. 涡轮增压机制 (保持你的设定)
-            static float currentBoost = 0.0f;
-            float boostRampUpSpeed = 2.0f;
-            float boostRampDownSpeed = 3.0f;
+		// 【关键修复 2】：只有在地面上，才允许强制修改水平速度！
+		// 如果在空中，绝对不能干涉，让重力带着它飞完美的抛物线！
+		if (isGrounded && speed > 0.1f) {
+			if (speed > maxSpeed) speed = maxSpeed;
+			float driveSpeed = signedSpeed; // 前进为正，后退为负
 
-            if (m_inputSystem->IsActionHeld("Fast")) {
-                currentBoost += boostRampUpSpeed * dt;
-                if (currentBoost > 3.0f) currentBoost = 3.0f;
-            }
-            else {
-                currentBoost -= boostRampDownSpeed * dt;
-                if (currentBoost < 0.0f) currentBoost = 0.0f;
-            }
+			bi.SetLinearVelocity(id, JPH::Vec3(
+				forceDir.GetX() * driveSpeed,
+				bi.GetLinearVelocity(id).GetY(),
+				forceDir.GetZ() * driveSpeed
+			));
+		}
+		// (引擎推力 s_engineForce 的计算逻辑保持原样)
+		static float s_engineForce = 0.0f;
+		float targetMaxForce = 3000.0f + (speed * 30.0f);
 
-            // 3. 【核心魔法 2：重新分配推力比重】
-            // 想要后段漫长，必须把“无视速度的死力(Basic)”调小，把“受曲线限制的爆发力(Burst)”调大。
+		if (inputThrottle > 0.1f) {
+			float speedRatio = glm::clamp(speed / maxSpeed, 0.0f, 1.0f);
+			float inverseSpeed = 1.0f - speedRatio;
+			float curveFactor = inverseSpeed * inverseSpeed * inverseSpeed * inverseSpeed * inverseSpeed;
 
-            // 基础维持力：只要踩踏板就有的底线推力（负责对抗滚阻，维持极速。不能太大）
-            // currentBoost 最大是 3.0，所以这里最大维持力是 100 + 150*3 = 550
-            float basicAccelRate = 100.0f + (150.0f * currentBoost);
+			static float currentBoost = 0.0f;
+			if (m_inputSystem->IsActionHeld("Fast")) {
+				currentBoost += 2.0f * dt;
+				if (currentBoost > 3.0f) currentBoost = 3.0f;
+			}
+			else {
+				currentBoost -= 3.0f * dt;
+				if (currentBoost < 0.0f) currentBoost = 0.0f;
+			}
 
-            // 起步爆发力：起步时赋予极大的推力 (4000)，但由于 curveFactor，速度一上来它就迅速消失
-            // 加速键按满时，额外再给 1500 的爆发力
-            float burstAccelRate = (4000.0f + 1500.0f * currentBoost) * curveFactor;
+			float basicAccelRate = 100.0f + (150.0f * currentBoost);
+			float burstAccelRate = (4000.0f + 1500.0f * currentBoost) * curveFactor;
+			float currentAccelRate = basicAccelRate + burstAccelRate;
 
-            // 4. 得出最终的引擎推力
-            float currentAccelRate = basicAccelRate + burstAccelRate;
-            // 接下来把 currentAccelRate 累加到你原本的 s_engineForce 逻辑中即可...
-            
-            
+			s_engineForce += currentAccelRate * dt;
+			if (s_engineForce > targetMaxForce) s_engineForce = targetMaxForce;
+		}
+		else if (inputThrottle < -0.1f) {
+			s_engineForce -= 10000.0f * dt;
+			if (s_engineForce < -2500.0f) s_engineForce = -2500.0f;
+		}
+		else {
+			if (s_engineForce > 0.0f) {
+				s_engineForce -= 100.0f * dt;
+				if (s_engineForce < 0.0f) s_engineForce = 0.0f;
+			}
+			else if (s_engineForce < 0.0f) {
+				s_engineForce += 3000.0f * dt;
+				if (s_engineForce > 0.0f) s_engineForce = 0.0f;
+			}
+		}
 
-            // 4. 应用动态增加率
-            s_engineForce += currentAccelRate * dt;
-            if (s_engineForce > targetMaxForce) s_engineForce = targetMaxForce;
-        }
-        else if (inputThrottle < -0.1f) {
-            // 持续按下 S：推力迅速变为负数 (active brake ）
-            s_engineForce -= 10000.0f * dt;
-            if (s_engineForce < -2500.0f) s_engineForce = -2500.0f; // 最大倒车力
-        }
-        else {
-            // 松开按键：发动机推力自然衰减，缓缓归零
-			//natrual decay towards zero when no throttle input, simulating engine inertia
-            if (s_engineForce > 0.0f) {
-                s_engineForce -= 100.0f * dt; // 衰减速度
-                if (s_engineForce < 0.0f) s_engineForce = 0.0f;
-            }
-            else if (s_engineForce < 0.0f) {
-                s_engineForce += 3000.0f * dt;
-                if (s_engineForce > 0.0f) s_engineForce = 0.0f;
-            }
-        }
+		// 将引擎推力沿斜坡方向施加！
+		// 【关键修复 3】：只有轮胎挨着地，引擎和地面的摩擦力才能生效！
+		if (isGrounded) {
+			// 将引擎推力沿斜坡方向施加！
+			if (std::abs(s_engineForce) > 10.0f) {
+				bi.AddForce(id, forceDir * s_engineForce);
+			}
 
-        // 将缓冲后的发动机推力作用于单车
-        if (std::abs(s_engineForce) > 10.0f) {
-            bi.AddForce(id, JPH::Vec3(
-                moveDir.x * s_engineForce,
-                0.0f,
-                moveDir.z * s_engineForce
-            ));
-        }
+			// 滚动阻力
+			if (speed > 0.1f) {
+				const float rollingFriction = 3.0f;
+				float dirSign = signedSpeed > 0 ? -1.0f : 1.0f;
+				bi.AddForce(id, forceDir * (speed * rollingFriction * dirSign));
+			}
+		}
 
-		// fractional rolling friction that increases with speed, simulating tire grip and air resistance, but only when moving
-        if (speed > 0.1f) {
-            const float rollingFriction = 3.0f; 
-            float forceDir = signedSpeed > 0 ? -1.0f : 1.0f;
-            bi.AddForce(id, JPH::Vec3(
-                moveDir.x * speed * rollingFriction * forceDir,
-                0.0f,
-                moveDir.z * speed * rollingFriction * forceDir
-            ));
-        }
+		
+		// 稳定动态物理，强行阻尼角速度
+		JPH::Vec3 angVel = bi.GetAngularVelocity(id);
+		JPH::Vec3 localX = finalRot.RotateAxisX();
+		float pitchAngVel = angVel.Dot(localX);
+		bi.SetAngularVelocity(id, localX * (pitchAngVel * 0.85f));
 
-        // stabilise dynamic physics: Isolate and decay pitch rate, force roll and yaw rates to 0
-        JPH::Vec3 angVel = bi.GetAngularVelocity(id);
-        JPH::Vec3 localX = finalRot.RotateAxisX();
-        float pitchAngVel = angVel.Dot(localX);
-        bi.SetAngularVelocity(id, localX * (pitchAngVel * 0.85f));
-        // 
-        m_state->bikeSpeed = speed;
-        m_state->bikeSteerAngle = m_bicycle->steerAngle;
-
-        
-        m_state->bikeYaw = newYaw;
-        m_state->bikeLeanAngle = m_bicycle->leanAngle;
-    }
-
+		m_state->bikeSpeed = speed;
+		m_state->bikeSteerAngle = m_bicycle->steerAngle;
+		m_state->bikeYaw = newYaw;
+		m_state->bikeLeanAngle = m_bicycle->leanAngle;
+	}
 } // namespace engine

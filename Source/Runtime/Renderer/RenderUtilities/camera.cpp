@@ -139,8 +139,12 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 			float distanceFactor = 1.0f - glm::clamp((aState.Distance - fullEffectDist) / (noEffectDist - fullEffectDist), 0.0f, 1.0f);
 
 			if (distanceFactor > 0.001f) {
-				float diff = aState.bikeYaw - aState.targetYaw;
+				// 【核心修复】：相机的理想目标角度应该是单车车头的“正后方”！
+				// 给单车的角度加上 180度 (PI)，让相机乖乖跑到车尾。
+				float idealCameraYaw = aState.bikeYaw + glm::pi<float>();
+				float diff = idealCameraYaw - aState.targetYaw;
 
+				// 规范化角度差值到 [-PI, PI] 之间，防止疯狂转圈
 				while (diff > glm::pi<float>())  diff -= 2.0f * glm::pi<float>();
 				while (diff < -glm::pi<float>()) diff += 2.0f * glm::pi<float>();
 
