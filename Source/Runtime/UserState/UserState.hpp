@@ -42,7 +42,7 @@ namespace engine {
 		//================UI System================================
 		bool particlesEnabled = true;//particle system toggle with key R
 
-		bool isGameStarted = false;//game start toggle
+		bool isGameStarted = true;//game start toggle
 
 		bool isGameOver = false;//game over toggle
 
@@ -57,6 +57,7 @@ namespace engine {
 		bool showLightPanel = true;
 		bool showCameraPanel = true;
 		bool showDebugPanel = true;
+		bool showAudioPanel = true;
 
 		bool debugSelectionBounds = false;
 		bool debugCollisionShapes = true;

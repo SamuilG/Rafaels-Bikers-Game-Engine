@@ -32,6 +32,9 @@
 #include "../Particle/ParticleSystem.hpp"
 #include "../Physics/PhysicsSystem.hpp"
 #include "../Renderer/RenderUtilities/light.hpp"
+
+#include "../AudioSystem/AudioSystem.hpp"
+
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 
@@ -1499,6 +1502,70 @@ namespace engine {
 		}
 	}
 
+	void EngineUi::DrawAudioPanel(UserState& state, AudioSystem* audioSystem)
+	{
+		if (!state.showAudioPanel) return;
+
+		ImGui::SetNextWindowPos(ImVec2(780, 320), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(340, 260), ImGuiCond_FirstUseEver);
+
+		if (!ImGui::Begin("Audio Panel", &state.showAudioPanel)) {
+			ImGui::End();
+			return;
+		}
+
+		if (!audioSystem) {
+			ImGui::TextUnformatted("AudioSystem is not connected.");
+			ImGui::End();
+			return;
+		}
+
+		float masterVolume = audioSystem->GetMasterVolume();
+		if (ImGui::SliderFloat("Master Volume", &masterVolume, 0.0f, 1.0f, "%.2f")) {
+			audioSystem->SetMasterVolume(masterVolume);
+		}
+
+		ImGui::Separator();
+		ImGui::TextUnformatted("Loaded Sounds");
+
+		const auto soundNames = audioSystem->GetSoundNames();
+		if (soundNames.empty()) {
+			ImGui::TextDisabled("No sounds loaded.");
+			ImGui::End();
+			return;
+		}
+
+		for (const std::string& name : soundNames) {
+			ImGui::PushID(name.c_str());
+
+			if (ImGui::TreeNodeEx(name.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+				float volume = audioSystem->GetVolume(name);
+				if (ImGui::SliderFloat("Volume", &volume, 0.0f, 1.0f, "%.2f")) {
+					audioSystem->SetVolume(name, volume);
+				}
+
+				float pitch = audioSystem->GetPitch(name);
+				if (ImGui::SliderFloat("Pitch", &pitch, 0.25f, 3.0f, "%.2f")) {
+					audioSystem->SetPitch(name, pitch);
+				}
+
+				if (ImGui::Button("Play Loop")) {
+					audioSystem->PlayLoop(name);
+				}
+				ImGui::SameLine();
+				if (ImGui::Button("Stop")) {
+					audioSystem->Stop(name);
+				}
+
+				ImGui::TreePop();
+			}
+
+			ImGui::PopID();
+		}
+
+		ImGui::End();
+	}
+
 	void EngineUi::DrawMainMenuBar(RenderSystem* renderSys, SceneManager* sceneManager, UserState& state, bool& appRunning) {
 
 
@@ -1528,6 +1595,7 @@ namespace engine {
 				ImGui::MenuItem(_SL("Output Console"), NULL, &state.showConsole);
 				ImGui::MenuItem(_SL("Light Panel"), NULL, &state.showLightPanel);
 				ImGui::MenuItem(_SL("Camera Panel"), NULL, &state.showCameraPanel);
+				ImGui::MenuItem("Audio Panel", NULL, &state.showAudioPanel);
 				ImGui::EndMenu();
 			}
 

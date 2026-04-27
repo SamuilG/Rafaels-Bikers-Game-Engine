@@ -15,6 +15,7 @@ namespace engine {
 
     class RenderSystem;
     class SceneManager;
+    class AudioSystem;
 
     class EngineUi {
     public:
@@ -76,6 +77,8 @@ namespace engine {
         static void DrawCameraPanel(UserState& state);
 		//调试信息面板//Debug info panel
         static void DrawDebugPanel(UserState& state);
+		//音频系统面板//Audio system panel
+        static void DrawAudioPanel(UserState& state, AudioSystem* audioSystem);
 
 		// 场景层级面板与属性检查器（Inspector）//Scene Hierarchy panel with property inspector (Inspector)
         static void DrawSceneHierarchy(RenderSystem* renderSys, SceneManager* sceneManager, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, UserState& state);

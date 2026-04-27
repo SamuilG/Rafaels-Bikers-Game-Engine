@@ -90,6 +90,8 @@ namespace glsl {
 
 namespace engine {
 
+    class AudioSystem;
+
     class RenderSystem final : public System
     {
  
@@ -110,6 +112,7 @@ namespace engine {
         bool& mAppRunning;
         SceneManager* mSceneManager;
         engine::AnimationSystem* mAnimationSystem = nullptr;
+        engine::AudioSystem* mAudioSystem = nullptr;
 
         lut::VulkanWindow  mWindow;
         lut::Allocator     mAllocator;
@@ -1063,6 +1066,10 @@ namespace engine {
                 if (mState->showDebugPanel) {
                     EngineUi::DrawDebugPanel(*mState);
                 }
+				//audio UI
+                if (mState->showAudioPanel) {
+                    EngineUi::DrawAudioPanel(*mState, mAudioSystem);
+                }
 
                 if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && isMouseInViewport && !ImGuizmo::IsOver())
                 {
@@ -2012,6 +2019,8 @@ namespace engine {
         }
 
         void SetUserState(UserState* state) { this->mState = state; }
+        void SetAudioSystem(AudioSystem* audioSystem) { this->mAudioSystem = audioSystem; }
+        AudioSystem* GetAudioSystem() const { return mAudioSystem; }
 
     private:
 

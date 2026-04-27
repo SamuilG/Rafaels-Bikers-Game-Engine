@@ -15,6 +15,7 @@ namespace engine {
     class InputSystem;
     class EventSystem;
     class AnimationSystem;
+    class AudioSystem;
 
     class Application {
     public:
@@ -54,6 +55,8 @@ namespace engine {
         UserState mState;
         AnimationSystem* animationSystem = nullptr;
         std::unique_ptr<GameScene> m_currentScene;
+
+        AudioSystem* audioSystem = nullptr;
     };
 
 } // namespace engine

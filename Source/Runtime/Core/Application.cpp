@@ -6,12 +6,14 @@
 #include "../Event/EventSystem.hpp"
 #include "../Animation/AnimationSystem.hpp"
 #include "../Scene/TestScene.hpp" // 引入你的测试关卡
+#include "../AudioSystem/AudioSystem.hpp"
 
 namespace engine {
 
     Application::Application() {
         inputSystem = AddSystem<InputSystem>();
         eventSystem = AddSystem<EventSystem>();
+		audioSystem = AddSystem<AudioSystem>();//音频系统
 
         physicsSystem = AddSystem<PhysicsSystem>();
         physicsSystem->SetEventSystem(eventSystem);
@@ -26,6 +28,10 @@ namespace engine {
         renderSystem = AddSystem<RenderSystem>(Running, sceneManager);
         renderSystem->SetUserState(&mState);
         renderSystem->set_animation_system(animationSystem);
+		renderSystem->SetAudioSystem(audioSystem);
+        
+		
+
         for (auto& sys : Systems) {
             sys->Init();
         }
@@ -34,6 +40,22 @@ namespace engine {
             inputSystem->SetWindow(renderSystem->GetGLFWWindow());
             renderSystem->SetInputSystem(inputSystem);
             physicsSystem->SetInputSystem(inputSystem);
+        }
+
+        // audio system test
+        if (audioSystem) {
+            //background music
+            audioSystem->LoadSound("BackgroundTestMusic", "Assets/Sounds/BackgroundTestMusic.mp3");
+            audioSystem->SetVolume("BackgroundTestMusic", 0.1f);
+            audioSystem->SetPitch("BackgroundTestMusic", 1.0f);
+            audioSystem->PlayLoop("BackgroundTestMusic");
+            //bike chain sound effect
+            audioSystem->LoadSound("BikeChain", "Assets/Sounds/BikeChain.mp3");
+            audioSystem->SetVolume("BikeChain", 0.6f);
+            audioSystem->SetRuntimeVolume("BikeChain", 0.0f);
+            audioSystem->SetPitch("BikeChain", 1.0f);
+            audioSystem->PlayLoop("BikeChain");
+            audioSystem->LoadSound("Chain", "Assets/Sounds/BikeChain.mp3");
         }
 
         // 注册全局事件监听 (比如碰撞)
@@ -76,6 +98,15 @@ namespace engine {
             // 更新底层引擎系统
             for (auto& sys : Systems) {
                 sys->Update(dt);
+            }
+
+            //audio system
+           // 根据自行车速度状态调整音效// Adjust bike chain sound based on bike speed
+            if (audioSystem) {
+                float speed01 = std::clamp(mState.bikeSpeed / 40.0f, 0.0f, 1.0f);
+
+                audioSystem->SetRuntimeVolume("BikeChain", speed01);
+                audioSystem->SetPitch("BikeChain", 0.75f + speed01 * 1.25f);
             }
         }
     }
