@@ -2707,6 +2707,7 @@ void InitSkybox() {
         private:
             // 存储每个模型专属的照片
             std::unordered_map<std::string, ThumbnailAsset> mThumbnailAssets;
+            std::unordered_map<std::string, ThumbnailAsset> mContentBrowserImageAssets; //缓存内容浏览器按路径加载的普通图片
 
             // 共用的深度缓冲
             lut::Image mThumbnailDepthImg;
@@ -2749,6 +2750,7 @@ void InitSkybox() {
     public:
 
         VkDescriptorSet GetModelThumbnail(const std::string& modelPath);
+        VkDescriptorSet GetContentBrowserThumbnail(const std::string& assetPath);
         void SetModelPreview(const std::string& path, const glm::mat4& transform);
         void ClearModelPreview();
         DebugRenderer mDebugRenderer;

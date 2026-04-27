@@ -3,10 +3,28 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <cctype>
 
 namespace engine {
 
     namespace {
+        std::string ToLowerCopy(std::string value) { //统一小写扩展名判断
+            std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+                });
+            return value;
+        }
+
+        bool IsTexturePreviewExtension(const std::filesystem::path& path) { //常见贴图格式
+            const std::string ext = ToLowerCopy(path.extension().string());
+            return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tga";
+        }
+
+        bool IsModelPreviewExtension(const std::filesystem::path& path) { //模型缩略图
+            const std::string ext = ToLowerCopy(path.extension().string());
+            return ext == ".glb";
+        }
+
         bool ComputePreviewBounds(const std::vector<RenderBatch>& batches, const EngineModel& model, glm::vec3& outMin, glm::vec3& outMax) {
             outMin = glm::vec3(FLT_MAX); outMax = glm::vec3(-FLT_MAX);
             bool hasVertex = false;
@@ -295,6 +313,44 @@ namespace engine {
         it = mThumbnailAssets.find(modelPath);
         if (it != mThumbnailAssets.end()) return it->second.guiSet;
         return GetImGuiTextureDescriptor(cfg::ParticleTextures[0]);
+    }
+
+    VkDescriptorSet RenderSystem::GetContentBrowserThumbnail(const std::string& assetPath) { //显示模型和贴图预览
+        const std::filesystem::path normalizedPath(assetPath); //保持和 UI 层一致的相对资源路径
+
+        if (IsModelPreviewExtension(normalizedPath)) { //模型缩略图
+            return GetModelThumbnail(assetPath);
+        }
+
+        if (!IsTexturePreviewExtension(normalizedPath)) { //非贴图文字图标
+            return VK_NULL_HANDLE;
+        }
+
+        if (VkDescriptorSet existingDescriptor = GetImGuiTextureDescriptor(assetPath); existingDescriptor != VK_NULL_HANDLE) { //ImGui 的贴图直接复用
+            return existingDescriptor;
+        }
+
+        auto existingPreview = mContentBrowserImageAssets.find(assetPath); //已经懒加载过的贴图预览
+        if (existingPreview != mContentBrowserImageAssets.end()) {
+            return existingPreview->second.guiSet;
+        }
+
+        if (!std::filesystem::exists(normalizedPath) || !std::filesystem::is_regular_file(normalizedPath)) {//文件不存在返回空
+            return VK_NULL_HANDLE;
+        }
+
+        stbi_set_flip_vertically_on_load(0);
+        lut::Image image = lut::load_image_texture2d(assetPath.c_str(), mWindow, mCmdPool.handle, mAllocator, VK_FORMAT_R8G8B8A8_UNORM); //加载普通贴图
+        stbi_set_flip_vertically_on_load(0);
+
+        ThumbnailAsset previewAsset{}; //保存图片资源和 ImGui 句柄
+        previewAsset.image = std::move(image);
+        previewAsset.view = lut::create_image_view_texture2d(mWindow, previewAsset.image.image, VK_FORMAT_R8G8B8A8_UNORM);
+        previewAsset.guiSet = ImGui_ImplVulkan_AddTexture(mDefaultSampler.handle, previewAsset.view.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+        auto [insertedIt, inserted] = mContentBrowserImageAssets.emplace(assetPath, std::move(previewAsset)); //缓存按路径生成的贴图缩略图
+        (void)inserted; 
+        return insertedIt->second.guiSet;
     }
 
 } // namespace engine

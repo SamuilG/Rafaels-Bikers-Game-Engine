@@ -50,41 +50,199 @@ namespace engine {
 			}
 			return value / length;
 		}
+		std::string ToLowerCopy(std::string value) { //Normalize extensions for case-insensitive asset checks.
+			std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+				return static_cast<char>(std::tolower(ch));
+				});
+			return value;
+		}
+
+		std::string ToUpperCopy(std::string value) { //Build readable labels for assets without thumbnails.
+			std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+				return static_cast<char>(std::toupper(ch));
+				});
+			return value;
+		}
+
+		std::string NormalizeAssetBrowserPath(const fs::path& path) { //Keep browser paths in stable Assets/... form.
+			return path.lexically_normal().generic_string();
+		}
+
+		bool IsModelAssetPath(const fs::path& path) { //Preserve drag-and-drop for model assets.
+			const std::string ext = ToLowerCopy(path.extension().string());
+			return ext == ".glb";
+		}
+
+		bool IsTextureAssetPath(const fs::path& path) { //Detect texture assets for thumbnail previews.
+			const std::string ext = ToLowerCopy(path.extension().string());
+			return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tga";
+		}
+
+		bool IsFontAssetPath(const fs::path& path) { //Detect font assets so Assets/Fonts is represented clearly.
+			const std::string ext = ToLowerCopy(path.extension().string());
+			return ext == ".ttf" || ext == ".otf" || ext == ".ttc";
+		}
+
+		bool IsSameOrChildPath(const std::string& parentPath, const std::string& childPath) { //Auto-open the active branch in the folder tree.
+			if (childPath == parentPath) {
+				return true;
+			}
+			if (childPath.size() <= parentPath.size()) {
+				return false;
+			}
+			return childPath.rfind(parentPath + "/", 0) == 0;
+		}
+
+		std::vector<fs::path> CollectChildDirectories(const fs::path& directory) { //Collect only subfolders for the left tree panel.
+			std::vector<fs::path> childDirectories;
+			std::error_code ec;
+			for (const auto& entry : fs::directory_iterator(directory, ec)) {
+				if (ec) {
+					break;
+				}
+				if (entry.is_directory()) {
+					childDirectories.push_back(entry.path());
+				}
+			}
+			std::sort(childDirectories.begin(), childDirectories.end(), [](const fs::path& lhs, const fs::path& rhs) {
+				return ToLowerCopy(lhs.filename().string()) < ToLowerCopy(rhs.filename().string());
+				});
+			return childDirectories;
+		}
+
+		std::string GetAssetTileLabel(const fs::path& path) { //Show a fallback type label when no thumbnail exists.
+			if (path.has_filename() && path.filename() == "..") {
+				return "UP";
+			}
+			if (fs::is_directory(path)) {
+				return "FOLDER";
+			}
+			if (IsModelAssetPath(path)) {
+				return "MODEL";
+			}
+			if (IsTextureAssetPath(path)) {
+				return "TEXTURE";
+			}
+			if (IsFontAssetPath(path)) {
+				return "FONT";
+			}
+
+			std::string ext = path.extension().string();
+			if (ext.empty()) {
+				return "FILE";
+			}
+
+			ext = ToUpperCopy(ext.substr(1));
+			if (ext.size() > 6) {
+				ext = ext.substr(0, 6);
+			}
+			return ext;
+		}
+
+		bool TryCreateAssetFolder(const fs::path& parentDirectory, const char* folderName, std::string& createdPath, std::string& errorMessage) { //Allow creating new folders in the current browser directory.
+			createdPath.clear();
+			errorMessage.clear();
+
+			std::string newFolderName = folderName ? folderName : "";
+			const std::size_t firstNonWhitespace = newFolderName.find_first_not_of(" \t\r\n");
+			if (firstNonWhitespace == std::string::npos) {
+				errorMessage = "Folder name cannot be empty.";
+				return false;
+			}
+			newFolderName.erase(0, firstNonWhitespace);
+			newFolderName.erase(newFolderName.find_last_not_of(" \t\r\n") + 1);
+
+			if (newFolderName.empty()) {
+				errorMessage = "Folder name cannot be empty.";
+				return false;
+			}
+
+			if (newFolderName.find_first_of("\\/:*?\"<>|") != std::string::npos) {
+				errorMessage = "Folder name contains invalid characters.";
+				return false;
+			}
+
+			const fs::path targetDirectory = parentDirectory / newFolderName;
+			if (fs::exists(targetDirectory)) {
+				errorMessage = "Folder already exists.";
+				return false;
+			}
+
+			std::error_code ec;
+			if (!fs::create_directory(targetDirectory, ec)) {
+				errorMessage = ec ? ec.message() : "Failed to create folder.";
+				return false;
+			}
+
+			createdPath = NormalizeAssetBrowserPath(targetDirectory);
+			return true;
+		}
+
+		void DrawAssetDirectoryTreeNode(const fs::path& directory, std::string& currentDirectory) { //Render the Assets folder hierarchy in the left tree.
+			const std::string directoryPath = NormalizeAssetBrowserPath(directory);
+			const std::vector<fs::path> childDirectories = CollectChildDirectories(directory);
+
+			ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_SpanAvailWidth;
+			if (currentDirectory == directoryPath) {
+				flags |= ImGuiTreeNodeFlags_Selected;
+			}
+			if (childDirectories.empty()) {
+				flags |= ImGuiTreeNodeFlags_Leaf;
+			}
+			if (directoryPath == "Assets" || IsSameOrChildPath(directoryPath, currentDirectory)) {
+				flags |= ImGuiTreeNodeFlags_DefaultOpen;
+			}
+
+			const std::string displayName = directory.filename().empty() ? directoryPath : directory.filename().string();
+			const bool opened = ImGui::TreeNodeEx(directoryPath.c_str(), flags, "%s", displayName.c_str());
+			if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
+				currentDirectory = directoryPath;
+			}
+
+			if (opened) {
+				for (const auto& childDirectory : childDirectories) {
+					DrawAssetDirectoryTreeNode(childDirectory, currentDirectory);
+				}
+				ImGui::TreePop();
+			}
+		}
+
 	}
 
+
 	// ========== console system 内置控制台系统==========
-	struct EngineConsole {
-		std::vector<std::string> Items;// 存放日志数据//store log data
-		bool ScrollToBottom = true;// 控制自动滚动//control auto-scroll
+struct EngineConsole {
+	std::vector<std::string> Items;// 存放日志数据//store log data
+	bool ScrollToBottom = true;// 控制自动滚动//control auto-scroll
 
-		void Draw(const char* title, bool* p_open = nullptr) {
-			if (p_open && !*p_open) return;
-			ImGui::Begin(title, p_open);
+	void Draw(const char* title, bool* p_open = nullptr) {
+		if (p_open && !*p_open) return;
+		ImGui::Begin(title, p_open);
 
-			// 清空日志按钮//Clear logs button
-			if (ImGui::Button("Clear Logs")) {
-				Items.clear();
-			}
-			ImGui::Separator();
-
-			for (const auto& item : Items) {
-				if (item.find("[Error]") != std::string::npos) {
-					ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "%s", item.c_str());
-				}
-				else if (item.find("[Warning]") != std::string::npos) {
-					ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.4f, 1.0f), "%s", item.c_str());
-				}
-				else {
-					ImGui::TextUnformatted(item.c_str());
-				}
-			}
-			if (ScrollToBottom && ImGui::GetScrollY() >= ImGui::GetScrollMaxY()) {
-				ImGui::SetScrollHereY(1.0f);
-			}
-			ScrollToBottom = false;
-			ImGui::End();
+		// 清空日志按钮//Clear logs button
+		if (ImGui::Button("Clear Logs")) {
+			Items.clear();
 		}
-	};
+		ImGui::Separator();
+
+		for (const auto& item : Items) {
+			if (item.find("[Error]") != std::string::npos) {
+				ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "%s", item.c_str());
+			}
+			else if (item.find("[Warning]") != std::string::npos) {
+				ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.4f, 1.0f), "%s", item.c_str());
+			}
+			else {
+				ImGui::TextUnformatted(item.c_str());
+			}
+		}
+		if (ScrollToBottom && ImGui::GetScrollY() >= ImGui::GetScrollMaxY()) {
+			ImGui::SetScrollHereY(1.0f);
+		}
+		ScrollToBottom = false;
+		ImGui::End();
+	}
+};
 
 	static EngineConsole s_Console; // 全局控制台实例
 
@@ -627,67 +785,273 @@ namespace engine {
 	}
 
 
+	//void EngineUi::DrawContentBrowser(RenderSystem* renderSys, SceneManager* sceneManager) {
+	//	// 设置初始窗口大小和位置
+	//	ImGui::SetNextWindowPos(ImVec2(20, ImGui::GetIO().DisplaySize.y - 300), ImGuiCond_FirstUseEver);
+	//	ImGui::SetNextWindowSize(ImVec2(800, 250), ImGuiCond_FirstUseEver);
+
+	//	if (ImGui::Begin(_SL("Content Browser"))) {
+	//		// 设定格子的宽度// Set the width of each cell
+	//		float cellSize = 110.0f;
+	//		float panelWidth = ImGui::GetContentRegionAvail().x;
+	//		int columnCount = std::max(1, (int)(panelWidth / cellSize));// 计算数量Calculate the number of columns based on available width
+
+	//		if (ImGui::BeginTable("ContentGrid", columnCount)) {
+	//			// 遍历 Assets/Models
+	//			std::string path = "Assets/Models";
+	//			if (fs::exists(path) && fs::is_directory(path)) {
+	//				for (const auto& entry : fs::directory_iterator(path)) {
+	//					// 显示show .glb 模型
+	//					if (entry.path().extension() == ".glb") {
+	//						ImGui::TableNextColumn();
+
+	//						std::string filename = entry.path().filename().string();
+	//						std::string relativePath = entry.path().string();
+	//						// Windows 的 \ 替换为 /
+	//						std::replace(relativePath.begin(), relativePath.end(), '\\', '/');
+
+	//						VkDescriptorSet fileIcon = renderSys->GetModelThumbnail(relativePath);
+
+	//						// 1. 画图标按钮// Draw the icon button
+	//						ImGui::PushID(filename.c_str());
+	//						if (fileIcon) {
+	//							ImGui::ImageButton(filename.c_str(), (ImTextureID)fileIcon, ImVec2(100, 100));// 显示缩略图按钮
+	//						}
+	//						else {
+	//							ImGui::Button("MODEL\nICON", ImVec2(70, 70));
+	//						}
+
+	//						// 2.设定拖拽源 (Drag Source)
+	//						if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+	//							
+	//							ImGui::SetDragDropPayload("CONTENT_BROWSER_MODEL", relativePath.c_str(), relativePath.size() + 1);
+
+	//							// 拖拽时悬浮在鼠标旁边的提示
+	//							ImGui::Text("Drop %s to Scene", filename.c_str());
+	//							if (fileIcon) ImGui::Image((ImTextureID)fileIcon, ImVec2(40, 40));
+
+	//							ImGui::EndDragDropSource();
+	//						}
+
+	//						// 3.图标下方的文字// The text below the icon
+	//						ImGui::TextWrapped("%s", filename.c_str());
+	//						ImGui::PopID();
+	//					}
+	//				}
+	//			}
+	//			else {
+	//				ImGui::TextColored(ImVec4(1, 0, 0, 1), "Folder Assets/Models not found!");
+	//			}
+	//			ImGui::EndTable();
+	//		}
+	//	}
+	//	ImGui::End();
+	//}
 	void EngineUi::DrawContentBrowser(RenderSystem* renderSys, SceneManager* sceneManager) {
+		(void)sceneManager; //The browser only needs asset browsing and drag/drop here.
+		static std::string s_CurrentDirectory = "Assets"; //当前浏览的文件夹路径//Track the active folder inside Assets.
+		static char s_NewFolderName[128] = "NewFolder"; //Buffer for the create-folder popup.
+		static std::string s_CreateFolderError; //Show inline folder-creation errors in the popup.
+		const fs::path assetsRoot("Assets");
+		const std::string folderIconPath = "Assets/Textures/Folder.png"; //文件夹图标// Use Folder.png as the shared folder thumbnail source.
+
 		// 设置初始窗口大小和位置
 		ImGui::SetNextWindowPos(ImVec2(20, ImGui::GetIO().DisplaySize.y - 300), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(800, 250), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(980, 320), ImGuiCond_FirstUseEver);
 
-		if (ImGui::Begin(_SL("Content Browser"))) {
-			// 设定格子的宽度// Set the width of each cell
-			float cellSize = 110.0f;
-			float panelWidth = ImGui::GetContentRegionAvail().x;
-			int columnCount = std::max(1, (int)(panelWidth / cellSize));// 计算数量Calculate the number of columns based on available width
+		if (ImGui::Begin(_SL("Content Browser"))) //开始绘制窗口// Begin drawing the window
+		{
+			if (!fs::exists(assetsRoot) || !fs::is_directory(assetsRoot)) { //Fail clearly when the Assets root is missing.
+				ImGui::TextColored(ImVec4(1, 0, 0, 1), "Folder Assets not found!");
+			}
+			else {
+				if (!fs::exists(fs::path(s_CurrentDirectory)) || !fs::is_directory(fs::path(s_CurrentDirectory))) { //Reset to Assets if the current folder was removed.
+					s_CurrentDirectory = NormalizeAssetBrowserPath(assetsRoot);
+				}
 
-			if (ImGui::BeginTable("ContentGrid", columnCount)) {
-				// 遍历 Assets/Models
-				std::string path = "Assets/Models";
-				if (fs::exists(path) && fs::is_directory(path)) {
-					for (const auto& entry : fs::directory_iterator(path)) {
-						// 显示show .glb 模型
-						if (entry.path().extension() == ".glb") {
+				if (ImGui::BeginTable("ContentBrowserLayout", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV)) {
+					ImGui::TableSetupColumn("FolderTree", ImGuiTableColumnFlags_WidthFixed, 240.0f);
+					ImGui::TableSetupColumn("AssetGrid", ImGuiTableColumnFlags_WidthStretch);
+
+					ImGui::TableNextColumn();
+					ImGui::BeginChild("ContentBrowserTree");
+					ImGui::TextDisabled("Assets");
+					ImGui::Separator();
+					DrawAssetDirectoryTreeNode(assetsRoot, s_CurrentDirectory); //Show the full Assets folder tree instead of only Models.
+					ImGui::EndChild();
+
+					ImGui::TableNextColumn();
+					ImGui::BeginChild("ContentBrowserGrid");
+
+					const fs::path currentDirectoryPath(s_CurrentDirectory);
+					const std::string currentDirectoryLabel = NormalizeAssetBrowserPath(currentDirectoryPath);
+
+					ImGui::Text("Current: %s", currentDirectoryLabel.c_str()); //Display the current folder path at the top.
+					if (currentDirectoryLabel != "Assets") {
+						ImGui::SameLine();
+						if (ImGui::Button("Up")) //返回上一级目录//Jump to the parent directory.
+						{
+							s_CurrentDirectory = NormalizeAssetBrowserPath(currentDirectoryPath.parent_path()); //Jump back to the parent directory quickly.
+						}
+					}
+
+					//创建文件夹部分========// Create folder section ========
+					ImGui::SameLine();
+					if (ImGui::Button("New Folder")) //创建新文件夹// Create a new folder in the current directory.
+					{
+						std::snprintf(s_NewFolderName, IM_ARRAYSIZE(s_NewFolderName), "%s", "NewFolder");
+						s_CreateFolderError.clear();
+						ImGui::OpenPopup("CreateAssetFolderPopup"); //Create folders directly from the browser//创建文件夹直接从浏览器
+					}
+
+					if (ImGui::BeginPopupModal("CreateAssetFolderPopup", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+						ImGui::Text("Create folder in %s", currentDirectoryLabel.c_str());
+						ImGui::InputText("Folder Name", s_NewFolderName, IM_ARRAYSIZE(s_NewFolderName));
+						if (!s_CreateFolderError.empty()) {
+							ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "%s", s_CreateFolderError.c_str());
+						}
+
+						if (ImGui::Button("Create")) {
+							std::string createdDirectoryPath;
+							if (TryCreateAssetFolder(currentDirectoryPath, s_NewFolderName, createdDirectoryPath, s_CreateFolderError)) {
+								s_CurrentDirectory = createdDirectoryPath;
+								EngineUi::ShowToast("[ Folder Created ]"); //Confirm creation and move into the new folder.
+								ImGui::CloseCurrentPopup();
+							}
+						}
+
+						ImGui::SameLine();
+						if (ImGui::Button("Cancel")) {
+							s_CreateFolderError.clear();
+							ImGui::CloseCurrentPopup();
+						}
+						ImGui::EndPopup();
+					}
+
+					ImGui::Separator();
+					//创建文件夹部分========//	End create folder section
+
+					//扫描当前目录下的文件和文件夹// Enumerate folders and files in the current directory
+					std::vector<fs::directory_entry> directoryEntries;
+					std::vector<fs::directory_entry> fileEntries;
+					std::error_code ec;
+					for (const auto& entry : fs::directory_iterator(currentDirectoryPath, ec)) { // Enumerate both folders and files in the active directory.
+						if (ec) {
+							break;
+						}
+						if (entry.is_directory()) {
+							directoryEntries.push_back(entry);//文件夹//fileder
+						}
+						else if (entry.is_regular_file()) {
+							fileEntries.push_back(entry);//文件//file
+						}
+					}
+
+					//按名字排序 Keep folders and files sorted by name for easier browsing.
+					auto sortByName = [](const fs::directory_entry& lhs, const fs::directory_entry& rhs) {
+						return ToLowerCopy(lhs.path().filename().string()) < ToLowerCopy(rhs.path().filename().string());
+						};
+					std::sort(directoryEntries.begin(), directoryEntries.end(), sortByName); //Keep folders sorted before files.
+					std::sort(fileEntries.begin(), fileEntries.end(), sortByName); //Keep files sorted for stable browsing.
+					
+					// 设定格子的宽度// Set the width of each cell
+					const float cellSize = 118.0f; //Use a consistent tile size for all assets.
+					const float panelWidth = ImGui::GetContentRegionAvail().x;
+					const int columnCount = std::max(1, static_cast<int>(panelWidth / cellSize));
+
+					if (ImGui::BeginTable("ContentGrid", columnCount)) //创建一个动态列数的表格 Create a table with a dynamic number of columns based on available width
+					{
+						auto drawAssetEntry = [&](const fs::path& entryPath, bool isDirectoryEntry) {
 							ImGui::TableNextColumn();
 
-							std::string filename = entry.path().filename().string();
-							std::string relativePath = entry.path().string();
-							// Windows 的 \ 替换为 /
-							std::replace(relativePath.begin(), relativePath.end(), '\\', '/');
+							const std::string normalizedPath = NormalizeAssetBrowserPath(entryPath);
+							const std::string filename = entryPath.filename().string();
+							const std::string tileLabel = GetAssetTileLabel(entryPath);
+							VkDescriptorSet previewDescriptor = VK_NULL_HANDLE;
 
-							VkDescriptorSet fileIcon = renderSys->GetModelThumbnail(relativePath);
+							if (isDirectoryEntry && renderSys) {
+								previewDescriptor = renderSys->GetContentBrowserThumbnail(folderIconPath); // Every folder reuses Folder.png instead of the old custom icon.
+							}
+							else if (!isDirectoryEntry && renderSys) {
+								previewDescriptor = renderSys->GetContentBrowserThumbnail(normalizedPath); // Files still use the unified thumbnail pipeline.
+							}
 
-							// 1. 画图标按钮// Draw the icon button
-							ImGui::PushID(filename.c_str());
-							if (fileIcon) {
-								ImGui::ImageButton(filename.c_str(), (ImTextureID)fileIcon, ImVec2(100, 100));// 显示缩略图按钮
+							ImGui::PushID(normalizedPath.c_str());
+							bool tilePressed = false; //Share click handling between folders and file tiles.
+							// 画文件图标按钮// Draw the icon button
+							if (previewDescriptor != VK_NULL_HANDLE) {
+								const bool shouldFlipThumbnail =
+									isDirectoryEntry || IsTextureAssetPath(entryPath);
+
+								const ImVec2 uv0 = shouldFlipThumbnail
+									? ImVec2(0.0f, 1.0f)
+									: ImVec2(0.0f, 0.0f);
+
+								const ImVec2 uv1 = shouldFlipThumbnail
+									? ImVec2(1.0f, 0.0f)
+									: ImVec2(1.0f, 1.0f);
+
+								ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));//按钮背景透明
+								ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1, 1, 1, 0.10f));//悬停背景顔色
+								ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1, 1, 1, 0.18f));//点击背景颜色
+
+								ImGui::ImageButton(
+									filename.c_str(),
+									(ImTextureID)previewDescriptor,
+									ImVec2(100.0f, 100.0f),
+									uv0,
+									uv1
+								);
+
+								ImGui::PopStyleColor(3); //Push 了 3 个颜色，所以要 Pop 3 个
+
+								tilePressed = ImGui::IsItemClicked();
 							}
 							else {
-								ImGui::Button("MODEL\nICON", ImVec2(70, 70));
+								ImGui::Button(tileLabel.c_str(), ImVec2(100.0f, 100.0f));
+								tilePressed = ImGui::IsItemClicked();
 							}
 
-							// 2.设定拖拽源 (Drag Source)
-							if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
-								
-								ImGui::SetDragDropPayload("CONTENT_BROWSER_MODEL", relativePath.c_str(), relativePath.size() + 1);
+							if (isDirectoryEntry && tilePressed) {
+								s_CurrentDirectory = normalizedPath;
+							}
 
-								// 拖拽时悬浮在鼠标旁边的提示
+							if (!isDirectoryEntry && IsModelAssetPath(entryPath) && ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) //拖拽模型文件时才设定拖拽源 Only set the drag source for model files to avoid confusion when dragging non-model assets
+							{
+								ImGui::SetDragDropPayload("CONTENT_BROWSER_MODEL", normalizedPath.c_str(), normalizedPath.size() + 1); //model drag-and-drop into the scene.
 								ImGui::Text("Drop %s to Scene", filename.c_str());
-								if (fileIcon) ImGui::Image((ImTextureID)fileIcon, ImVec2(40, 40));
-
+								if (previewDescriptor) {
+									ImGui::Image((ImTextureID)previewDescriptor, ImVec2(40.0f, 40.0f));
+								}
 								ImGui::EndDragDropSource();
 							}
 
-							// 3.图标下方的文字// The text below the icon
-							ImGui::TextWrapped("%s", filename.c_str());
+							if (ImGui::IsItemHovered()) //停留时显示完整路径 Hovering shows the full path as a tooltip to help distinguish similarly named assets.
+							{
+								ImGui::SetTooltip("%s", normalizedPath.c_str()); //Show the full path on hover for similarly named assets.
+							}
+
+							ImGui::TextWrapped("%s", filename.c_str());//显示文件名 Display the filename below the thumbnail, wrapped if it's too long.
 							ImGui::PopID();
+							};
+
+						//绘制所有文件夹和文件
+						for (const auto& directoryEntry : directoryEntries) {
+							drawAssetEntry(directoryEntry.path(), true);
 						}
+						for (const auto& fileEntry : fileEntries) {
+							drawAssetEntry(fileEntry.path(), false);
+						}
+
+						ImGui::EndTable();
 					}
+
+					ImGui::EndChild();
+					ImGui::EndTable();
 				}
-				else {
-					ImGui::TextColored(ImVec4(1, 0, 0, 1), "Folder Assets/Models not found!");
-				}
-				ImGui::EndTable();
 			}
 		}
-		ImGui::End();
+		ImGui::End();//结束绘制窗口// End the window
 	}
 
 
