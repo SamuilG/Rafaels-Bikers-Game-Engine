@@ -2,6 +2,10 @@
 
 #include "DebugRenderer.hpp"
 
+#ifdef Convex
+#undef Convex
+#endif
+
 #include <glm/glm.hpp>
 #include <Jolt/Jolt.h>
 #include <Jolt/Physics/Collision/TransformedShape.h>
