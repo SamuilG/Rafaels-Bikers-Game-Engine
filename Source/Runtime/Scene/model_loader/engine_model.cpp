@@ -173,8 +173,10 @@ static std::vector<EngineMaterial> loadMaterials(
         else if (mat.alphaMode == "BLEND") {
             m.alphaBlend = true;
         }
-
+        printf("[Material] BaseColor: %d, Normal: %d, Roughness: %d, AO: %d\n",
+            m.baseColorTexture, m.normalTexture, m.metalRoughTexture, m.occlusionTexture);
         out.push_back(m);
+
     }
     return out;
 }

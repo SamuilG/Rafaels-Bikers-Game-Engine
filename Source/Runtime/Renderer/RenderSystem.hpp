@@ -2103,36 +2103,49 @@ namespace engine {
         {
             VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, mObjectLayout.handle);
 
+            // 0: BaseColor (基础色)
             VkImageView baseView = mDefaultGrayView.handle;
             if (mat.baseColorTexture >= 0) baseView = mModelTextureViews[mat.baseColorTexture].handle;
 
+            // 1 & 2: MetalRoughness / ORM (粗糙度与金属度)
+            // glTF 中它们打包在同一张图里，所以这里提取一次，给后面复用
             VkImageView mrView = mDefaultGrayView.handle;
             if (mat.metalRoughTexture >= 0) mrView = mModelTextureViews[mat.metalRoughTexture].handle;
 
-            VkImageView normView = mDefaultNormalView.handle;
-            if (mat.normalTexture >= 0) normView = mModelTextureViews[mat.normalTexture].handle;
-
-            // --- 【关键1：提取自发光图】 ---
+            // 3: Emissive (自发光)
             VkImageView emissiveView = mDefaultBlackView.handle;
             if (mat.emissiveTexture >= 0) emissiveView = mModelTextureViews[mat.emissiveTexture].handle;
 
-            // --- 【关键2：数组大小必须是 4 ！！！】 ---
-            VkDescriptorImageInfo imgs[4]{};
-            imgs[0] = { sampler, baseView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-            imgs[1] = { sampler, mrView,   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-            imgs[2] = { sampler, normView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-            imgs[3] = { sampler, emissiveView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL }; // 绑定第 4 张
+            // 4: Normal (法线)
+            VkImageView normView = mDefaultNormalView.handle;
+            if (mat.normalTexture >= 0) normView = mModelTextureViews[mat.normalTexture].handle;
 
-            VkWriteDescriptorSet w[4]{}; // --- 【关键3：数组大小必须是 4 ！！！】 ---
-            for (int j = 0; j < 4; ++j) { // --- 【关键4：循环条件改成 j < 4 ！！！】 ---
+            // 5: Occlusion (AO 环境光遮蔽) -> 【这是我们新增的！】
+            // 如果没有 AO，默认传灰色或黑色都行，我们在 Shader 里已经写了智能回退机制
+            VkImageView aoView = mDefaultGrayView.handle;
+            if (mat.occlusionTexture >= 0) aoView = mModelTextureViews[mat.occlusionTexture].handle;
+
+            // --- 【关键修改：数组大小必须是 6，严格对应 Shader 的 binding 0~5】 ---
+            VkDescriptorImageInfo imgs[6]{};
+            imgs[0] = { sampler, baseView,     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL }; // Binding 0
+            imgs[1] = { sampler, mrView,       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL }; // Binding 1 (Roughness)
+            imgs[2] = { sampler, mrView,       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL }; // Binding 2 (Metalness - 直接复用 ORM 图)
+            imgs[3] = { sampler, emissiveView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL }; // Binding 3
+            imgs[4] = { sampler, normView,     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL }; // Binding 4 (Normal)
+            imgs[5] = { sampler, aoView,       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL }; // Binding 5 (AO)
+
+            VkWriteDescriptorSet w[6]{}; // --- 【关键修改：数组大小改成 6】 ---
+            for (int j = 0; j < 6; ++j) { // --- 【关键修改：循环条件改成 j < 6】 ---
                 w[j].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                w[j].dstSet = ds; w[j].dstBinding = (uint32_t)j;
+                w[j].dstSet = ds;
+                w[j].dstBinding = (uint32_t)j; // 这会自动生成 0, 1, 2, 3, 4, 5
                 w[j].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-                w[j].descriptorCount = 1; w[j].pImageInfo = &imgs[j];
+                w[j].descriptorCount = 1;
+                w[j].pImageInfo = &imgs[j];
             }
 
-            // --- 【关键5：更新数量改成 4 ！！！】 ---
-            vkUpdateDescriptorSets(mWindow.device, 4, w, 0, nullptr);
+            // --- 【关键修改：更新数量改成 6】 ---
+            vkUpdateDescriptorSets(mWindow.device, 6, w, 0, nullptr);
             out.emplace_back(ds);
         }
 

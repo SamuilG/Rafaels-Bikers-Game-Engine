@@ -22,6 +22,8 @@ layout( set = 1, binding = 0 ) uniform sampler2D uTexColor;
 layout( set = 1, binding = 1 ) uniform sampler2D uTexRoughness;
 layout( set = 1, binding = 2 ) uniform sampler2D uTexMetalness;
 layout( set = 1, binding = 3 ) uniform sampler2D uTexEmissive;
+layout( set = 1, binding = 4 ) uniform sampler2D uTexNormal;
+layout( set = 1, binding = 5 ) uniform sampler2D uTexAO;
 struct GpuLight {
     vec4 position;  // xyz: position/direction, w: type (0:Dir, 1:Point, 2:Spot)
     vec4 color;     // rgb: color, a: intensity
@@ -146,22 +148,77 @@ float calculate_shadow()
 	
 	return shadow / 16.0;
 }
-void main()
+
+// 【无需 C++ 传入切线的法线映射】
+vec3 getNormalFromMap()
 {
+    vec3 sampled = texture(uTexNormal, v2fTexCoord).xyz;
+    
+    // 1. 如果采样出来太暗（说明被sRGB误伤了），这里可以做一个简单的线性补偿
+    // sampled = pow(sampled, vec3(2.2)); // 如果感觉还是太平，可以尝试取消这行注释
 
-    // --- 1. 材质属性采样 ---
- 
+    // 2. 将 [0, 1] 映射到 [-1, 1]
+    vec3 tangentNormal = sampled * 2.0 - 1.0;
 
-    // --- 【关键修改】：贴图颜色 乘以 基础颜色因子 ---
-    // 如果没有贴图，uTexColor 返回我们刚改的纯白 (1,1,1,1)，乘出来就是纯色！
+    // ==========================================
+    // 【关键增强】：手动放大 XY 轴的偏移量
+    // 调整 scale 值，1.0 是原始，2.0 是双倍凹凸，4.0 是极强凹凸
+    float normalScale = 2.5; 
+    tangentNormal.xy *= normalScale;
+    tangentNormal = normalize(tangentNormal); 
+    // ==========================================
+
+    // 下面的 TBN 计算保持不变
+    vec3 q1  = dFdx(v2fPos);
+    vec3 q2  = dFdy(v2fPos);
+    vec2 st1 = dFdx(v2fTexCoord);
+    vec2 st2 = dFdy(v2fTexCoord);
+
+    vec3 N   = normalize(v2fNormal);
+    vec3 T   = normalize(q1 * st2.t - q2 * st1.t);
+    vec3 B   = -normalize(cross(N, T));
+    mat3 TBN = mat3(T, B, N);
+
+    return normalize(TBN * tangentNormal);
+}
+void main()
+{// --- 1. 材质属性采样 ---
     vec4 texColor = texture(uTexColor, v2fTexCoord);
     vec3 baseColor = (texColor * pc.baseColorFactor).rgb;
     
-    // 粗糙度和金属度也一样，结合贴图通道和因子
-    float roughness = texture(uTexRoughness, v2fTexCoord).r * pc.roughnessFactor;
-    float metalness = texture(uTexMetalness, v2fTexCoord).r * pc.metallicFactor;
+    // 【关键修复：读取 glTF 标准的 ORM 贴图】
+    vec4 pbrSample = texture(uTexRoughness, v2fTexCoord);
+    vec4 aoSample = texture(uTexAO, v2fTexCoord);
+
+    // 1. 设置默认安全回退值（当地板/物体没有任何贴图时生效）
+    // 默认大部分未贴图物体都是粗糙的 (0.8)，且非金属 (0.0)
+    float roughness = 0.8 * pc.roughnessFactor; 
+    float metalness = 0.0 * pc.metallicFactor;  
+    float ao = 1.0;
+
+    // 2. 智能检测：如果采出来的不是纯白也不是纯黑，说明是真正有效的材质贴图！
+    bool isPbrValid = !( (pbrSample.r > 0.98 && pbrSample.g > 0.98 && pbrSample.b > 0.98) || 
+                         (pbrSample.r < 0.02 && pbrSample.g < 0.02 && pbrSample.b < 0.02) );
+
+ if (isPbrValid) {
+        // 【核心破案】：应对 Blender 导出器忽略 Invert 节点的 Bug！
+        // 它把黑色的图直接传了进来，我们在 Shader 里强行替它反相 (1.0 - x)
+        // 并加一个 max 保护，防止 pc.roughnessFactor 为 0 导致变成绝对镜面
+        roughness = (1.0 - pbrSample.g) * max(pc.roughnessFactor, 0.05); 
+        metalness = pbrSample.b * pc.metallicFactor;  
+    }
+
+    // 同理，检测 AO 贴图是否有效
+    bool isAoValid = !( (aoSample.r > 0.98 && aoSample.g > 0.98 && aoSample.b > 0.98) || 
+                        (aoSample.r < 0.02 && aoSample.g < 0.02 && aoSample.b < 0.02) );
+
+    if (isAoValid) {
+        // AO 永远储存在 ORM 图的 R 通道！
+        ao = aoSample.r;
+    }
     // --- 2. 几何向量计算 ---
-    vec3 N = normalize(v2fNormal);
+ //   vec3 N = normalize(v2fNormal);
+    vec3 N = getNormalFromMap();
     vec3 V = normalize(uScene.cameraPos.xyz - v2fPos); 
     
     // --- 3. 阴影计算 ---
@@ -251,48 +308,86 @@ void main()
         }
         
         vec3 Li = light.color.rgb * light.color.a * attenuation * currentShadow;
-        // BRDF 计算
+        // ==========================================
+        // 核心 BRDF 计算开始
+        // ==========================================
+        
+        // 1. 基础菲涅尔 (Fresnel) - 代表光被镜面反射的比例 (kS)
         vec3 F0 = mix(vec3(0.04), baseColor, metalness);
         vec3 F = F0 + (1.0 - F0) * pow(1.0 - VdotH, 5.0);
-        vec3 Ldiffuse = (baseColor / PI) * (vec3(1.0) - F) * (1.0 - metalness);
+        vec3 kS = F; 
 
+        // 2. 严格的能量守恒 (Energy Conservation)
+        // 射入的光 = 被反射的光(kS) + 被吸收/漫反射的光(kD)
+        vec3 kD = vec3(1.0) - kS; 
+        kD *= 1.0 - metalness; // 纯金属没有内部漫反射，强行归零
+
+        // 3. Disney Diffuse 漫反射模型 (替代老旧的 baseColor / PI)
+        // 考虑了材质粗糙度，能在粗糙物体的边缘产生真实的微表面逆反射
+        float LdotH = max(dot(L, H), 0.0);
+        float fd90 = 0.5 + 2.0 * roughness * LdotH * LdotH;
+        float lightScatter = 1.0 + (fd90 - 1.0) * pow(1.0 - NdotL, 5.0);
+        float viewScatter  = 1.0 + (fd90 - 1.0) * pow(1.0 - NdotV, 5.0);
+        vec3 disneyDiffuse = (baseColor / PI) * lightScatter * viewScatter;
+
+        // 将能量比例 kD 赋予漫反射
+        vec3 Ldiffuse = kD * disneyDiffuse;
+
+        // 4. 高光计算 (暂时保留你原有的 Beckmann)
         float alpha = max(roughness * roughness, 0.001);
         float D = D_Beckmann(alpha, NdotH);
         float G = G_CookTorrance(NdotL, NdotV, NdotH, VdotH);
+        
+        // 分母加上 0.0001 防止视线与法线垂直时除以 0 导致像素爆炸爆白
         vec3 Lspecular = (D * G * F) / max(4.0 * NdotL * NdotV, 0.0001);
 
+        // 5. 最终能量合并：漫反射 + 镜面高光
         totalLo += (Ldiffuse + Lspecular) * Li * NdotL;
     }
 
-    // --- 5. 环境光与最终颜色合成 ---
-    vec3 Lambient = vec3(0.02) * baseColor;
-    vec3 finalColor = Lambient + totalLo;
-
-    // emissive
-    vec3 emissiveColor = texture(uTexEmissive, v2fTexCoord).rgb;
+   // --- 5. 环境光与最终颜色合成 ---
     
-    finalColor += emissiveColor * 5.0; 
+    // 【 (Hemisphere Ambient Light)】
+    // 模拟来自天空的漫反射光 (偏蓝) 和来自地面的反弹光 (偏暗棕/灰)
+    vec3 skyColor = vec3(0.35, 0.45, 0.65) * 0.3; // 天光颜色及强度 (太暗就调大 0.6)
+    vec3 groundColor = vec3(0.05, 0.04, 0.03);    // 地光通常很暗，带点泥土色
+
+    // 利用表面法线 N 的 Y 分量 (-1 到 1) 映射到 (0 到 1) 
+    // 表面朝上 (N.y=1)，hemiWeight=1，完全受天光照亮
+    // 表面朝下 (N.y=-1)，hemiWeight=0，完全受地光照亮
+    // 侧面 (N.y=0)，hemiWeight=0.5，混合天光和地光
+    float hemiWeight = 0.5 * N.y + 0.5;
+    vec3 ambientIrradiance = mix(groundColor, skyColor, hemiWeight);
+
+    // 计算最终环境光 (如果你上一回合应用了 Disney Diffuse，可以乘上 kD 确保物理守恒)
+    // vec3 Lambient = ambientIrradiance * baseColor * kD; 
+    // 如果没有 kD，直接这样写：
+    vec3 Lambient = ambientIrradiance * baseColor;
+
+    vec3 finalColor = Lambient + totalLo;
  
 
-    // 调试模式覆盖
+// 调试模式覆盖
     if( uScene.renderMode == 6 ) finalColor = vec3(shadow); 
     
-  // ==========================================
-    // 【关键修复】：提取真正的透明度！
-    // 贴图的 alpha * C++ 传进来的系数(0.3)
-    float finalAlpha = texColor.a * pc.baseColorFactor.a;
-    
-    // 输出到 Attachment 0 (正常场景)
-    oColor = vec4(finalColor, finalAlpha);
-
-   // --- 6. Bloom 亮度提取 ---
-    float threshold = 0.5; // 阈值可以根据你的光源强度调整
-    
-    // 只保留超过阈值的部分（这样光晕边缘会像羽化一样柔和）
+    // ========================================================
+    // --- 6. Bloom 亮度提取 (必须在 HDR 空间进行) ---
+    // ========================================================
+    float threshold = 1.0; // PBR 物理光照下，超过 1.0 的才是真正的泛光
     vec3 bloomContrib = max(finalColor - vec3(threshold), vec3(0.0));
-    
     oBrightColor = vec4(bloomContrib, 1.0);
 
- 
-
+    // ========================================================
+    // --- 7. ACES 电影级色调映射 (Tonemapping) ---
+    // ========================================================
+    // 将极其耀眼的物理光照 (HDR) 平滑地压缩到屏幕能显示的 0-1 (SDR) 范围内。
+    vec3 x = finalColor;
+    vec3 mappedColor = clamp((x * (2.51f * x + 0.03f)) / (x * (2.43f * x + 0.59f) + 0.14f), 0.0, 1.0);
+    
+    // 提取真正的透明度
+    float finalAlpha = texColor.a * pc.baseColorFactor.a;
+    
+    // 输出最终颜色到 Attachment 0 (正常场景)
+    oColor = vec4(mappedColor, finalAlpha);
+    //oColor = vec4(texture(uTexNormal, v2fTexCoord).rgb, 1.0);
 }
