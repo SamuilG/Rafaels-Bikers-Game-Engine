@@ -23,25 +23,25 @@ struct EngineTexture {
 };
 
 struct EngineMaterial {
+    // 贴图索引 (int 占用 4 字节)
     int baseColorTexture = -1;
     int normalTexture = -1;
-	// roughness and metalic share the same texture in gltf, so only one index is needed
     int metalRoughTexture = -1;
     int occlusionTexture = -1;
     int emissiveTexture = -1;
-    int alphaMaskTexture = -1; // -1 = no alpha mask
+    int alphaMaskTexture = -1;
+    int _pad[2]; // 补齐到 32 字节，保证后续对齐
 
-    //glm::vec4 baseColorFactor{ 1.f, 1.f, 1.f, 1.f };
-    //float     metallicFactor = 1.f;
-    //float     roughnessFactor = 1.f;
-    glm::vec3 emissiveFactor{ 0.f, 0.f, 0.f };
-    float     alphaCutoff = 0.5f;
-    bool      alphaBlend = false;
+    // 因子 (Factors) - 必须严格匹配 Shader 的 PushConstants 顺序
+    glm::vec4 baseColorFactor = glm::vec4(1.0f); // 16 字节
+    glm::vec4 emissiveFactor = glm::vec4(0.0f); // 16 字节
 
-    // �������������ڴ�ɫģ�͵�����
-    glm::vec4 baseColorFactor = glm::vec4(1.0f);
-    float metallicFactor = 1.0f;
-    float roughnessFactor = 1.0f;
+    float metallicFactor = 1.0f;  // 4 字节
+    float roughnessFactor = 1.0f;  // 4 字节
+    float alphaCutoff = 0.5f;  // 4 字节
+    float _pad2;                   // 4 字节补齐到 16 字节边界
+
+    bool  alphaBlend = false;
 };
 
 
@@ -116,4 +116,14 @@ struct EngineModel {
     std::map<std::string, glm::mat4> namedTransforms;
 };
 
+// 强制对齐，确保 C++ 和 GLSL 的内存布局一模一样
+struct PushConstants {
+    glm::mat4 transform;        // 64 bytes
+    glm::vec4 baseColorFactor;  // 16 bytes
+    glm::vec4 emissiveFactor;   // 16 bytes
+    float metallicFactor;       // 4 bytes
+    float roughnessFactor;      // 4 bytes
+    float alphaCutoff;          // 4 bytes
+    float _pad;                 // 4 bytes padding (补齐到16字节倍数)
+};
 EngineModel load_engine_model_glb(const char* path);

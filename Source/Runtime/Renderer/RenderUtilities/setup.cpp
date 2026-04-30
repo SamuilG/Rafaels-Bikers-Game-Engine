@@ -11,27 +11,26 @@
 #include <cstddef>
 #include "../Particle/ParticleSystem.hpp"
 #include "../Debug/DebugRenderer.hpp"
+#include "../Scene/model_loader/engine_model.hpp" 
 
-lut::PipelineLayout create_triangle_pipeline_layout( lut::VulkanContext const& aContext, VkDescriptorSetLayout aSceneLayout, VkDescriptorSetLayout aObjectLayout )
+lut::PipelineLayout create_triangle_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aSceneLayout, VkDescriptorSetLayout aObjectLayout)
 {
 	VkDescriptorSetLayout layouts[] = {
-		// Order must match the set = N in the shaders
 		aSceneLayout, // set 0
 		aObjectLayout // set 1
 	};
 
-	//matrix calculate
 	VkPushConstantRange pushConstant{};
 	pushConstant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 	pushConstant.offset = 0;
-	pushConstant.size = 128;
-	//pushConstant.size = sizeof(glm::mat4); 
 
+	// 【关键修复】：永远不要硬编码数字，使用 sizeof 确保 C++ 和 Shader 步调一致
+	pushConstant.size = sizeof(PushConstants);
 
 	VkPipelineLayoutCreateInfo layoutInfo{};
 	layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	layoutInfo.setLayoutCount = sizeof(layouts)/sizeof(layouts[0]); 
-	layoutInfo.pSetLayouts = layouts; 
+	layoutInfo.setLayoutCount = 2;
+	layoutInfo.pSetLayouts = layouts;
 	layoutInfo.pushConstantRangeCount = 1;
 	layoutInfo.pPushConstantRanges = &pushConstant;
 

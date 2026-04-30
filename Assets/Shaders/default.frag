@@ -2,14 +2,18 @@
 
 #extension GL_EXT_scalar_block_layout : require
 
+// ==========================================
+// 1. 结构体定义 (必须与 C++ 严格对齐)
+// ==========================================
 layout(push_constant) uniform PushConstants {
-    mat4 transform;
-    vec4 baseColorFactor;
-    float metallicFactor;
-    float roughnessFactor;
-    vec2 pad;
+    mat4 transform;        // 64 字节
+    vec4 baseColorFactor;  // 16 字节
+    vec4 emissiveFactor;   // 16 字节
+    float metallicFactor;  // 4 字节
+    float roughnessFactor; // 4 字节
+    float alphaCutoff;     // 4 字节
+    float _pad;            // 4 字节补齐
 } pc;
-
 layout( location = 0 ) out vec4 oColor;       // 正常场景颜色
 layout( location = 1 ) out vec4 oBrightColor; // 提取的亮度颜
 
@@ -182,10 +186,22 @@ vec3 getNormalFromMap()
     return normalize(TBN * tangentNormal);
 }
 void main()
-{// --- 1. 材质属性采样 ---
+{// // --- 1. 材质属性采样 ---
     vec4 texColor = texture(uTexColor, v2fTexCoord);
     vec3 baseColor = (texColor * pc.baseColorFactor).rgb;
-    
+
+    // 【新增】：采样自发光贴图
+    // glTF 标准下，emissiveFactor 应该乘上贴图颜色
+   // 强制将 vec4 转换为 vec3 再进行乘法
+    vec3 emissive = texture(uTexEmissive, v2fTexCoord).rgb * pc.emissiveFactor.rgb;
+   
+    // 【关键微调】：给自发光一个“强度倍率”
+    // 在 PBR HDR 管线中，自发光强度通常需要 > 1.0 才能触发 Bloom 发光效果
+    // 建议先乘个 5.0 看看效果，后续可以在 pc (Push Constants) 中传进来
+    float emissiveIntensity = 5.0; 
+    emissive *= emissiveIntensity;
+
+
     // 【关键修复：读取 glTF 标准的 ORM 贴图】
     vec4 pbrSample = texture(uTexRoughness, v2fTexCoord);
     vec4 aoSample = texture(uTexAO, v2fTexCoord);
@@ -364,7 +380,8 @@ void main()
     // 如果没有 kD，直接这样写：
     vec3 Lambient = ambientIrradiance * baseColor;
 
-    vec3 finalColor = Lambient + totalLo;
+    //vec3 finalColor = Lambient + totalLo;
+    vec3 finalColor = Lambient + totalLo + emissive;
  
 
 // 调试模式覆盖

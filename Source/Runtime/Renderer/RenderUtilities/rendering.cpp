@@ -18,12 +18,15 @@
 // function definition
 
 // 在 rendering.cpp 顶部或者 record_commands 函数外定义：
+// 严格对齐 Shader 的 PushConstants 布局
 struct alignas(16) ObjectPC {
-	glm::mat4 transform;
-	glm::vec4 baseColorFactor;
-	float metallicFactor;
-	float roughnessFactor;
-	float padding[2]; // 占位符，保证 16 字节对齐
+	glm::mat4 transform;        // Offset: 0   Size: 64
+	glm::vec4 baseColorFactor;  // Offset: 64  Size: 16
+	glm::vec4 emissiveFactor;   // Offset: 80  Size: 16  <-- 补上这个，方块就不绿了
+	float metallicFactor;       // Offset: 96  Size: 4
+	float roughnessFactor;      // Offset: 100 Size: 4
+	float alphaCutoff;          // Offset: 104 Size: 4
+	float _pad;                 // Offset: 108 Size: 4  <-- 补齐到 16 字节边界
 };
 void record_commands(
 	VkCommandBuffer aCmdBuff,
@@ -300,6 +303,7 @@ void record_commands(
 
 		if (matIdx < aMaterials.size()) {
 			pcData.baseColorFactor = aMaterials[matIdx].baseColorFactor;
+			pcData.emissiveFactor = aMaterials[matIdx].emissiveFactor;
 			pcData.metallicFactor = aMaterials[matIdx].metallicFactor;
 			pcData.roughnessFactor = aMaterials[matIdx].roughnessFactor;
 		}

@@ -158,10 +158,11 @@ static std::vector<EngineMaterial> loadMaterials(
             textures[emIdx].space = ETextureSpace::srgb;
 
         if (mat.emissiveFactor.size() == 3) {
-            m.emissiveFactor = glm::vec3(
+            m.emissiveFactor = glm::vec4(
                 static_cast<float>(mat.emissiveFactor[0]),
                 static_cast<float>(mat.emissiveFactor[1]),
-                static_cast<float>(mat.emissiveFactor[2])
+                static_cast<float>(mat.emissiveFactor[2]),
+                1.0f // 显式提供第 4 个分量 W
             );
         }
 
