@@ -2,6 +2,8 @@
 
 #extension GL_EXT_scalar_block_layout : require
 
+//TODO AO
+
 // ==========================================
 // 1. 结构体定义 (必须与 C++ 严格对齐)
 // ==========================================
@@ -31,8 +33,8 @@ layout( set = 1, binding = 5 ) uniform sampler2D uTexAO;
 struct GpuLight {
     vec4 position;  // xyz: position/direction, w: type (0:Dir, 1:Point, 2:Spot)
     vec4 color;     // rgb: color, a: intensity
-    vec4 direction; // 【新增】xyz: direction, w: range
-    vec4 params;    // 【新增】x: cosInner, y: cosOuter, z: pad, w: pad
+    vec4 direction; // xyz: direction, w: range
+    vec4 params;    // x: cosInner, y: cosOuter, z: pad, w: pad
 };
 layout( scalar, set = 0, binding = 0 ) uniform UScene
 {
@@ -185,11 +187,20 @@ vec3 getNormalFromMap()
 
     return normalize(TBN * tangentNormal);
 }
+
+
+
 void main()
 {// // --- 1. 材质属性采样 ---
     vec4 texColor = texture(uTexColor, v2fTexCoord);
     vec3 baseColor = (texColor * pc.baseColorFactor).rgb;
+ 
+    float finalAlpha = texColor.a * pc.baseColorFactor.a;
 
+    // 无论是否遮挡，只要是 Mask 材质，就执行裁剪
+    if (finalAlpha < pc.alphaCutoff) {
+        discard; 
+    }
     // 【新增】：采样自发光贴图
     // glTF 标准下，emissiveFactor 应该乘上贴图颜色
    // 强制将 vec4 转换为 vec3 再进行乘法
@@ -402,9 +413,11 @@ void main()
     vec3 mappedColor = clamp((x * (2.51f * x + 0.03f)) / (x * (2.43f * x + 0.59f) + 0.14f), 0.0, 1.0);
     
     // 提取真正的透明度
-    float finalAlpha = texColor.a * pc.baseColorFactor.a;
-    
+    finalAlpha = texColor.a * pc.baseColorFactor.a;
+
+    // 将输出颜色预乘 alpha（配合混合因子 ONE / ONE_MINUS_SRC_ALPHA）
+    mappedColor *= finalAlpha; // PREMULTIPLY
+
     // 输出最终颜色到 Attachment 0 (正常场景)
     oColor = vec4(mappedColor, finalAlpha);
-    //oColor = vec4(texture(uTexNormal, v2fTexCoord).rgb, 1.0);
 }

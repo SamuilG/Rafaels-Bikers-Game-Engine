@@ -278,25 +278,26 @@ void record_commands(
 
 	VkPipeline currentPipeline = aGraphicsPipe;
 	VkDeviceSize kZeroOffset = 0;
-	// =====================================================================
-// 阶段 1：先画【实心】物体 (填充深度缓冲，利用 Early-Z 挡住后面的天空)
-// =====================================================================
+	// 阶段 1：先画【实心】物体 (包括树叶 Mask)
 	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsPipe);
-	// 绑定主场景描述符到 Set 0
 	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
 
 	for (const auto& batch : aBatches)
 	{
-		uint32_t meshIdx = batch.meshIndex;
 		uint32_t matIdx = batch.materialIndex;
+		uint32_t meshIdx = batch.meshIndex;
 
-		bool isMatTransparent = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0);
+		// 定义：只要有 Mask 贴图，就是树叶类材质
+		bool isMasked = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0);
 
-		// 【拦截器】：跳过半透明
-		if (isMatTransparent || batch.alphaMultiplier < 0.99f) {
+		// 【修改点】：树叶 (isMasked) 必须在阶段 1 画！
+		// 只有 alphaMultiplier < 0.99f（由于遮挡触发的半透明）才跳过
+		if (!isMasked && batch.alphaMultiplier < 0.99f) {
 			continue;
 		}
 
+		// 使用 aGraphicsPipe (开启了深度写入的那个)
+		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsPipe);
 		auto const& meshInfo = aMeshInfos[meshIdx];
 		ObjectPC pcData{};
 		pcData.transform = batch.transform;
@@ -306,6 +307,7 @@ void record_commands(
 			pcData.emissiveFactor = aMaterials[matIdx].emissiveFactor;
 			pcData.metallicFactor = aMaterials[matIdx].metallicFactor;
 			pcData.roughnessFactor = aMaterials[matIdx].roughnessFactor;
+			pcData.alphaCutoff = aMaterials[matIdx].alphaCutoff;
 		}
 		else {
 			pcData.baseColorFactor = glm::vec4(1.0f); pcData.metallicFactor = 1.0f; pcData.roughnessFactor = 1.0f;
@@ -351,13 +353,8 @@ void record_commands(
 
 		vkCmdDraw(aCmdBuff, 36, 1, 0, 0);
 	}
-
-	// =====================================================================
 	// 阶段 2：最后画【半透明】物体 (使用 aAlphaPipe，叠加在所有东西之上)
-	// =====================================================================
 	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aAlphaPipe);
-
-	// 【极其重要】：因为上面阶段 1.5 把 Set 0 变成了天空盒，现在必须把相机的 UBO 抢回来！
 	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
 
 	for (const auto& batch : aBatches)
@@ -365,30 +362,36 @@ void record_commands(
 		uint32_t meshIdx = batch.meshIndex;
 		uint32_t matIdx = batch.materialIndex;
 
-		bool isMatTransparent = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0);
+		// 蒙版贴图（树叶）已经在阶段 1 用 discard 绘制并写入深度，
+		// 不应该在透明阶段再次绘制（会造成深度/混合重复问题）
+		bool isMatMasked = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0);
+		if (isMatMasked) continue; // <-- 跳过蒙版材质（只在 stage1 绘制）
 
-		// 【拦截器】：跳过实心
-		if (!isMatTransparent && batch.alphaMultiplier >= 0.99f) {
-			continue;
-		}
+		bool isBatchSemiTransparent = (batch.alphaMultiplier < 0.99f);
+		// 只处理真正需要透明混合的物体
+		if (!isBatchSemiTransparent) continue;
 
+		// ... 保持原有 push constants / bind / draw 逻辑 ...
 		auto const& meshInfo = aMeshInfos[meshIdx];
 		ObjectPC pcData{};
 		pcData.transform = batch.transform;
 
 		if (matIdx < aMaterials.size()) {
 			pcData.baseColorFactor = aMaterials[matIdx].baseColorFactor;
+			pcData.emissiveFactor = aMaterials[matIdx].emissiveFactor;
 			pcData.metallicFactor = aMaterials[matIdx].metallicFactor;
 			pcData.roughnessFactor = aMaterials[matIdx].roughnessFactor;
 		}
 		else {
-			pcData.baseColorFactor = glm::vec4(1.0f); pcData.metallicFactor = 1.0f; pcData.roughnessFactor = 1.0f;
+			pcData.baseColorFactor = glm::vec4(1.0f);
+			pcData.emissiveFactor = glm::vec4(0.0f);
+			pcData.metallicFactor = 1.0f;
+			pcData.roughnessFactor = 1.0f;
 		}
 
 		pcData.baseColorFactor.a *= batch.alphaMultiplier;
 		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ObjectPC), &pcData);
 
-		// 更新 set 1 的材质
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
 		vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset);
 		vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &kZeroOffset);

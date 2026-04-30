@@ -238,11 +238,23 @@ lut::Pipeline create_triangle_pipeline( lut::VulkanWindow const& aWindow, VkPipe
 	// We define one blend state per color attachment - this example uses a single color attachment, so we only
 	// need one. Right now, we don't do any blending, so we can ignore most of the members.
 	// Define blend state
+	// =================================================================
+	// 3. 【核心修复】开启透明混合 (Color Blending)！
+	// 使用 PREMULTIPLIED alpha：src = ONE, dst = ONE_MINUS_SRC_ALPHA
+	// =================================================================
+	// ===== 修改 create_alpha_pipeline 中的透明混合为 PREMULTIPLIED alpha =====
 	VkPipelineColorBlendAttachmentState blendStates[2]{};
-	// Attachment 0: 主颜色 (Main Color)
-	blendStates[0].blendEnable = VK_FALSE;
+	blendStates[0].blendEnable = VK_TRUE;
+	blendStates[0].colorBlendOp = VK_BLEND_OP_ADD;
+	// 使用 PREMULTIPLIED alpha：源颜色已乘 alpha
+	blendStates[0].srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+	blendStates[0].dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+	blendStates[0].alphaBlendOp = VK_BLEND_OP_ADD;
+	blendStates[0].srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	blendStates[0].dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
 	blendStates[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
+	blendStates[1] = blendStates[0]; // 亮度附件也套用一样的混合
 	// Attachment 1: 亮度提取 (Bright Color)
 	blendStates[1].blendEnable = VK_FALSE;
 	blendStates[1].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
@@ -394,6 +406,7 @@ lut::Pipeline create_alpha_pipeline(lut::VulkanWindow const& aWindow, VkPipeline
 	// 2. 【核心修复】开启背面剔除！不要画出车子内部的黑面！
 	// =================================================================
 	rasterInfo.cullMode = VK_CULL_MODE_BACK_BIT;
+
 
 	rasterInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	rasterInfo.depthBiasEnable = VK_FALSE;
@@ -2541,14 +2554,19 @@ lut::Pipeline create_alpha_pipeline_1_attachment( lut::VulkanWindow const& aWind
 	samplingInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
 	// Define blend state
+	// ===== 修改 create_alpha_pipeline_1_attachment（单附件版本）为 PREMULTIPLIED alpha =====
+// 注意：确保 blendEnable = VK_TRUE
 	VkPipelineColorBlendAttachmentState blendStates[2]{};
-	blendStates[0].blendEnable = VK_FALSE; // masking only, no blending
+	blendStates[0].blendEnable = VK_TRUE; // 开混合
 	blendStates[0].colorBlendOp = VK_BLEND_OP_ADD;
-	blendStates[0].srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA; 
+	// PREMULTIPLIED alpha
+	blendStates[0].srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
 	blendStates[0].dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+	blendStates[0].alphaBlendOp = VK_BLEND_OP_ADD;
+	blendStates[0].srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	blendStates[0].dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
 	blendStates[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
-	// Copy exactly identical memory block into index 1 to bypass independentBlend requirement
 	blendStates[1] = blendStates[0];
 
 	VkPipelineColorBlendStateCreateInfo blendInfo{};
@@ -3098,15 +3116,17 @@ static lut::Pipeline make_skinned_pipeline(
     VkPipelineColorBlendAttachmentState blendAtt[2]{};
     blendAtt[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT|VK_COLOR_COMPONENT_G_BIT|VK_COLOR_COMPONENT_B_BIT|VK_COLOR_COMPONENT_A_BIT;
     blendAtt[1].colorWriteMask = blendAtt[0].colorWriteMask;
-    if (alphaBlend) {
-        blendAtt[0].blendEnable         = VK_TRUE;
-        blendAtt[0].srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-        blendAtt[0].dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-        blendAtt[0].colorBlendOp        = VK_BLEND_OP_ADD;
-        blendAtt[0].srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-        blendAtt[0].dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-        blendAtt[0].alphaBlendOp        = VK_BLEND_OP_ADD;
-    }
+	// ===== 修改 make_skinned_pipeline 中 alphaBlend 分支为 PREMULTIPLIED alpha =====
+	if (alphaBlend) {
+		blendAtt[0].blendEnable = VK_TRUE;
+		// 使用预乘 alpha（与 shader 输出预乘配对）
+		blendAtt[0].srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+		blendAtt[0].dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+		blendAtt[0].colorBlendOp = VK_BLEND_OP_ADD;
+		blendAtt[0].srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+		blendAtt[0].dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+		blendAtt[0].alphaBlendOp = VK_BLEND_OP_ADD;
+	}
     VkPipelineColorBlendStateCreateInfo blendInfo{};
     blendInfo.sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     blendInfo.attachmentCount = 2;
