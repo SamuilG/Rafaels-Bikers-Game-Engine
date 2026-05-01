@@ -63,6 +63,7 @@ namespace lut = labut2;
 // ================= UI System =================
 #include "../UI/ui.hpp"
 #include "../UI/EngineUi.hpp"
+#include "../UI/GameUi.hpp"
 #include <imgui.h>
 #include <backends/imgui_impl_vulkan.h>
 #include "../UI/MousePicker.hpp"
@@ -943,11 +944,17 @@ namespace engine {
 
             //铺设全屏底层 DockSpace
             // 必须在绘制任何其他 ImGui 窗口（如 MainMenu, ContentBrowser）之前调用！传 0 表示让 ImGui 自动为我们生成主窗口的 ID
-            ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
+            if (mState->showEngineUi)
+            {
+                ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
+            }
 
             //ImGui::DockSpace(ImGui::GetID("MyDockSpace"), ImVec2(0, 0), ImGuiDockNodeFlags_PassthruCentralNode);
             //调用顶部菜单栏！
-            EngineUi::DrawMainMenuBar(this, mSceneManager, *mState, mAppRunning);
+            if (mState->showEngineUi) 
+            {
+                EngineUi::DrawMainMenuBar(this, mSceneManager, *mState, mAppRunning);
+            }
             //start gmae menu
            // 如果游戏还没开始，只画主菜单
             if (!mState->isGameStarted) {
@@ -1040,40 +1047,43 @@ namespace engine {
 
                 //EngineUi::DrawSceneViewport(m_sceneViewportTexId, this, mSceneManager, view, gizmoProj, mSelectedEntityId);
                 EngineUi::DrawSceneViewport(m_sceneViewportTexId, this, mSceneManager, view, gizmoProj, mSelectedEntityId, *mState);
+				
+				//game HUD============================
+                GameUi::DrawHud(this, *mState, EngineUi::GetSceneViewportPos(), EngineUi::GetSceneViewportSize());
 
                 glm::mat4 viewProj = gizmoProj * view;
                 glm::vec3 cameraPos = glm::vec3(glm::inverse(view)[3]); // 提取逆 view 矩阵第 4 列作为位置
 
                 // 给面板加上开关判断：
-                if (mState->showControlPanel) {
+                if (mState->showEngineUi && mState->showControlPanel) {
                     EngineUi::DrawControlPanel(*mState, this, mSceneManager);
                 }
 
-                if (mState->showContentBrowser) {
+                if (mState->showEngineUi && mState->showContentBrowser) {
                     EngineUi::DrawContentBrowser(this, mSceneManager);
                 }
 
-                if (mState->showSceneHierarchy || mState->showEntityInspector) {
+                if (mState->showEngineUi && (mState->showSceneHierarchy || mState->showEntityInspector)) {
                     EngineUi::DrawSceneHierarchy(this, mSceneManager, view, gizmoProj, mSelectedEntityId, *mState);
                 }
                 //light UI
-                if (mState->showLightPanel) {
+                if (mState->showEngineUi && mState->showLightPanel) {
                     EngineUi::DrawLightPanel(mSceneManager, *mState);
                 }
 				//camera UI
-                if (mState->showCameraPanel) {
+                if (mState->showEngineUi && mState->showCameraPanel) {
                     EngineUi::DrawCameraPanel(*mState);
                 }
 				//debug UI
-                if (mState->showDebugPanel) {
+                if (mState->showEngineUi && mState->showDebugPanel) {
                     EngineUi::DrawDebugPanel(*mState);
                 }
 				//audio UI
-                if (mState->showAudioPanel) {
+                if (mState->showEngineUi && mState->showAudioPanel) {
                     EngineUi::DrawAudioPanel(*mState, mAudioSystem);
                 }
 
-                if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && isMouseInViewport && !ImGuizmo::IsOver())
+                if (mState->showEngineUi && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && isMouseInViewport && !ImGuizmo::IsOver())
                 {
                     flecs::entity hitEntity = MousePicker::PickEntity(
                         localMouseX, localMouseY,  // 传局部鼠标坐标
@@ -1102,7 +1112,7 @@ namespace engine {
                     uint32_t selectedBodyID = JPH::BodyID::cInvalidBodyID;
                     bool hasDebugBody = selectedEntity.is_alive() && physics && TryGetDebugBodyID(selectedEntity, selectedBodyID);
 
-                    if (hasDebugBody && (mState->debugSelectionBounds || mState->debugCollisionShapes)) {
+                    if (mState->showEngineUi && hasDebugBody && (mState->debugSelectionBounds || mState->debugCollisionShapes)) {
                         JPH::BodyInterface& bodyInterface = physics->get_body_interface();
                         JPH::TransformedShape ts = bodyInterface.GetTransformedShape(JPH::BodyID(selectedBodyID));
 
@@ -1409,6 +1419,10 @@ namespace engine {
                 if (mInputSystem->IsActionPressed("CameraThirdPersonToggle")) {
                     mState->thirdPersonMode = !mState->thirdPersonMode;
                     std::printf("Camera: %s\n", mState->thirdPersonMode ? "Third Person" : "Free Fly");
+                }
+                if (mInputSystem->IsActionPressed("ToggleEngineUi")) {
+                    mState->showEngineUi = !mState->showEngineUi;
+                    EngineUi::ShowToast(mState->showEngineUi ? "[ Engine UI Visible ]" : "[ Engine UI Hidden ]");
                 }
                 
                 // Debug Render Modes

@@ -40,6 +40,8 @@ namespace engine {
 		bool mosaicEnabled = false; // key 5 toggle
 
 		//================UI System================================
+		bool showEngineUi = true;//engine UI toggle with key F1
+
 		bool particlesEnabled = true;//particle system toggle with key R
 
 		bool isGameStarted = true;//game start toggle

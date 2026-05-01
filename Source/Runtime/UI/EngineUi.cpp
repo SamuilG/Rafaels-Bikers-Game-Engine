@@ -655,9 +655,26 @@ namespace engine {
 
 	void EngineUi::DrawSceneViewport(VkDescriptorSet sceneTexId, RenderSystem* renderSys, SceneManager* sceneManager, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, UserState& state) {
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
 		ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 1.0f));
 
-		ImGui::Begin("Scene Viewport");
+		const char* viewportWindowName = state.showEngineUi ? "Scene Viewport###SceneViewportEditor": "Game View###SceneViewportFullscreen";
+		ImGuiWindowFlags viewportFlags = 0;
+		if (!state.showEngineUi) {
+			ImGuiViewport* mainViewport = ImGui::GetMainViewport();
+			ImGui::SetNextWindowViewport(mainViewport->ID);
+			ImGui::SetNextWindowPos(mainViewport->Pos, ImGuiCond_Always);
+			ImGui::SetNextWindowSize(mainViewport->Size, ImGuiCond_Always);
+			ImGui::SetNextWindowDockID(0, ImGuiCond_Always);
+			viewportFlags = ImGuiWindowFlags_NoDecoration
+				| ImGuiWindowFlags_NoDocking
+				| ImGuiWindowFlags_NoMove
+				| ImGuiWindowFlags_NoSavedSettings
+				| ImGuiWindowFlags_NoBringToFrontOnFocus
+				| ImGuiWindowFlags_NoNavFocus;
+		}
+
+		ImGui::Begin(viewportWindowName, nullptr, viewportFlags);
 
 		// 1. 获取视口绝大坐标和尺寸// Get the absolute position and size of the viewport
 		ImVec2 vMin = ImGui::GetWindowContentRegionMin();
@@ -679,7 +696,7 @@ namespace engine {
 
 		//  3. 拖放目标 (Drag & Drop)
 
-		if (ImGui::BeginDragDropTarget()) {
+		if (state.showEngineUi && ImGui::BeginDragDropTarget()) {
 			if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_MODEL", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
 				const char* droppedPath = (const char*)payload->Data;
 				glm::mat4 dropTransform(1.0f);
@@ -715,7 +732,7 @@ namespace engine {
 
 
 		//  4. 粒子 Billboard 图标和点击// Particle billboard icons and select
-		if (renderSys && state.particlesEnabled) {
+		if (state.showEngineUi && renderSys && state.particlesEnabled) {
 			glm::mat4 viewProj = proj * view;
 			glm::vec3 cameraPos = glm::vec3(glm::inverse(view)[3]);
 			ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -803,11 +820,11 @@ namespace engine {
 		//  5. ImGuizmo 坐标轴
 		bool drawGizmo = false;
 		glm::mat4 gizmoMatrix = glm::mat4(1.0f);
-		if (renderSys && state.particlesEnabled && state.activeParticleIndex >= 0 && state.activeParticleIndex < renderSys->GetParticles().size()) {
+		if (state.showEngineUi && renderSys && state.particlesEnabled && state.activeParticleIndex >= 0 && state.activeParticleIndex < renderSys->GetParticles().size()) {
 			drawGizmo = true;
 			gizmoMatrix = glm::translate(glm::mat4(1.0f), renderSys->GetParticles()[state.activeParticleIndex]->config.emitterPos);
 		}
-		else if (selected_id != 0 && sceneManager) {
+		else if (state.showEngineUi && selected_id != 0 && sceneManager) {
 			flecs::entity selectedEntity = sceneManager->get_world().entity(selected_id);
 			if (selectedEntity.is_alive() && selectedEntity.has<LocalTransform>()) {
 				drawGizmo = true;
@@ -854,6 +871,7 @@ namespace engine {
 
 		ImGui::End(); //  Viewport 闭合
 		ImGui::PopStyleColor();
+		ImGui::PopStyleVar();
 		ImGui::PopStyleVar();
 	}
 
@@ -2012,6 +2030,9 @@ namespace engine {
 	}
 
 	void EngineUi::DrawMainMenuBar(RenderSystem* renderSys, SceneManager* sceneManager, UserState& state, bool& appRunning) {
+		if (!state.showEngineUi) {
+			return;
+		}
 
 
 		//绘制顶部主菜单栏 (Main Menu Bar)
@@ -2033,6 +2054,8 @@ namespace engine {
 			}
 
 			if (ImGui::BeginMenu(_SL("View"))) {
+				ImGui::MenuItem("Engine UI", "F1", &state.showEngineUi);
+				ImGui::Separator();
 				ImGui::MenuItem(_SL("Control Panel"), NULL, &state.showControlPanel);
 				ImGui::MenuItem(_SL("Content Browser"), NULL, &state.showContentBrowser);
 				ImGui::MenuItem(_SL("Scene Hierarchy"), NULL, &state.showSceneHierarchy);
