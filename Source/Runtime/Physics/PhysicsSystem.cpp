@@ -598,6 +598,34 @@ uint32_t PhysicsSystem::cast_ray(const glm::vec3& origin, const glm::vec3& direc
 	return JPH::BodyID::cInvalidBodyID;
 }
 
+bool PhysicsSystem::cast_ray_hit_point(const glm::vec3& origin, const glm::vec3& direction, float max_distance, glm::vec3& outHitPoint, uint32_t* outBodyID)
+{
+	if (!m_physicsSystem) return false;
+
+	JPH::RVec3 joltOrigin(origin.x, origin.y, origin.z);
+	JPH::Vec3 joltDir(direction.x * max_distance, direction.y * max_distance, direction.z * max_distance);
+	JPH::RRayCast ray(joltOrigin, joltDir);
+	JPH::RayCastResult hitResult;
+
+	bool isHit = m_physicsSystem->GetNarrowPhaseQuery().CastRay(
+		ray,
+		hitResult,
+		JPH::BroadPhaseLayerFilter(),
+		JPH::ObjectLayerFilter(),
+		JPH::BodyFilter()
+	);
+
+	if (!isHit) {
+		return false;
+	}
+
+	outHitPoint = origin + direction * (max_distance * hitResult.mFraction);
+	if (outBodyID) {
+		*outBodyID = hitResult.mBodyID.GetIndexAndSequenceNumber();
+	}
+	return true;
+}
+
 
 
 

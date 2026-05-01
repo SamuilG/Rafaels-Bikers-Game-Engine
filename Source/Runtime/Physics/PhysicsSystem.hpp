@@ -39,103 +39,104 @@ inline glm::quat toGlm(const JPH::Quat& q) { return glm::quat(q.GetW(), q.GetX()
 
 namespace Layers
 {
-	static constexpr JPH::ObjectLayer NON_MOVING = 0;
-	static constexpr JPH::ObjectLayer MOVING = 1;
-	static constexpr JPH::ObjectLayer NUM_LAYERS = 2;
+    static constexpr JPH::ObjectLayer NON_MOVING = 0;
+    static constexpr JPH::ObjectLayer MOVING = 1;
+    static constexpr JPH::ObjectLayer NUM_LAYERS = 2;
 };
 
 namespace engine {
-class EventSystem;
+    class EventSystem;
 
-class PhysicsSystem final : public System {
-public:
-    PhysicsSystem();
-    ~PhysicsSystem() override;
+    class PhysicsSystem final : public System {
+    public:
+        PhysicsSystem();
+        ~PhysicsSystem() override;
 
-    void Init() override;
-    void optimize_broad_phase();
-    void Update(float dt) override;
-    void Shutdown() override;
+        void Init() override;
+        void optimize_broad_phase();
+        void Update(float dt) override;
+        void Shutdown() override;
 
-    void SetEventSystem(EventSystem* sys) { m_eventSystem = sys; }
+        void SetEventSystem(EventSystem* sys) { m_eventSystem = sys; }
 
-    JPH::PhysicsSystem* get_system() { return m_physicsSystem.get(); }
-    JPH::BodyInterface& get_body_interface() { return m_physicsSystem->GetBodyInterface(); }
+        JPH::PhysicsSystem* get_system() { return m_physicsSystem.get(); }
+        JPH::BodyInterface& get_body_interface() { return m_physicsSystem->GetBodyInterface(); }
 
-    // dynamic sphere body at 'position' with given 'radius'.
-    // returns the BodyID (use .GetIndexAndSequenceNumber() to pass to ECS).
-    JPH::BodyID create_sphere_body(const glm::vec3& position, float radius = 0.5f);
+        // dynamic sphere body at 'position' with given 'radius'.
+        // returns the BodyID (use .GetIndexAndSequenceNumber() to pass to ECS).
+        JPH::BodyID create_sphere_body(const glm::vec3& position, float radius = 0.5f);
 
-    // Create a large static ground plane body at the given y elevation.
-    void create_ground_plane(float y = -0.5f);
+        // Create a large static ground plane body at the given y elevation.
+        void create_ground_plane(float y = -0.5f);
 
-    // Create a static triangle mesh body from EngineMesh vertices and indices
-    JPH::BodyID create_static_mesh_body(const EngineMesh& mesh, const glm::mat4& transform);
+        // Create a static triangle mesh body from EngineMesh vertices and indices
+        JPH::BodyID create_static_mesh_body(const EngineMesh& mesh, const glm::mat4& transform);
 
-    // Create a dynamic convex hull body from EngineMesh vertices
-    JPH::BodyID create_dynamic_convex_body(const EngineMesh& mesh, const glm::mat4& transform, float mass = 1.0f);
+        // Create a dynamic convex hull body from EngineMesh vertices
+        JPH::BodyID create_dynamic_convex_body(const EngineMesh& mesh, const glm::mat4& transform, float mass = 1.0f);
 
-    JPH::BodyID create_dynamic_compound_body(
-        const std::vector<EngineMesh>& meshes,
-        const std::vector<glm::mat4>& meshTransforms,
-        const glm::mat4& transform,
-        float mass);
-    //=============================UI System Interactions=============================
-    // cast_ray
-    // Raycast from origin in direction, return first hit BodyID射线检测，返回第一个被击中的物理 BodyID
-    uint32_t cast_ray(const glm::vec3& origin, const glm::vec3& direction, float max_distance = 1000.0f);
+        JPH::BodyID create_dynamic_compound_body(
+            const std::vector<EngineMesh>& meshes,
+            const std::vector<glm::mat4>& meshTransforms,
+            const glm::mat4& transform,
+            float mass);
+        //=============================UI System Interactions=============================
+        // cast_ray
+        // Raycast from origin in direction, return first hit BodyID射线检测，返回第一个被击中的物理 BodyID
+        uint32_t cast_ray(const glm::vec3& origin, const glm::vec3& direction, float max_distance = 1000.0f);
+        bool cast_ray_hit_point(const glm::vec3& origin, const glm::vec3& direction, float max_distance, glm::vec3& outHitPoint, uint32_t* outBodyID = nullptr);
 
-    uint32_t cast_ray_ignore(const glm::vec3& start, const glm::vec3& end, uint32_t ignoreBodyIDRaw);
+        uint32_t cast_ray_ignore(const glm::vec3& start, const glm::vec3& end, uint32_t ignoreBodyIDRaw);
 
-    // ...
-    uint32_t cast_ray_ignore_multiple(const glm::vec3& start, const glm::vec3& end, const std::vector<uint32_t>& ignoreIDs);
+        // ...
+        uint32_t cast_ray_ignore_multiple(const glm::vec3& start, const glm::vec3& end, const std::vector<uint32_t>& ignoreIDs);
 
-    // 根据 BodyID 同步最新的变换矩阵
-    //latest transform
-    void set_body_transform(uint32_t bodyID, const glm::mat4& transform);
-    //更新缩放
-    //update the scale
-    void set_body_scale(uint32_t bodyID, const glm::vec3& newScale, const glm::vec3& currentWorldPos, const glm::quat& currentWorldRot);
-    //=============================UI System Interactions=============================
+        // 根据 BodyID 同步最新的变换矩阵
+        //latest transform
+        void set_body_transform(uint32_t bodyID, const glm::mat4& transform);
+        //更新缩放
+        //update the scale
+        void set_body_scale(uint32_t bodyID, const glm::vec3& newScale, const glm::vec3& currentWorldPos, const glm::quat& currentWorldRot);
+        //=============================UI System Interactions=============================
 
-    void SetInputSystem(engine::InputSystem* sys) { mInputSystem = sys; }
-    void SetUserState(UserState* state) { this->mState = state; }
-
-  
-    // 【关键修复】：暴露底层的 Jolt PhysicsSystem 给控制器使用！
-    JPH::PhysicsSystem* GetJoltSystem() const {
-        return m_physicsSystem.get();
-    }
-private:
-    
-
-    std::unique_ptr<JPH::TempAllocatorImpl> m_tempAllocator;
-    std::unique_ptr<JPH::JobSystemThreadPool> m_jobSystem;
-    std::unique_ptr<JPH::PhysicsSystem> m_physicsSystem;
+        void SetInputSystem(engine::InputSystem* sys) { mInputSystem = sys; }
+        void SetUserState(UserState* state) { this->mState = state; }
 
 
-    // filters and layers
-    class BPLayerInterfaceImpl;
-    class ObjectVsBroadPhaseLayerFilterImpl;	
-
-    class ObjectLayerPairFilterImpl;
-
-    std::unique_ptr<BPLayerInterfaceImpl> m_bpLayerInterface;
-    std::unique_ptr<ObjectVsBroadPhaseLayerFilterImpl> m_objectVsBroadphaseFilter;
-    std::unique_ptr<ObjectLayerPairFilterImpl> m_objectVsObjectFilter;
-
-    engine::InputSystem* mInputSystem = nullptr;
-    UserState* mState = nullptr;
-
-    // Optional Event System Link
-    EventSystem* m_eventSystem = nullptr;
-
-    class ContactListenerImpl;
-    std::unique_ptr<ContactListenerImpl> m_contactListener;
+        // 【关键修复】：暴露底层的 Jolt PhysicsSystem 给控制器使用！
+        JPH::PhysicsSystem* GetJoltSystem() const {
+            return m_physicsSystem.get();
+        }
+    private:
 
 
+        std::unique_ptr<JPH::TempAllocatorImpl> m_tempAllocator;
+        std::unique_ptr<JPH::JobSystemThreadPool> m_jobSystem;
+        std::unique_ptr<JPH::PhysicsSystem> m_physicsSystem;
 
 
-};
+        // filters and layers
+        class BPLayerInterfaceImpl;
+        class ObjectVsBroadPhaseLayerFilterImpl;
+
+        class ObjectLayerPairFilterImpl;
+
+        std::unique_ptr<BPLayerInterfaceImpl> m_bpLayerInterface;
+        std::unique_ptr<ObjectVsBroadPhaseLayerFilterImpl> m_objectVsBroadphaseFilter;
+        std::unique_ptr<ObjectLayerPairFilterImpl> m_objectVsObjectFilter;
+
+        engine::InputSystem* mInputSystem = nullptr;
+        UserState* mState = nullptr;
+
+        // Optional Event System Link
+        EventSystem* m_eventSystem = nullptr;
+
+        class ContactListenerImpl;
+        std::unique_ptr<ContactListenerImpl> m_contactListener;
+
+
+
+
+    };
 
 } // namespace engine

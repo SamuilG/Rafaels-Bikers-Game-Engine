@@ -78,6 +78,90 @@ namespace engine {
 			return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tga";
 		}
 
+		glm::mat4 BuildDroppedModelTransform(const char* assetPath, const glm::vec3& worldPosition) {
+			glm::mat4 transform = glm::translate(glm::mat4(1.0f), worldPosition);
+			if (assetPath && strstr(assetPath, "Car")) {
+				transform = glm::scale(transform, glm::vec3(0.1f));
+			}
+			else if (assetPath && strstr(assetPath, "Helicopter")) {
+				transform = glm::scale(transform, glm::vec3(0.3f));
+			}
+			return transform;
+		}
+
+		bool TryBuildViewportDropTransform(
+			const ImVec2& mousePos,
+			const ImVec2& viewportPos,
+			const ImVec2& viewportSize,
+			SceneManager* sceneManager,
+			const glm::mat4& view,
+			const glm::mat4& proj,
+			const char* assetPath,
+			glm::mat4& outTransform) {
+			if (!assetPath || viewportSize.x <= 1.0f || viewportSize.y <= 1.0f) {
+				return false;
+			}
+
+			const float localX = mousePos.x - viewportPos.x;
+			const float localY = mousePos.y - viewportPos.y;
+			const float ndcX = (2.0f * localX) / viewportSize.x - 1.0f;
+			const float ndcY = 1.0f - (2.0f * localY) / viewportSize.y;
+
+			const glm::mat4 invProjView = glm::inverse(proj * view);
+			glm::vec4 nearP = invProjView * glm::vec4(ndcX, ndcY, 0.0f, 1.0f);
+			glm::vec4 farP = invProjView * glm::vec4(ndcX, ndcY, 1.0f, 1.0f);
+			if (std::abs(nearP.w) <= 0.0001f || std::abs(farP.w) <= 0.0001f) {
+				return false;
+			}
+
+			nearP /= nearP.w;
+			farP /= farP.w;
+
+			const glm::vec3 rayOrigin = glm::vec3(nearP);
+			const glm::vec3 rayDir = glm::normalize(glm::vec3(farP - nearP));
+
+			glm::vec3 targetPos = rayOrigin + rayDir * 15.0f;
+			if (sceneManager) {
+				if (PhysicsSystem* physics = sceneManager->get_physics_system()) {
+					glm::vec3 hitPoint(0.0f);
+					if (physics->cast_ray_hit_point(rayOrigin, rayDir, 1000.0f, hitPoint)) {
+						targetPos = hitPoint;
+					}
+				}
+			}
+
+			if (std::abs(rayDir.y) > 0.0001f) {
+				const float t = -rayOrigin.y / rayDir.y;
+				if (t > 0.0f) {
+					const glm::vec3 planeHit = rayOrigin + rayDir * t;
+					if (!sceneManager || planeHit.y > targetPos.y || targetPos.y < 0.0f) {
+						targetPos = planeHit;
+					}
+				}
+			}
+
+			targetPos.y = std::max(targetPos.y, 0.0f);
+			outTransform = BuildDroppedModelTransform(assetPath, targetPos);
+			return true;
+		}
+
+		flecs::entity SpawnDroppedModel(
+			RenderSystem* renderSys,
+			SceneManager* sceneManager,
+			const char* assetPath,
+			const glm::mat4& transform) {
+			if (!renderSys || !sceneManager || !assetPath) {
+				return flecs::entity::null();
+			}
+
+			return sceneManager->LoadModel(
+				renderSys,
+				assetPath,
+				ModelPhysicsType::Static,
+				0.0f,
+				transform);
+		}
+
 		bool IsFontAssetPath(const fs::path& path) { //Detect font assets so Assets/Fonts is represented clearly.
 			const std::string ext = ToLowerCopy(path.extension().string());
 			return ext == ".ttf" || ext == ".otf" || ext == ".ttc";
@@ -211,38 +295,38 @@ namespace engine {
 
 
 	// ========== console system 内置控制台系统==========
-struct EngineConsole {
-	std::vector<std::string> Items;// 存放日志数据//store log data
-	bool ScrollToBottom = true;// 控制自动滚动//control auto-scroll
+	struct EngineConsole {
+		std::vector<std::string> Items;// 存放日志数据//store log data
+		bool ScrollToBottom = true;// 控制自动滚动//control auto-scroll
 
-	void Draw(const char* title, bool* p_open = nullptr) {
-		if (p_open && !*p_open) return;
-		ImGui::Begin(title, p_open);
+		void Draw(const char* title, bool* p_open = nullptr) {
+			if (p_open && !*p_open) return;
+			ImGui::Begin(title, p_open);
 
-		// 清空日志按钮//Clear logs button
-		if (ImGui::Button("Clear Logs")) {
-			Items.clear();
-		}
-		ImGui::Separator();
+			// 清空日志按钮//Clear logs button
+			if (ImGui::Button("Clear Logs")) {
+				Items.clear();
+			}
+			ImGui::Separator();
 
-		for (const auto& item : Items) {
-			if (item.find("[Error]") != std::string::npos) {
-				ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "%s", item.c_str());
+			for (const auto& item : Items) {
+				if (item.find("[Error]") != std::string::npos) {
+					ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "%s", item.c_str());
+				}
+				else if (item.find("[Warning]") != std::string::npos) {
+					ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.4f, 1.0f), "%s", item.c_str());
+				}
+				else {
+					ImGui::TextUnformatted(item.c_str());
+				}
 			}
-			else if (item.find("[Warning]") != std::string::npos) {
-				ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.4f, 1.0f), "%s", item.c_str());
+			if (ScrollToBottom && ImGui::GetScrollY() >= ImGui::GetScrollMaxY()) {
+				ImGui::SetScrollHereY(1.0f);
 			}
-			else {
-				ImGui::TextUnformatted(item.c_str());
-			}
+			ScrollToBottom = false;
+			ImGui::End();
 		}
-		if (ScrollToBottom && ImGui::GetScrollY() >= ImGui::GetScrollMaxY()) {
-			ImGui::SetScrollHereY(1.0f);
-		}
-		ScrollToBottom = false;
-		ImGui::End();
-	}
-};
+	};
 
 	static EngineConsole s_Console; // 全局控制台实例
 
@@ -272,7 +356,7 @@ struct EngineConsole {
 
 		PushLogMessage(std::string(buf));
 	}
-	
+
 
 
 	// 四舍五入(保留 5位小数)//Round to a specific number of decimal places (default 5)
@@ -282,7 +366,7 @@ struct EngineConsole {
 		return std::round(static_cast<double>(value) * multiplier) / multiplier;
 	}
 
-	
+
 	//写入 JSON // Write to JSON
 	inline json Vec3ToJson(const glm::vec3& v) {
 		return { RoundFloat(v.x), RoundFloat(v.y), RoundFloat(v.z) };
@@ -354,22 +438,22 @@ struct EngineConsole {
 		ImGui::PopStyleColor();
 		ImGui::PopStyleVar();
 	}
-	
+
 
 
 
 	// ========== project save&load==========
 	void EngineUi::SaveProject(SceneManager* sceneManager, RenderSystem* renderSys, const std::string& filepath) {
-		json root; 
+		json root;
 
-		
+
 		//保存实体变换矩阵//Save entity transforms
 		json entitiesArray = json::array();
 		if (sceneManager) {
 			auto& world = sceneManager->get_world();
 			world.each([&](flecs::entity e, const LocalTransform& lt) {
 				std::string name = e.name().length() > 0 ? e.name().c_str() : "";
-				
+
 				if (!name.empty() && name != "Preview_Object") {
 					json entityJson;
 					entityJson["Name"] = name;
@@ -509,9 +593,9 @@ struct EngineConsole {
 			const auto& particlesJson = root["Particles"];
 			auto& particles = renderSys->GetParticles();
 
-			
+
 			for (size_t i = 0; i < particlesJson.size(); ++i) {
-				
+
 				if (i >= particles.size()) {
 					renderSys->AddParticleGroup();
 				}
@@ -520,7 +604,7 @@ struct EngineConsole {
 				auto& ps = particles[i];
 				auto& config = ps->config;
 
-				
+
 				if (pJson.contains("Name")) {
 					std::string n = pJson["Name"].get<std::string>();
 					snprintf(config.name, sizeof(config.name), "%s", n.c_str());
@@ -555,7 +639,7 @@ struct EngineConsole {
 
 		LogPrint("Project loaded from %s\n", filepath.c_str());
 	}
-	
+
 
 
 	// ========== Scene Viewport 场景视口==========
@@ -594,43 +678,32 @@ struct EngineConsole {
 		}
 
 		//  3. 拖放目标 (Drag & Drop)
-	
+
 		if (ImGui::BeginDragDropTarget()) {
 			if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_MODEL", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
 				const char* droppedPath = (const char*)payload->Data;
-				ImVec2 mousePos = ImGui::GetMousePos();
-				float localX = mousePos.x - s_SceneViewportPos.x;
-				float localY = mousePos.y - s_SceneViewportPos.y;
-				float ndcX = (2.0f * localX) / s_SceneViewportSize.x - 1.0f;
-				float ndcY = 1.0f - (2.0f * localY) / s_SceneViewportSize.y;
-				glm::mat4 invProjView = glm::inverse(proj * view);
-				glm::vec4 nearP = invProjView * glm::vec4(ndcX, ndcY, 0.001f, 1.0f);
-				glm::vec4 farP = invProjView * glm::vec4(ndcX, ndcY, 1.0f, 1.0f);
-				nearP /= nearP.w; farP /= farP.w;
-				glm::vec3 rayOrigin = glm::vec3(nearP);
-				glm::vec3 rayDir = glm::normalize(glm::vec3(farP - nearP));
-				glm::vec3 targetPos = rayOrigin + rayDir * 15.0f;
-				if (std::abs(rayDir.y) > 0.0001f) {
-					float t = -rayOrigin.y / rayDir.y;
-					if (t > 0.0f) targetPos = rayOrigin + rayDir * t;
-				}
-				targetPos.y = std::max(targetPos.y, 0.0f);
-				glm::mat4 previewTransform = glm::translate(glm::mat4(1.0f), targetPos);
-				if (strstr(droppedPath, "Car")) previewTransform = glm::scale(previewTransform, glm::vec3(0.1f));
-				else if (strstr(droppedPath, "Helicopter")) previewTransform = glm::scale(previewTransform, glm::vec3(0.3f));
-				if (!payload->IsDelivery()) {
-					if (renderSys) renderSys->SetModelPreview(droppedPath, previewTransform);
-				}
-				else {
+				glm::mat4 dropTransform(1.0f);
+				if (!TryBuildViewportDropTransform(ImGui::GetMousePos(), s_SceneViewportPos, s_SceneViewportSize, sceneManager, view, proj, droppedPath, dropTransform)) {
 					if (renderSys) {
 						renderSys->ClearModelPreview();
-						float mass = 50.0f;
-						if (strstr(droppedPath, "Car")) mass = 1500.0f;
-						else if (strstr(droppedPath, "Helicopter")) mass = 3000.0f;
-						else if (strstr(droppedPath, "BaseballBat")) mass = 1.5f;
-						//renderSys->load_additional_model(droppedPath, false, mass, previewTransform);
+					}
+				}
+				else if (!payload->IsDelivery()) {
+					if (renderSys) {
+						renderSys->SetModelPreview(droppedPath, dropTransform);
+					}
+				}
+				else if (renderSys) {
+					renderSys->ClearModelPreview();
+					flecs::entity spawnedEntity = SpawnDroppedModel(renderSys, sceneManager, droppedPath, dropTransform);
+					if (spawnedEntity.is_valid()) {
+						selected_id = spawnedEntity.id();
 						LogPrint("[DragDrop] Deployed %s\n", droppedPath);
 						EngineUi::ShowToast("[ Asset Deployed ]");
+					}
+					else {
+						LogPrint("[DragDrop] Failed to deploy %s\n", droppedPath);
+						EngineUi::ShowToast("[ Asset Deploy Failed ]");
 					}
 				}
 			}
@@ -744,7 +817,7 @@ struct EngineConsole {
 
 		if (drawGizmo) {
 			ImGuizmo::BeginFrame();
-			
+
 			ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
 			ImGuizmo::SetOrthographic(false);
 			ImGuizmo::SetRect(s_SceneViewportPos.x, s_SceneViewportPos.y, s_SceneViewportSize.x, s_SceneViewportSize.y);
@@ -953,7 +1026,7 @@ struct EngineConsole {
 						};
 					std::sort(directoryEntries.begin(), directoryEntries.end(), sortByName); //Keep folders sorted before files.
 					std::sort(fileEntries.begin(), fileEntries.end(), sortByName); //Keep files sorted for stable browsing.
-					
+
 					// 设定格子的宽度// Set the width of each cell
 					const float cellSize = 118.0f; //Use a consistent tile size for all assets.
 					const float panelWidth = ImGui::GetContentRegionAvail().x;
@@ -1207,8 +1280,8 @@ struct EngineConsole {
 
 			ImGui::Separator();
 			//UI system for bike===============================
-			
-			
+
+
 			//generator 生成器
 			ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), _SL("[ generator ]"));
 
@@ -1599,7 +1672,9 @@ struct EngineConsole {
 
 		//UI基础相机模式与镜头参数// Basic camera mode and lens parameters
 		ImGui::Checkbox("Third Person Mode", &state.thirdPersonMode);
-		ImGui::SliderFloat("FOV", &state.cameraFov, 10.0f, 120.0f, "%.1f deg");
+		if (ImGui::SliderFloat("FOV", &state.cameraFov, 10.0f, 120.0f, "%.1f deg")) {
+			state.targetFov = state.cameraFov;
+		}
 
 		glm::vec3 cameraPos = glm::vec3(state.camera2world[3]);
 		ImGui::Text("Camera Pos: %.2f, %.2f, %.2f", cameraPos.x, cameraPos.y, cameraPos.z);
@@ -1675,9 +1750,9 @@ struct EngineConsole {
 		ImGui::Checkbox("Enable Frustum Culling", &state.frustumCullingEnabled);
 		ImGui::SliderFloat("Frustum Padding", &state.frustumCullingPadding, 0.0f, 10.0f, "%.2f"); // new frustum culling
 		ImGui::Text("Visible Batches: %u / %u", state.frustumCullingVisibleCandidates, state.frustumCullingTotalCandidates);
-		ImGui::Text("FPS (Culling Off): %.1f", state.frustumCullingOffFps); 
-		ImGui::Text("FPS (Culling On): %.1f", state.frustumCullingOnFps); 
-		if (state.frustumCullingOffFps > 0.0f && state.frustumCullingOnFps > 0.0f) { 
+		ImGui::Text("FPS (Culling Off): %.1f", state.frustumCullingOffFps);
+		ImGui::Text("FPS (Culling On): %.1f", state.frustumCullingOnFps);
+		if (state.frustumCullingOffFps > 0.0f && state.frustumCullingOnFps > 0.0f) {
 			float fpsDelta = state.frustumCullingOnFps - state.frustumCullingOffFps;
 			float fpsDeltaPercent = state.frustumCullingOffFps > 0.0f ? (fpsDelta / state.frustumCullingOffFps) * 100.0f : 0.0f;
 			ImGui::Text("Delta: %+0.1f FPS (%+0.1f%%)", fpsDelta, fpsDeltaPercent);
@@ -1724,13 +1799,13 @@ struct EngineConsole {
 					}
 					ImGui::EndChild();
 
-					
+
 					// 拖放目标接收区 (Drag & Drop Target)
 					// 从 Content Browser 直接拖拽模型到这个列表中生成// This is the drag & drop target area where we can drop models directly from the Content Browser to spawn them in the scene
 					if (ImGui::BeginDragDropTarget()) {
 						// 接收Content Browser 设定标签
 						if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_MODEL")) {
-							
+
 							const char* droppedPath = (const char*)payload->Data;
 
 							//计算生成位置：摄像机正前方 15 米处// Calculate spawn position: 15 units in front of the camera
@@ -1741,21 +1816,27 @@ struct EngineConsole {
 							glm::vec3 spawnPosVec = camPos + camForward * 15.0f;
 							spawnPosVec.y = std::max(spawnPosVec.y, 0.0f);   // 强制最低生成在地面，防止掉入虚空
 
-							glm::mat4 spawnTransform = glm::translate(glm::mat4(1.0f), spawnPosVec);
+							glm::mat4 spawnTransform = BuildDroppedModelTransform(droppedPath, spawnPosVec);
 
 							// 调用渲染系统加载实体// Call the render system to load the model as a new entity in the scene
 							if (renderSys) {
 								LogPrint("[DragDrop] Loading model: %s at (%.1f, %.1f, %.1f)\n", droppedPath, spawnPosVec.x, spawnPosVec.y, spawnPosVec.z);
 								//renderSys->load_additional_model(droppedPath, false, 100.0f, spawnTransform);
-								EngineUi::ShowToast("Model Imported Successfully!");
+								flecs::entity spawnedEntity = SpawnDroppedModel(renderSys, sceneManager, droppedPath, spawnTransform);
+								if (spawnedEntity.is_valid()) {
+									EngineUi::ShowToast("Model Imported Successfully!");
+								}
+								else {
+									EngineUi::ShowToast("Model Import Failed!");
+								}
 							}
 						}
 						ImGui::EndDragDropTarget();
 					}
-					
+
 				}
 			}
-			ImGui::End(); 
+			ImGui::End();
 		}
 
 
@@ -1834,7 +1915,7 @@ struct EngineConsole {
 							ImGui::SameLine();
 							if (ImGui::Button("Flip Z")) { m_ui_scale[2] = -m_ui_scale[2]; is_modified = true; }
 
-							
+
 							if (is_modified) {
 								ImGuizmo::RecomposeMatrixFromComponents(
 									m_ui_translation, m_ui_rotation, m_ui_scale,
@@ -1849,8 +1930,8 @@ struct EngineConsole {
 
 					// 删除按钮// Delete Button
 					if (ImGui::Button(_SL("Delete Entity"), ImVec2(-1, 0))) {
-						selectedEntity.destruct();    
-						selected_id = 0; 
+						selectedEntity.destruct();
+						selected_id = 0;
 					}
 					// 键盘快捷键删除 (Delete 键)
 					if (selectedEntity.is_alive() && ImGui::IsKeyPressed(ImGuiKey_Delete) && !ImGui::GetIO().WantTextInput) {

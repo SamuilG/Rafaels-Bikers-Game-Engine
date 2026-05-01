@@ -583,7 +583,7 @@ namespace engine {
             }
 
             mAlphaPipe = create_alpha_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
-            mThumbnailAlphaPipe = create_alpha_pipeline_1_attachment(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+            mThumbnailAlphaPipe = create_alpha_pipeline_1_attachment(mWindow, mPipeLayout.handle, VK_FORMAT_R8G8B8A8_UNORM);
 
             // Skeletal animation pipeline resources
             mBoneLayout = create_bone_descriptor_layout(mWindow);
@@ -839,7 +839,7 @@ namespace engine {
                     if (entry.path().extension() == ".glb") {
                         std::string p = entry.path().string();
                         std::replace(p.begin(), p.end(), '\\', '/');
-                        PreloadModelForPreview(p);
+                        TryLoadModelThumbnailFromCache(p);
                     }
                 }
             }
@@ -980,8 +980,10 @@ namespace engine {
                 //Aspect Ratio
                 //float aspect = (float)mWindow.swapchainExtent.width / (float)mWindow.swapchainExtent.height;
                 float aspect = width / height;
-                //FOV
-                float fovRadians = lut::Radians(cfg::kCameraFov).value();
+
+                //FOV: use the live camera FOV so picking and drag placement match the rendered scene.
+                float fovRadians = glm::radians(std::clamp(mState->cameraFov, 10.0f, 120.0f));
+
                 glm::mat4 gizmoProj = glm::perspective(
                     fovRadians,
                     aspect, // 用算好的 aspect 替换原来的计算
@@ -1216,7 +1218,7 @@ namespace engine {
                 if (changes.changedFormat) {
                     mPipe = create_triangle_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
                     mAlphaPipe = create_alpha_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
-                    mThumbnailAlphaPipe = create_alpha_pipeline_1_attachment(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+                    mThumbnailAlphaPipe = create_alpha_pipeline_1_attachment(mWindow, mPipeLayout.handle, VK_FORMAT_R8G8B8A8_UNORM);
                     mMipPipe = create_debug_pipeline(mWindow, mPipeLayout.handle, cfg::kDebugVertShaderPath, cfg::kDebugMipFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT);
                     mDepthPipe = create_debug_pipeline(mWindow, mPipeLayout.handle, cfg::kDebugVertShaderPath, cfg::kDebugDepthFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT);
                     mDerivPipe = create_debug_pipeline(mWindow, mPipeLayout.handle, cfg::kDebugVertShaderPath, cfg::kDebugDerivFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT);
@@ -2736,6 +2738,8 @@ void InitSkybox() {
 
             void InitThumbnailPipeline();
             void GenerateModelThumbnail(const std::string& modelPath);
+            bool TryLoadModelThumbnailFromCache(const std::string& modelPath);
+            void WarmModelThumbnailCache();
             void PreloadModelForPreview(const std::string& path);
 
             // 【新增】：为极速特效构建 Descriptor Set
