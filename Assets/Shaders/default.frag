@@ -193,6 +193,7 @@ vec3 getNormalFromMap()
 void main()
 {// // --- 1. 材质属性采样 ---
     vec4 texColor = texture(uTexColor, v2fTexCoord);
+
     vec3 baseColor = (texColor * pc.baseColorFactor).rgb;
  
     float finalAlpha = texColor.a * pc.baseColorFactor.a;

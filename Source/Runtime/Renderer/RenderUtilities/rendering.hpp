@@ -52,6 +52,10 @@ void record_commands(
 	VkClearColorValue aClearColor,
 	float aBloomStrength,
 
+	VkPipeline aSsrPipe,
+	VkPipelineLayout aSsrLayout,
+	VkDescriptorSet aSsrDS,
+	ImageAndView const& aSsrOutput,
 	// ==============================================================
 	// 极速后处理效果
 	// ==============================================================

@@ -62,7 +62,14 @@ void record_commands(
 	ImageAndView const& aCompositeOutput, // modified from aFinalSceneColor; used for bloom transfer
 	VkClearColorValue aClearColor,
 	float aBloomStrength,
-
+	// ==============================================================
+	// 【新增】：SSR 屏幕空间反射参数
+	// ==============================================================
+	VkPipeline aSsrPipe,
+	VkPipelineLayout aSsrLayout,
+	VkDescriptorSet aSsrDS,
+	ImageAndView const& aSsrOutput, // 用于中转 SSR 结果的缓冲区
+	// ==============================================================
 	// ==============================================================
 	// 极速后处理效果
 	// ==============================================================
@@ -693,22 +700,73 @@ void record_commands(
 	vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
 	vkCmdDraw(aCmdBuff, 3, 1, 0, 0);
 	vkCmdEndRendering(aCmdBuff);
-
 	// ==========================================================
-	// 【新增】：将 aCompositeOutput 转换为 Shader 可读状态，供下一道工序使用
+	// 【新增阶段】：SSR Post-Process Pass (屏幕空间反射)
 	// ==========================================================
 	VkImageSubresourceRange range{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+
+	// a. 转换 Composite 结果，使其在 SSR Shader 中可作为贴图采样
 	lut::image_barrier(aCmdBuff, aCompositeOutput.image,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
 
+	// b. 将 SSR 目标缓冲（aSsrOutput）转换为颜色附件，准备写入
+	lut::image_barrier(aCmdBuff, aSsrOutput.image,
+		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
+	// ==========================================================
+	// 必须将深度图也转换为 Shader 可读状态！
+	// ==========================================================
+	VkImageSubresourceRange depthRange{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
+	lut::image_barrier(aCmdBuff, aDepthAttach.image,
+		VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
+		depthRange);
+	// ==========================================================
+	VkRenderingAttachmentInfo ssrAtt{};
+	ssrAtt.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	ssrAtt.imageView = aSsrOutput.view; // 渲染到 SSR 专用的缓存
+	ssrAtt.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	ssrAtt.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	ssrAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
+	VkRenderingInfo ssrInfo{};
+	ssrInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+	ssrInfo.renderArea.offset = { 0,0 };
+	ssrInfo.renderArea.extent = aImageExtent;
+	ssrInfo.layerCount = 1;
+	ssrInfo.colorAttachmentCount = 1;
+	ssrInfo.pColorAttachments = &ssrAtt;
+
+	vkCmdBeginRendering(aCmdBuff, &ssrInfo);
+	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsrPipe);
+	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsrLayout, 0, 1, &aSsrDS, 0, nullptr);
+
+	vkCmdSetViewport(aCmdBuff, 0, 1, &vp);
+	vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
+	vkCmdDraw(aCmdBuff, 3, 1, 0, 0); // 绘制全屏三角形触发 SSR
+	vkCmdEndRendering(aCmdBuff);
 	// ==========================================================
-	// 2. 【新增】：Speed Post-Process Pass (极速特效阶段: 畸变 + 色散 + 速度模糊)
+	// 【新增】：将深度图恢复为深度写入状态，防止下一帧死机或读出垃圾数据！
 	// ==========================================================
+	lut::image_barrier(aCmdBuff, aDepthAttach.image,
+		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
+		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		depthRange);
+	// ==========================================================
+	// c. 【新增】：将 aSsrOutput 转换为 Shader 可读状态，供下一道工序（极速特效）使用
+	// ==========================================================
+	lut::image_barrier(aCmdBuff, aSsrOutput.image,
+		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
+	// ==========================================================
+	// 2. Speed Post-Process Pass (极速特效阶段: 原有逻辑改造)
+	// ==========================================================
+	// 【关键改造】：Speed Pass 原本读取 aCompositeOutput 作为输入。
+	// 现在需要让 aSpeedDesc 绑定 aSsrOutput。
+
 	VkRenderingAttachmentInfo speedAtt{};
 	speedAtt.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-	// 【关键修改 2】：极速特效画到最终相纸 aFinalSceneColor 上，交给 UI
 	speedAtt.imageView = aFinalSceneColor.view;
 	speedAtt.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	speedAtt.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -724,9 +782,10 @@ void record_commands(
 
 	vkCmdBeginRendering(aCmdBuff, &speedInfo);
 	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSpeedPipe);
+
+	// 此时绑定的描述符集合 aSpeedDesc 内部应包含 aSsrOutput.view
 	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSpeedLayout, 0, 1, &aSpeedDesc, 0, nullptr);
 
-	// 推送计算好的速度比例 (0.0 到 1.0) 给 Shader
 	vkCmdPushConstants(aCmdBuff, aSpeedLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float), &aSpeedFactor);
 
 	vkCmdSetViewport(aCmdBuff, 0, 1, &vp);

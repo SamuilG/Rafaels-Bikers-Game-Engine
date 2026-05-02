@@ -89,6 +89,7 @@ namespace cfg
 
 
 	constexpr char const* kSpeedPostFragShaderPath = SHADERDIR_"speed_postprocess.frag.spv";
+	constexpr char const* kSsrFragShaderPath = SHADERDIR_"ssr.frag.spv";
 
 	//skybox
 	constexpr char const* skyboxVertShaderPath = SHADERDIR_"skybox.vert.spv";
@@ -162,7 +163,18 @@ lut::DescriptorSetLayout create_skybox_descriptor_layout(lut::VulkanWindow const
 lut::PipelineLayout create_skybox_pipeline_layout(lut::VulkanWindow const& window, VkDescriptorSetLayout dsetLayout);
 lut::Pipeline create_skybox_pipeline(lut::VulkanWindow const& window, VkPipelineLayout pipeLayout, VkFormat colorFormat);
 
+// ==============================================================
+// 【新增】：SSR (Screen Space Reflection) 管线与布局声明
+// ==============================================================
+// 1. 创建 SSR 的描述符布局 (需要绑定 Color, Depth, SceneUBO)
+lut::DescriptorSetLayout create_ssr_descriptor_layout(lut::VulkanContext const& aContext);
 
+// 2. 创建 SSR 的管线布局
+lut::PipelineLayout create_ssr_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aSsrDescriptorLayout);
+
+// 3. 创建 SSR 的渲染管线
+lut::Pipeline create_ssr_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout);
+// ==============================================================
 
 // debug render
 lut::Pipeline create_debug_line_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, VkFormat aColorFormat);

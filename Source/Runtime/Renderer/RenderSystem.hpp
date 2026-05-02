@@ -244,8 +244,7 @@ namespace engine {
         {
 
             
-
-
+            
             // Create Vulkan Window
             mWindow = lut::make_vulkan_window();
 
@@ -733,15 +732,26 @@ namespace engine {
             mCompositePipe = create_composite_pipeline(mWindow, mCompPipeLayout.handle);
 
             // =========================================================
-            // 【新增】：初始化极速特效管线和缓冲
-            // =========================================================
+             // 【修改 3】：初始化 SSR 与极速特效的连线
+             // =========================================================
             mCompositeOutputImage = create_offscreen_buffer(mWindow, mAllocator);
+            m_ssrOutputImage = create_offscreen_buffer(mWindow, mAllocator); // 创建 SSR 输出缓冲
+
+            // 1. 初始化 SSR 管线
+            m_ssrDescriptorLayout = create_ssr_descriptor_layout(mWindow);
+            m_ssrLayout = create_ssr_pipeline_layout(mWindow, m_ssrDescriptorLayout.handle);
+            m_ssrPipe = create_ssr_pipeline(mWindow, m_ssrLayout.handle);
+
+            // 2. 绑定 SSR 的输入 (上一步的 Composite Color + Depth)
+            m_ssrDS = BuildSsrDesc(mCompositeOutputImage.view, mDepthBuffer.view, mSceneUBO.buffer);
+
+            // 3. 初始化极速特效管线
             mSpeedPostPipeLayout = create_speed_post_pipeline_layout(mWindow, mBlurDescLayout.handle);
             mSpeedPostPipe = create_speed_post_pipeline(mWindow, mSpeedPostPipeLayout.handle);
 
             for (size_t i = 0; i < mCmdBuffers.size(); ++i) {
-                // 将合成完毕的中间图绑定给极速特效作为输入
-                mSpeedPostDescriptors.push_back(BuildSpeedDesc(mCompositeOutputImage.view));
+                // 【核心逻辑】：极速特效的输入图变成了 SSR 渲染完毕的输出图！
+                mSpeedPostDescriptors.push_back(BuildSpeedDesc(m_ssrOutputImage.view));
             }
             // =========================================================
             //===========================UI System================================
@@ -844,6 +854,8 @@ namespace engine {
                     }
                 }
             }
+
+
         }
         // 辅助函数：构建模糊阶段的描述符集
         VkDescriptorSet BuildBlurDesc(VkDescriptorSetLayout layout, VkImageView inputView) {
@@ -1245,9 +1257,16 @@ namespace engine {
                     mOffscreenImage = create_offscreen_buffer(mWindow, mAllocator);
                     mVisImage = create_vis_image(mWindow, mAllocator);
 
-                    // 重建极速特效中间图
+                    // --- 【修改 4】：重建贴图并重新绑定所有依赖的描述符 ---
                     mCompositeOutputImage = create_offscreen_buffer(mWindow, mAllocator);
-                    UpdatePostDescImage(mSpeedPostDescriptors, mCompositeOutputImage.view);
+                    m_ssrOutputImage = create_offscreen_buffer(mWindow, mAllocator);
+
+                    // 深度缓冲已在上面被重建，我们需要让 SSR 重新绑定新尺寸的缓冲
+                    m_ssrDS = BuildSsrDesc(mCompositeOutputImage.view, mDepthBuffer.view, mSceneUBO.buffer);
+
+                    // 极速管线重新绑定新的 SSR 画面
+                    UpdatePostDescImage(mSpeedPostDescriptors, m_ssrOutputImage.view);
+                    // ----------------------------------------------------
                     // 1。创建严格 1 层 Mipmap 的图像，
                     VkImageCreateInfo imageInfo{};
                     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -1724,7 +1743,14 @@ namespace engine {
                 //finalSceneTarget,
                 clearColor,                    // VkClearColorValue aClearColor
                 currentBloomStrength,
-
+                // =========================================================
+                 // 【核心修复】：加上 .handle 提取底层句柄，并将图片包装成 ImageAndView
+                 // =========================================================
+                m_ssrPipe.handle,                                      // aSsrPipe
+                m_ssrLayout.handle,                                    // aSsrLayout
+                m_ssrDS,                                               // aSsrDS (本身已经是原生句柄，不需要 .handle)
+                ImageAndView{ m_ssrOutputImage.image, m_ssrOutputImage.view }, // aSsrOutput
+                // =========================================================
                 // 【新增】：将极速管线和目标传给 rendering.cpp
                 mSpeedPostPipe.handle,
                 mSpeedPostPipeLayout.handle,
@@ -2726,10 +2752,21 @@ void InitSkybox() {
         std::vector<VkDescriptorSet> mBlurHorizDescriptors;
         std::vector<VkDescriptorSet> mBlurVertDescriptors;
         std::vector<VkDescriptorSet> mCompositeDescriptors;
+
+
         // =========================================================
-        // (Speed Post-Process) 的句柄和资源
-        // =========================================================
+          // (Speed Post-Process) 的句柄和资源
+          // =========================================================
         lut::ImageWithView mCompositeOutputImage; // 存放 Composite 合成结果的中间缓冲
+
+        // --- 【新增 1】：SSR (屏幕空间反射) 的句柄和资源 ---
+        lut::ImageWithView m_ssrOutputImage;
+        lut::Pipeline m_ssrPipe;
+        lut::PipelineLayout m_ssrLayout;
+        lut::DescriptorSetLayout m_ssrDescriptorLayout;
+        VkDescriptorSet m_ssrDS = VK_NULL_HANDLE;
+        // --------------------------------------------------
+
         lut::Pipeline mSpeedPostPipe;
         lut::PipelineLayout mSpeedPostPipeLayout;
         std::vector<VkDescriptorSet> mSpeedPostDescriptors;
@@ -2740,7 +2777,7 @@ void InitSkybox() {
 
             // 共用的深度缓冲
             lut::Image mThumbnailDepthImg;
-            lut::ImageView mThumbnailDepthView;
+            lut::ImageView mThumbnailDepthView; 
 
             // 缓存渲染批次
             std::unordered_map<std::string, std::vector<RenderBatch>> m_previewPrefabCache;
@@ -2756,6 +2793,27 @@ void InitSkybox() {
             void WarmModelThumbnailCache();
             void PreloadModelForPreview(const std::string& path);
 
+
+            VkDescriptorSet BuildSsrDesc(VkImageView colorView, VkImageView depthView, VkBuffer uboBuffer) {
+                VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, m_ssrDescriptorLayout.handle);
+
+                VkDescriptorImageInfo colorInfo{ mPostSampler.handle, colorView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+                VkDescriptorImageInfo depthInfo{ mPostSampler.handle, depthView, VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL };
+                VkDescriptorBufferInfo uboInfo{ uboBuffer, 0, VK_WHOLE_SIZE };
+
+                VkWriteDescriptorSet w[3]{};
+                w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[0].dstSet = ds; w[0].dstBinding = 0;
+                w[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; w[0].descriptorCount = 1; w[0].pImageInfo = &colorInfo;
+
+                w[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[1].dstSet = ds; w[1].dstBinding = 1;
+                w[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; w[1].descriptorCount = 1; w[1].pImageInfo = &depthInfo;
+
+                w[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[2].dstSet = ds; w[2].dstBinding = 2;
+                w[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; w[2].descriptorCount = 1; w[2].pBufferInfo = &uboInfo;
+
+                vkUpdateDescriptorSets(mWindow.device, 3, w, 0, nullptr);
+                return ds;
+            }
             // 【新增】：为极速特效构建 Descriptor Set
             VkDescriptorSet BuildSpeedDesc(VkImageView inputView) {
                 // 复用 mBlurDescLayout，因为它也是一个 Binding 0 的 Sampler

@@ -2985,6 +2985,175 @@ lut::Pipeline create_skybox_pipeline(lut::VulkanWindow const& aWindow, VkPipelin
 }
 
 
+
+lut::DescriptorSetLayout create_ssr_descriptor_layout(lut::VulkanContext const& aContext)
+{
+	VkDescriptorSetLayoutBinding bindings[3]{};
+
+	// Binding 0: Composite Scene Color (sampler2D)
+	bindings[0].binding = 0;
+	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[0].descriptorCount = 1;
+	bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	// Binding 1: Scene Depth (sampler2D)
+	bindings[1].binding = 1;
+	bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[1].descriptorCount = 1;
+	bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	// Binding 2: Scene UBO (uniform block)
+	bindings[2].binding = 2;
+	bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	bindings[2].descriptorCount = 1;
+	// 顶点着色器虽然用不到，但为了和前面的管线保持兼容，通常给 FRAGMENT 阶段即可
+	bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	VkDescriptorSetLayoutCreateInfo layoutInfo{};
+	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	layoutInfo.bindingCount = 3;
+	layoutInfo.pBindings = bindings;
+
+	VkDescriptorSetLayout layout = VK_NULL_HANDLE;
+	if (auto const res = vkCreateDescriptorSetLayout(aContext.device, &layoutInfo, nullptr, &layout); VK_SUCCESS != res)
+	{
+		throw lut::Error("Unable to create SSR descriptor set layout\n"
+			"vkCreateDescriptorSetLayout() returned {}", lut::to_string(res)
+		);
+	}
+
+	return lut::DescriptorSetLayout(aContext.device, layout);
+}
+
+
+lut::PipelineLayout create_ssr_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aSsrDescriptorLayout)
+{
+	VkPipelineLayoutCreateInfo layoutInfo{};
+	layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	layoutInfo.setLayoutCount = 1;
+	layoutInfo.pSetLayouts = &aSsrDescriptorLayout;
+	layoutInfo.pushConstantRangeCount = 0;
+	layoutInfo.pPushConstantRanges = nullptr;
+
+	VkPipelineLayout layout = VK_NULL_HANDLE;
+	if (auto const res = vkCreatePipelineLayout(aContext.device, &layoutInfo, nullptr, &layout); VK_SUCCESS != res)
+	{
+		throw lut::Error("Unable to create SSR pipeline layout\n"
+			"vkCreatePipelineLayout() returned {}", lut::to_string(res)
+		);
+	}
+
+	return lut::PipelineLayout(aContext.device, layout);
+}
+lut::Pipeline create_ssr_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout)
+{
+	// 1. 加载 Shader SPIR-V 字节码
+	auto const vertSpirV = lut::load_file_u32(cfg::kFullscreenVertShaderPath);
+	auto const fragSpirV = lut::load_file_u32(cfg::kSsrFragShaderPath);
+
+	// 【核心修复】：使用框架特有的 pNext 挂载法，跳过显式创建 ShaderModule
+	VkShaderModuleCreateInfo code[2]{};
+	code[0].sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	code[0].codeSize = vertSpirV.size() * sizeof(std::uint32_t);
+	code[0].pCode = vertSpirV.data();
+
+	code[1].sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	code[1].codeSize = fragSpirV.size() * sizeof(std::uint32_t);
+	code[1].pCode = fragSpirV.data();
+
+	VkPipelineShaderStageCreateInfo stages[2]{};
+	stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+	stages[0].pName = "main";
+	stages[0].pNext = &code[0]; // 直接把字节码信息挂在 pNext 上
+
+	stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	stages[1].pName = "main";
+	stages[1].pNext = &code[1]; // 直接把字节码信息挂在 pNext 上
+
+	// 2. 空顶点输入 (由于全屏三角形在 Vertex Shader 内手搓，所以不需要顶点缓冲)
+	VkPipelineVertexInputStateCreateInfo inputInfo{};
+	inputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+	VkPipelineInputAssemblyStateCreateInfo assemblyInfo{};
+	assemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	assemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+	// 3. 视口和光栅化
+	VkPipelineViewportStateCreateInfo viewportInfo{};
+	viewportInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportInfo.viewportCount = 1;
+	viewportInfo.scissorCount = 1;
+
+	VkPipelineRasterizationStateCreateInfo rasterInfo{};
+	rasterInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterInfo.polygonMode = VK_POLYGON_MODE_FILL;
+	rasterInfo.cullMode = VK_CULL_MODE_NONE; // 全屏后处理不需要剔除
+	rasterInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	rasterInfo.lineWidth = 1.0f;
+
+	VkPipelineMultisampleStateCreateInfo samplingInfo{};
+	samplingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	samplingInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+	// 4. 深度测试完全关闭
+	VkPipelineDepthStencilStateCreateInfo depthInfo{};
+	depthInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthInfo.depthTestEnable = VK_FALSE;
+	depthInfo.depthWriteEnable = VK_FALSE;
+
+	// 5. 颜色混合关闭 (SSR 是直接将结果覆盖或渲染到中转图，不需要混合)
+	VkPipelineColorBlendAttachmentState blendState{};
+	blendState.blendEnable = VK_FALSE;
+	blendState.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
+	VkPipelineColorBlendStateCreateInfo blendInfo{};
+	blendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	blendInfo.attachmentCount = 1;
+	blendInfo.pAttachments = &blendState;
+
+	VkDynamicState dynamicStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+	VkPipelineDynamicStateCreateInfo dynamicInfo{};
+	dynamicInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dynamicInfo.dynamicStateCount = 2;
+	dynamicInfo.pDynamicStates = dynamicStates;
+
+	// 6. 动态渲染附件格式配置
+	VkFormat ssrColorFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+	VkPipelineRenderingCreateInfo renderingInfo{};
+	renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+	renderingInfo.colorAttachmentCount = 1;
+	renderingInfo.pColorAttachmentFormats = &ssrColorFormat;
+
+	// 7. 组装 Graphics Pipeline
+	VkGraphicsPipelineCreateInfo pipeInfo{};
+	pipeInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipeInfo.pNext = &renderingInfo;
+	pipeInfo.stageCount = 2;
+	pipeInfo.pStages = stages;
+	pipeInfo.pVertexInputState = &inputInfo;
+	pipeInfo.pInputAssemblyState = &assemblyInfo;
+	pipeInfo.pViewportState = &viewportInfo;
+	pipeInfo.pRasterizationState = &rasterInfo;
+	pipeInfo.pMultisampleState = &samplingInfo;
+	pipeInfo.pDepthStencilState = &depthInfo;
+	pipeInfo.pColorBlendState = &blendInfo;
+	pipeInfo.pDynamicState = &dynamicInfo;
+	pipeInfo.layout = aPipelineLayout;
+
+	VkPipeline pipe = VK_NULL_HANDLE;
+	if (auto const res = vkCreateGraphicsPipelines(aWindow.device, VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &pipe); VK_SUCCESS != res)
+	{
+		throw lut::Error("Unable to create SSR graphics pipeline\n"
+			"vkCreateGraphicsPipelines() returned {}", lut::to_string(res)
+		);
+	}
+
+	// 【已移除 vkDestroyShaderModule，因为根本没有显式创建它们】
+
+	return lut::Pipeline(aWindow.device, pipe);
+}
 // =============================================================================
 // Bone-matrices SSBO descriptor layout  (set = 2, binding = 0)
 // =============================================================================
