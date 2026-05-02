@@ -16,10 +16,12 @@ layout(push_constant) uniform PushConstants {
 } pc;
 layout( location = 0 ) out vec4 oColor;       // 正常场景颜色
 layout( location = 1 ) out vec4 oBrightColor; // 提取的亮度颜
+layout( location = 2 ) out vec4 oNormal;
 
 layout( location = 0 ) in vec2 v2fTexCoord;
 layout( location = 1 ) in vec3 v2fNormal;
 layout( location = 2 ) in vec3 v2fPos;
+
 layout( location = 3 ) in vec4 v2fLightProjPos;
 
 layout( set = 1, binding = 0 ) uniform sampler2D uTexColor;
@@ -328,4 +330,5 @@ void main()
     mappedColor *= finalAlpha; // PREMULTIPLY
 
     oColor = vec4(mappedColor, finalAlpha);
+    oNormal = vec4(N, roughness);
 }

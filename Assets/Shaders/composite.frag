@@ -1,46 +1,32 @@
 #version 450
 
 layout(location = 0) in vec2 v2fTexCoord;
-
-layout(set = 0, binding = 0) uniform sampler2D uSceneTexture; // Original scene color
-layout(set = 0, binding = 1) uniform sampler2D uBloomBlur;    // Blurred bloom color
-
-layout(set = 0, binding = 2) uniform UMosaic {
-    int mosaicOn;
-    float mosaicSize;
-} uMosaic;
-
 layout(location = 0) out vec4 oColor;
 
-// Dynamic Bloom Params
-layout(push_constant) uniform BloomParams {
+layout(set = 0, binding = 0) uniform sampler2D uSceneColor;
+layout(set = 0, binding = 1) uniform sampler2D uBloomColor;
+// binding 2 是 Mosaic UBO，不影响我们
+layout(set = 0, binding = 3) uniform sampler2D uSsrColor; // 【新增】：获取 SSR 结果
+
+layout(push_constant) uniform PushConstants {
     float exposure;
     float bloomStrength;
-} params;
+} pc;
 
 void main() {
-    const float gamma = 2.2;
-    vec2 uv = v2fTexCoord;
-    if (uMosaic.mosaicOn == 1) {
-        ivec2 coord = ivec2(gl_FragCoord.xy);
-        coord.x -= coord.x % 5;
-        coord.y -= coord.y % 3;
-        vec2 texSize = vec2(textureSize(uSceneTexture, 0));
-        uv = vec2(coord) / texSize;
-    }
-    vec3 sceneColor = texture(uSceneTexture, uv).rgb;      
-    vec3 bloomColor = texture(uBloomBlur, uv).rgb;
+    vec3 sceneColor = texture(uSceneColor, v2fTexCoord).rgb;
+    vec3 bloomColor = texture(uBloomColor, v2fTexCoord).rgb;
+    vec4 ssrData    = texture(uSsrColor, v2fTexCoord);
+    
+    // 【魔法时刻】：将 SSR 的反射颜色按照它的 Alpha(遮罩强度) 叠加到画面上！
+    // 这样，只有算出了有效反射的金属区域才会被覆盖，其他地方不受影响。
+    sceneColor += ssrData.rgb * ssrData.a; 
 
-    // 1. 加法叠加 Bloom
-    vec3 hdrColor = sceneColor + bloomColor * params.bloomStrength; 
+    // 添加 Bloom
+    sceneColor += bloomColor * pc.bloomStrength;
 
-    // 2. Reinhard 色调映射 (非常适合让高光变得柔和通透，解决死白)
-    // 它能把无限大的亮度值平滑地压缩到 0.0 ~ 1.0 之间
-    vec3 mapped = hdrColor / (hdrColor + vec3(1.0));
+    // 曝光与色调映射 (ACES等，视你原有的代码而定)
+    vec3 mapped = vec3(1.0) - exp(-sceneColor * pc.exposure);
 
-    // 3. Gamma 校正 (还原正确的显示器对比度)
-    //mapped = pow(mapped, vec3(1.0 / gamma));
-
-    // 最终输出
     oColor = vec4(mapped, 1.0);
 }

@@ -273,7 +273,7 @@ lut::Pipeline create_triangle_pipeline( lut::VulkanWindow const& aWindow, VkPipe
 
 	VkPipelineRenderingCreateInfo renderingInfo{};
 	renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-	renderingInfo.colorAttachmentCount = 2;      // 必须是 2
+	renderingInfo.colorAttachmentCount = 3;      // 必须是 2
 	renderingInfo.pColorAttachmentFormats = colorFormats; // 指向数组首地址
 	renderingInfo.depthAttachmentFormat = cfg::kDepthFormat;
 	// Define depth stencil state
@@ -618,9 +618,7 @@ lut::DescriptorSetLayout create_post_proc_descriptor_layout( lut::VulkanWindow c
 }
 lut::DescriptorSetLayout create_composite_descriptor_layout(lut::VulkanWindow const& aWindow)
 {
-	VkDescriptorSetLayoutBinding bindings[3]{};
-
-	// Binding 0: 原始场景纹理 (Main Scene Color)
+	VkDescriptorSetLayoutBinding bindings[4]{}; // 3-4 for ssr
 	bindings[0].binding = 0;
 	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	bindings[0].descriptorCount = 1;
@@ -638,10 +636,16 @@ lut::DescriptorSetLayout create_composite_descriptor_layout(lut::VulkanWindow co
 	bindings[2].descriptorCount = 1;
 	bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-	VkDescriptorSetLayoutCreateInfo layoutInfo{};
-	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	layoutInfo.bindingCount = 3;
+	// 【新增】Binding 3: SSR Color
+	bindings[3].binding = 3;
+	bindings[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[3].descriptorCount = 1;
+	bindings[3].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	VkDescriptorSetLayoutCreateInfo layoutInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+	layoutInfo.bindingCount = 4; 
 	layoutInfo.pBindings = bindings;
+
 
 	VkDescriptorSetLayout layout = VK_NULL_HANDLE;
 	if (auto const res = vkCreateDescriptorSetLayout(aWindow.device, &layoutInfo, nullptr, &layout); VK_SUCCESS != res)
@@ -783,6 +787,57 @@ lut::ImageWithView create_offscreen_buffer( lut::VulkanWindow const& aWindow, lu
 
 	return lut::ImageWithView( aAllocator.allocator, image, allocation, view );
 }
+
+lut::ImageWithView create_normal_buffer(lut::VulkanWindow const& aWindow, lut::Allocator const& aAllocator)
+{
+	// 创建图像
+	VkImageCreateInfo imageInfo{};
+	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imageInfo.imageType = VK_IMAGE_TYPE_2D;
+	// 使用 16 位浮点数：XYZ 存法线，A 存粗糙度
+	imageInfo.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	imageInfo.extent = { aWindow.swapchainExtent.width, aWindow.swapchainExtent.height, 1 };
+	imageInfo.mipLevels = 1;
+	imageInfo.arrayLayers = 1;
+	imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+	imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+	imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+	imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+	VmaAllocationCreateInfo allocInfo{};
+	allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+	VkImage image = VK_NULL_HANDLE;
+	VmaAllocation allocation = VK_NULL_HANDLE;
+	if (auto const res = vmaCreateImage(aAllocator.allocator, &imageInfo, &allocInfo, &image, &allocation, nullptr); VK_SUCCESS != res) {
+		throw lut::Error("Unable to allocate normal buffer image\n"
+			"vmaCreateImage() returned {}", lut::to_string(res));
+	}
+
+	// 创建 ImageView
+	VkImageViewCreateInfo viewInfo{};
+	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	viewInfo.image = image;
+	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	viewInfo.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	viewInfo.subresourceRange.baseMipLevel = 0;
+	viewInfo.subresourceRange.levelCount = 1;
+	viewInfo.subresourceRange.baseArrayLayer = 0;
+	viewInfo.subresourceRange.layerCount = 1;
+
+	VkImageView view = VK_NULL_HANDLE;
+	if (auto const res = vkCreateImageView(aWindow.device, &viewInfo, nullptr, &view); VK_SUCCESS != res) {
+		throw lut::Error("Unable to create normal buffer image view\n"
+			"vkCreateImageView() returned {}", lut::to_string(res));
+	}
+
+	return lut::ImageWithView(aAllocator.allocator, image, allocation, view);
+
+}
+
+
 
 // creates a generic pipeline for debug visualization
 // the vertex shader is typically the same (debug.vert)
@@ -2990,8 +3045,194 @@ lut::Pipeline create_skybox_pipeline(lut::VulkanWindow const& aWindow, VkPipelin
 
 	return lut::Pipeline(aWindow.device, pipe);
 }
+// ==============================================================================
+//ssr管线布局
+// ==============================================================================
+lut::DescriptorSetLayout create_ssr_descriptor_layout(lut::VulkanWindow const& aWindow)
+{
+	VkDescriptorSetLayoutBinding bindings[4]{};
 
+	// Binding 0: Scene Color (场景颜色缓冲)
+	bindings[0].binding = 0;
+	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[0].descriptorCount = 1;
+	bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
+	// Binding 1: Depth Buffer (深度缓冲)
+	bindings[1].binding = 1;
+	bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[1].descriptorCount = 1;
+	bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	// Binding 2: Normal Buffer (法线缓冲)
+	bindings[2].binding = 2;
+	bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[2].descriptorCount = 1;
+	bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	// Binding 3: UBO (摄像机矩阵数据)
+	bindings[3].binding = 3;
+	bindings[3].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	bindings[3].descriptorCount = 1;
+	bindings[3].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	VkDescriptorSetLayoutCreateInfo layoutInfo{};
+	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	layoutInfo.bindingCount = 4;
+	layoutInfo.pBindings = bindings;
+
+	VkDescriptorSetLayout layout = VK_NULL_HANDLE;
+	if (auto const res = vkCreateDescriptorSetLayout(aWindow.device, &layoutInfo, nullptr, &layout); VK_SUCCESS != res) {
+		throw lut::Error("Unable to create SSR descriptor set layout\n"
+			"vkCreateDescriptorSetLayout() returned {}", lut::to_string(res));
+	}
+
+	return lut::DescriptorSetLayout(aWindow.device, layout);
+}
+lut::PipelineLayout create_ssr_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aDescriptorLayout)
+{
+	// SSR 射线步长、最大步数、厚度阈值等，共 4 个 float = 16 bytes
+	VkPushConstantRange pcRange{};
+	pcRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	pcRange.offset = 0;
+	pcRange.size = sizeof(float) * 4;
+
+	VkPipelineLayoutCreateInfo layoutInfo{};
+	layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	layoutInfo.setLayoutCount = 1;
+	layoutInfo.pSetLayouts = &aDescriptorLayout;
+	layoutInfo.pushConstantRangeCount = 1;
+	layoutInfo.pPushConstantRanges = &pcRange;
+
+	VkPipelineLayout layout = VK_NULL_HANDLE;
+	if (auto const res = vkCreatePipelineLayout(aContext.device, &layoutInfo, nullptr, &layout); VK_SUCCESS != res) {
+		throw lut::Error("Unable to create SSR pipeline layout\n"
+			"vkCreatePipelineLayout() returned {}", lut::to_string(res));
+	}
+
+	return lut::PipelineLayout(aContext.device, layout);
+}
+lut::Pipeline create_ssr_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout)
+{
+	// 复用全屏顶点着色器，加载 SSR 片段着色器
+	auto const vertSpirV = lut::load_file_u32(cfg::kFullscreenVertShaderPath);
+	auto const fragSpirV = lut::load_file_u32(cfg::kSsrFragShaderPath); // 注意：确保在 setup.hpp 的 cfg 命名空间中定义了该路径
+
+	VkShaderModuleCreateInfo code[2]{};
+	code[0].sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	code[0].codeSize = vertSpirV.size() * sizeof(std::uint32_t);
+	code[0].pCode = vertSpirV.data();
+
+	code[1].sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	code[1].codeSize = fragSpirV.size() * sizeof(std::uint32_t);
+	code[1].pCode = fragSpirV.data();
+
+	VkPipelineShaderStageCreateInfo stages[2]{};
+	stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+	stages[0].pName = "main";
+	stages[0].pNext = &code[0];
+
+	stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	stages[1].pName = "main";
+	stages[1].pNext = &code[1];
+
+	// 没有顶点输入，在顶点着色器中通过 gl_VertexIndex 硬编码生成全屏三角形
+	VkPipelineVertexInputStateCreateInfo inputInfo{};
+	inputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+	VkPipelineInputAssemblyStateCreateInfo assemblyInfo{};
+	assemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	assemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	assemblyInfo.primitiveRestartEnable = VK_FALSE;
+
+	VkViewport viewport{};
+	VkRect2D scissor{};
+
+	VkPipelineViewportStateCreateInfo viewportInfo{};
+	viewportInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportInfo.viewportCount = 1;
+	viewportInfo.pViewports = &viewport;
+	viewportInfo.scissorCount = 1;
+	viewportInfo.pScissors = &scissor;
+
+	VkPipelineRasterizationStateCreateInfo rasterInfo{};
+	rasterInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterInfo.depthClampEnable = VK_FALSE;
+	rasterInfo.rasterizerDiscardEnable = VK_FALSE;
+	rasterInfo.polygonMode = VK_POLYGON_MODE_FILL;
+	rasterInfo.cullMode = VK_CULL_MODE_NONE; // 全屏矩形不需要背面剔除
+	rasterInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	rasterInfo.depthBiasEnable = VK_FALSE;
+	rasterInfo.lineWidth = 1.f;
+
+	VkPipelineMultisampleStateCreateInfo samplingInfo{};
+	samplingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	samplingInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+	VkPipelineColorBlendAttachmentState blendStates[1]{};
+	blendStates[0].blendEnable = VK_FALSE; // SSR 缓冲直接覆盖，不需要混合
+	blendStates[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
+	VkPipelineColorBlendStateCreateInfo blendInfo{};
+	blendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	blendInfo.logicOpEnable = VK_FALSE;
+	blendInfo.attachmentCount = 1;
+	blendInfo.pAttachments = blendStates;
+
+	// 后期处理不需要深度测试
+	VkPipelineDepthStencilStateCreateInfo depthInfo{};
+	depthInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthInfo.depthTestEnable = VK_FALSE;
+	depthInfo.depthWriteEnable = VK_FALSE;
+	depthInfo.depthCompareOp = VK_COMPARE_OP_ALWAYS;
+	depthInfo.minDepthBounds = 0.f;
+	depthInfo.maxDepthBounds = 1.f;
+
+	VkDynamicState dynamicStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+
+	VkPipelineDynamicStateCreateInfo dynamicInfo{};
+	dynamicInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dynamicInfo.dynamicStateCount = 2;
+	dynamicInfo.pDynamicStates = dynamicStates;
+
+	// 【关键不同点】：SSR 需要输出到 HDR 离屏缓冲 (G-Buffer 格式)
+	VkFormat ssrOutputFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+
+	VkPipelineRenderingCreateInfo renderingInfo{};
+	renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+	renderingInfo.colorAttachmentCount = 1;
+	renderingInfo.pColorAttachmentFormats = &ssrOutputFormat;
+
+	VkGraphicsPipelineCreateInfo pipeInfo{};
+	pipeInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipeInfo.pNext = &renderingInfo;
+	pipeInfo.stageCount = 2;
+	pipeInfo.pStages = stages;
+	pipeInfo.pVertexInputState = &inputInfo;
+	pipeInfo.pInputAssemblyState = &assemblyInfo;
+	pipeInfo.pTessellationState = nullptr;
+	pipeInfo.pViewportState = &viewportInfo;
+	pipeInfo.pRasterizationState = &rasterInfo;
+	pipeInfo.pMultisampleState = &samplingInfo;
+	pipeInfo.pDepthStencilState = &depthInfo;
+	pipeInfo.pColorBlendState = &blendInfo;
+	pipeInfo.pDynamicState = &dynamicInfo;
+	pipeInfo.layout = aPipelineLayout;
+	pipeInfo.renderPass = VK_NULL_HANDLE;
+	pipeInfo.subpass = 0;
+
+	VkPipeline pipe = VK_NULL_HANDLE;
+	if (auto const res = vkCreateGraphicsPipelines(aWindow.device, VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &pipe); VK_SUCCESS != res)
+	{
+		throw lut::Error("Unable to create SSR pipeline\n"
+			"vkCreateGraphicsPipelines() returned {}", lut::to_string(res)
+		);
+	}
+
+	return lut::Pipeline(aWindow.device, pipe);
+}
 // =============================================================================
 // Bone-matrices SSBO descriptor layout  (set = 2, binding = 0)
 // =============================================================================
