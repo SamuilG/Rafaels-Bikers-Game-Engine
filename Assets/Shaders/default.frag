@@ -271,8 +271,8 @@ void main()
 
         totalLo += (kD * disneyDiffuse + Lspecular) * Li * NdotL;
     }
-// =================================================================
-    // 5. 环境光与最终颜色合成 (物理 IBL 采样 + 熔断保护)
+// ===== 在环境光部分（第 5 部分）修改如下 =====
+    // 5. 环境光与最终颜色合成 (物理 IBL 采样 + 熔断保护 + 金属度阈值)
     // =================================================================
     vec3 F0_env = mix(vec3(0.04), baseColor, metalness);
     
@@ -287,22 +287,29 @@ void main()
     vec3 LambientDiffuse = ambientIrradiance * baseColor * kD_env;
 
     // b. IBL 镜面环境反射 (倒影)
-    vec3 R = reflect(-V, N);
-    float lod = roughness * 8.0; 
+    // 【关键修复】：只有当金属度充分高时，才计算环境镜面反射
+    // 对于非金属材质（metalness < 0.05），完全禁用 IBL 镜面
+    float metallicThreshold = 0.05;  // 金属度阈值
+    vec3 LambientSpecular = vec3(0.0);
     
-    // 采样真实的天空盒
-    vec3 iblSpecularColor = textureLod(uSkyboxTexture, R, lod).rgb;
+    if (metalness > metallicThreshold) {
+        vec3 R = reflect(-V, N);
+        float lod = roughness * 8.0; 
+        
+        // 采样真实的天空盒
+        vec3 iblSpecularColor = textureLod(uSkyboxTexture, R, lod).rgb;
 
-    // 【熔断保护】：如果采出来的天空盒颜色太暗（比如未绑定），
-    // 自动切换到伪 IBL 计算，防止死黑！
-    if (dot(iblSpecularColor, iblSpecularColor) < 0.0001) {
-        // 伪 IBL 渐变
-        iblSpecularColor = mix(groundColorEnv * 2.0, skyColorEnv * 6.5, R.y * 0.5 + 0.5);
-        iblSpecularColor *= (1.0 - roughness * 0.5);
+        // 【熔断保护】：如果采出来的天空盒颜色太暗（比如未绑定），
+        // 自动切换到伪 IBL 计算，防止死黑！
+        if (dot(iblSpecularColor, iblSpecularColor) < 0.0001) {
+            // 伪 IBL 渐变
+            iblSpecularColor = mix(groundColorEnv * 2.0, skyColorEnv * 6.5, R.y * 0.5 + 0.5);
+            iblSpecularColor *= (1.0 - roughness * 0.5);
+        }
+
+        // 叠加环境高光
+        LambientSpecular = iblSpecularColor * kS_env;
     }
-
-    // 叠加环境高光
-    vec3 LambientSpecular = iblSpecularColor * kS_env;
 
     // c. 合并并应用 AO 遮蔽
     vec3 Lambient = (LambientDiffuse + LambientSpecular) * ao;
