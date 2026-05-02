@@ -627,6 +627,7 @@ namespace
 		}
 
 		VkPhysicalDeviceFeatures deviceFeatures{};
+		deviceFeatures.independentBlend = VK_TRUE; // 开启独立混合特性
 		// No extra Vulkan 1.0 features for now.
 
 		VkPhysicalDeviceVulkan13Features vk13{};

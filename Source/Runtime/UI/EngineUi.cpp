@@ -1273,6 +1273,21 @@ namespace engine {
 			ImGui::Checkbox(_SL("Particle System"), &state.particlesEnabled);
 			ImGui::Checkbox(_SL("Enable Mosaic Post-Process"), &state.mosaicEnabled);
 
+			// --------------------------
+			// Post-Processing controls
+			// --------------------------
+			if (ImGui::CollapsingHeader(_SL("Post-Processing"), ImGuiTreeNodeFlags_DefaultOpen))
+			{
+				ImGui::Checkbox(_SL("Enable Bloom"), &state.bloomEnabled);
+				ImGui::Spacing();
+				ImGui::SliderFloat(_SL("Exposure"), &state.bloomExposure, 0.1f, 5.0f, "%.2f");
+				ImGui::SliderFloat(_SL("Bloom Strength"), &state.bloomStrength, 0.0f, 5.0f, "%.2f");
+				ImGui::SliderFloat(_SL("Bloom Threshold (preview)"), &state.bloomThreshold, 0.0f, 10.0f, "%.2f");
+				ImGui::SliderInt(_SL("Blur Kernel Radius (hint)"), &state.bloomKernelRadius, 1, 15);
+				ImGui::Checkbox(_SL("Use ACES ToneMap"), &state.bloomUseACES);
+				ImGui::TextDisabled("Exposure & Strength are applied immediately. Threshold/Radius are reserved for shader tuning.");
+			}
+
 			ImGui::Separator();
 
 			//UI system for bike===============================
@@ -1280,10 +1295,10 @@ namespace engine {
 			ImGui::Text(_SL("Speed: %.2f"), state.bikeSpeed);
 			ImGui::Text(_SL("Steer Angle: %.1f deg"), glm::degrees(state.bikeSteerAngle));
 
-			//reset button 重置按钮
-			if (ImGui::Button(_SL("Reset Bike Tuning"))) {
-				state.bikeTuning = BikeTuning{};
-			}
+			////reset button 重置按钮
+			//if (ImGui::Button(_SL("Reset Bike Tuning"))) {
+			//	state.bikeTuning = BikeTuning{};
+			//}
 
 			// sliders 滑动条
 			ImGui::SliderFloat(_SL("Max Steer Angle (deg)"), &state.bikeTuning.maxSteerAngleDeg, 1.0f, 60.0f);

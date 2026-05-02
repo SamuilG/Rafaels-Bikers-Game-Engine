@@ -239,372 +239,62 @@ namespace engine {
         }
         //==========UI System（particle）======================
 
-
         void Init() override
         {
-
-            
-
-
-            // Create Vulkan Window
+            // ==========================================
+            // 1. 核心设备与内存池初始化
+            // ==========================================
             mWindow = lut::make_vulkan_window();
-
-            // Initialize state
             glfwSetWindowUserPointer(mWindow.window, mState);
-            // Key and mouse callbacks handled entirely by the centralised engine::InputSystem
+            mState->camera2world = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 2.0f, 10.0f));
 
-            // Create VMA allocator
             mAllocator = lut::create_allocator(mWindow);
+            mCmdPool = lut::create_command_pool(mWindow, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+            mDescPool = lut::create_descriptor_pool(mWindow);
+            mParticleDescPool = lut::create_descriptor_pool(mWindow);
 
-            // Intialize resources
+            // ==========================================
+            // 2. 基础布局与管线布局初始化
+            // ==========================================
             mSceneLayout = create_scene_descriptor_layout(mWindow);
             mObjectLayout = create_object_descriptor_layout(mWindow);
             mPostLayout = create_post_proc_descriptor_layout(mWindow);
-
             mPipeLayout = create_triangle_pipeline_layout(mWindow, mSceneLayout.handle, mObjectLayout.handle);
             mPostPipeLayout = create_post_proc_pipeline_layout(mWindow, mPostLayout.handle);
 
-            mPipe = create_triangle_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
-
-            // Create multiple debug pipelines
-            mMipPipe = create_debug_pipeline(mWindow, mPipeLayout.handle, cfg::kDebugVertShaderPath, cfg::kDebugMipFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT);
-            mDepthPipe = create_debug_pipeline(mWindow, mPipeLayout.handle, cfg::kDebugVertShaderPath, cfg::kDebugDepthFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT);
-            mDerivPipe = create_debug_pipeline(mWindow, mPipeLayout.handle, cfg::kDebugVertShaderPath, cfg::kDebugDerivFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT);
-
-            // overdraw/overshading pipelines
-            // pipelines for part 2 task 1
-            mOverdrawPipe = create_overdraw_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
-            mOvershadingPipe = create_overshading_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
-            // resolve pass
-            mVisResolvePipe = create_vis_resolve_pipeline(mWindow, mPostPipeLayout.handle, mPostLayout.handle);
-
-            //particle pipeline
-            mParticlePipe = create_particle_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
-
-            mCmdPool = lut::create_command_pool(mWindow,
-                VK_COMMAND_POOL_CREATE_TRANSIENT_BIT |
-                VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-
-            for (std::size_t i = 0; i < mWindow.swapImages.size(); ++i) {
-                mCmdBuffers.emplace_back(lut::alloc_command_buffer(mWindow, mCmdPool.handle));
-                mFrameDone.emplace_back(lut::create_fence(mWindow.device, VK_FENCE_CREATE_SIGNALED_BIT));
-                mImageAvailable.emplace_back(lut::create_semaphore(mWindow.device));
-                mRenderFinished.emplace_back(lut::create_semaphore(mWindow.device));
-            }
-           
-
-
-            
-            // set up initial textures and descriptor pools
-            // load actual models via load_additional_model
-            
-            // Set initial camera position
-            // Move camera back (z+) and up (y+) to see the scene
-            mState->camera2world = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 2.0f, 10.0f));
-
-            {
-                // just for objects without texture to set a default texture
-                // RGBA: 128, 128, 128, 255 (grey)
-                //std::uint8_t grey[4] = { 128, 128, 128, 255 };
-				//need it be white for pure color models, otherwise the default grey will darken the colors in the shader (multiplying by 128/255)
-                std::uint8_t grey[4] = { 255, 255, 255, 255 };
-                // uploda 1x1 pixel to GPU
-                mDefaultGrayTex = lut::load_image_texture2d_from_memory(
-                    grey, 1, 1,
-                    mWindow, mCmdPool.handle, mAllocator,
-                    VK_FORMAT_R8G8B8A8_UNORM);
-
-                // create grey imageview
-                mDefaultGrayView = lut::create_image_view_texture2d(
-                    mWindow, mDefaultGrayTex.image, VK_FORMAT_R8G8B8A8_UNORM);
-
-                std::uint8_t black[4] = { 0, 0, 0, 255 };
-                mDefaultBlackTex = lut::load_image_texture2d_from_memory(
-                    black, 1, 1,
-                    mWindow, mCmdPool.handle, mAllocator,
-                    VK_FORMAT_R8G8B8A8_UNORM);
-                mDefaultBlackView = lut::create_image_view_texture2d(
-                    mWindow, mDefaultBlackTex.image, VK_FORMAT_R8G8B8A8_UNORM);
-
-
-                // 2. 【新增】标准的蓝色法线图 (朝向 Z 轴)
-                std::uint8_t normalBlue[4] = { 128, 128, 255, 255 };
-                mDefaultNormalTex = lut::load_image_texture2d_from_memory(
-                    normalBlue, 1, 1, mWindow, mCmdPool.handle, mAllocator, VK_FORMAT_R8G8B8A8_UNORM);
-                mDefaultNormalView = lut::create_image_view_texture2d(
-                    mWindow, mDefaultNormalTex.image, VK_FORMAT_R8G8B8A8_UNORM);
-            }
-
-
-
-
-
-            // sampler
+            // ==========================================
+            // 3. 采样器初始化 (必须在绑定描述符之前！)
+            // ==========================================
             mDefaultSampler = lut::create_default_sampler(mWindow);
             mDebugSampler = create_debug_sampler(mWindow);
-            mDescPool = lut::create_descriptor_pool(mWindow);
-            mParticleDescPool = lut::create_descriptor_pool(mWindow);
-            // allocate an initial empty descriptor array so adding runtime models works
-            // BuildMaterialDescriptors(mDefaultSampler.handle, mMaterialDescriptors);
-            // BuildMaterialDescriptors(mDebugSampler.handle, mDebugMaterialDescriptors);
-
-            // UploadMeshes() will be driven by load_additional_model
-
-			// Debug Renderer============================
-            mDebugRenderer.Init(mAllocator);
-            
-            mDebugLinePipe = create_debug_line_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
-           
-
-            //================particle system===================================================
-            // 粒子系统
-           
-
-            //particle textures
-            for (const auto& path : cfg::ParticleTextures) {
-
-                // BAD: load_image_texture2d() may set stbi flip flag as a side effect.
-                // TinyGLTF shares the same stb_image instance (STB_IMAGE_IMPLEMENTATION
-                // is defined in engine_model.cpp), so any leftover flip state will corrupt
-                // subsequent GLB texture decoding.
-
-                // FIX: Always load particle textures AFTER all load_additional_model() calls,
-                // or explicitly reset the flag with stbi_set_flip_vertically_on_load(0)
-                // before and after loading particle textures from disk.
-                stbi_set_flip_vertically_on_load(0);
-
-                //load Image
-                
-                lut::Image img = lut::load_image_texture2d(path, mWindow, mCmdPool.handle, mAllocator, VK_FORMAT_R8G8B8A8_UNORM);
-
-                stbi_set_flip_vertically_on_load(0);
-                //View
-                lut::ImageView view = lut::create_image_view_texture2d(mWindow, img.image, VK_FORMAT_R8G8B8A8_UNORM);
-
-                //Descriptor Set
-                VkDescriptorSet descSet = lut::alloc_desc_set(mWindow, mParticleDescPool.handle, mObjectLayout.handle);
-
-                VkDescriptorImageInfo mainImgInfo{};
-                mainImgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                mainImgInfo.imageView = view.handle;
-                mainImgInfo.sampler = mDefaultSampler.handle;
-
-                VkDescriptorImageInfo dummyImgInfo{};
-                dummyImgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                dummyImgInfo.imageView = mDefaultGrayView.handle;
-                dummyImgInfo.sampler = mDefaultSampler.handle;
-
-                VkWriteDescriptorSet writes[3]{};
-                writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; writes[0].dstSet = descSet; writes[0].dstBinding = 0;
-                writes[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; writes[0].descriptorCount = 1; writes[0].pImageInfo = &mainImgInfo;
-
-                writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; writes[1].dstSet = descSet; writes[1].dstBinding = 1;
-                writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; writes[1].descriptorCount = 1; writes[1].pImageInfo = &dummyImgInfo;
-
-                writes[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; writes[2].dstSet = descSet; writes[2].dstBinding = 2;
-                writes[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; writes[2].descriptorCount = 1; writes[2].pImageInfo = &dummyImgInfo;
-
-                vkUpdateDescriptorSets(mWindow.device, 3, writes, 0, nullptr);
-
-                particleTextureDict[path] = descSet;
-
-                particleImages.push_back(std::move(img));
-                particleImageViews.push_back(std::move(view));
-            }
-            //================particle system===================================================
-
-
-
-
-             //================particle system===================================================
-            //emitter pos;
-            glm::vec3 emitterPos1(2, 0.5, 2);
-            glm::vec3 emitterPos2(3, 0.5, 2);
-            glm::vec3 emitterPos3(4, 0.5, 2);
-            glm::vec3 emitterPos4(2, 0.8, 2);
-
-            // 創建第 1 組：火焰
-            {
-                auto fire = std::make_unique<ParticleSystem>();
-                //發射器形狀
-                fire->setEmitterShape(EmitterShape::Cone);
-                fire->config.coneSpread = 0.1f;// 控制锥形的开口大小
-                //debug
-                fire->config.particleDebug = false; // 开启粒子调试输出
-                //貼圖設定
-                fire->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // 綁定貼圖
-                fire->config.useTexture = 1;
-                fire->config.atlasCols = 4;   // 贴图切成 4 列
-                fire->config.atlasRows = 4;   // 贴图切成 4 行
-                fire->config.animateAtlas = true;
-                //顔色
-                fire->config.startColor = glm::vec4(255.0f, 125.8f, 0.3f, .05f);
-                fire->config.endColor = glm::vec4(0.05f, 0.05f, 0.05f, 0.1f);
-                //旋轉
-                fire->config.rotationMin = -360.0f;
-                fire->config.rotationMax = 360.0f;
-                //重力
-                fire->config.gravity = glm::vec3(0.0f, 0.01f, 0.0f);
-                //持续时间
-                fire->config.lifeMin = 1.f;  // 最短存活时间
-                fire->config.lifeMax = 3.0f;  // 最长存活时间
-                //粒子尺寸
-                fire->config.sizeMin = 50.0f;
-                fire->config.sizeMax = 130.0f;
-                //粒子尺寸缩放：出生时和死亡时的放大倍数
-                fire->config.startSizeScale = 3.0f;
-                fire->config.endSizeScale = 0.f;
-                //初始速度
-                fire->config.speedMin = 0.1f; // 最小初速度
-                fire->config.speedMax = 0.5f; // 最大初速度
-                //位置
-                fire->config.emitterPos = emitterPos1;;
-                fire->init(mAllocator, 300, emitterPos1);
-                allParticles.push_back(std::move(fire)); 
-            }
-            //創建第 2組：灰煙
-            {
-                auto smoke = std::make_unique<ParticleSystem>();
-                //發射器形狀
-                smoke->setEmitterShape(EmitterShape::Cone);
-                smoke->config.coneSpread = 0.1f;// 控制锥形的开口大小
-                //debug
-                smoke->config.particleDebug = false; // 开启粒子调试输出
-                //貼圖設定
-                smoke->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // 綁定貼圖
-                smoke->config.useTexture = 1;
-                smoke->config.atlasCols = 4;   // 贴图切成 4 列
-                smoke->config.atlasRows = 4;   // 贴图切成 4 行
-                smoke->config.animateAtlas = true;
-                //顔色
-                smoke->config.startColor = glm::vec4(.5f, .5f, .5f, .01f);
-                smoke->config.endColor = glm::vec4(0.05f, 0.05f, 0.05f, .08f);
-                //旋轉
-                smoke->config.rotationMin = -2.0f;
-                smoke->config.rotationMax = 2.0f;
-                //重力
-                smoke->config.gravity = glm::vec3(0.0f, 0.01f, 0.0f);
-                //持续时间
-                smoke->config.lifeMin = 1.f;  // 最短存活时间
-                smoke->config.lifeMax = 3.0f;  // 最长存活时间
-                //粒子尺寸（像素
-                smoke->config.sizeMin = 80.0f;
-                smoke->config.sizeMax = 200.0f;
-                //粒子尺寸缩放：出生时和死亡时的放大倍数
-                smoke->config.startSizeScale = 3.0f;
-                smoke->config.endSizeScale = 0.f;
-                //初始速度
-                smoke->config.speedMin = 0.1f; // 最小初速度
-                smoke->config.speedMax = 0.5f; // 最大初速度
-                //位置
-                smoke->config.emitterPos = emitterPos4;;
-                smoke->init(mAllocator, 800, emitterPos4);
-                allParticles.push_back(std::move(smoke));
-            }
-
-            // 創建第 3組：火花
-            {
-				auto magic = std::make_unique<ParticleSystem>();
-                magic->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[1]];// 綁定貼圖
-                magic->config.useTexture = 1;
-                magic->config.sizeMin = 500.0f;
-                magic->config.sizeMax = 500.0f;
-                magic->config.emitterPos = emitterPos2;
-                magic->init(mAllocator, 1, emitterPos2);
-                allParticles.push_back(std::move(magic));
-            }
-
-            // 創建第 4組：火焰黑
-            {
-				auto c = std::make_unique<ParticleSystem>();
-                c->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // TODO:綁定星星貼圖 这里是错的
-                c->config.emitterPos = emitterPos3;
-                c->init(mAllocator, 1000, emitterPos3);
-                allParticles.push_back(std::move(c));
-            }
-
-            // 創建第 五 組：爆炸火焰
-            {
-                auto boom = std::make_unique<ParticleSystem>();
-                //發射器形狀
-                boom->setEmitterShape(EmitterShape::Sphere);
-                boom->config.sphereRadius = 0.3f;// 控制锥形的开口大小
-                //debug
-                boom->config.particleDebug = false; // 开启粒子调试输出
-                //貼圖設定
-                boom->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // 綁定貼圖
-                boom->config.useTexture = 1;
-                boom->config.atlasCols = 4;   // 贴图切成 4 列
-                boom->config.atlasRows = 4;   // 贴图切成 4 行
-                boom->config.animateAtlas = true;
-                //顔色
-                boom->config.startColor = glm::vec4(255.0f, 125.8f, 0.3f, .05f);
-                boom->config.endColor = glm::vec4(0.05f, 0.05f, 0.05f, 0.1f);
-                //旋轉
-                boom->config.rotationMin = -360.0f;
-                boom->config.rotationMax = 360.0f;
-                //重力
-                boom->config.gravity = glm::vec3(0.0f, 0.01f, 0.0f);
-                //持续时间
-                boom->config.lifeMin = 1.f;  // 最短存活时间
-                boom->config.lifeMax = 3.0f;  // 最长存活时间
-                //粒子尺寸
-                boom->config.sizeMin = 50.0f;
-                boom->config.sizeMax = 130.0f;
-                //粒子尺寸缩放：出生时和死亡时的放大倍数
-                boom->config.startSizeScale = 3.0f;
-                boom->config.endSizeScale = 0.f;
-                //初始速度
-                boom->config.speedMin = 0.1f; // 最小初速度
-                boom->config.speedMax = 0.5f; // 最大初速度
-                //位置
-                boom->config.emitterPos = emitterPos1;;
-                boom->init(mAllocator, 600, emitterPos1);
-                allParticles.push_back(std::move(boom));
-            }
-            //================particle system===================================================
-
- 
-
-            mSceneUBO = lut::create_buffer(mAllocator,
-                sizeof(glsl::SceneUniform),
-                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                0,
-                VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
-
-            mSceneDescriptors = lut::alloc_desc_set(mWindow, mDescPool.handle, mSceneLayout.handle);
-            {
-                VkDescriptorBufferInfo bi{ mSceneUBO.buffer, 0, VK_WHOLE_SIZE };
-                VkWriteDescriptorSet w{};
-                w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                w.dstSet = mSceneDescriptors; w.dstBinding = 0;
-                w.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-                w.descriptorCount = 1; w.pBufferInfo = &bi;
-                vkUpdateDescriptorSets(mWindow.device, 1, &w, 0, nullptr);
-            }
-
-            mAlphaPipe = create_alpha_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
-            mThumbnailAlphaPipe = create_alpha_pipeline_1_attachment(mWindow, mPipeLayout.handle, VK_FORMAT_R8G8B8A8_UNORM);
-
-            // Skeletal animation pipeline resources
-            mBoneLayout = create_bone_descriptor_layout(mWindow);
-            mSkinnedPipeLayout = create_skinned_pipeline_layout(mWindow, mSceneLayout.handle, mObjectLayout.handle, mBoneLayout.handle);
-            mSkinnedPipe = create_skinned_pipeline(mWindow, mSkinnedPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
-            mSkinnedAlphaPipe = create_skinned_alpha_pipeline(mWindow, mSkinnedPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
-
-            // Host-visible bone matrix SSBO (kMaxBoneMatrices mat4s)
-            mBoneSSBO = lut::create_buffer(mAllocator,
-                kMaxBoneMatrices * sizeof(glm::mat4),
-                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-            // p2_1.5 Shadow Resources
-            mShadowMap = create_shadow_map(mWindow, mAllocator);
+            mPostSampler = create_post_proc_sampler(mWindow);
             mShadowSampler = create_shadow_sampler(mWindow);
 
-            // Create cascade views for shadow mapping
-            for (uint32_t i = 0; i < count; ++i) {
-                VkImageViewCreateInfo viewInfo{};
-                viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            // ==========================================
+            // 4. 默认占位贴图初始化
+            // ==========================================
+            {
+                std::uint8_t grey[4] = { 255, 255, 255, 255 };
+                mDefaultGrayTex = lut::load_image_texture2d_from_memory(grey, 1, 1, mWindow, mCmdPool.handle, mAllocator, VK_FORMAT_R8G8B8A8_UNORM);
+                mDefaultGrayView = lut::create_image_view_texture2d(mWindow, mDefaultGrayTex.image, VK_FORMAT_R8G8B8A8_UNORM);
+
+                std::uint8_t black[4] = { 0, 0, 0, 255 };
+                mDefaultBlackTex = lut::load_image_texture2d_from_memory(black, 1, 1, mWindow, mCmdPool.handle, mAllocator, VK_FORMAT_R8G8B8A8_UNORM);
+                mDefaultBlackView = lut::create_image_view_texture2d(mWindow, mDefaultBlackTex.image, VK_FORMAT_R8G8B8A8_UNORM);
+
+                std::uint8_t normalBlue[4] = { 128, 128, 255, 255 };
+                mDefaultNormalTex = lut::load_image_texture2d_from_memory(normalBlue, 1, 1, mWindow, mCmdPool.handle, mAllocator, VK_FORMAT_R8G8B8A8_UNORM);
+                mDefaultNormalView = lut::create_image_view_texture2d(mWindow, mDefaultNormalTex.image, VK_FORMAT_R8G8B8A8_UNORM);
+            }
+
+            // ==========================================
+            // 5. 核心渲染目标与天空盒初始化
+            // ==========================================
+            mSceneUBO = lut::create_buffer(mAllocator, sizeof(glsl::SceneUniform), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, 0, VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
+            mShadowMap = create_shadow_map(mWindow, mAllocator);
+
+            for (uint32_t i = 0; i < kCascadeCount; ++i) {
+                VkImageViewCreateInfo viewInfo{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
                 viewInfo.image = mShadowMap.image;
                 viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
                 viewInfo.format = cfg::kShadowMapFormat;
@@ -615,228 +305,180 @@ namespace engine {
                 viewInfo.subresourceRange.layerCount = 1;
 
                 VkImageView view = VK_NULL_HANDLE;
-                if (auto const res = vkCreateImageView(mWindow.device, &viewInfo, nullptr, &view); VK_SUCCESS != res) {
-                    throw lut::Error("Unable to create shadow map cascade view: {}", lut::to_string(res));
-                }
+                vkCreateImageView(mWindow.device, &viewInfo, nullptr, &view);
                 mShadowCascadeViews.emplace_back(view);
             }
 
-            mShadowPipe = create_shadow_pipeline(mWindow, mPipeLayout.handle);
+            // 【关键】：这里调用 InitSkybox，依赖了刚才创建的 mAllocator, mCmdPool 和 mDefaultSampler
+            InitSkybox();
 
-            mDepthBuffer = create_depth_buffer(mWindow, mAllocator);
+            // ==========================================
+            // 6. 主场景描述符集绑定 (UBO + Shadow + Skybox)
+            // ==========================================
+            mSceneDescriptors = lut::alloc_desc_set(mWindow, mDescPool.handle, mSceneLayout.handle);
+            {
+                VkDescriptorBufferInfo bi{ mSceneUBO.buffer, 0, VK_WHOLE_SIZE };
+                VkDescriptorImageInfo  si{ mShadowSampler.handle, mShadowMap.view, VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL };
+                VkDescriptorImageInfo  ki{ mDefaultSampler.handle, mSkyboxView.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+
+                VkWriteDescriptorSet w[3]{};
+                w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[0].dstSet = mSceneDescriptors; w[0].dstBinding = 0; w[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; w[0].descriptorCount = 1; w[0].pBufferInfo = &bi;
+                w[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[1].dstSet = mSceneDescriptors; w[1].dstBinding = 1; w[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; w[1].descriptorCount = 1; w[1].pImageInfo = &si;
+                w[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[2].dstSet = mSceneDescriptors; w[2].dstBinding = 2; w[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; w[2].descriptorCount = 1; w[2].pImageInfo = &ki;
+
+                vkUpdateDescriptorSets(mWindow.device, 3, w, 0, nullptr);
+            }
+
+            // ==========================================
+            // 7. 同步对象与管线初始化
+            // ==========================================
+            for (std::size_t i = 0; i < mWindow.swapImages.size(); ++i) {
+                mCmdBuffers.emplace_back(lut::alloc_command_buffer(mWindow, mCmdPool.handle));
+                mFrameDone.emplace_back(lut::create_fence(mWindow.device, VK_FENCE_CREATE_SIGNALED_BIT));
+                mImageAvailable.emplace_back(lut::create_semaphore(mWindow.device));
+                mRenderFinished.emplace_back(lut::create_semaphore(mWindow.device));
+            }
+
+            mPipe = create_triangle_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+            mAlphaPipe = create_alpha_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+            mThumbnailAlphaPipe = create_alpha_pipeline_1_attachment(mWindow, mPipeLayout.handle, VK_FORMAT_R8G8B8A8_UNORM);
+            mMipPipe = create_debug_pipeline(mWindow, mPipeLayout.handle, cfg::kDebugVertShaderPath, cfg::kDebugMipFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT);
+            mDepthPipe = create_debug_pipeline(mWindow, mPipeLayout.handle, cfg::kDebugVertShaderPath, cfg::kDebugDepthFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT);
+            mDerivPipe = create_debug_pipeline(mWindow, mPipeLayout.handle, cfg::kDebugVertShaderPath, cfg::kDebugDerivFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT);
+            mOverdrawPipe = create_overdraw_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+            mOvershadingPipe = create_overshading_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+            mShadowPipe = create_shadow_pipeline(mWindow, mPipeLayout.handle);
+            mParticlePipe = create_particle_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+            mDebugLinePipe = create_debug_line_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+
+            // Post Processing Pipelines
+            mVisResolvePipe = create_vis_resolve_pipeline(mWindow, mPostPipeLayout.handle, mPostLayout.handle);
             mPostProcPipe = create_post_proc_pipeline(mWindow, mPostPipeLayout.handle, mPostLayout.handle);
-            mOffscreenImage = create_offscreen_buffer(mWindow, mAllocator);
-            mVisImage = create_vis_image(mWindow, mAllocator); // p2_1.1
-            mPostSampler = create_post_proc_sampler(mWindow);
-            // Bone descriptor set (set=2, binding=0 → SSBO)
+
+            // ==========================================
+            // 8. 骨骼蒙皮与后处理缓冲区初始化
+            // ==========================================
+            mBoneLayout = create_bone_descriptor_layout(mWindow);
+            mSkinnedPipeLayout = create_skinned_pipeline_layout(mWindow, mSceneLayout.handle, mObjectLayout.handle, mBoneLayout.handle);
+            mSkinnedPipe = create_skinned_pipeline(mWindow, mSkinnedPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+            mSkinnedAlphaPipe = create_skinned_alpha_pipeline(mWindow, mSkinnedPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+
+            mBoneSSBO = lut::create_buffer(mAllocator, kMaxBoneMatrices * sizeof(glm::mat4), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
             {
                 mBoneDescriptorSet = lut::alloc_desc_set(mWindow, mDescPool.handle, mBoneLayout.handle);
                 VkDescriptorBufferInfo boneBI{ mBoneSSBO.buffer, 0, kMaxBoneMatrices * sizeof(glm::mat4) };
-                VkWriteDescriptorSet w{};
-                w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                w.dstSet = mBoneDescriptorSet;
-                w.dstBinding = 0;
-                w.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-                w.descriptorCount = 1;
-                w.pBufferInfo = &boneBI;
+                VkWriteDescriptorSet w{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, mBoneDescriptorSet, 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &boneBI, nullptr };
                 vkUpdateDescriptorSets(mWindow.device, 1, &w, 0, nullptr);
             }
 
-            // main scene descriptors need shadow map
-            // update scene descriptors
-            {
-                VkDescriptorBufferInfo bi{ mSceneUBO.buffer, 0, VK_WHOLE_SIZE };
-                VkDescriptorImageInfo  si{};
-                si.imageLayout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
-                si.imageView = mShadowMap.view;
-                si.sampler = mShadowSampler.handle;
-
-                VkWriteDescriptorSet w[2]{};
-                w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                w[0].dstSet = mSceneDescriptors; w[0].dstBinding = 0;
-                w[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-                w[0].descriptorCount = 1; w[0].pBufferInfo = &bi;
-
-                w[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                w[1].dstSet = mSceneDescriptors; w[1].dstBinding = 1; // shadow map binding
-                w[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-                w[1].descriptorCount = 1; w[1].pImageInfo = &si;
-
-                vkUpdateDescriptorSets(mWindow.device, 2, w, 0, nullptr);
-            }
-
-            // mosaic UBOs
-            for (std::size_t i = 0; i < mCmdBuffers.size(); ++i) {
-                mMosaicUBOs.emplace_back(lut::create_buffer(mAllocator,
-                    sizeof(glsl::MosaicUniform),
-                    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT));
-
-                mPostDescriptors.emplace_back(
-                    BuildPostDesc(mOffscreenImage.view, mMosaicUBOs.back().buffer));
-
-                // p2 1.1: vis descriptors
-                // reuse postProcLayout (2 bindings) but passthrough shader only uses binding 0
-                mVisDescriptors.emplace_back(
-                    BuildPostDesc(mVisImage.view, mMosaicUBOs[i].buffer));
-            }
-
-            //for (auto& [path, ds] : particleTextureDict)
-                //std::printf("ParticleTex [%s] descSet=%p\n", path.c_str(), (void*)ds);
-
-
-
-            // --- 1. 创建专用布局 ---
-            mBlurDescLayout = create_blur_descriptor_layout(mWindow);
-            mCompDescLayout = create_composite_descriptor_layout(mWindow);
-
-
-
-            mCompPipeLayout = create_composite_pipeline_layout(mWindow, mCompDescLayout.handle);
-            // --- 2. 创建图像资源 (HDR 格式) ---
+            mDepthBuffer = create_depth_buffer(mWindow, mAllocator);
+            mOffscreenImage = create_offscreen_buffer(mWindow, mAllocator);
+            mVisImage = create_vis_image(mWindow, mAllocator);
             mBrightImage = create_offscreen_buffer(mWindow, mAllocator);
             mBlurTempImage = create_offscreen_buffer(mWindow, mAllocator);
             mFinalBloomImage = create_offscreen_buffer(mWindow, mAllocator);
+            mCompositeOutputImage = create_offscreen_buffer(mWindow, mAllocator);
 
-            // --- 3. 创建管线布局与管线 ---
-
+            // 离屏特效布局与描述符
+            mBlurDescLayout = create_blur_descriptor_layout(mWindow);
+            mCompDescLayout = create_composite_descriptor_layout(mWindow);
             mBlurPipeLayout = create_blur_pipeline_layout(mWindow, mBlurDescLayout.handle);
+            mCompPipeLayout = create_composite_pipeline_layout(mWindow, mCompDescLayout.handle);
+            mSpeedPostPipeLayout = create_speed_post_pipeline_layout(mWindow, mBlurDescLayout.handle);
+
             mBlurPipe = create_blur_pipeline(mWindow, mBlurPipeLayout.handle);
             mCompositePipe = create_composite_pipeline(mWindow, mCompPipeLayout.handle);
-            // --- 4. 填充描述符集 ---
-            for (size_t i = 0; i < mCmdBuffers.size(); ++i) {
+            mSpeedPostPipe = create_speed_post_pipeline(mWindow, mSpeedPostPipeLayout.handle);
+
+            for (std::size_t i = 0; i < mCmdBuffers.size(); ++i) {
+                mMosaicUBOs.emplace_back(lut::create_buffer(mAllocator, sizeof(glsl::MosaicUniform), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT));
+                mPostDescriptors.push_back(BuildPostDesc(mOffscreenImage.view, mMosaicUBOs.back().buffer));
+                mVisDescriptors.push_back(BuildPostDesc(mVisImage.view, mMosaicUBOs[i].buffer));
                 mBlurHorizDescriptors.push_back(BuildBlurDesc(mBlurDescLayout.handle, mBrightImage.view));
                 mBlurVertDescriptors.push_back(BuildBlurDesc(mBlurDescLayout.handle, mBlurTempImage.view));
                 mCompositeDescriptors.push_back(BuildCompositeDesc(mOffscreenImage.view, mFinalBloomImage.view, mMosaicUBOs[i].buffer));
-            }
-
-
-            // 在 Init() 里面：
-            auto t_start = std::chrono::high_resolution_clock::now();
-            auto print_time = [&](const char* name) {
-                auto t_now = std::chrono::high_resolution_clock::now();
-                float ms = std::chrono::duration<float, std::milli>(t_now - t_start).count();
-                std::printf("[Pipeline] %s took %.2f ms\n", name, ms);
-                t_start = t_now;
-                };
-
-            // 挨个测试：
-            mPipe = create_triangle_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
-            print_time("Main Triangle Pipe");
-
-            mBlurPipe = create_blur_pipeline(mWindow, mBlurPipeLayout.handle);
-            print_time("Blur Pipe");
-
-            mCompositePipe = create_composite_pipeline(mWindow, mCompPipeLayout.handle);
-            print_time("Composite Pipe");
-            mBlurPipe = create_blur_pipeline(mWindow, mBlurPipeLayout.handle);
-            mCompositePipe = create_composite_pipeline(mWindow, mCompPipeLayout.handle);
-
-            // =========================================================
-            // 【新增】：初始化极速特效管线和缓冲
-            // =========================================================
-            mCompositeOutputImage = create_offscreen_buffer(mWindow, mAllocator);
-            mSpeedPostPipeLayout = create_speed_post_pipeline_layout(mWindow, mBlurDescLayout.handle);
-            mSpeedPostPipe = create_speed_post_pipeline(mWindow, mSpeedPostPipeLayout.handle);
-
-            for (size_t i = 0; i < mCmdBuffers.size(); ++i) {
-                // 将合成完毕的中间图绑定给极速特效作为输入
                 mSpeedPostDescriptors.push_back(BuildSpeedDesc(mCompositeOutputImage.view));
             }
-            // =========================================================
-            //===========================UI System================================
-            ImGuiRenderer::InitInfo uiInfo{};
-            uiInfo.window = mWindow.window;
-            uiInfo.instance = mWindow.instance;
-            uiInfo.physicalDevice = mWindow.physicalDevice;
-            uiInfo.device = mWindow.device;
-            uiInfo.queue = mWindow.graphicsQueue;
-            uiInfo.queueFamily = mWindow.graphicsFamilyIndex;
-            uiInfo.colorFormat = mWindow.swapchainFormat;
-            uiInfo.depthFormat = cfg::kDepthFormat;
-            uiInfo.imageCount = (uint32_t)mWindow.swapImages.size();
 
+            // ==========================================
+            // 9. UI 与调试初始化
+            // ==========================================
+            mDebugRenderer.Init(mAllocator);
+
+            ImGuiRenderer::InitInfo uiInfo{};
+            uiInfo.window = mWindow.window; uiInfo.instance = mWindow.instance; uiInfo.physicalDevice = mWindow.physicalDevice;
+            uiInfo.device = mWindow.device; uiInfo.queue = mWindow.graphicsQueue; uiInfo.queueFamily = mWindow.graphicsFamilyIndex;
+            uiInfo.colorFormat = mWindow.swapchainFormat; uiInfo.depthFormat = cfg::kDepthFormat; uiInfo.imageCount = (uint32_t)mWindow.swapImages.size();
             imguiRenderer.Init(uiInfo);
 
-
-            //1.为最终view scene port创建一个专用的单层 Image// Create a dedicated single-layer image for the final view scene port
-            VkImageCreateInfo imageInfo{};
-            imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-            imageInfo.imageType = VK_IMAGE_TYPE_2D;
-            imageInfo.format = mWindow.swapchainFormat;
+            VkImageCreateInfo imageInfo{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+            imageInfo.imageType = VK_IMAGE_TYPE_2D; imageInfo.format = mWindow.swapchainFormat;
             imageInfo.extent = { mWindow.swapchainExtent.width, mWindow.swapchainExtent.height, 1 };
-            imageInfo.mipLevels = 1; //强制只有 1 层
-            imageInfo.arrayLayers = 1;
-            imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-            imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-            imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-            imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-            imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-
-            VmaAllocationCreateInfo allocInfo{};
-            allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-
-            VkImage rawImage = VK_NULL_HANDLE;
-            VmaAllocation rawAlloc = VK_NULL_HANDLE;
+            imageInfo.mipLevels = 1; imageInfo.arrayLayers = 1; imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+            imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL; imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+            imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE; imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            VmaAllocationCreateInfo allocInfo{ .usage = VMA_MEMORY_USAGE_GPU_ONLY };
+            VkImage rawImage; VmaAllocation rawAlloc;
             vmaCreateImage(mAllocator.allocator, &imageInfo, &allocInfo, &rawImage, &rawAlloc, nullptr);
             mFinalSceneImg = lut::Image(mAllocator.allocator, rawImage, rawAlloc);
 
-            // 2. 创建配套的单层 ImageView
-            VkImageViewCreateInfo viewInfo{};
-            viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-            viewInfo.image = mFinalSceneImg.image;
-            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-            viewInfo.format = mWindow.swapchainFormat;
-            viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            viewInfo.subresourceRange.baseMipLevel = 0;
-            viewInfo.subresourceRange.levelCount = 1; //强制 1 层
-            viewInfo.subresourceRange.baseArrayLayer = 0;
-            viewInfo.subresourceRange.layerCount = 1;
-
-            VkImageView rawView = VK_NULL_HANDLE;
-            vkCreateImageView(mWindow.device, &viewInfo, nullptr, &rawView);
+            VkImageViewCreateInfo viewInfo{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+            viewInfo.image = mFinalSceneImg.image; viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D; viewInfo.format = mWindow.swapchainFormat;
+            viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; viewInfo.subresourceRange.baseMipLevel = 0; viewInfo.subresourceRange.levelCount = 1;
+            viewInfo.subresourceRange.baseArrayLayer = 0; viewInfo.subresourceRange.layerCount = 1;
+            VkImageView rawView; vkCreateImageView(mWindow.device, &viewInfo, nullptr, &rawView);
             mFinalSceneView = lut::ImageView(mWindow.device, rawView);
 
-            // 3.注册给 ImGui，拿到 ID
             m_sceneViewportTexId = ImGui_ImplVulkan_AddTexture(mDefaultSampler.handle, mFinalSceneView.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-            
-//为粒子系统的贴图创建 ImGui 专用的描述符// Create ImGui-specific descriptors for particle system textures
-            for (size_t i = 0; i < particleImageViews.size(); ++i) {
-                std::string path = cfg::ParticleTextures[i];
-                VkImageView view = particleImageViews[i].handle;
-                VkDescriptorSet imguiTexId = ImGui_ImplVulkan_AddTexture(
-                    mDefaultSampler.handle,
-                    view,
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                );
+
+            ImGuiIO& io = ImGui::GetIO();
+            io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
+            // ==========================================
+            // 10. 粒子初始化与缩略图系统
+            // ==========================================
+            for (const auto& path : cfg::ParticleTextures) {
+                stbi_set_flip_vertically_on_load(0);
+                lut::Image img = lut::load_image_texture2d(path, mWindow, mCmdPool.handle, mAllocator, VK_FORMAT_R8G8B8A8_UNORM);
+                stbi_set_flip_vertically_on_load(0);
+                lut::ImageView view = lut::create_image_view_texture2d(mWindow, img.image, VK_FORMAT_R8G8B8A8_UNORM);
+
+                VkDescriptorSet descSet = lut::alloc_desc_set(mWindow, mParticleDescPool.handle, mObjectLayout.handle);
+                VkDescriptorImageInfo mainImgInfo{ mDefaultSampler.handle, view.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+                VkDescriptorImageInfo dummyImgInfo{ mDefaultSampler.handle, mDefaultGrayView.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+
+                VkWriteDescriptorSet writes[3]{};
+                writes[0] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, descSet, 0, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &mainImgInfo, nullptr, nullptr };
+                writes[1] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, descSet, 1, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &dummyImgInfo, nullptr, nullptr };
+                writes[2] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, descSet, 2, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &dummyImgInfo, nullptr, nullptr };
+                vkUpdateDescriptorSets(mWindow.device, 3, writes, 0, nullptr);
+
+                particleTextureDict[path] = descSet;
+                particleImages.push_back(std::move(img));
+                particleImageViews.push_back(std::move(view));
+
+                VkDescriptorSet imguiTexId = ImGui_ImplVulkan_AddTexture(mDefaultSampler.handle, view.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
                 particleImGuiTextureDict[path] = imguiTexId;
             }
 
-            // ImGui 贴图 ID 补发给已经建好的粒子！
-            for (auto& ps : allParticles) {
-                // 通过粒子系统当前绑定的 3D 贴图描述符找到对应的 ImGui 贴图描述符
-                for (const auto& pair : particleTextureDict) {
-                    if (ps->config.textureDescriptor == pair.second) {
-                        ps->config.uiIconDescriptor = particleImGuiTextureDict[pair.first];
-                        break;
-                    }
-                }
+            // 初始化默认粒子群组
+            glm::vec3 ePos[] = { {2, 0.5, 2}, {3, 0.5, 2}, {4, 0.5, 2}, {2, 0.8, 2} };
+            for (int i = 0; i < 4; i++) {
+                auto ps = std::make_unique<ParticleSystem>();
+                ps->setEmitterShape(i == 3 ? EmitterShape::Sphere : EmitterShape::Cone);
+                ps->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[i % 2 == 0 ? 0 : 1]];
+                ps->config.uiIconDescriptor = particleImGuiTextureDict[cfg::ParticleTextures[5]];
+                ps->config.useTexture = 1;
+                ps->config.emitterPos = ePos[i];
+                ps->init(mAllocator, 500, ePos[i]);
+                allParticles.push_back(std::move(ps));
             }
 
-            ImGuiIO& io = ImGui::GetIO();
-            io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; //开启停靠功能核心开关
-
-            //初始化缩略图管线
             InitThumbnailPipeline();
 
-			//初始化天空盒资源
-            InitSkybox();
-
-            //扫描 Assets/Models 生成缩略图
             namespace fs = std::filesystem;
-            std::string modelFolder = "Assets/Models";
-            if (fs::exists(modelFolder)) {
-                for (const auto& entry : fs::directory_iterator(modelFolder)) {
+            if (fs::exists("Assets/Models")) {
+                for (const auto& entry : fs::directory_iterator("Assets/Models")) {
                     if (entry.path().extension() == ".glb") {
                         std::string p = entry.path().string();
                         std::replace(p.begin(), p.end(), '\\', '/');
@@ -1334,6 +976,9 @@ namespace engine {
 
                     // p2 1.1: update vis descriptors
                     UpdatePostDescImage(mVisDescriptors, mVisImage.view);
+                 
+                    // 【新增】：确保 Resize 刷新后，天空盒描述符不丢失
+                    UpdateSceneDescriptorSkybox();
                 }
 
                 mRecreateSwapchain = false;
@@ -1652,7 +1297,7 @@ namespace engine {
             // 1. 在提交命令前，把这一帧收集的线上传到 GPU
             mDebugRenderer.Upload(mAllocator);
 
-            float currentBloomStrength = mState->bloomEnabled ? 0.0f : 1.2f;
+            float currentBloomStrength = mState->bloomEnabled ? 2.2f : 0.0f;
 
             // =========================================================
             // 计算极速特效的平滑系数 (Speed Factor)
@@ -2037,7 +1682,25 @@ namespace engine {
         void SetUserState(UserState* state) { this->mState = state; }
         void SetAudioSystem(AudioSystem* audioSystem) { this->mAudioSystem = audioSystem; }
         AudioSystem* GetAudioSystem() const { return mAudioSystem; }
+        // 在 RenderSystem.hpp 内部添加该辅助函数
+        void UpdateSceneDescriptorSkybox()
+        {
+            if (mSceneDescriptors == VK_NULL_HANDLE || mSkyboxView.handle == VK_NULL_HANDLE) return;
 
+            VkDescriptorImageInfo skyboxInfo{};
+            skyboxInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            skyboxInfo.imageView = mSkyboxView.handle;
+            skyboxInfo.sampler = mDefaultSampler.handle;
+
+            VkWriteDescriptorSet write{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+            write.dstSet = mSceneDescriptors;
+            write.dstBinding = 2; // 重新覆盖 Binding 2
+            write.descriptorCount = 1;
+            write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            write.pImageInfo = &skyboxInfo;
+
+            vkUpdateDescriptorSets(mWindow.device, 1, &write, 0, nullptr);
+        }
     private:
 
         UserState* mState = nullptr;
@@ -2192,7 +1855,8 @@ namespace engine {
 
 
         // 【新增】：加载并初始化整个天空盒
-void InitSkybox() {
+void InitSkybox() 
+{
     // 1. 加载单张十字天空盒图片
     stbi_set_flip_vertically_on_load(0);
     int fullWidth, fullHeight, channels;

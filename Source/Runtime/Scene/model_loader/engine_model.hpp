@@ -23,27 +23,26 @@ struct EngineTexture {
 };
 
 struct EngineMaterial {
-    // 贴图索引 (int 占用 4 字节)
+    // 【规范化名字】：严格与 PBR 渲染管线的槽位一一对应
     int baseColorTexture = -1;
     int normalTexture = -1;
-    int metalRoughTexture = -1;
+    int metalRoughTexture = -1; // glTF 的 ORM 贴图
     int occlusionTexture = -1;
     int emissiveTexture = -1;
     int alphaMaskTexture = -1;
-    int _pad[2]; // 补齐到 32 字节，保证后续对齐
+    int _pad[2]; // 补齐到 32 字节
 
     // 因子 (Factors) - 必须严格匹配 Shader 的 PushConstants 顺序
     glm::vec4 baseColorFactor = glm::vec4(1.0f); // 16 字节
-    glm::vec4 emissiveFactor = glm::vec4(0.0f); // 16 字节
+    glm::vec4 emissiveFactor = glm::vec4(0.0f);  // 16 字节
 
     float metallicFactor = 1.0f;  // 4 字节
-    float roughnessFactor = 1.0f;  // 4 字节
-    float alphaCutoff = 0.5f;  // 4 字节
-    float _pad2;                   // 4 字节补齐到 16 字节边界
+    float roughnessFactor = 1.0f; // 4 字节
+    float alphaCutoff = 0.5f;     // 4 字节
+    float _pad2;                  // 4 字节补齐到 16 字节边界
 
     bool  alphaBlend = false;
 };
-
 
 struct EngineMesh {
     uint32_t                materialIndex = 0;

@@ -493,35 +493,42 @@ lut::Pipeline create_alpha_pipeline(lut::VulkanWindow const& aWindow, VkPipeline
 
 	return lut::Pipeline(aWindow.device, pipe);
 }
-lut::DescriptorSetLayout create_scene_descriptor_layout( lut::VulkanWindow const& aWindow )
+lut::DescriptorSetLayout create_scene_descriptor_layout(lut::VulkanWindow const& aWindow)
 {
-	VkDescriptorSetLayoutBinding bindings[2]{};
-	bindings[0].binding = 0; // number must match the index of the corresponding binding
+	VkDescriptorSetLayoutBinding bindings[3]{};
+
+	// Binding 0: 场景 UBO
+	bindings[0].binding = 0;
 	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	bindings[0].descriptorCount = 1;
 	bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-	// p2_1.5 shadow map
+	// Binding 1: 级联阴影贴图 (uShadowMap)
 	bindings[1].binding = 1;
 	bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	bindings[1].descriptorCount = 1;
 	bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
+	// 【核心新增】Binding 2: 天空盒立方体纹理 (用于 PBR 的 IBL 金属环境反射)
+	bindings[2].binding = 2;
+	bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[2].descriptorCount = 1;
+	bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
 	VkDescriptorSetLayoutCreateInfo layoutInfo{};
 	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	layoutInfo.bindingCount = sizeof(bindings)/sizeof(bindings[0]);
+	layoutInfo.bindingCount = 3; // <-- 提升为 3
 	layoutInfo.pBindings = bindings;
 
 	VkDescriptorSetLayout layout = VK_NULL_HANDLE;
-	if( auto const res = vkCreateDescriptorSetLayout( aWindow.device, &layoutInfo, nullptr, &layout ); VK_SUCCESS != res )
-	{
-		throw lut::Error( "Unable to create descriptor set layout\n"
-			"vkCreateDescriptorSetLayout() returned {}", lut::to_string(res)
-		);
+	if (auto const res = vkCreateDescriptorSetLayout(aWindow.device, &layoutInfo, nullptr, &layout); VK_SUCCESS != res) {
+		throw lut::Error("Unable to create scene descriptor set layout\n"
+			"vkCreateDescriptorSetLayout() returned {}", lut::to_string(res));
 	}
 
-	return lut::DescriptorSetLayout( aWindow.device, layout );
+	return lut::DescriptorSetLayout(aWindow.device, layout);
 }
+
 lut::DescriptorSetLayout create_object_descriptor_layout( lut::VulkanWindow const& aWindow )
 {
 	// bindings for base color, roughness, and metalness

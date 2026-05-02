@@ -287,18 +287,16 @@ void record_commands(
 		uint32_t matIdx = batch.materialIndex;
 		uint32_t meshIdx = batch.meshIndex;
 
-		// 定义：只要有 Mask 贴图，就是树叶类材质
 		bool isMasked = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0);
 
-		// 【修改点】：树叶 (isMasked) 必须在阶段 1 画！
-		// 只有 alphaMultiplier < 0.99f（由于遮挡触发的半透明）才跳过
 		if (!isMasked && batch.alphaMultiplier < 0.99f) {
 			continue;
 		}
 
-		// 使用 aGraphicsPipe (开启了深度写入的那个)
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsPipe);
 		auto const& meshInfo = aMeshInfos[meshIdx];
+
+		// --- 完全、干净地初始化 ObjectPC ---
 		ObjectPC pcData{};
 		pcData.transform = batch.transform;
 
@@ -310,21 +308,27 @@ void record_commands(
 			pcData.alphaCutoff = aMaterials[matIdx].alphaCutoff;
 		}
 		else {
-			pcData.baseColorFactor = glm::vec4(1.0f); pcData.metallicFactor = 1.0f; pcData.roughnessFactor = 1.0f;
+			// 安全回退：默认非金属、粗糙、无自发光
+			pcData.baseColorFactor = glm::vec4(1.0f);
+			pcData.emissiveFactor = glm::vec4(0.0f);
+			pcData.metallicFactor = 0.0f;
+			pcData.roughnessFactor = 0.8f;
+			pcData.alphaCutoff = 0.5f;
 		}
 
 		pcData.baseColorFactor.a *= batch.alphaMultiplier;
+
+		// 压入管线
 		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ObjectPC), &pcData);
 
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
 		vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset);
 		vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &kZeroOffset);
 		vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &kZeroOffset);
-		vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
 
+		vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
 		vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(meshInfo.indices.size()), 1, 0, 0, 0);
 	}
-
 	// =====================================================================
 	// 阶段 1.5：画【天空盒】 (此时利用 Early-Z 剔除被建筑挡住的天空像素，性能极高！)
 	// =====================================================================
@@ -353,7 +357,7 @@ void record_commands(
 
 		vkCmdDraw(aCmdBuff, 36, 1, 0, 0);
 	}
-	// 阶段 2：最后画【半透明】物体 (使用 aAlphaPipe，叠加在所有东西之上)
+	// 阶段 2：最后画【半透明】物体
 	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aAlphaPipe);
 	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
 
@@ -362,17 +366,14 @@ void record_commands(
 		uint32_t meshIdx = batch.meshIndex;
 		uint32_t matIdx = batch.materialIndex;
 
-		// 蒙版贴图（树叶）已经在阶段 1 用 discard 绘制并写入深度，
-		// 不应该在透明阶段再次绘制（会造成深度/混合重复问题）
 		bool isMatMasked = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0);
-		if (isMatMasked) continue; // <-- 跳过蒙版材质（只在 stage1 绘制）
+		if (isMatMasked) continue;
 
-		bool isBatchSemiTransparent = (batch.alphaMultiplier < 0.99f);
-		// 只处理真正需要透明混合的物体
-		if (!isBatchSemiTransparent) continue;
+		if (batch.alphaMultiplier >= 0.99f) continue;
 
-		// ... 保持原有 push constants / bind / draw 逻辑 ...
 		auto const& meshInfo = aMeshInfos[meshIdx];
+
+		// --- 重新完整初始化，不留死角 ---
 		ObjectPC pcData{};
 		pcData.transform = batch.transform;
 
@@ -381,12 +382,14 @@ void record_commands(
 			pcData.emissiveFactor = aMaterials[matIdx].emissiveFactor;
 			pcData.metallicFactor = aMaterials[matIdx].metallicFactor;
 			pcData.roughnessFactor = aMaterials[matIdx].roughnessFactor;
+			pcData.alphaCutoff = aMaterials[matIdx].alphaCutoff;
 		}
 		else {
 			pcData.baseColorFactor = glm::vec4(1.0f);
 			pcData.emissiveFactor = glm::vec4(0.0f);
-			pcData.metallicFactor = 1.0f;
-			pcData.roughnessFactor = 1.0f;
+			pcData.metallicFactor = 0.0f;
+			pcData.roughnessFactor = 0.8f;
+			pcData.alphaCutoff = 0.5f;
 		}
 
 		pcData.baseColorFactor.a *= batch.alphaMultiplier;
@@ -793,6 +796,7 @@ void submit_commands(lut::VulkanContext const& aContext, VkCommandBuffer aCmdBuf
 
 	VkSemaphoreSubmitInfo signal[1]{};
 	signal[0].sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+	signal[0].semaphore = aSignalSemaphore;
 	signal[0].semaphore = aSignalSemaphore;
 	signal[0].stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
 

@@ -101,14 +101,13 @@ static std::vector<EngineMaterial> loadMaterials(
         EngineMaterial m{};
         auto& pbr = mat.pbrMetallicRoughness;
 
-        // Base color��sRGB��
+        // 1. Base Color Texture & Factor
         int bcIdx = texIndex(gltf, pbr.baseColorTexture.index);
         m.baseColorTexture = bcIdx;
-        if (bcIdx >= 0)
+        if (bcIdx >= 0) {
             textures[bcIdx].space = ETextureSpace::srgb;
-        // ==========================================
-        // --- ���ؼ��޸� 1������ȡ������ɫϵ�� ---
-        // ==========================================
+        }
+
         if (pbr.baseColorFactor.size() == 4) {
             m.baseColorFactor = glm::vec4(
                 static_cast<float>(pbr.baseColorFactor[0]),
@@ -118,55 +117,40 @@ static std::vector<EngineMaterial> loadMaterials(
             );
         }
         else {
-            m.baseColorFactor = glm::vec4(1.0f); // Ĭ�ϰ�ɫ/����Ӱ��
+            m.baseColorFactor = glm::vec4(1.0f);
         }
 
-        // MetalRoughness��UNORM��G=rough B=metal��shared��
+        // 2. Metallic & Roughness (ORM Map)
         m.metalRoughTexture = texIndex(gltf, pbr.metallicRoughnessTexture.index);
-
-
-        //if (pbr.baseColorFactor.size() == 4) {
-        //    m.baseColorFactor = glm::vec4(
-        //        pbr.baseColorFactor[0], pbr.baseColorFactor[1],
-        //        pbr.baseColorFactor[2], pbr.baseColorFactor[3]);
-        //}
-
-        // MetalRoughness��UNORM��G=rough B=metal��shared��
-        //m.metalRoughTexture = texIndex(gltf, pbr.metallicRoughnessTexture.index);
-        //m.metallicFactor = static_cast<float>(pbr.metallicFactor);
-        //m.roughnessFactor = static_cast<float>(pbr.roughnessFactor);
-
-
-
-        // ==========================================
-        // --- ���ؼ��޸� 2������ȡ��������ֲڶ�ϵ�� ---
-        // ==========================================
-        // tinygltf ��û������ʱͨ�����Ĭ��ֵ 1.0
         m.metallicFactor = static_cast<float>(pbr.metallicFactor);
         m.roughnessFactor = static_cast<float>(pbr.roughnessFactor);
 
-        // Normal��UNORM��
+        // 3. Normal Texture
         m.normalTexture = texIndex(gltf, mat.normalTexture.index);
 
-        // Occlusion��UNORM��
+        // 4. Occlusion Texture
         m.occlusionTexture = texIndex(gltf, mat.occlusionTexture.index);
 
-        // Emissive��sRGB��
+        // 5. Emissive Texture & Factor
         int emIdx = texIndex(gltf, mat.emissiveTexture.index);
         m.emissiveTexture = emIdx;
-        if (emIdx >= 0)
+        if (emIdx >= 0) {
             textures[emIdx].space = ETextureSpace::srgb;
+        }
 
         if (mat.emissiveFactor.size() == 3) {
             m.emissiveFactor = glm::vec4(
                 static_cast<float>(mat.emissiveFactor[0]),
                 static_cast<float>(mat.emissiveFactor[1]),
                 static_cast<float>(mat.emissiveFactor[2]),
-                1.0f // 显式提供第 4 个分量 W
+                1.0f
             );
         }
+        else {
+            m.emissiveFactor = glm::vec4(0.0f);
+        }
 
-        // Alpha
+        // 6. Alpha Masking
         if (mat.alphaMode == "MASK") {
             m.alphaMaskTexture = m.baseColorTexture; // alpha in baseColor.a
             m.alphaCutoff = static_cast<float>(mat.alphaCutoff);
@@ -174,14 +158,14 @@ static std::vector<EngineMaterial> loadMaterials(
         else if (mat.alphaMode == "BLEND") {
             m.alphaBlend = true;
         }
-        printf("[Material] BaseColor: %d, Normal: %d, Roughness: %d, AO: %d\n",
-            m.baseColorTexture, m.normalTexture, m.metalRoughTexture, m.occlusionTexture);
-        out.push_back(m);
 
+        printf("[Material] BaseColor: %d, Normal: %d, metalRough: %d, AO: %d, metallicFactor: %.2f, roughnessFactor: %.2f\n",
+            m.baseColorTexture, m.normalTexture, m.metalRoughTexture, m.occlusionTexture, m.metallicFactor, m.roughnessFactor);
+
+        out.push_back(m);
     }
     return out;
 }
-
 
 static std::vector<EngineMesh> loadMeshes(
     const tinygltf::Model& gltf,

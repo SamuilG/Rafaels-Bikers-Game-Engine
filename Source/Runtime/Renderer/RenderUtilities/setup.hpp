@@ -6,7 +6,7 @@
 #include "../../Rhi/vkimage.hpp"
 #include "camera.hpp"
 #include "light.hpp"
-
+#include <string>
 
 namespace lut = labut2;
 constexpr std::uint32_t kShadowMapResolution = 2048; // 2048 for high quality; also tested with lower values
@@ -118,7 +118,24 @@ struct ImageAndView
 };
 
 
-lut::DescriptorSetLayout create_scene_descriptor_layout( lut::VulkanWindow const& );
+// =====================================================================
+// 1. 【核心修改】主场景描述符布局 (Set 0)
+// 原本只有：Binding 0 = UBO, Binding 1 = ShadowMap
+// 现在新增：Binding 2 = Skybox Cubemap (用于 PBR 金属环境反射采样)
+// =====================================================================
+lut::DescriptorSetLayout create_scene_descriptor_layout(lut::VulkanWindow const& aWindow);
+
+// =====================================================================
+// 2. 【核心新增】用于 IBL 预过滤环境贴图（可选：如果你使用高级烘焙天空盒，建议留出接口）
+// =====================================================================
+struct IblResources {
+	lut::ImageWithView prefilteredEnvMap; // 包含 Mipmaps 的高光预过滤环境贴图
+	lut::ImageWithView irradianceMap;     // 漫反射辐照度贴图
+	lut::ImageWithView brdfLut;           // 预积分 BRDF 查找表
+};
+
+// 如果你要从外部加载单独的 HDR/Cube 纹理作为 PBR 采样，可以在此处添加辅助创建声明：
+lut::ImageWithView create_skybox_cubemap(lut::VulkanWindow const& aWindow, lut::Allocator const& aAllocator, std::string const& aPath);
 lut::DescriptorSetLayout create_object_descriptor_layout( lut::VulkanWindow const& );
 lut::DescriptorSetLayout create_post_proc_descriptor_layout( lut::VulkanWindow const& );
 
