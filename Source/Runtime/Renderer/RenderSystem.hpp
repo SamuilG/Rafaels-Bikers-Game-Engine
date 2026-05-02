@@ -517,20 +517,22 @@ namespace engine {
             return ds;
         }
 
+        // 在 RenderSystem.hpp 中更新该函数：
+
         VkDescriptorSet BuildCompositeDesc(VkDescriptorSetLayout layout, VkImageView sceneView, VkImageView bloomView, VkImageView ssrView, VkBuffer mosaicUbo) {
             // 确保直接 alloc 并返回，不要在函数内部操作成员 vector
             VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, layout);
 
-            // 3 张贴图
+            // 3 张贴图 (0:Scene, 1:Bloom, 2:SSR view)
             VkDescriptorImageInfo imgs[3]{};
             imgs[0] = { mPostSampler.handle, sceneView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
             imgs[1] = { mPostSampler.handle, bloomView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
             imgs[2] = { mPostSampler.handle, ssrView,   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
 
-            // 1 个 UBO
+            // 1 个 UBO (Binding 2)
             VkDescriptorBufferInfo bi{ mosaicUbo, 0, VK_WHOLE_SIZE };
 
-            // 写入 4 个绑定
+            // 写入 4 个绑定！【关键修复点】：数组大小绝不能是 2 或 3
             VkWriteDescriptorSet w[4]{};
 
             // Binding 0: Scene Color
@@ -557,7 +559,7 @@ namespace engine {
             w[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             w[3].descriptorCount = 1; w[3].pImageInfo = &imgs[2];
 
-            // 提交更新 4 个
+            // 提交更新 4 个！
             vkUpdateDescriptorSets(mWindow.device, 4, w, 0, nullptr);
             return ds;
         }
@@ -889,7 +891,11 @@ namespace engine {
                 mState->bloomEnabled = !mState->bloomEnabled;
                 std::printf("Bloom Effect: %s\n", mState->bloomEnabled ? "ON" : "OFF");
             }
-
+            // 【新增】：处理 IBL 开关
+            if (mInputSystem->IsActionPressed("IBLToggle")) {
+                mState->iblEnabled = !mState->iblEnabled;
+                std::printf("IBL Reflection: %s\n", mState->iblEnabled ? "ON" : "OFF");
+            }
             if (glfwWindowShouldClose(mWindow.window)) {
                 mAppRunning = false;
                 //===========================UI System================================
@@ -1147,13 +1153,16 @@ namespace engine {
             ImVec2 finalVpSize = EngineUi::GetSceneViewportSize();
             float finalWidth = std::max(1.0f, std::abs(finalVpSize.x));
             float finalHeight = std::max(1.0f, std::abs(finalVpSize.y));
-            // 【关键修复】：删掉带 void 的声明，换成真正的函数调用！
+            // 【关键修复】：调用函数！
             update_scene_uniforms(
                 sceneUniforms,
                 static_cast<uint32_t>(finalWidth),
                 static_cast<uint32_t>(finalHeight),
                 *mState
             );
+
+            // 【新增】：将 IBL 状态同步给 Shader
+            sceneUniforms.iblEnabled = mState->iblEnabled ? 1 : 0;
             //frustum culling: keep separate smoothed FPS samples for culling ON vs OFF.
             if (dt > 0.0001f) {
                 float currentFps = 1.0f / dt;

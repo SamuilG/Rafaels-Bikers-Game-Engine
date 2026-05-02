@@ -37,13 +37,13 @@ namespace glsl {
 
 		uint32_t lightCount;
 		uint32_t renderMode;
-		uint32_t _pad0;
+
+		uint32_t iblEnabled; // <--- 【修改】：把 _pad0 替换为 iblEnabled
 		uint32_t _pad1;
 
 		glm::mat4 lightVP[4];
 		glm::vec4 cascadeSplits;
 	};
-
 }
 
 namespace cfg
