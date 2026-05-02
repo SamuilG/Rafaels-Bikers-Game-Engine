@@ -93,6 +93,7 @@ void record_commands(
 	const std::unordered_map<uint32_t, lut::Buffer>* aMeshJoints ,
 	const std::unordered_map<uint32_t, lut::Buffer>* aMeshWeights,
 	const std::vector<RenderBatch>* aSkinnedBatches ,
+	VkPipeline aSkinnedShadowPipe ,
 	// 在 record_commands 的最后追加：
 	VkPipeline skyboxPipe,
 	VkPipelineLayout skyboxPipeLayout,
@@ -187,6 +188,55 @@ void record_commands(
 
 				vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(aMeshInfos[meshIdx].indices.size()), 1, 0, 0, 0);
 			}
+
+			// --- Skinned shadow pass (character and other animated meshes) ---
+			if (aSkinnedShadowPipe != VK_NULL_HANDLE &&
+				aSkinnedBatches && !aSkinnedBatches->empty() &&
+				aSkinnedPipeLayout != VK_NULL_HANDLE &&
+				aBoneDescriptorSet != VK_NULL_HANDLE &&
+				aMeshJoints && aMeshWeights)
+			{
+				struct ShadowSkinnedPC {
+					glm::mat4 lightModel;    // = lightVP[cascade] * model (64 bytes)
+					uint32_t  boneBaseIndex; // (4 bytes)
+					uint32_t  _pad[3];       // (12 bytes padding)
+				};
+
+				vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedShadowPipe);
+				// Re-bind set 0 and bind set 2 (bones) using the skinned pipeline layout
+				vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
+				vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 2, 1, &aBoneDescriptorSet, 0, nullptr);
+
+				for (const auto& batch : *aSkinnedBatches)
+				{
+					uint32_t meshIdx = batch.meshIndex;
+					uint32_t matIdx  = batch.materialIndex;
+
+					auto jIt = aMeshJoints->find(meshIdx);
+					auto wIt = aMeshWeights->find(meshIdx);
+					if (jIt == aMeshJoints->end() || wIt == aMeshWeights->end()) continue;
+
+					ShadowSkinnedPC pc{};
+					pc.lightModel    = aSceneUniform.lightVP[i] * batch.transform;
+					pc.boneBaseIndex = batch.boneBaseIndex;
+
+					vkCmdPushConstants(aCmdBuff, aSkinnedPipeLayout,
+						VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+						0, sizeof(ShadowSkinnedPC), &pc);
+
+					vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout,
+						1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
+
+					vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset);
+					vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &kZeroOffset);
+					vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &kZeroOffset);
+					vkCmdBindVertexBuffers(aCmdBuff, 3, 1, &jIt->second.buffer, &kZeroOffset);
+					vkCmdBindVertexBuffers(aCmdBuff, 4, 1, &wIt->second.buffer, &kZeroOffset);
+					vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
+					vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(aMeshInfos[meshIdx].indices.size()), 1, 0, 0, 0);
+				}
+			}
+
 			vkCmdEndRendering(aCmdBuff);
 		}
 

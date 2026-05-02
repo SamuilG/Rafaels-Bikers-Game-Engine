@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where glslc:*)",
+      "Bash(where glslangValidator)",
+      "Bash(glslc \"Assets/Shaders/shadowmap_skinned.vert\" -o \"Assets/Shaders/spirv/shadowmap_skinned.vert.spv\")",
+      "Bash(xargs grep:*)"
+    ]
+  }
+}

@@ -82,6 +82,7 @@ void record_commands(
 	const std::unordered_map<uint32_t, lut::Buffer>* aMeshJoints    = nullptr,
 	const std::unordered_map<uint32_t, lut::Buffer>* aMeshWeights   = nullptr,
 	const std::vector<RenderBatch>*                  aSkinnedBatches = nullptr,
+	VkPipeline aSkinnedShadowPipe                                    = VK_NULL_HANDLE,
 
 	// 在 record_commands 的最后追加：
 	VkPipeline skyboxPipe = VK_NULL_HANDLE,

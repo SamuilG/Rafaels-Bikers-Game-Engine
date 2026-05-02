@@ -2186,6 +2186,126 @@ lut::Pipeline create_shadow_pipeline( lut::VulkanWindow const& aWindow, VkPipeli
 	return lut::Pipeline( aWindow.device, pipe );
 }
 
+lut::Pipeline create_shadow_skinned_pipeline( lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout )
+{
+	auto const vertSpirV = lut::load_file_u32( cfg::kShadowSkinnedVertShaderPath );
+	auto const fragSpirV = lut::load_file_u32( cfg::kShadowFragShaderPath );
+
+	VkShaderModuleCreateInfo code[2]{};
+	code[0].sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	code[0].codeSize = vertSpirV.size() * sizeof(std::uint32_t);
+	code[0].pCode    = vertSpirV.data();
+	code[1].sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	code[1].codeSize = fragSpirV.size() * sizeof(std::uint32_t);
+	code[1].pCode    = fragSpirV.data();
+
+	VkPipelineShaderStageCreateInfo stages[2]{};
+	stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+	stages[0].pName = "main";
+	stages[0].pNext = &code[0];
+	stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	stages[1].pName = "main";
+	stages[1].pNext = &code[1];
+
+	// 5 vertex bindings: position, texcoord, normal, joints (uvec4), weights (vec4)
+	VkVertexInputBindingDescription bindings[5]{};
+	bindings[0] = { 0, sizeof(float)*3,     VK_VERTEX_INPUT_RATE_VERTEX };
+	bindings[1] = { 1, sizeof(float)*2,     VK_VERTEX_INPUT_RATE_VERTEX };
+	bindings[2] = { 2, sizeof(float)*3,     VK_VERTEX_INPUT_RATE_VERTEX };
+	bindings[3] = { 3, sizeof(uint32_t)*4,  VK_VERTEX_INPUT_RATE_VERTEX };
+	bindings[4] = { 4, sizeof(float)*4,     VK_VERTEX_INPUT_RATE_VERTEX };
+
+	VkVertexInputAttributeDescription attrs[5]{};
+	attrs[0] = { 0, 0, VK_FORMAT_R32G32B32_SFLOAT,    0 };
+	attrs[1] = { 1, 1, VK_FORMAT_R32G32_SFLOAT,       0 };
+	attrs[2] = { 2, 2, VK_FORMAT_R32G32B32_SFLOAT,    0 };
+	attrs[3] = { 3, 3, VK_FORMAT_R32G32B32A32_UINT,   0 };
+	attrs[4] = { 4, 4, VK_FORMAT_R32G32B32A32_SFLOAT, 0 };
+
+	VkPipelineVertexInputStateCreateInfo inputInfo{};
+	inputInfo.sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	inputInfo.vertexBindingDescriptionCount   = 5;
+	inputInfo.pVertexBindingDescriptions      = bindings;
+	inputInfo.vertexAttributeDescriptionCount = 5;
+	inputInfo.pVertexAttributeDescriptions    = attrs;
+
+	VkPipelineInputAssemblyStateCreateInfo assemblyInfo{};
+	assemblyInfo.sType    = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	assemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+	VkViewport viewport{};
+	VkRect2D   scissor{};
+	VkPipelineViewportStateCreateInfo viewportInfo{};
+	viewportInfo.sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportInfo.viewportCount = 1;
+	viewportInfo.pViewports    = &viewport;
+	viewportInfo.scissorCount  = 1;
+	viewportInfo.pScissors     = &scissor;
+
+	VkPipelineRasterizationStateCreateInfo rasterInfo{};
+	rasterInfo.sType            = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterInfo.polygonMode      = VK_POLYGON_MODE_FILL;
+	rasterInfo.cullMode         = VK_CULL_MODE_NONE;
+	rasterInfo.frontFace        = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	rasterInfo.depthBiasEnable  = VK_TRUE;
+	rasterInfo.lineWidth        = 1.f;
+
+	VkPipelineMultisampleStateCreateInfo samplingInfo{};
+	samplingInfo.sType                = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	samplingInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+	VkPipelineColorBlendStateCreateInfo blendInfo{};
+	blendInfo.sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	blendInfo.attachmentCount = 0;
+	blendInfo.pAttachments    = nullptr;
+
+	VkPipelineDepthStencilStateCreateInfo depthInfo{};
+	depthInfo.sType            = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthInfo.depthTestEnable  = VK_TRUE;
+	depthInfo.depthWriteEnable = VK_TRUE;
+	depthInfo.depthCompareOp   = VK_COMPARE_OP_LESS_OR_EQUAL;
+	depthInfo.minDepthBounds   = 0.f;
+	depthInfo.maxDepthBounds   = 1.f;
+
+	VkDynamicState dynamicStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_DEPTH_BIAS };
+	VkPipelineDynamicStateCreateInfo dynamicInfo{};
+	dynamicInfo.sType             = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dynamicInfo.dynamicStateCount = 3;
+	dynamicInfo.pDynamicStates    = dynamicStates;
+
+	VkPipelineRenderingCreateInfo renderingInfo{};
+	renderingInfo.sType                = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+	renderingInfo.colorAttachmentCount = 0;
+	renderingInfo.pColorAttachmentFormats = nullptr;
+	renderingInfo.depthAttachmentFormat   = cfg::kShadowMapFormat;
+
+	VkGraphicsPipelineCreateInfo pipeInfo{};
+	pipeInfo.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipeInfo.pNext               = &renderingInfo;
+	pipeInfo.stageCount          = 2;
+	pipeInfo.pStages             = stages;
+	pipeInfo.pVertexInputState   = &inputInfo;
+	pipeInfo.pInputAssemblyState = &assemblyInfo;
+	pipeInfo.pViewportState      = &viewportInfo;
+	pipeInfo.pRasterizationState = &rasterInfo;
+	pipeInfo.pMultisampleState   = &samplingInfo;
+	pipeInfo.pDepthStencilState  = &depthInfo;
+	pipeInfo.pColorBlendState    = &blendInfo;
+	pipeInfo.pDynamicState       = &dynamicInfo;
+	pipeInfo.layout              = aPipelineLayout;
+
+	VkPipeline pipe = VK_NULL_HANDLE;
+	if ( auto const res = vkCreateGraphicsPipelines( aWindow.device, VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &pipe ); VK_SUCCESS != res )
+	{
+		throw lut::Error( "Unable to create shadow skinned pipeline\n"
+			"vkCreateGraphicsPipelines() returned {}", lut::to_string(res) );
+	}
+
+	return lut::Pipeline( aWindow.device, pipe );
+}
+
 //================particle system===================================================
 lut::Pipeline create_particle_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, VkFormat aColorFormat)
 {

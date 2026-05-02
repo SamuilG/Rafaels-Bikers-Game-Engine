@@ -72,6 +72,7 @@ namespace cfg
 	// p2_1.5 shadow mapping
 	constexpr char const* kShadowVertShaderPath = SHADERDIR_ "shadowmap.vert.spv";
 	constexpr char const* kShadowFragShaderPath = SHADERDIR_ "shadowmap.frag.spv";
+	constexpr char const* kShadowSkinnedVertShaderPath = SHADERDIR_ "shadowmap_skinned.vert.spv";
 	constexpr VkFormat kShadowMapFormat = VK_FORMAT_D32_SFLOAT;
 	
 	//Particle shaders
@@ -168,6 +169,8 @@ lut::PipelineLayout create_speed_post_pipeline_layout(lut::VulkanContext const& 
 lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout);
 // p2_1.5 shadow mapping
 lut::Pipeline create_shadow_pipeline( lut::VulkanWindow const&, VkPipelineLayout );
+// Skinned shadow pipeline (uses shadowmap_skinned.vert + shadowmap.frag, 5 vertex bindings)
+lut::Pipeline create_shadow_skinned_pipeline( lut::VulkanWindow const&, VkPipelineLayout );
 
 lut::Pipeline create_particle_pipeline(lut::VulkanWindow const&, VkPipelineLayout, VkFormat);
 
