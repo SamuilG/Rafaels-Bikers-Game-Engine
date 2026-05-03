@@ -239,41 +239,40 @@ lut::Pipeline create_triangle_pipeline( lut::VulkanWindow const& aWindow, VkPipe
 	// need one. Right now, we don't do any blending, so we can ignore most of the members.
 	// Define blend state
 	// =================================================================
-	// 3. 【核心修复】开启透明混合 (Color Blending)！
-	// 使用 PREMULTIPLIED alpha：src = ONE, dst = ONE_MINUS_SRC_ALPHA
+	// 【修复】：不透明物体管线 (Triangle) 绝对不能开启混合！
 	// =================================================================
-	// ===== 修改 create_alpha_pipeline 中的透明混合为 PREMULTIPLIED alpha =====
-	VkPipelineColorBlendAttachmentState blendStates[2]{};
-	blendStates[0].blendEnable = VK_TRUE;
-	blendStates[0].colorBlendOp = VK_BLEND_OP_ADD;
-	// 使用 PREMULTIPLIED alpha：源颜色已乘 alpha
-	blendStates[0].srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
-	blendStates[0].dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-	blendStates[0].alphaBlendOp = VK_BLEND_OP_ADD;
-	blendStates[0].srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-	blendStates[0].dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	VkPipelineColorBlendAttachmentState blendStates[3]{};
+
+	// 0: Scene Color (实心物体直接覆盖)
+	blendStates[0].blendEnable = VK_FALSE;
 	blendStates[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
-	blendStates[1] = blendStates[0]; // 亮度附件也套用一样的混合
-	// Attachment 1: 亮度提取 (Bright Color)
-	blendStates[1].blendEnable = VK_FALSE;
-	blendStates[1].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	// 1: Bright Color (Bloom 亮度提取)
+	blendStates[1] = blendStates[0];
+
+	// 2: Normal & Roughness (G-Buffer 法线粗糙度)
+	blendStates[2] = blendStates[0];
 
 	VkPipelineColorBlendStateCreateInfo blendInfo{};
 	blendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
 	blendInfo.logicOpEnable = VK_FALSE;
-	blendInfo.attachmentCount = 2;
+	blendInfo.attachmentCount = 3; // 必须是 3
 	blendInfo.pAttachments = blendStates;
 	// 4. 【关键修复】渲染信息 (Dynamic Rendering)
 	// 定义格式数组，确保在创建 Pipeline 时内存有效
-	VkFormat colorFormats[] = {
-		VK_FORMAT_R16G16B16A16_SFLOAT,                    // Location 0: 正常颜色 (通常是 Swapchain 格式)
-		VK_FORMAT_R16G16B16A16_SFLOAT        // Location 1: Bloom 亮度图 (必须是 HDR 格式)
-	};
+	//VkFormat colorFormats[] = {
+	//	VK_FORMAT_R16G16B16A16_SFLOAT,                    // Location 0: 正常颜色 (通常是 Swapchain 格式)
+	//	VK_FORMAT_R16G16B16A16_SFLOAT        // Location 1: Bloom 亮度图 (必须是 HDR 格式)
+	//};
 
+	VkFormat colorFormats[3] = {
+		aColorFormat,                    // 0: Scene Color
+		aColorFormat,                    // 1: Bright Color
+		VK_FORMAT_R16G16B16A16_SFLOAT    // 2: Normal Buffer
+	};
 	VkPipelineRenderingCreateInfo renderingInfo{};
 	renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-	renderingInfo.colorAttachmentCount = 2;      // 必须是 2
+	renderingInfo.colorAttachmentCount = 3;      // 必须是 2
 	renderingInfo.pColorAttachmentFormats = colorFormats; // 指向数组首地址
 	renderingInfo.depthAttachmentFormat = cfg::kDepthFormat;
 	// Define depth stencil state
@@ -332,6 +331,17 @@ lut::Pipeline create_triangle_pipeline( lut::VulkanWindow const& aWindow, VkPipe
 
 	return lut::Pipeline( aWindow.device, pipe );
 }
+
+
+
+
+
+
+
+
+
+
+
 
 lut::Pipeline create_alpha_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, VkFormat aColorFormat)
 {
@@ -417,9 +427,11 @@ lut::Pipeline create_alpha_pipeline(lut::VulkanWindow const& aWindow, VkPipeline
 	samplingInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
 	// =================================================================
-	// 3. 【核心修复】开启透明混合 (Color Blending)！
-	// =================================================================
-	VkPipelineColorBlendAttachmentState blendStates[2]{};
+		// 【修复】：半透明管线 (Alpha) 必须有 3 个附件的混合状态！
+		// =================================================================
+	VkPipelineColorBlendAttachmentState blendStates[3]{}; // 必须改为 [3]
+
+	// 0: Scene Color (开启半透明混合)
 	blendStates[0].blendEnable = VK_TRUE;
 	blendStates[0].colorBlendOp = VK_BLEND_OP_ADD;
 	blendStates[0].srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
@@ -429,14 +441,18 @@ lut::Pipeline create_alpha_pipeline(lut::VulkanWindow const& aWindow, VkPipeline
 	blendStates[0].dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
 	blendStates[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
-	blendStates[1] = blendStates[0]; // 亮度附件也套用一样的混合
+	// 1: Bright Color (Bloom 亮度也需要混合)
+	blendStates[1] = blendStates[0];
+
+	// 2: Normal & Roughness (法线缓冲绝对不能混合，直接关闭！)
+	blendStates[2].blendEnable = VK_FALSE;
+	blendStates[2].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
 	VkPipelineColorBlendStateCreateInfo blendInfo{};
 	blendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
 	blendInfo.logicOpEnable = VK_FALSE;
-	blendInfo.attachmentCount = 2;
+	blendInfo.attachmentCount = 3; // 必须改为 3
 	blendInfo.pAttachments = blendStates;
-
 	// =================================================================
 	// 4. 【核心修复】关闭深度写入 (Depth Write)！让它不要挡住后面的单车！
 	// =================================================================
@@ -455,14 +471,19 @@ lut::Pipeline create_alpha_pipeline(lut::VulkanWindow const& aWindow, VkPipeline
 	dynamicInfo.dynamicStateCount = 2;
 	dynamicInfo.pDynamicStates = dynamicStates;
 
-	VkFormat colorFormats[] = {
-		aColorFormat,
-		VK_FORMAT_R16G16B16A16_SFLOAT
+	//VkFormat colorFormats[] = {
+	//	aColorFormat,
+	//	VK_FORMAT_R16G16B16A16_SFLOAT
+	//};
+	VkFormat colorFormats[3] = {
+		aColorFormat,                    // 0: Scene Color
+		aColorFormat,                    // 1: Bright Color
+		VK_FORMAT_R16G16B16A16_SFLOAT    // 2: Normal Buffer
 	};
 
 	VkPipelineRenderingCreateInfo renderingInfo{};
 	renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-	renderingInfo.colorAttachmentCount = 2;
+	renderingInfo.colorAttachmentCount = 3;
 	renderingInfo.pColorAttachmentFormats = colorFormats;
 	renderingInfo.depthAttachmentFormat = cfg::kDepthFormat;
 
@@ -470,6 +491,7 @@ lut::Pipeline create_alpha_pipeline(lut::VulkanWindow const& aWindow, VkPipeline
 	pipeInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 	pipeInfo.pNext = &renderingInfo;
 	pipeInfo.stageCount = 2;
+	
 	pipeInfo.pStages = stages;
 	pipeInfo.pVertexInputState = &inputInfo;
 	pipeInfo.pInputAssemblyState = &assemblyInfo;
@@ -618,9 +640,7 @@ lut::DescriptorSetLayout create_post_proc_descriptor_layout( lut::VulkanWindow c
 }
 lut::DescriptorSetLayout create_composite_descriptor_layout(lut::VulkanWindow const& aWindow)
 {
-	VkDescriptorSetLayoutBinding bindings[3]{};
-
-	// Binding 0: 原始场景纹理 (Main Scene Color)
+	VkDescriptorSetLayoutBinding bindings[4]{}; // 3-4 for ssr
 	bindings[0].binding = 0;
 	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	bindings[0].descriptorCount = 1;
@@ -638,10 +658,16 @@ lut::DescriptorSetLayout create_composite_descriptor_layout(lut::VulkanWindow co
 	bindings[2].descriptorCount = 1;
 	bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-	VkDescriptorSetLayoutCreateInfo layoutInfo{};
-	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	layoutInfo.bindingCount = 3;
+	// 【新增】Binding 3: SSR Color
+	bindings[3].binding = 3;
+	bindings[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[3].descriptorCount = 1;
+	bindings[3].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	VkDescriptorSetLayoutCreateInfo layoutInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+	layoutInfo.bindingCount = 4; 
 	layoutInfo.pBindings = bindings;
+
 
 	VkDescriptorSetLayout layout = VK_NULL_HANDLE;
 	if (auto const res = vkCreateDescriptorSetLayout(aWindow.device, &layoutInfo, nullptr, &layout); VK_SUCCESS != res)
@@ -783,6 +809,57 @@ lut::ImageWithView create_offscreen_buffer( lut::VulkanWindow const& aWindow, lu
 
 	return lut::ImageWithView( aAllocator.allocator, image, allocation, view );
 }
+
+lut::ImageWithView create_normal_buffer(lut::VulkanWindow const& aWindow, lut::Allocator const& aAllocator)
+{
+	// 创建图像
+	VkImageCreateInfo imageInfo{};
+	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imageInfo.imageType = VK_IMAGE_TYPE_2D;
+	// 使用 16 位浮点数：XYZ 存法线，A 存粗糙度
+	imageInfo.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	imageInfo.extent = { aWindow.swapchainExtent.width, aWindow.swapchainExtent.height, 1 };
+	imageInfo.mipLevels = 1;
+	imageInfo.arrayLayers = 1;
+	imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+	imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+	imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+	imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+	VmaAllocationCreateInfo allocInfo{};
+	allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+	VkImage image = VK_NULL_HANDLE;
+	VmaAllocation allocation = VK_NULL_HANDLE;
+	if (auto const res = vmaCreateImage(aAllocator.allocator, &imageInfo, &allocInfo, &image, &allocation, nullptr); VK_SUCCESS != res) {
+		throw lut::Error("Unable to allocate normal buffer image\n"
+			"vmaCreateImage() returned {}", lut::to_string(res));
+	}
+
+	// 创建 ImageView
+	VkImageViewCreateInfo viewInfo{};
+	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	viewInfo.image = image;
+	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	viewInfo.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	viewInfo.subresourceRange.baseMipLevel = 0;
+	viewInfo.subresourceRange.levelCount = 1;
+	viewInfo.subresourceRange.baseArrayLayer = 0;
+	viewInfo.subresourceRange.layerCount = 1;
+
+	VkImageView view = VK_NULL_HANDLE;
+	if (auto const res = vkCreateImageView(aWindow.device, &viewInfo, nullptr, &view); VK_SUCCESS != res) {
+		throw lut::Error("Unable to create normal buffer image view\n"
+			"vkCreateImageView() returned {}", lut::to_string(res));
+	}
+
+	return lut::ImageWithView(aAllocator.allocator, image, allocation, view);
+
+}
+
+
 
 // creates a generic pipeline for debug visualization
 // the vertex shader is typically the same (debug.vert)
@@ -3110,8 +3187,194 @@ lut::Pipeline create_skybox_pipeline(lut::VulkanWindow const& aWindow, VkPipelin
 
 	return lut::Pipeline(aWindow.device, pipe);
 }
+// ==============================================================================
+//ssr管线布局
+// ==============================================================================
+lut::DescriptorSetLayout create_ssr_descriptor_layout(lut::VulkanWindow const& aWindow)
+{
+	VkDescriptorSetLayoutBinding bindings[4]{};
 
+	// Binding 0: Scene Color (场景颜色缓冲)
+	bindings[0].binding = 0;
+	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[0].descriptorCount = 1;
+	bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
+	// Binding 1: Depth Buffer (深度缓冲)
+	bindings[1].binding = 1;
+	bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[1].descriptorCount = 1;
+	bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	// Binding 2: Normal Buffer (法线缓冲)
+	bindings[2].binding = 2;
+	bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[2].descriptorCount = 1;
+	bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	// Binding 3: UBO (摄像机矩阵数据)
+	bindings[3].binding = 3;
+	bindings[3].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	bindings[3].descriptorCount = 1;
+	bindings[3].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	VkDescriptorSetLayoutCreateInfo layoutInfo{};
+	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	layoutInfo.bindingCount = 4;
+	layoutInfo.pBindings = bindings;
+
+	VkDescriptorSetLayout layout = VK_NULL_HANDLE;
+	if (auto const res = vkCreateDescriptorSetLayout(aWindow.device, &layoutInfo, nullptr, &layout); VK_SUCCESS != res) {
+		throw lut::Error("Unable to create SSR descriptor set layout\n"
+			"vkCreateDescriptorSetLayout() returned {}", lut::to_string(res));
+	}
+
+	return lut::DescriptorSetLayout(aWindow.device, layout);
+}
+lut::PipelineLayout create_ssr_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aDescriptorLayout)
+{
+	// SSR 射线步长、最大步数、厚度阈值等，共 4 个 float = 16 bytes
+	VkPushConstantRange pcRange{};
+	pcRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	pcRange.offset = 0;
+	pcRange.size = sizeof(float) * 4;
+
+	VkPipelineLayoutCreateInfo layoutInfo{};
+	layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	layoutInfo.setLayoutCount = 1;
+	layoutInfo.pSetLayouts = &aDescriptorLayout;
+	layoutInfo.pushConstantRangeCount = 1;
+	layoutInfo.pPushConstantRanges = &pcRange;
+
+	VkPipelineLayout layout = VK_NULL_HANDLE;
+	if (auto const res = vkCreatePipelineLayout(aContext.device, &layoutInfo, nullptr, &layout); VK_SUCCESS != res) {
+		throw lut::Error("Unable to create SSR pipeline layout\n"
+			"vkCreatePipelineLayout() returned {}", lut::to_string(res));
+	}
+
+	return lut::PipelineLayout(aContext.device, layout);
+}
+lut::Pipeline create_ssr_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout)
+{
+	// 复用全屏顶点着色器，加载 SSR 片段着色器
+	auto const vertSpirV = lut::load_file_u32(cfg::kFullscreenVertShaderPath);
+	auto const fragSpirV = lut::load_file_u32(cfg::kSsrFragShaderPath); // 注意：确保在 setup.hpp 的 cfg 命名空间中定义了该路径
+
+	VkShaderModuleCreateInfo code[2]{};
+	code[0].sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	code[0].codeSize = vertSpirV.size() * sizeof(std::uint32_t);
+	code[0].pCode = vertSpirV.data();
+
+	code[1].sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	code[1].codeSize = fragSpirV.size() * sizeof(std::uint32_t);
+	code[1].pCode = fragSpirV.data();
+
+	VkPipelineShaderStageCreateInfo stages[2]{};
+	stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+	stages[0].pName = "main";
+	stages[0].pNext = &code[0];
+
+	stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	stages[1].pName = "main";
+	stages[1].pNext = &code[1];
+
+	// 没有顶点输入，在顶点着色器中通过 gl_VertexIndex 硬编码生成全屏三角形
+	VkPipelineVertexInputStateCreateInfo inputInfo{};
+	inputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+	VkPipelineInputAssemblyStateCreateInfo assemblyInfo{};
+	assemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	assemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	assemblyInfo.primitiveRestartEnable = VK_FALSE;
+
+	VkViewport viewport{};
+	VkRect2D scissor{};
+
+	VkPipelineViewportStateCreateInfo viewportInfo{};
+	viewportInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportInfo.viewportCount = 1;
+	viewportInfo.pViewports = &viewport;
+	viewportInfo.scissorCount = 1;
+	viewportInfo.pScissors = &scissor;
+
+	VkPipelineRasterizationStateCreateInfo rasterInfo{};
+	rasterInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterInfo.depthClampEnable = VK_FALSE;
+	rasterInfo.rasterizerDiscardEnable = VK_FALSE;
+	rasterInfo.polygonMode = VK_POLYGON_MODE_FILL;
+	rasterInfo.cullMode = VK_CULL_MODE_NONE; // 全屏矩形不需要背面剔除
+	rasterInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	rasterInfo.depthBiasEnable = VK_FALSE;
+	rasterInfo.lineWidth = 1.f;
+
+	VkPipelineMultisampleStateCreateInfo samplingInfo{};
+	samplingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	samplingInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+	VkPipelineColorBlendAttachmentState blendStates[1]{};
+	blendStates[0].blendEnable = VK_FALSE; // SSR 缓冲直接覆盖，不需要混合
+	blendStates[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
+	VkPipelineColorBlendStateCreateInfo blendInfo{};
+	blendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	blendInfo.logicOpEnable = VK_FALSE;
+	blendInfo.attachmentCount = 1;
+	blendInfo.pAttachments = blendStates;
+
+	// 后期处理不需要深度测试
+	VkPipelineDepthStencilStateCreateInfo depthInfo{};
+	depthInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthInfo.depthTestEnable = VK_FALSE;
+	depthInfo.depthWriteEnable = VK_FALSE;
+	depthInfo.depthCompareOp = VK_COMPARE_OP_ALWAYS;
+	depthInfo.minDepthBounds = 0.f;
+	depthInfo.maxDepthBounds = 1.f;
+
+	VkDynamicState dynamicStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+
+	VkPipelineDynamicStateCreateInfo dynamicInfo{};
+	dynamicInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dynamicInfo.dynamicStateCount = 2;
+	dynamicInfo.pDynamicStates = dynamicStates;
+
+	// 【关键不同点】：SSR 需要输出到 HDR 离屏缓冲 (G-Buffer 格式)
+	VkFormat ssrOutputFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+
+	VkPipelineRenderingCreateInfo renderingInfo{};
+	renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+	renderingInfo.colorAttachmentCount = 1;
+	renderingInfo.pColorAttachmentFormats = &ssrOutputFormat;
+
+	VkGraphicsPipelineCreateInfo pipeInfo{};
+	pipeInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipeInfo.pNext = &renderingInfo;
+	pipeInfo.stageCount = 2;
+	pipeInfo.pStages = stages;
+	pipeInfo.pVertexInputState = &inputInfo;
+	pipeInfo.pInputAssemblyState = &assemblyInfo;
+	pipeInfo.pTessellationState = nullptr;
+	pipeInfo.pViewportState = &viewportInfo;
+	pipeInfo.pRasterizationState = &rasterInfo;
+	pipeInfo.pMultisampleState = &samplingInfo;
+	pipeInfo.pDepthStencilState = &depthInfo;
+	pipeInfo.pColorBlendState = &blendInfo;
+	pipeInfo.pDynamicState = &dynamicInfo;
+	pipeInfo.layout = aPipelineLayout;
+	pipeInfo.renderPass = VK_NULL_HANDLE;
+	pipeInfo.subpass = 0;
+
+	VkPipeline pipe = VK_NULL_HANDLE;
+	if (auto const res = vkCreateGraphicsPipelines(aWindow.device, VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &pipe); VK_SUCCESS != res)
+	{
+		throw lut::Error("Unable to create SSR pipeline\n"
+			"vkCreateGraphicsPipelines() returned {}", lut::to_string(res)
+		);
+	}
+
+	return lut::Pipeline(aWindow.device, pipe);
+}
 // =============================================================================
 // Bone-matrices SSBO descriptor layout  (set = 2, binding = 0)
 // =============================================================================
@@ -3170,148 +3433,168 @@ lut::PipelineLayout create_skinned_pipeline_layout(
 // =============================================================================
 // Internal helper: build opaque or alpha-blend skinned pipeline
 // =============================================================================
+// 【修改 1】：增加 aColorFormat 参数，用来接收入参
 static lut::Pipeline make_skinned_pipeline(
-    lut::VulkanWindow const& aWindow,
-    VkPipelineLayout aPipelineLayout,
-    bool alphaBlend)
+	lut::VulkanWindow const& aWindow,
+	VkPipelineLayout aPipelineLayout,
+	bool alphaBlend,
+	VkFormat aColorFormat) // <--- 新增
 {
-    auto const vertSpirV = lut::load_file_u32(cfg::kSkinnedVertShaderPath);
-    auto const fragSpirV = lut::load_file_u32(cfg::kFragShaderPath);
+	auto const vertSpirV = lut::load_file_u32(cfg::kSkinnedVertShaderPath);
+	auto const fragSpirV = lut::load_file_u32(cfg::kFragShaderPath);
 
-    VkShaderModuleCreateInfo code[2]{};
-    code[0].sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    code[0].codeSize = vertSpirV.size() * sizeof(uint32_t);
-    code[0].pCode    = vertSpirV.data();
-    code[1].sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    code[1].codeSize = fragSpirV.size() * sizeof(uint32_t);
-    code[1].pCode    = fragSpirV.data();
+	// ... 前面的 code, stages, bindings, attrs, inputInfo, assemblyInfo, vpInfo, raster, ms 保持不变 ...
+	// (为了排版简洁，这里省略前面不变的着色器和顶点加载代码，直接从 ms 往下看)
 
-    VkPipelineShaderStageCreateInfo stages[2]{};
-    stages[0].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    stages[0].stage  = VK_SHADER_STAGE_VERTEX_BIT;
-    stages[0].pName  = "main";
-    stages[0].pNext  = &code[0];
-    stages[1].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    stages[1].stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
-    stages[1].pName  = "main";
-    stages[1].pNext  = &code[1];
+	VkShaderModuleCreateInfo code[2]{};
+	code[0].sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	code[0].codeSize = vertSpirV.size() * sizeof(uint32_t);
+	code[0].pCode = vertSpirV.data();
+	code[1].sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	code[1].codeSize = fragSpirV.size() * sizeof(uint32_t);
+	code[1].pCode = fragSpirV.data();
 
-    // 5 vertex bindings: position, texcoord, normal, joints (uvec4), weights (vec4)
-    VkVertexInputBindingDescription bindings[5]{};
-    bindings[0] = { 0, sizeof(float)*3,    VK_VERTEX_INPUT_RATE_VERTEX };
-    bindings[1] = { 1, sizeof(float)*2,    VK_VERTEX_INPUT_RATE_VERTEX };
-    bindings[2] = { 2, sizeof(float)*3,    VK_VERTEX_INPUT_RATE_VERTEX };
-    bindings[3] = { 3, sizeof(uint32_t)*4, VK_VERTEX_INPUT_RATE_VERTEX };
-    bindings[4] = { 4, sizeof(float)*4,    VK_VERTEX_INPUT_RATE_VERTEX };
+	VkPipelineShaderStageCreateInfo stages[2]{};
+	stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+	stages[0].pName = "main";
+	stages[0].pNext = &code[0];
+	stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	stages[1].pName = "main";
+	stages[1].pNext = &code[1];
 
-    VkVertexInputAttributeDescription attrs[5]{};
-    attrs[0] = { 0, 0, VK_FORMAT_R32G32B32_SFLOAT,    0 };
-    attrs[1] = { 1, 1, VK_FORMAT_R32G32_SFLOAT,       0 };
-    attrs[2] = { 2, 2, VK_FORMAT_R32G32B32_SFLOAT,    0 };
-    attrs[3] = { 3, 3, VK_FORMAT_R32G32B32A32_UINT,   0 };
-    attrs[4] = { 4, 4, VK_FORMAT_R32G32B32A32_SFLOAT, 0 };
+	VkVertexInputBindingDescription bindings[5]{};
+	bindings[0] = { 0, sizeof(float) * 3,    VK_VERTEX_INPUT_RATE_VERTEX };
+	bindings[1] = { 1, sizeof(float) * 2,    VK_VERTEX_INPUT_RATE_VERTEX };
+	bindings[2] = { 2, sizeof(float) * 3,    VK_VERTEX_INPUT_RATE_VERTEX };
+	bindings[3] = { 3, sizeof(uint32_t) * 4, VK_VERTEX_INPUT_RATE_VERTEX };
+	bindings[4] = { 4, sizeof(float) * 4,    VK_VERTEX_INPUT_RATE_VERTEX };
 
-    VkPipelineVertexInputStateCreateInfo inputInfo{};
-    inputInfo.sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    inputInfo.vertexBindingDescriptionCount   = 5;
-    inputInfo.pVertexBindingDescriptions      = bindings;
-    inputInfo.vertexAttributeDescriptionCount = 5;
-    inputInfo.pVertexAttributeDescriptions    = attrs;
+	VkVertexInputAttributeDescription attrs[5]{};
+	attrs[0] = { 0, 0, VK_FORMAT_R32G32B32_SFLOAT,    0 };
+	attrs[1] = { 1, 1, VK_FORMAT_R32G32_SFLOAT,       0 };
+	attrs[2] = { 2, 2, VK_FORMAT_R32G32B32_SFLOAT,    0 };
+	attrs[3] = { 3, 3, VK_FORMAT_R32G32B32A32_UINT,   0 };
+	attrs[4] = { 4, 4, VK_FORMAT_R32G32B32A32_SFLOAT, 0 };
 
-    VkPipelineInputAssemblyStateCreateInfo assemblyInfo{};
-    assemblyInfo.sType    = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    assemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	VkPipelineVertexInputStateCreateInfo inputInfo{};
+	inputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	inputInfo.vertexBindingDescriptionCount = 5;
+	inputInfo.pVertexBindingDescriptions = bindings;
+	inputInfo.vertexAttributeDescriptionCount = 5;
+	inputInfo.pVertexAttributeDescriptions = attrs;
 
-    VkViewport vp{ 0,0,(float)aWindow.swapchainExtent.width,(float)aWindow.swapchainExtent.height,0,1 };
-    VkRect2D sc{ {0,0}, aWindow.swapchainExtent };
-    VkPipelineViewportStateCreateInfo vpInfo{};
-    vpInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-    vpInfo.viewportCount = 1; vpInfo.pViewports = &vp;
-    vpInfo.scissorCount  = 1; vpInfo.pScissors  = &sc;
+	VkPipelineInputAssemblyStateCreateInfo assemblyInfo{};
+	assemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	assemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
-    VkPipelineRasterizationStateCreateInfo raster{};
-    raster.sType       = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-    raster.polygonMode = VK_POLYGON_MODE_FILL;
-    raster.cullMode    = VK_CULL_MODE_BACK_BIT;
-    raster.frontFace   = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    raster.lineWidth   = 1.f;
+	VkViewport vp{ 0,0,(float)aWindow.swapchainExtent.width,(float)aWindow.swapchainExtent.height,0,1 };
+	VkRect2D sc{ {0,0}, aWindow.swapchainExtent };
+	VkPipelineViewportStateCreateInfo vpInfo{};
+	vpInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	vpInfo.viewportCount = 1; vpInfo.pViewports = &vp;
+	vpInfo.scissorCount = 1; vpInfo.pScissors = &sc;
 
-    VkPipelineMultisampleStateCreateInfo ms{};
-    ms.sType                = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	VkPipelineRasterizationStateCreateInfo raster{};
+	raster.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	raster.polygonMode = VK_POLYGON_MODE_FILL;
+	raster.cullMode = VK_CULL_MODE_BACK_BIT;
+	raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	raster.lineWidth = 1.f;
 
-    VkPipelineColorBlendAttachmentState blendAtt[2]{};
-    blendAtt[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT|VK_COLOR_COMPONENT_G_BIT|VK_COLOR_COMPONENT_B_BIT|VK_COLOR_COMPONENT_A_BIT;
-    blendAtt[1].colorWriteMask = blendAtt[0].colorWriteMask;
-	// ===== 修改 make_skinned_pipeline 中 alphaBlend 分支为 PREMULTIPLIED alpha =====
+	VkPipelineMultisampleStateCreateInfo ms{};
+	ms.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+	// =================================================================
+	// 【修改 2】：提升到 3 个 Blend 附件
+	// =================================================================
+	VkPipelineColorBlendAttachmentState blendAtt[3]{};
+	blendAtt[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	blendAtt[1].colorWriteMask = blendAtt[0].colorWriteMask;
+	blendAtt[2].colorWriteMask = blendAtt[0].colorWriteMask;
+	blendAtt[2].blendEnable = VK_FALSE; // 法线贴图不混合
+
 	if (alphaBlend) {
 		blendAtt[0].blendEnable = VK_TRUE;
-		// 使用预乘 alpha（与 shader 输出预乘配对）
 		blendAtt[0].srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
 		blendAtt[0].dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
 		blendAtt[0].colorBlendOp = VK_BLEND_OP_ADD;
 		blendAtt[0].srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
 		blendAtt[0].dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
 		blendAtt[0].alphaBlendOp = VK_BLEND_OP_ADD;
+
+		blendAtt[1] = blendAtt[0]; // Bloom也应用混合
 	}
-    VkPipelineColorBlendStateCreateInfo blendInfo{};
-    blendInfo.sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    blendInfo.attachmentCount = 2;
-    blendInfo.pAttachments    = blendAtt;
 
-    VkFormat colorFmts[2] = { VK_FORMAT_R16G16B16A16_SFLOAT, VK_FORMAT_R16G16B16A16_SFLOAT };
-    VkPipelineRenderingCreateInfo renderInfo{};
-    renderInfo.sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-    renderInfo.colorAttachmentCount    = 2;
-    renderInfo.pColorAttachmentFormats = colorFmts;
-    renderInfo.depthAttachmentFormat   = cfg::kDepthFormat;
+	VkPipelineColorBlendStateCreateInfo blendInfo{};
+	blendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	blendInfo.attachmentCount = 3; // <--- 必须为 3
+	blendInfo.pAttachments = blendAtt;
 
-    VkPipelineDepthStencilStateCreateInfo depth{};
-    depth.sType            = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-    depth.depthTestEnable  = VK_TRUE;
-    depth.depthWriteEnable = alphaBlend ? VK_FALSE : VK_TRUE;
-    depth.depthCompareOp   = VK_COMPARE_OP_LESS_OR_EQUAL;
+	// =================================================================
+	// 【修改 3】：格式数组增加为 3 个，其中最后一个固定为法线格式
+	// =================================================================
+	VkFormat colorFmts[3] = {
+		aColorFormat,                  // 0: Scene
+		aColorFormat,                  // 1: Bloom
+		VK_FORMAT_R16G16B16A16_SFLOAT  // 2: Normal
+	};
 
-    VkDynamicState dynS[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
-    VkPipelineDynamicStateCreateInfo dynInfo{};
-    dynInfo.sType             = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    dynInfo.dynamicStateCount = 2;
-    dynInfo.pDynamicStates    = dynS;
+	VkPipelineRenderingCreateInfo renderInfo{};
+	renderInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+	renderInfo.colorAttachmentCount = 3; // <--- 必须为 3
+	renderInfo.pColorAttachmentFormats = colorFmts;
+	renderInfo.depthAttachmentFormat = cfg::kDepthFormat;
 
-    VkGraphicsPipelineCreateInfo pipeInfo{};
-    pipeInfo.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    pipeInfo.pNext               = &renderInfo;
-    pipeInfo.stageCount          = 2;
-    pipeInfo.pStages             = stages;
-    pipeInfo.pVertexInputState   = &inputInfo;
-    pipeInfo.pInputAssemblyState = &assemblyInfo;
-    pipeInfo.pViewportState      = &vpInfo;
-    pipeInfo.pRasterizationState = &raster;
-    pipeInfo.pMultisampleState   = &ms;
-    pipeInfo.pDepthStencilState  = &depth;
-    pipeInfo.pColorBlendState    = &blendInfo;
-    pipeInfo.pDynamicState       = &dynInfo;
-    pipeInfo.layout              = aPipelineLayout;
+	VkPipelineDepthStencilStateCreateInfo depth{};
+	depth.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depth.depthTestEnable = VK_TRUE;
+	depth.depthWriteEnable = alphaBlend ? VK_FALSE : VK_TRUE;
+	depth.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
 
-    VkPipeline pipe = VK_NULL_HANDLE;
-    if (auto res = vkCreateGraphicsPipelines(aWindow.device, VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &pipe);
-        VK_SUCCESS != res)
-        throw lut::Error("make_skinned_pipeline: {}", lut::to_string(res));
+	VkDynamicState dynS[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+	VkPipelineDynamicStateCreateInfo dynInfo{};
+	dynInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dynInfo.dynamicStateCount = 2;
+	dynInfo.pDynamicStates = dynS;
 
-    return lut::Pipeline(aWindow.device, pipe);
+	VkGraphicsPipelineCreateInfo pipeInfo{};
+	pipeInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipeInfo.pNext = &renderInfo;
+	pipeInfo.stageCount = 2;
+	pipeInfo.pStages = stages;
+	pipeInfo.pVertexInputState = &inputInfo;
+	pipeInfo.pInputAssemblyState = &assemblyInfo;
+	pipeInfo.pViewportState = &vpInfo;
+	pipeInfo.pRasterizationState = &raster;
+	pipeInfo.pMultisampleState = &ms;
+	pipeInfo.pDepthStencilState = &depth;
+	pipeInfo.pColorBlendState = &blendInfo;
+	pipeInfo.pDynamicState = &dynInfo;
+	pipeInfo.layout = aPipelineLayout;
+
+	VkPipeline pipe = VK_NULL_HANDLE;
+	if (auto res = vkCreateGraphicsPipelines(aWindow.device, VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &pipe);
+		VK_SUCCESS != res)
+		throw lut::Error("make_skinned_pipeline: {}", lut::to_string(res));
+
+	return lut::Pipeline(aWindow.device, pipe);
 }
 
+// 【修改 4】：透传 aColorFormat 给 make 函数
 lut::Pipeline create_skinned_pipeline(lut::VulkanWindow const& aWindow,
-                                      VkPipelineLayout aPipelineLayout,
-                                      VkFormat /*aColorFormat*/)
+	VkPipelineLayout aPipelineLayout,
+	VkFormat aColorFormat)
 {
-    return make_skinned_pipeline(aWindow, aPipelineLayout, false);
+	return make_skinned_pipeline(aWindow, aPipelineLayout, false, aColorFormat);
 }
 
 lut::Pipeline create_skinned_alpha_pipeline(lut::VulkanWindow const& aWindow,
-                                            VkPipelineLayout aPipelineLayout,
-                                            VkFormat /*aColorFormat*/)
+	VkPipelineLayout aPipelineLayout,
+	VkFormat aColorFormat)
 {
-    return make_skinned_pipeline(aWindow, aPipelineLayout, true);
+	return make_skinned_pipeline(aWindow, aPipelineLayout, true, aColorFormat);
 }
 

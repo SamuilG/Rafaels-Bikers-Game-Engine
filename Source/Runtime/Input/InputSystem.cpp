@@ -140,6 +140,7 @@ namespace engine {
         // ==========================================
 
         MapKeyboardAction("BloomToggle", GLFW_KEY_B);
+        MapKeyboardAction("IBLToggle", GLFW_KEY_I);
         
 		MapKeyboardAction("ToggleEngineUi", GLFW_KEY_F1);// F1键：切换引擎UI显示//f1： switch engine UI
 

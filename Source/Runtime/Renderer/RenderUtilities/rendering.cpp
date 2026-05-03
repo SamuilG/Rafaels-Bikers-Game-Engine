@@ -57,6 +57,11 @@ void record_commands(
 	VkDescriptorSet aCompositeDS,
 	ImageAndView const& aOffscreenColor,
 	ImageAndView const& aBrightColor,
+	ImageAndView const& aNormalImage,   // <--- 【新增】法线缓冲
+	ImageAndView const& aSsrOutput,     // <--- 【新增】SSR 结果输出缓冲
+	VkPipeline aSsrPipe,                // <--- 【新增】
+	VkPipelineLayout aSsrLayout,        // <--- 【新增】
+	VkDescriptorSet aSsrDS,             // <--- 【新增】
 	ImageAndView const& aBlurTemp,
 	ImageAndView const& aFinalBloom,
 	ImageAndView const& aCompositeOutput, // modified from aFinalSceneColor; used for bloom transfer
@@ -274,7 +279,23 @@ void record_commands(
 		VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
 	);
 
-	// Depth attachment for this pass
+	// 【新增补漏 1】：将法线缓冲重置为可写入状态
+	lut::image_barrier(aCmdBuff, aNormalImage.image,
+		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
+	);
+
+	// 【新增补漏 2】：将深度缓冲重置为可读写状态！(极其关键，否则深度测试全崩)
+	lut::image_barrier(aCmdBuff, aDepthAttach.image,
+		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+		VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		VkImageSubresourceRange{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 }
+	);
+
+	
 	VkRenderingAttachmentInfo depthAttachmentInfo{};
 	depthAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
 	depthAttachmentInfo.imageView = aDepthAttach.view;
@@ -283,31 +304,30 @@ void record_commands(
 	depthAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 	depthAttachmentInfo.clearValue.depthStencil = { 1.f, 0 };
 
-	VkRenderingAttachmentInfo colorAtts[2]{};
+	VkRenderingAttachmentInfo colorAtts[3]{};
 
-	// 显式配置附件 0
+	// 附件 0: Scene Color
 	colorAtts[0].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
 	colorAtts[0].imageView = aOffscreenColor.view;
-	//colorAtts[0].imageView = aFinalSceneColor.view;
 	colorAtts[0].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	colorAtts[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	colorAtts[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 	colorAtts[0].clearValue.color = aClearColor;
 
-	// 显式配置附件 1（亮度提取图）
-	colorAtts[1].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	// 附件 1: Bright Color
+	colorAtts[1] = colorAtts[0];
 	colorAtts[1].imageView = aBrightColor.view;
-	colorAtts[1].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	colorAtts[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // 确保清除旧数据
-	colorAtts[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE; // ！！！关键：必须确保为 STORE ！！！
 	colorAtts[1].clearValue.color = { 0.f, 0.f, 0.f, 1.f };
 
-	VkRenderingInfo mrtInfo{};
-	mrtInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-	mrtInfo.renderArea.offset = { 0, 0 };
+	// 【新增】附件 2: Normal Buffer
+	colorAtts[2] = colorAtts[0];
+	colorAtts[2].imageView = aNormalImage.view;
+	colorAtts[2].clearValue.color = { 0.f, 0.f, 0.f, 0.f }; // 默认背景无法线且绝对光滑(0)
+
+	VkRenderingInfo mrtInfo{ VK_STRUCTURE_TYPE_RENDERING_INFO };
 	mrtInfo.renderArea.extent = aImageExtent;
 	mrtInfo.layerCount = 1;
-	mrtInfo.colorAttachmentCount = 2;
+	mrtInfo.colorAttachmentCount = 3; // <-- 改为 3
 	mrtInfo.pColorAttachments = colorAtts;
 	mrtInfo.pDepthAttachment = &depthAttachmentInfo;
 
@@ -594,7 +614,67 @@ void record_commands(
 
 	vkCmdEndRendering(aCmdBuff);
 
+	// ==========================================================
+	// 准备进入 SSR 阶段：将刚刚画好的法线、深度、颜色转为只读采样状态
+	// ==========================================================
+	VkImageSubresourceRange range{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+	VkImageSubresourceRange depthRange{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
 
+	// 1. 法线 -> Read
+	lut::image_barrier(aCmdBuff, aNormalImage.image,
+		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
+
+	// 2. 场景颜色 -> Read (因为 SSR 要采原本的画面颜色当倒影)
+	lut::image_barrier(aCmdBuff, aOffscreenColor.image,
+		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
+
+	// 3. 深度图 -> Read (因为 SSR 要靠深度重建 3D 坐标)
+	lut::image_barrier(aCmdBuff, aDepthAttach.image,
+		VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, depthRange);
+
+	// 4. SSR Output -> Write (作为 SSR Pass 的画板)
+	lut::image_barrier(aCmdBuff, aSsrOutput.image,
+		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
+	// ==========================================================
+	// 执行 SSR Pass
+	// ==========================================================
+	VkRenderingAttachmentInfo ssrAtt{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+	ssrAtt.imageView = aSsrOutput.view;
+	ssrAtt.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	// 顺手把这里改成 CLEAR，以防万一残留垃圾数据
+	ssrAtt.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	ssrAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	//ssrAtt.clearValue.color = { 0.0f, 0.0f, 0.0f, 0.0f }; // 清空为纯黑
+
+	VkRenderingInfo ssrRenderInfo{ VK_STRUCTURE_TYPE_RENDERING_INFO };
+	ssrRenderInfo.renderArea.extent = aImageExtent;
+	ssrRenderInfo.layerCount = 1;
+	ssrRenderInfo.colorAttachmentCount = 1;
+	ssrRenderInfo.pColorAttachments = &ssrAtt;
+
+	vkCmdBeginRendering(aCmdBuff, &ssrRenderInfo);
+	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsrPipe);
+	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsrLayout, 0, 1, &aSsrDS, 0, nullptr);
+
+	float ssrParams[4] = { 0.2f /*步长*/, 100.0f /*最大步数*/, 0.1f /*厚度*/, 0.0f /*留白*/ };
+	vkCmdPushConstants(aCmdBuff, aSsrLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float) * 4, ssrParams);
+
+	// ==========================================================
+	// 【核心救命代码】：把视口和裁剪区域设置上！
+	// ==========================================================
+	vkCmdSetViewport(aCmdBuff, 0, 1, &vp);
+	vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
+
+	vkCmdDraw(aCmdBuff, 3, 1, 0, 0); // 现在它终于能画出东西了！
+	vkCmdEndRendering(aCmdBuff);
+	// SSR 输出完毕，转为只读，留给 Composite 阶段去混合！
+	lut::image_barrier(aCmdBuff, aSsrOutput.image,
+		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
 	// ==========================================================
 	// Blur pass: Horizontal (Bright -> BlurTemp)
 	// ==========================================================
@@ -675,15 +755,15 @@ void record_commands(
 	// ==========================================================
 	// Composite: combine Offscreen + FinalBloom -> Swapchain
 	// ==========================================================
-	lut::image_barrier(aCmdBuff, aOffscreenColor.image,
-		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-		VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-		VK_ACCESS_2_SHADER_READ_BIT,
-		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1 }
-	);
+	//lut::image_barrier(aCmdBuff, aOffscreenColor.image,
+	//	VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+	//	VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+	//	VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+	//	VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+	//	VK_ACCESS_2_SHADER_READ_BIT,
+	//	VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	//	VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1 }
+	//);
 	lut::image_barrier(aCmdBuff, aFinalBloom.image,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
 		VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
@@ -750,7 +830,7 @@ void record_commands(
 	// ==========================================================
 	// 【新增】：将 aCompositeOutput 转换为 Shader 可读状态，供下一道工序使用
 	// ==========================================================
-	VkImageSubresourceRange range{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+	//VkImageSubresourceRange range{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 	lut::image_barrier(aCmdBuff, aCompositeOutput.image,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);

@@ -46,6 +46,11 @@ void record_commands(
 	VkDescriptorSet aCompositeDS,
 	ImageAndView const& aOffscreenColor,
 	ImageAndView const& aBrightColor,
+	ImageAndView const& aNormalImage,   // <--- 【新增】法线缓冲
+	ImageAndView const& aSsrOutput,     // <--- 【新增】SSR 结果输出缓冲
+	VkPipeline aSsrPipe,                // <--- 【新增】
+	VkPipelineLayout aSsrLayout,        // <--- 【新增】
+	VkDescriptorSet aSsrDS,             // <--- 【新增】
 	ImageAndView const& aBlurTemp,
 	ImageAndView const& aFinalBloom,
 	ImageAndView const& aCompositeOutput, // modified from aFinalSceneColor; used for bloom transfer

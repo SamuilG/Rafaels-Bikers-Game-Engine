@@ -37,13 +37,13 @@ namespace glsl {
 
 		uint32_t lightCount;
 		uint32_t renderMode;
-		uint32_t _pad0;
+
+		uint32_t iblEnabled; // <--- 【修改】：把 _pad0 替换为 iblEnabled
 		uint32_t _pad1;
 
 		glm::mat4 lightVP[4];
 		glm::vec4 cascadeSplits;
 	};
-
 }
 
 namespace cfg
@@ -96,7 +96,8 @@ namespace cfg
 	constexpr char const* skyboxFragShaderPath = SHADERDIR_"skybox.frag.spv";
 	// Skeletal skinning
 	constexpr char const* kSkinnedVertShaderPath = SHADERDIR_"skinned.vert.spv";
-
+	// 【新增】：SSR 屏幕空间反射
+	constexpr char const* kSsrFragShaderPath = SHADERDIR_ "ssr.frag.spv";
 
 #	undef SHADERDIR_
 
@@ -142,6 +143,11 @@ lut::DescriptorSetLayout create_post_proc_descriptor_layout( lut::VulkanWindow c
 
 lut::ImageWithView create_depth_buffer( lut::VulkanWindow const&, lut::Allocator const& );
 lut::ImageWithView create_offscreen_buffer( lut::VulkanWindow const&, lut::Allocator const& );
+
+// 【新增】：创建用于存储世界空间/观察空间法线的 G-Buffer
+lut::ImageWithView create_normal_buffer(lut::VulkanWindow const&, lut::Allocator const&);
+lut::ImageWithView create_vis_image(lut::VulkanWindow const&, lut::Allocator const&);
+
 lut::ImageWithView create_vis_image( lut::VulkanWindow const&, lut::Allocator const& );
 
 // p2_1.5 shadow mapping
@@ -182,7 +188,12 @@ lut::DescriptorSetLayout create_skybox_descriptor_layout(lut::VulkanWindow const
 lut::PipelineLayout create_skybox_pipeline_layout(lut::VulkanWindow const& window, VkDescriptorSetLayout dsetLayout);
 lut::Pipeline create_skybox_pipeline(lut::VulkanWindow const& window, VkPipelineLayout pipeLayout, VkFormat colorFormat);
 
-
+// 【新增】：SSR 描述符布局 (需要绑定 Color, Depth, Normal, 还有 UBO)
+lut::DescriptorSetLayout create_ssr_descriptor_layout(lut::VulkanWindow const& aWindow);
+// 【新增】：SSR 管线布局
+lut::PipelineLayout create_ssr_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aDescriptorLayout);
+// 【新增】：SSR 渲染管线 (输出一张存储了反射倒影的图像)
+lut::Pipeline create_ssr_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout);
 
 // debug render
 lut::Pipeline create_debug_line_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, VkFormat aColorFormat);

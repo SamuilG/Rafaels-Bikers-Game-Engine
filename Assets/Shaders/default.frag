@@ -16,10 +16,12 @@ layout(push_constant) uniform PushConstants {
 } pc;
 layout( location = 0 ) out vec4 oColor;       // 正常场景颜色
 layout( location = 1 ) out vec4 oBrightColor; // 提取的亮度颜
+layout( location = 2 ) out vec4 oNormal;
 
 layout( location = 0 ) in vec2 v2fTexCoord;
 layout( location = 1 ) in vec3 v2fNormal;
 layout( location = 2 ) in vec3 v2fPos;
+
 layout( location = 3 ) in vec4 v2fLightProjPos;
 
 layout( set = 1, binding = 0 ) uniform sampler2D uTexColor;
@@ -49,7 +51,7 @@ layout( scalar, set = 0, binding = 0 ) uniform UScene
     
     uint lightCount;  
     uint renderMode;
-    uint _pad0; 
+    uint iblEnabled; 
     uint _pad1;
 
     mat4 lightVP[4];      
@@ -271,51 +273,47 @@ void main()
 
         totalLo += (kD * disneyDiffuse + Lspecular) * Li * NdotL;
     }
-// ===== 在环境光部分（第 5 部分）修改如下 =====
-    // 5. 环境光与最终颜色合成 (物理 IBL 采样 + 熔断保护 + 金属度阈值)
+// =================================================================
+    // 5. 环境光与最终颜色合成 (物理 IBL 采样 + 熔断保护)
     // =================================================================
-    vec3 F0_env = mix(vec3(0.04), baseColor, metalness);
-    
-    // a. 环境漫反射
-    vec3 skyColorEnv = vec3(0.35, 0.45, 0.65) * 0.3; 
-    vec3 groundColorEnv = vec3(0.05, 0.04, 0.03);    
-    float hemiWeight = 0.5 * N.y + 0.5;
-    vec3 ambientIrradiance = mix(groundColorEnv, skyColorEnv, hemiWeight);
+    vec3 Lambient = vec3(0.0); // 默认环境光为 0 (死黑)
 
-    vec3 kS_env = F0_env + (max(vec3(1.0 - roughness), F0_env) - F0_env) * pow(1.0 - max(dot(N, V), 0.0001), 5.0);
-    vec3 kD_env = (vec3(1.0) - kS_env) * (1.0 - metalness);
-    vec3 LambientDiffuse = ambientIrradiance * baseColor * kD_env;
+    // 【新增】：只有在 iblEnabled == 1 时才计算天空盒反射
+    if (uScene.iblEnabled == 1) {
+        vec3 F0_env = mix(vec3(0.04), baseColor, metalness);
+        
+        // a. 环境漫反射
+        vec3 skyColorEnv = vec3(0.35, 0.45, 0.65) * 0.3; 
+        vec3 groundColorEnv = vec3(0.05, 0.04, 0.03);    
+        float hemiWeight = 0.5 * N.y + 0.5;
+        vec3 ambientIrradiance = mix(groundColorEnv, skyColorEnv, hemiWeight);
 
-    // b. IBL 镜面环境反射 (倒影)
-    // 【关键修复】：只有当金属度充分高时，才计算环境镜面反射
-    // 对于非金属材质（metalness < 0.05），完全禁用 IBL 镜面
-    float metallicThreshold = 0.05;  // 金属度阈值
-    vec3 LambientSpecular = vec3(0.0);
-    
-    if (metalness > metallicThreshold) {
+        vec3 kS_env = F0_env + (max(vec3(1.0 - roughness), F0_env) - F0_env) * pow(1.0 - max(dot(N, V), 0.0001), 5.0);
+        vec3 kD_env = (vec3(1.0) - kS_env) * (1.0 - metalness);
+        vec3 LambientDiffuse = ambientIrradiance * baseColor * kD_env;
+
+        // b. IBL 镜面环境反射 (倒影)
         vec3 R = reflect(-V, N);
         float lod = roughness * 8.0; 
         
         // 采样真实的天空盒
         vec3 iblSpecularColor = textureLod(uSkyboxTexture, R, lod).rgb;
 
-        // 【熔断保护】：如果采出来的天空盒颜色太暗（比如未绑定），
-        // 自动切换到伪 IBL 计算，防止死黑！
+        // 【熔断保护】
         if (dot(iblSpecularColor, iblSpecularColor) < 0.0001) {
-            // 伪 IBL 渐变
             iblSpecularColor = mix(groundColorEnv * 2.0, skyColorEnv * 6.5, R.y * 0.5 + 0.5);
             iblSpecularColor *= (1.0 - roughness * 0.5);
         }
 
         // 叠加环境高光
-        LambientSpecular = iblSpecularColor * kS_env;
+        vec3 LambientSpecular = iblSpecularColor * kS_env;
+
+        // c. 合并并应用 AO 遮蔽
+        Lambient = (LambientDiffuse + LambientSpecular) * ao;
     }
 
-    // c. 合并并应用 AO 遮蔽
-    vec3 Lambient = (LambientDiffuse + LambientSpecular) * ao;
-
-    vec3 finalColor = Lambient + totalLo + emissive;
-    // --- 6. Bloom 亮度提取 ---
+    // 最终合并（如果 IBL 关闭，Lambient 就是 vec3(0.0)）
+    vec3 finalColor = Lambient + totalLo + emissive;    // --- 6. Bloom 亮度提取 ---
     float threshold = 1.0; 
     vec3 bloomContrib = max(finalColor - vec3(threshold), vec3(0.0));
     oBrightColor = vec4(bloomContrib, 1.0);
@@ -328,4 +326,5 @@ void main()
     mappedColor *= finalAlpha; // PREMULTIPLY
 
     oColor = vec4(mappedColor, finalAlpha);
+    oNormal = vec4(N, roughness);
 }

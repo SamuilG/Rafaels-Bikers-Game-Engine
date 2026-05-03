@@ -374,6 +374,14 @@ namespace engine {
 
             mDepthBuffer = create_depth_buffer(mWindow, mAllocator);
             mOffscreenImage = create_offscreen_buffer(mWindow, mAllocator);
+            // 【新增】：创建法线缓冲和 SSR 输出缓冲
+            mNormalImage = create_normal_buffer(mWindow, mAllocator);
+            mSsrOutputImage = create_offscreen_buffer(mWindow, mAllocator);
+            mSsrDescLayout = create_ssr_descriptor_layout(mWindow);
+            mSsrPipeLayout = create_ssr_pipeline_layout(mWindow, mSsrDescLayout.handle);
+            mSsrPipe = create_ssr_pipeline(mWindow, mSsrPipeLayout.handle);
+
+
             mVisImage = create_vis_image(mWindow, mAllocator);
             mBrightImage = create_offscreen_buffer(mWindow, mAllocator);
             mBlurTempImage = create_offscreen_buffer(mWindow, mAllocator);
@@ -397,8 +405,16 @@ namespace engine {
                 mVisDescriptors.push_back(BuildPostDesc(mVisImage.view, mMosaicUBOs[i].buffer));
                 mBlurHorizDescriptors.push_back(BuildBlurDesc(mBlurDescLayout.handle, mBrightImage.view));
                 mBlurVertDescriptors.push_back(BuildBlurDesc(mBlurDescLayout.handle, mBlurTempImage.view));
-                mCompositeDescriptors.push_back(BuildCompositeDesc(mOffscreenImage.view, mFinalBloomImage.view, mMosaicUBOs[i].buffer));
+                // 【核心修改】：传入 5 个参数，把 mSsrOutputImage.view 传给 Composite
+                mCompositeDescriptors.push_back(BuildCompositeDesc(
+                    mCompDescLayout.handle,
+                    mOffscreenImage.view,
+                    mFinalBloomImage.view,
+                    mSsrOutputImage.view,  // <-- 新增的 SSR 贴图
+                    mMosaicUBOs[i].buffer
+                ));
                 mSpeedPostDescriptors.push_back(BuildSpeedDesc(mCompositeOutputImage.view));
+                mSsrDescriptors.push_back(BuildSsrDesc(mOffscreenImage.view, mDepthBuffer.view, mNormalImage.view, mSceneUBO.buffer));
             }
 
             // ==========================================
@@ -502,26 +518,50 @@ namespace engine {
             return ds;
         }
 
-        VkDescriptorSet BuildCompositeDesc(VkDescriptorSetLayout layout, VkImageView sceneView, VkImageView bloomView) {
+        // 在 RenderSystem.hpp 中更新该函数：
+
+        VkDescriptorSet BuildCompositeDesc(VkDescriptorSetLayout layout, VkImageView sceneView, VkImageView bloomView, VkImageView ssrView, VkBuffer mosaicUbo) {
             // 确保直接 alloc 并返回，不要在函数内部操作成员 vector
             VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, layout);
 
-            VkDescriptorImageInfo imgs[2]{};
+            // 3 张贴图 (0:Scene, 1:Bloom, 2:SSR view)
+            VkDescriptorImageInfo imgs[3]{};
             imgs[0] = { mPostSampler.handle, sceneView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
             imgs[1] = { mPostSampler.handle, bloomView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            imgs[2] = { mPostSampler.handle, ssrView,   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
 
-            VkWriteDescriptorSet w[2]{};
+            // 1 个 UBO (Binding 2)
+            VkDescriptorBufferInfo bi{ mosaicUbo, 0, VK_WHOLE_SIZE };
+
+            // 写入 4 个绑定！【关键修复点】：数组大小绝不能是 2 或 3
+            VkWriteDescriptorSet w[4]{};
+
+            // Binding 0: Scene Color
             w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             w[0].dstSet = ds; w[0].dstBinding = 0;
             w[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             w[0].descriptorCount = 1; w[0].pImageInfo = &imgs[0];
 
+            // Binding 1: Bloom Color
             w[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             w[1].dstSet = ds; w[1].dstBinding = 1;
             w[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             w[1].descriptorCount = 1; w[1].pImageInfo = &imgs[1];
 
-            vkUpdateDescriptorSets(mWindow.device, 2, w, 0, nullptr);
+            // Binding 2: Mosaic UBO
+            w[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            w[2].dstSet = ds; w[2].dstBinding = 2;
+            w[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            w[2].descriptorCount = 1; w[2].pBufferInfo = &bi;
+
+            // Binding 3: SSR Color
+            w[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            w[3].dstSet = ds; w[3].dstBinding = 3;
+            w[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            w[3].descriptorCount = 1; w[3].pImageInfo = &imgs[2];
+
+            // 提交更新 4 个！
+            vkUpdateDescriptorSets(mWindow.device, 4, w, 0, nullptr);
             return ds;
         }
 
@@ -852,7 +892,11 @@ namespace engine {
                 mState->bloomEnabled = !mState->bloomEnabled;
                 std::printf("Bloom Effect: %s\n", mState->bloomEnabled ? "ON" : "OFF");
             }
-
+            // 【新增】：处理 IBL 开关
+            if (mInputSystem->IsActionPressed("IBLToggle")) {
+                mState->iblEnabled = !mState->iblEnabled;
+                std::printf("IBL Reflection: %s\n", mState->iblEnabled ? "ON" : "OFF");
+            }
             if (glfwWindowShouldClose(mWindow.window)) {
                 mAppRunning = false;
                 //===========================UI System================================
@@ -888,9 +932,16 @@ namespace engine {
                     mOffscreenImage = create_offscreen_buffer(mWindow, mAllocator);
                     mVisImage = create_vis_image(mWindow, mAllocator);
 
+                    // =====================================================================
+                    // 【新增】：重建 SSR 的专属缓冲
+                    // =====================================================================
+                    mNormalImage = create_normal_buffer(mWindow, mAllocator);
+                    mSsrOutputImage = create_offscreen_buffer(mWindow, mAllocator);
+
                     // 重建极速特效中间图
                     mCompositeOutputImage = create_offscreen_buffer(mWindow, mAllocator);
                     UpdatePostDescImage(mSpeedPostDescriptors, mCompositeOutputImage.view);
+
                     // 1。创建严格 1 层 Mipmap 的图像，
                     VkImageCreateInfo imageInfo{};
                     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -930,14 +981,11 @@ namespace engine {
                     mFinalSceneView = lut::ImageView(mWindow.device, rawView);
 
                     // 更新 ImGui 的图片绑定
-                   /* if (m_sceneViewportTexId) ImGui_ImplVulkan_RemoveTexture(m_sceneViewportTexId);
-                    m_sceneViewportTexId = ImGui_ImplVulkan_AddTexture(mDefaultSampler.handle, mFinalSceneView.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);*/
                     if (m_sceneViewportTexId) ImGui_ImplVulkan_RemoveTexture(m_sceneViewportTexId);
                     m_sceneViewportTexId = ImGui_ImplVulkan_AddTexture(mDefaultSampler.handle, mFinalSceneView.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-                    // ----------------------------------------
 
                     // =====================================================================
-                    // 【新增核心修复】：必须重新创建 Bloom 相关的离屏缓冲 
+                    // 重新创建 Bloom 相关的离屏缓冲 
                     // =====================================================================
                     mBrightImage = create_offscreen_buffer(mWindow, mAllocator);
                     mBlurTempImage = create_offscreen_buffer(mWindow, mAllocator);
@@ -947,38 +995,39 @@ namespace engine {
                     UpdatePostDescImage(mBlurHorizDescriptors, mBrightImage.view);
                     UpdatePostDescImage(mBlurVertDescriptors, mBlurTempImage.view);
 
-                    // 更新 Composite (合成) 阶段的描述符，它需要绑定两张图 (0: 场景图, 1: Bloom图)
+                    // =====================================================================
+                    // 【核心修复】：更新 Composite 描述符 (现在必须传 4 个绑定)
+                    // 删掉了原来手动写 VkWriteDescriptorSet 的旧代码，直接调用写好的封装函数
+                    // =====================================================================
                     for (size_t i = 0; i < mCmdBuffers.size(); ++i) {
-                        VkDescriptorImageInfo imgs[2]{};
-                        imgs[0] = { mPostSampler.handle, mOffscreenImage.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-                        imgs[1] = { mPostSampler.handle, mFinalBloomImage.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-
-                        VkWriteDescriptorSet w[2]{};
-                        w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                        w[0].dstSet = mCompositeDescriptors[i];
-                        w[0].dstBinding = 0;
-                        w[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-                        w[0].descriptorCount = 1;
-                        w[0].pImageInfo = &imgs[0];
-
-                        w[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                        w[1].dstSet = mCompositeDescriptors[i];
-                        w[1].dstBinding = 1;
-                        w[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-                        w[1].descriptorCount = 1;
-                        w[1].pImageInfo = &imgs[1];
-
-                        vkUpdateDescriptorSets(mWindow.device, 2, w, 0, nullptr);
+                        mCompositeDescriptors[i] = BuildCompositeDesc(
+                            mCompDescLayout.handle,
+                            mOffscreenImage.view,
+                            mFinalBloomImage.view,
+                            mSsrOutputImage.view,  // <--- 传入新建的 SSR 结果贴图
+                            mMosaicUBOs[i].buffer
+                        );
                     }
-                    
+
+                    // =====================================================================
+                    // 【新增】：更新 SSR 自己的描述符
+                    // =====================================================================
+                    for (size_t i = 0; i < mCmdBuffers.size(); ++i) {
+                        mSsrDescriptors[i] = BuildSsrDesc(
+                            mOffscreenImage.view,
+                            mDepthBuffer.view,
+                            mNormalImage.view,
+                            mSceneUBO.buffer
+                        );
+                    }
 
                     // Update descriptor set
                     UpdatePostDescImage(mPostDescriptors, mOffscreenImage.view);
 
                     // p2 1.1: update vis descriptors
                     UpdatePostDescImage(mVisDescriptors, mVisImage.view);
-                 
-                    // 【新增】：确保 Resize 刷新后，天空盒描述符不丢失
+
+                    // 确保 Resize 刷新后，天空盒描述符不丢失
                     UpdateSceneDescriptorSkybox();
                 }
 
@@ -1105,13 +1154,16 @@ namespace engine {
             ImVec2 finalVpSize = EngineUi::GetSceneViewportSize();
             float finalWidth = std::max(1.0f, std::abs(finalVpSize.x));
             float finalHeight = std::max(1.0f, std::abs(finalVpSize.y));
-            // 【关键修复】：删掉带 void 的声明，换成真正的函数调用！
+            // 【关键修复】：调用函数！
             update_scene_uniforms(
                 sceneUniforms,
                 static_cast<uint32_t>(finalWidth),
                 static_cast<uint32_t>(finalHeight),
                 *mState
             );
+
+            // 【新增】：将 IBL 状态同步给 Shader
+            sceneUniforms.iblEnabled = mState->iblEnabled ? 1 : 0;
             //frustum culling: keep separate smoothed FPS samples for culling ON vs OFF.
             if (dt > 0.0001f) {
                 float currentFps = 1.0f / dt;
@@ -1362,12 +1414,23 @@ namespace engine {
                 mCompositeDescriptors[mFrameIndex], // VkDescriptorSet aCompositeDS
                 ImageAndView{ mOffscreenImage.image, mOffscreenImage.view },
                 ImageAndView{ mBrightImage.image, mBrightImage.view },
+
+                // ==========================================================
+            // 【新增】：传递给 rendering.cpp 的 SSR 资源参数
+            // ==========================================================
+                ImageAndView{ mNormalImage.image, mNormalImage.view },  // aNormalImage
+                ImageAndView{ mSsrOutputImage.image, mSsrOutputImage.view }, // aSsrOutput
+                mSsrPipe.handle,                                        // aSsrPipe
+                mSsrPipeLayout.handle,                                  // aSsrLayout
+                mSsrDescriptors[mFrameIndex],                           // aSsrDS
+                // ==========================================================
+
                 ImageAndView{ mBlurTempImage.image, mBlurTempImage.view },
                 ImageAndView{ mFinalBloomImage.image, mFinalBloomImage.view },
                 // 【注意这里的变化】：
                 // 原本这里传的是 finalSceneTarget，现在 Composite 必须输出到 mCompositeOutputImage
                 ImageAndView{ mCompositeOutputImage.image, mCompositeOutputImage.view },
-                //finalSceneTarget,
+
                 clearColor,                    // VkClearColorValue aClearColor
                 currentBloomStrength,
 
@@ -1748,38 +1811,6 @@ namespace engine {
             return ds;
         }
 
-        VkDescriptorSet BuildCompositeDesc(VkImageView sceneView, VkImageView bloomView, VkBuffer mosaicUbo) {
-            // The compositing stage requires 2 input textures (binding 0: scene, binding 1: blur result) + 1 UniformBuffer (binding 2: Mosaic)
-            VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, mCompDescLayout.handle);
-
-            VkDescriptorImageInfo imgs[2]{};
-            imgs[0] = { mPostSampler.handle, sceneView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-            imgs[1] = { mPostSampler.handle, bloomView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-
-            VkDescriptorBufferInfo bi{};
-            bi.buffer = mosaicUbo;
-            bi.offset = 0;
-            bi.range = VK_WHOLE_SIZE;
-
-            VkWriteDescriptorSet w[3]{};
-            w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            w[0].dstSet = ds; w[0].dstBinding = 0;
-            w[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            w[0].descriptorCount = 1; w[0].pImageInfo = &imgs[0];
-
-            w[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            w[1].dstSet = ds; w[1].dstBinding = 1;
-            w[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            w[1].descriptorCount = 1; w[1].pImageInfo = &imgs[1];
-
-            w[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            w[2].dstSet = ds; w[2].dstBinding = 2;
-            w[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            w[2].descriptorCount = 1; w[2].pBufferInfo = &bi;
-
-            vkUpdateDescriptorSets(mWindow.device, 3, w, 0, nullptr);
-            return ds;
-        }
         void AddOneMaterialDescriptor(VkSampler sampler, std::vector<VkDescriptorSet>& out, const EngineMaterial& mat)
         {
             VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, mObjectLayout.handle);
@@ -2400,6 +2431,45 @@ void InitSkybox()
         lut::Pipeline mSpeedPostPipe;
         lut::PipelineLayout mSpeedPostPipeLayout;
         std::vector<VkDescriptorSet> mSpeedPostDescriptors;
+
+		// =========================================================
+		//ssr资源
+		// =========================================================
+        // =========================================================
+        // SSR (Screen Space Reflection) 资源
+        // =========================================================
+        lut::ImageWithView mNormalImage;        // 存法线和粗糙度的 G-Buffer
+        lut::ImageWithView mSsrOutputImage;     // 存 SSR 计算出的反射画面
+        lut::DescriptorSetLayout mSsrDescLayout;
+        lut::PipelineLayout mSsrPipeLayout;
+        lut::Pipeline mSsrPipe;
+        std::vector<VkDescriptorSet> mSsrDescriptors;
+
+        // 【新增】：构建 SSR 的描述符
+        VkDescriptorSet BuildSsrDesc(VkImageView colorView, VkImageView depthView, VkImageView normalView, VkBuffer uboBuffer) {
+            VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, mSsrDescLayout.handle);
+
+            VkDescriptorImageInfo imgs[3]{};
+            imgs[0] = { mPostSampler.handle, colorView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            imgs[1] = { mPostSampler.handle, depthView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            imgs[2] = { mPostSampler.handle, normalView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+
+            VkDescriptorBufferInfo ubo{ uboBuffer, 0, VK_WHOLE_SIZE };
+
+            VkWriteDescriptorSet w[4]{};
+            // 0: Scene Color
+            w[0] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, ds, 0, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &imgs[0], nullptr, nullptr };
+            // 1: Depth
+            w[1] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, ds, 1, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &imgs[1], nullptr, nullptr };
+            // 2: Normal
+            w[2] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, ds, 2, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &imgs[2], nullptr, nullptr };
+            // 3: Scene UBO (为了拿到相机的投影和反投影矩阵)
+            w[3] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, ds, 3, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, &ubo, nullptr };
+
+            vkUpdateDescriptorSets(mWindow.device, 4, w, 0, nullptr);
+            return ds;
+        }
+
         private:
             // 存储每个模型专属的照片
             std::unordered_map<std::string, ThumbnailAsset> mThumbnailAssets;
