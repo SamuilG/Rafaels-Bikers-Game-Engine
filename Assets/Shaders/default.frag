@@ -296,17 +296,27 @@ void main()
         vec3 R = reflect(-V, N);
         float lod = roughness * 8.0; 
         
-        // 采样真实的天空盒
+        // 采样真实的天空盒 (如果没生成 Mipmap，这里会返回锐利的高清图)
         vec3 iblSpecularColor = textureLod(uSkyboxTexture, R, lod).rgb;
 
         // 【熔断保护】
         if (dot(iblSpecularColor, iblSpecularColor) < 0.0001) {
             iblSpecularColor = mix(groundColorEnv * 2.0, skyColorEnv * 6.5, R.y * 0.5 + 0.5);
-            iblSpecularColor *= (1.0 - roughness * 0.5);
         }
 
-        // 叠加环境高光
-        vec3 LambientSpecular = iblSpecularColor * kS_env;
+        // =================================================================
+        // 【核心修复】：解决“万物皆可抛光”的塑料感问题
+        // =================================================================
+        // 1. 粗糙度衰减：如果天空盒没有 Mipmap 无法变模糊，我们就在它变粗糙时直接将其变暗。
+        // smoothstep(0.3, 0.8) 表示粗糙度大于 0.3 开始变弱，大于 0.8 时完全失去镜面反射。
+        float roughnessFade = 1.0 - smoothstep(0.3, 0.8, roughness);
+
+        // 2. 金属度底色压制：真实的非金属（如砖块、木头）环境反射非常微弱。
+        // 我们强行把非金属（metalness = 0.0）的 IBL 反光压制到原来的 15%。
+        float metalFade = mix(0.15, 1.0, metalness); 
+
+        // 叠加环境高光，并套用双重物理衰减！
+        vec3 LambientSpecular = iblSpecularColor * kS_env * roughnessFade * metalFade;
 
         // c. 合并并应用 AO 遮蔽
         Lambient = (LambientDiffuse + LambientSpecular) * ao;
