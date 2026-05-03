@@ -93,6 +93,8 @@ namespace engine {
 
 		bool bloomEnabled = true;
 		bool iblEnabled = true; // 默认开启 IBL
+		// 【新增】：SSR 开关，默认开启
+		bool ssrEnabled = true;
 		// ----- 后处理（可在 UI 实时调节） -----
 		float bloomExposure = 1.0f;      // 合成阶段曝光（传给 composite shader）
 		float bloomStrength = 1.2f;      // Bloom 强度倍数（传给 composite shader）

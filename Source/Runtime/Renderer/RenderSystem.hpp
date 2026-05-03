@@ -897,6 +897,11 @@ namespace engine {
                 mState->iblEnabled = !mState->iblEnabled;
                 std::printf("IBL Reflection: %s\n", mState->iblEnabled ? "ON" : "OFF");
             }
+            // 【新增】：处理 SSR 开关
+            if (mInputSystem->IsActionPressed("SSRToggle")) {
+                mState->ssrEnabled = !mState->ssrEnabled;
+                std::printf("Screen Space Reflection (SSR): %s\n", mState->ssrEnabled ? "ON" : "OFF");
+            }
             if (glfwWindowShouldClose(mWindow.window)) {
                 mAppRunning = false;
                 //===========================UI System================================
@@ -1424,7 +1429,7 @@ namespace engine {
                 mSsrPipeLayout.handle,                                  // aSsrLayout
                 mSsrDescriptors[mFrameIndex],                           // aSsrDS
                 // ==========================================================
-
+                mState->ssrEnabled,
                 ImageAndView{ mBlurTempImage.image, mBlurTempImage.view },
                 ImageAndView{ mFinalBloomImage.image, mFinalBloomImage.view },
                 // 【注意这里的变化】：

@@ -51,6 +51,7 @@ void record_commands(
 	VkPipeline aSsrPipe,                // <--- 【新增】
 	VkPipelineLayout aSsrLayout,        // <--- 【新增】
 	VkDescriptorSet aSsrDS,             // <--- 【新增】
+	bool aSsrEnabled,
 	ImageAndView const& aBlurTemp,
 	ImageAndView const& aFinalBloom,
 	ImageAndView const& aCompositeOutput, // modified from aFinalSceneColor; used for bloom transfer

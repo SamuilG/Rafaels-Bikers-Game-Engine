@@ -62,6 +62,7 @@ void record_commands(
 	VkPipeline aSsrPipe,                // <--- 【新增】
 	VkPipelineLayout aSsrLayout,        // <--- 【新增】
 	VkDescriptorSet aSsrDS,             // <--- 【新增】
+	bool aSsrEnabled,
 	ImageAndView const& aBlurTemp,
 	ImageAndView const& aFinalBloom,
 	ImageAndView const& aCompositeOutput, // modified from aFinalSceneColor; used for bloom transfer
@@ -657,19 +658,19 @@ void record_commands(
 	ssrRenderInfo.pColorAttachments = &ssrAtt;
 
 	vkCmdBeginRendering(aCmdBuff, &ssrRenderInfo);
-	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsrPipe);
-	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsrLayout, 0, 1, &aSsrDS, 0, nullptr);
+	// 【核心修改】：只有开启了 SSR，才给 GPU 下发绘制指令！
+	if (aSsrEnabled) {
+		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsrPipe);
+		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsrLayout, 0, 1, &aSsrDS, 0, nullptr);
 
-	float ssrParams[4] = { 0.2f /*步长*/, 100.0f /*最大步数*/, 0.1f /*厚度*/, 0.0f /*留白*/ };
-	vkCmdPushConstants(aCmdBuff, aSsrLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float) * 4, ssrParams);
+		float ssrParams[4] = { 0.2f /*步长*/, 100.0f /*最大步数*/, 0.1f /*厚度*/, 0.0f /*留白*/ };
+		vkCmdPushConstants(aCmdBuff, aSsrLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float) * 4, ssrParams);
 
-	// ==========================================================
-	// 【核心救命代码】：把视口和裁剪区域设置上！
-	// ==========================================================
-	vkCmdSetViewport(aCmdBuff, 0, 1, &vp);
-	vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
+		vkCmdSetViewport(aCmdBuff, 0, 1, &vp);
+		vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
 
-	vkCmdDraw(aCmdBuff, 3, 1, 0, 0); // 现在它终于能画出东西了！
+		vkCmdDraw(aCmdBuff, 3, 1, 0, 0); // 触发全屏四边形
+	}
 	vkCmdEndRendering(aCmdBuff);
 	// SSR 输出完毕，转为只读，留给 Composite 阶段去混合！
 	lut::image_barrier(aCmdBuff, aSsrOutput.image,
