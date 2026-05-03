@@ -222,10 +222,10 @@ namespace engine {
 		m_event->Subscribe(EventType::Collision, [this, bikeBodyIDStr](Event& e) {
 			auto& col = static_cast<CollisionEvent&>(e);
 			if ((col.GetEntityA() == bikeBodyIDStr || col.GetEntityB() == bikeBodyIDStr) && m_state->bikeSpeed > 15.0f) {
-				m_audio->LoadSound("wasted", "Assets/Sounds/wasted.mp3"); // 预加载碰撞音效
-				m_audio->SetVolume("wasted", 0.5f); // 设置音量（可选）
-				m_audio->PlayOneShot("wasted"); // 播放碰撞音效
-				m_state->thirdPersonMode = false;
+				//m_audio->LoadSound("wasted", "Assets/Sounds/wasted.mp3"); // 预加载碰撞音效
+				//m_audio->SetVolume("wasted", 0.5f); // 设置音量（可选）
+				//m_audio->PlayOneShot("wasted"); // 播放碰撞音效
+				//m_state->thirdPersonMode = false;
 				printf("collsion!\n");
 			}
 			});
