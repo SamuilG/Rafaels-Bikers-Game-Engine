@@ -362,6 +362,7 @@ namespace engine {
             mSkinnedPipeLayout = create_skinned_pipeline_layout(mWindow, mSceneLayout.handle, mObjectLayout.handle, mBoneLayout.handle);
             mSkinnedPipe = create_skinned_pipeline(mWindow, mSkinnedPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
             mSkinnedAlphaPipe = create_skinned_alpha_pipeline(mWindow, mSkinnedPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+            mShadowSkinnedPipe = create_shadow_skinned_pipeline(mWindow, mSkinnedPipeLayout.handle);
 
             mBoneSSBO = lut::create_buffer(mAllocator, kMaxBoneMatrices * sizeof(glm::mat4), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
             {
@@ -1459,6 +1460,7 @@ namespace engine {
                 & mMeshJointIndices,
                 & mMeshJointWeights,
                 & skinnedBatches,
+                mShadowSkinnedPipe.handle,
                 mSkyboxPipe.handle,
                 mSkyboxPipeLayout.handle,
                 mSkyboxDescSet,
@@ -2302,6 +2304,7 @@ void InitSkybox()
         lut::Pipeline mOverdrawPipe, mOvershadingPipe;
         lut::Pipeline mPostProcPipe, mVisResolvePipe;
         lut::Pipeline mShadowPipe;
+        lut::Pipeline mShadowSkinnedPipe;
         lut::Pipeline mParticlePipe;
 
 

@@ -8,19 +8,21 @@
 #include "../UserState/UserState.hpp"
 #include "../Animation/AnimationSystem.hpp"
 #include "../Debug/DebugRenderer.hpp"
+#include "../AudioSystem/AudioSystem.hpp"
 
 namespace engine {
 
     TestScene::TestScene() = default;
     TestScene::~TestScene() = default;
-    void TestScene::Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, UserState* state, AnimationSystem* anima) {
+    void TestScene::Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, UserState* state, AnimationSystem* anima, AudioSystem* audio) {
         m_render = render;
         m_scene = scene;
         m_physics = physics;
         m_input = input;
-        m_event = eventSys; 
+        m_event = eventSys;		 
         m_state = state;
         m_anima = anima;
+		m_audio = audio;
 
         // 1. 加载地形与静态模型
 		// load the terrain and static models
@@ -212,6 +214,23 @@ namespace engine {
 			}
 		}
 
+		//collision event test
+		std::string bikeBodyIDStr;
+		if (bikeEntity.has<CompoundParent>())
+			bikeBodyIDStr = std::to_string(bikeEntity.get<CompoundParent>().bodyID);
+
+		m_event->Subscribe(EventType::Collision, [this, bikeBodyIDStr](Event& e) {
+			auto& col = static_cast<CollisionEvent&>(e);
+			if ((col.GetEntityA() == bikeBodyIDStr || col.GetEntityB() == bikeBodyIDStr) && m_state->bikeSpeed > 15.0f) {
+				m_audio->LoadSound("wasted", "Assets/Sounds/wasted.mp3"); // 预加载碰撞音效
+				m_audio->SetVolume("wasted", 0.5f); // 设置音量（可选）
+				m_audio->PlayOneShot("wasted"); // 播放碰撞音效
+				m_state->thirdPersonMode = false;
+				printf("collsion!\n");
+			}
+			});
+
+
         // 4. 加载发光方块与灯光
         glm::mat4 emissivecubeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(60.0f, 3.0f, 200.0f));
         flecs::entity emCubeEntity = m_scene->LoadModel(m_render, "Assets/DELETE_LATER/em1.gltf", engine::ModelPhysicsType::Dynamic, 0.01f, emissivecubeSpawnPos, engine::RenderLayer::Emissive);
@@ -222,7 +241,6 @@ namespace engine {
         glm::mat4 localLightOffset = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.7f, 1.7f));
         flecs::entity headlight = m_scene->create_light_entity("headlight", engine::LightType::Spot, glm::vec3(1.0f, 0.95f, 0.85f), 15.0f, localLightOffset, 40.0f, glm::vec3(0.0f, 0, 1.0f), 15.0f, 25.0f);
         if (bikeEntity.is_valid()) headlight.child_of(bikeEntity);
-
         // 太阳与其他灯光
         glm::vec3 sunDir = glm::normalize(glm::vec3(-0.5f, 1.0f, -0.3f));
         glm::mat4 sunTransform = glm::mat4(1.0f); sunTransform[3] = glm::vec4(sunDir, 0.0f);
