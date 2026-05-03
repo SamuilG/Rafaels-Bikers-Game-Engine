@@ -36,8 +36,8 @@ void main() {
     // ==========================================
     // 叠加 SSR 倒影 (利用 a 通道控制强度)
     // ==========================================
-    sceneColor += ssrData.rgb * ssrData.a; 
-
+    //sceneColor += ssrData.rgb * ssrData.a; 
+    sceneColor = sceneColor * (1.0 - ssrData.a) + ssrData.rgb * ssrData.a;
     // 叠加 Bloom
     vec3 hdrColor = sceneColor + bloomColor * params.bloomStrength; 
 

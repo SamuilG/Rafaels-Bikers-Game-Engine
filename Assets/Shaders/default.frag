@@ -197,7 +197,7 @@ void main()
     
     // 根据方差动态补偿一层“几何粗糙度” 
     // 这里的 0.35 是控制抗锯齿强度的系数，你可以根据喜好在 0.2 ~ 0.5 之间微调
-    float geomRoughness = normalVariance * 0.35; 
+    float geomRoughness = normalVariance * 0.05;
     
     // 最终粗糙度：取材质本身粗糙度和几何补偿粗糙度的最大值
     roughness = max(roughness, geomRoughness);
@@ -207,7 +207,7 @@ void main()
     // 在真实世界中，绝对完美的镜子是不存在的，把保底粗糙度从 0.02 提高到 0.04
     // 也能极大地缓解闪烁，同时不影响金属的高级感。
     // =================================================================
-    roughness = max(roughness, 0.04);
+    roughness = max(roughness, 0.01);
     
     // --- 3. 阴影计算 ---
     float shadow = calculate_shadow(); 
@@ -295,7 +295,7 @@ void main()
         // =========================================================
         // 【新增防闪烁 1】：防止微平面高光除以极小值导致数值爆炸
         // =========================================================
-        Lspecular = min(Lspecular, vec3(20.0));
+     //   Lspecular = min(Lspecular, vec3(20.0));
         totalLo += (kD * disneyDiffuse + Lspecular) * Li * NdotL;
     }
 // =================================================================
@@ -357,7 +357,7 @@ void main()
     // 【新增防闪烁 2】：Bloom 亮度钳制 (Karis Luminance Clamp)
     // 斩断那些在远距离因为单像素高频法线而产生的爆炸性高光
     // =========================================================
-    float maxBloom = 3.0; // 允许进入 Bloom 的最大亮度倍数（可微调 2.0 ~ 5.0）
+    float maxBloom = 5.0; // 允许进入 Bloom 的最大亮度倍数（可微调 2.0 ~ 5.0）
     float lum = dot(bloomContrib, vec3(0.2126, 0.7152, 0.0722)); // 计算真实感知亮度
     if (lum > maxBloom) {
         // 如果亮度超标，按比例整体压暗，保持颜色色相不变

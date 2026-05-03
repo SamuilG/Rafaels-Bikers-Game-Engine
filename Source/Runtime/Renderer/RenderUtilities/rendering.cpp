@@ -464,6 +464,7 @@ void record_commands(
 		}
 
 		pcData.baseColorFactor.a *= batch.alphaMultiplier;
+		pcData.alphaCutoff = -1.0f; // 设为负数，保证 finalAlpha 永远大于它
 		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ObjectPC), &pcData);
 
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
@@ -663,9 +664,9 @@ void record_commands(
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsrPipe);
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsrLayout, 0, 1, &aSsrDS, 0, nullptr);
 
-		float ssrParams[4] = { 0.2f /*步长*/, 100.0f /*最大步数*/, 0.1f /*厚度*/, 0.0f /*留白*/ };
+		//float ssrParams[4] = { 0.2f /*步长*/, 100.0f /*最大步数*/, 0.1f /*厚度*/, 0.0f /*留白*/ };
+		float ssrParams[4] = { 0.2f /*步长*/, 64.0f /*最大步数*/, 0.1f /*厚度*/, 50.0f /*最大反射距离*/ };
 		vkCmdPushConstants(aCmdBuff, aSsrLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float) * 4, ssrParams);
-
 		vkCmdSetViewport(aCmdBuff, 0, 1, &vp);
 		vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
 
