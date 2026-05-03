@@ -7,6 +7,8 @@
 #include "../Animation/AnimationSystem.hpp"
 #include "../Scene/TestScene.hpp" // 引入你的测试关卡
 #include "../AudioSystem/AudioSystem.hpp"
+#include "tracy/Tracy.hpp"
+
 
 namespace engine {
 
@@ -108,6 +110,7 @@ namespace engine {
                 audioSystem->SetRuntimeVolume("BikeChain", speed01);
                 audioSystem->SetPitch("BikeChain", 0.75f + speed01 * 1.25f);
             }
+            FrameMark;
         }
     }
 }

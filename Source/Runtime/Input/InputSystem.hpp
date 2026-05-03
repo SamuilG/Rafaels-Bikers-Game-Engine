@@ -9,6 +9,8 @@
 #include <unordered_map>
 #include <vector>
 #include <glm/glm.hpp>
+#include "tracy/Tracy.hpp"
+
 
 namespace engine {
 

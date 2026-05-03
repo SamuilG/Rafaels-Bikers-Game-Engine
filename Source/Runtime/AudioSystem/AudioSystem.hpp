@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "tracy/Tracy.hpp"
 
 namespace engine {
 

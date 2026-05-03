@@ -4,6 +4,7 @@
 #include <Jolt/Physics/Body/BodyID.h>
 #include <memory>
 #include <glm/glm.hpp>
+#include "tracy/Tracy.hpp"
 
 // 前向声明 Jolt 物理系统
 namespace JPH { class PhysicsSystem; }

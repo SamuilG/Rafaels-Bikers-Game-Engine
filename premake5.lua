@@ -180,7 +180,9 @@ workspace "EngineWorkspace"
             "NOMINMAX",
             "FLECS_STATIC",
             "JPH_CROSS_PLATFORM_DETERMINISTIC",
-            "ZSTD_DISABLE_ASM=1"
+            "ZSTD_DISABLE_ASM=1",
+            "TRACY_ENABLE",
+	    "TRACY_NO_SYSTEM_TRACING",
         }
 
         includedirs {
@@ -202,6 +204,7 @@ workspace "EngineWorkspace"
             "ThirdParty/imgui",
 			"ThirdParty/imgui/backends",
 			"ThirdParty/imgui/ImGuizmo",
+	    "ThirdParty/tracy/public",
         }
         
         files {
@@ -224,7 +227,7 @@ workspace "EngineWorkspace"
             compileas "C"
         filter "*"
 
-        links { "GLFW", "JoltPhysics" ,"ImGui" }
+        links { "GLFW", "JoltPhysics" ,"ImGui", "Tracy" }
         dependson { "Shaders" } 
 
         filter "system:windows"
@@ -277,3 +280,31 @@ workspace "EngineWorkspace"
             -- Enable fast incremental builds
             buildoutputs { "%{wks.location}/Assets/Shaders/spirv/%{file.name}.spv" }
         filter "*"
+
+
+-- ==========================================
+-- Project 6: Tracy Profiler
+-- ==========================================
+project "Tracy"
+    location "Intermediate/Projects"
+    kind "StaticLib"
+    language "C++"
+    cppdialect "C++latest"
+
+    targetdir "Intermediate/Bin/%{cfg.buildcfg}-%{cfg.platform}/%{prj.name}"
+
+    defines { 
+			"TRACY_ENABLE",
+			"TRACY_NO_SYSTEM_TRACING", 
+		}
+
+    includedirs { "ThirdParty/tracy/public" }
+
+    files {
+        "ThirdParty/tracy/public/TracyClient.cpp"
+    }
+
+    filter "system:windows"
+        systemversion "latest"
+        buildoptions { "/wd2131" }  -- ← 加这一行，关闭该警告
+    filter "*"

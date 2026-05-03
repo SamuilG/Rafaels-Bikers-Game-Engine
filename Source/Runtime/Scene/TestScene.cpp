@@ -10,6 +10,7 @@
 #include "../Debug/DebugRenderer.hpp"
 #include "../AudioSystem/AudioSystem.hpp"
 
+
 namespace engine {
 
     TestScene::TestScene() = default;
@@ -28,6 +29,8 @@ namespace engine {
 		// load the terrain and static models
         m_scene->LoadModel(m_render, "Assets/Models/TScene.glb", engine::ModelPhysicsType::Static, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
         //m_scene->LoadModel(m_render, "Assets/Models/forest.glb", engine::ModelPhysicsType::Static, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
+		//m_scene->LoadModel(m_render, "Assets/Models/warehouseSceneWithShelf_opt.glb", engine::ModelPhysicsType::Static, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
+		
 
         glm::mat4 bridgeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(100.0f, 0.0f, 60.0f));
         glm::mat4 CplaneSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(120.0f, 0.0f, 250.0f));

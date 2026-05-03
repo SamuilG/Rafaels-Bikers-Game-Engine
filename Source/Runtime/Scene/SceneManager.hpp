@@ -19,6 +19,8 @@
 #include "../UserState/UserState.hpp"
 #include "../Renderer/RenderUtilities/frustum.hpp"
 
+#include "tracy/Tracy.hpp"
+
 // Forward declare EngineModel to avoid including engine_model.hpp here
 // 1. Avoid circular dependency
 // 2. Speed up compilation

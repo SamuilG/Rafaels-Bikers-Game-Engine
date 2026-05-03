@@ -198,6 +198,7 @@ void PhysicsSystem::optimize_broad_phase()
 
 void PhysicsSystem::Update(float dt)
 {
+	//ZoneScopedN("Physics");
 	if (!m_physicsSystem) {
 		return;
 	}

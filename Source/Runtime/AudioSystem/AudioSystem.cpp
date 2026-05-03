@@ -64,6 +64,7 @@ namespace engine {
 
     void AudioSystem::Update(float)
     {
+        //ZoneScopedN("Audio");
         if (!m_impl->initialized) return;
 
 		// One-shot instances are independent ma_sound copies. Once playback reaches the end, uninit and remove them to avoid leaking audio nodes//播放一次性实例是独立的ma_sound副本。一旦播放完成并且达到末尾，取消初始化并删除它们以避免泄漏音频节点。

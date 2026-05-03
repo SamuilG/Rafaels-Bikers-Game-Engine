@@ -151,6 +151,7 @@ namespace engine {
     }
 
     void InputSystem::Update(float dt) {
+        //ZoneScopedN("Input");
 
         if (!mWindow) return;
         // ==========================================

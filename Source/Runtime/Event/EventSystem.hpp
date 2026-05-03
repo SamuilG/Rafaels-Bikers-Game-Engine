@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <memory>
 #include <mutex>
+#include "tracy/Tracy.hpp"
 
 namespace engine {
 

@@ -27,6 +27,7 @@
 #include "../Renderer/RenderUtilities/camera.hpp"
 #include "../Input/InputSystem.hpp"
 #include "../UserState/UserState.hpp"
+#include "tracy/Tracy.hpp"
 
 // helper to convert GLM to Jolt
 inline JPH::Vec3 toJolt(const glm::vec3& v) { return JPH::Vec3(v.x, v.y, v.z); }

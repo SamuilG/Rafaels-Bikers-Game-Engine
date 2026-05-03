@@ -7,6 +7,7 @@ namespace engine {
     }
 
     void EventSystem::Update(float /*dt*/) {
+        //ZoneScopedN("Event");
         std::lock_guard<std::mutex> lock(m_QueueMutex);
         
         // swap queues so new events can be queued during the dispatching phase

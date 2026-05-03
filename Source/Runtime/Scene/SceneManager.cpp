@@ -616,6 +616,7 @@ namespace engine {
     // =========================================================================
 
     void SceneManager::Update(float dt) {
+        //ZoneScopedN("Scenemanager");
         if (m_physics_system) {
             JPH::BodyInterface& bodyInterface = m_physics_system->get_body_interface();
 

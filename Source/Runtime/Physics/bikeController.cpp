@@ -39,6 +39,7 @@ namespace engine
 
     void BikeController::Update(float dt) {
         // ���ָ��͵����˳�ģʽ
+        //ZoneScopedN("BikeControl");
         if (!m_bicycle || !m_inputSystem || !m_joltPhysics || !m_state || !m_state->thirdPersonMode) return;
 
         JPH::BodyInterface& bi = m_joltPhysics->GetBodyInterface();
