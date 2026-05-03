@@ -229,7 +229,23 @@ void record_commands(
 		VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
 	);
 
-	// Depth attachment for this pass
+	// 【新增补漏 1】：将法线缓冲重置为可写入状态
+	lut::image_barrier(aCmdBuff, aNormalImage.image,
+		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
+	);
+
+	// 【新增补漏 2】：将深度缓冲重置为可读写状态！(极其关键，否则深度测试全崩)
+	lut::image_barrier(aCmdBuff, aDepthAttach.image,
+		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+		VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		VkImageSubresourceRange{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 }
+	);
+
+	
 	VkRenderingAttachmentInfo depthAttachmentInfo{};
 	depthAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
 	depthAttachmentInfo.imageView = aDepthAttach.view;
@@ -579,8 +595,10 @@ void record_commands(
 	VkRenderingAttachmentInfo ssrAtt{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
 	ssrAtt.imageView = aSsrOutput.view;
 	ssrAtt.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	ssrAtt.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	// 顺手把这里改成 CLEAR，以防万一残留垃圾数据
+	ssrAtt.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	ssrAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	//ssrAtt.clearValue.color = { 0.0f, 0.0f, 0.0f, 0.0f }; // 清空为纯黑
 
 	VkRenderingInfo ssrRenderInfo{ VK_STRUCTURE_TYPE_RENDERING_INFO };
 	ssrRenderInfo.renderArea.extent = aImageExtent;
@@ -592,13 +610,17 @@ void record_commands(
 	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsrPipe);
 	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsrLayout, 0, 1, &aSsrDS, 0, nullptr);
 
-	// 如果你定义了 PushConstant 控制 SSR 的参数（例如步长、粗糙度阈值），可以在这里推送
 	float ssrParams[4] = { 0.2f /*步长*/, 100.0f /*最大步数*/, 0.1f /*厚度*/, 0.0f /*留白*/ };
 	vkCmdPushConstants(aCmdBuff, aSsrLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float) * 4, ssrParams);
 
-	vkCmdDraw(aCmdBuff, 3, 1, 0, 0); // 触发全屏四边形
-	vkCmdEndRendering(aCmdBuff);
+	// ==========================================================
+	// 【核心救命代码】：把视口和裁剪区域设置上！
+	// ==========================================================
+	vkCmdSetViewport(aCmdBuff, 0, 1, &vp);
+	vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
 
+	vkCmdDraw(aCmdBuff, 3, 1, 0, 0); // 现在它终于能画出东西了！
+	vkCmdEndRendering(aCmdBuff);
 	// SSR 输出完毕，转为只读，留给 Composite 阶段去混合！
 	lut::image_barrier(aCmdBuff, aSsrOutput.image,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,

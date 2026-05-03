@@ -1,32 +1,48 @@
 #version 450
 
 layout(location = 0) in vec2 v2fTexCoord;
+
+layout(set = 0, binding = 0) uniform sampler2D uSceneTexture; 
+layout(set = 0, binding = 1) uniform sampler2D uBloomBlur;    
+
+layout(set = 0, binding = 2) uniform UMosaic {
+    int mosaicOn;
+    float mosaicSize;
+} uMosaic;
+
+layout(set = 0, binding = 3) uniform sampler2D uSsrColor;
+
 layout(location = 0) out vec4 oColor;
 
-layout(set = 0, binding = 0) uniform sampler2D uSceneColor;
-layout(set = 0, binding = 1) uniform sampler2D uBloomColor;
-// binding 2 是 Mosaic UBO，不影响我们
-layout(set = 0, binding = 3) uniform sampler2D uSsrColor; // 【新增】：获取 SSR 结果
-
-layout(push_constant) uniform PushConstants {
+layout(push_constant) uniform BloomParams {
     float exposure;
     float bloomStrength;
-} pc;
+} params;
 
 void main() {
-    vec3 sceneColor = texture(uSceneColor, v2fTexCoord).rgb;
-    vec3 bloomColor = texture(uBloomColor, v2fTexCoord).rgb;
-    vec4 ssrData    = texture(uSsrColor, v2fTexCoord);
+    vec2 uv = v2fTexCoord;
+    if (uMosaic.mosaicOn == 1) {
+        ivec2 coord = ivec2(gl_FragCoord.xy);
+        coord.x -= coord.x % 5;
+        coord.y -= coord.y % 3;
+        vec2 texSize = vec2(textureSize(uSceneTexture, 0));
+        uv = vec2(coord) / texSize;
+    }
     
-    // 【魔法时刻】：将 SSR 的反射颜色按照它的 Alpha(遮罩强度) 叠加到画面上！
-    // 这样，只有算出了有效反射的金属区域才会被覆盖，其他地方不受影响。
+    vec3 sceneColor = texture(uSceneTexture, uv).rgb;      
+    vec3 bloomColor = texture(uBloomBlur, uv).rgb;
+    vec4 ssrData    = texture(uSsrColor, uv);
+
+    // ==========================================
+    // 叠加 SSR 倒影 (利用 a 通道控制强度)
+    // ==========================================
     sceneColor += ssrData.rgb * ssrData.a; 
 
-    // 添加 Bloom
-    sceneColor += bloomColor * pc.bloomStrength;
+    // 叠加 Bloom
+    vec3 hdrColor = sceneColor + bloomColor * params.bloomStrength; 
 
-    // 曝光与色调映射 (ACES等，视你原有的代码而定)
-    vec3 mapped = vec3(1.0) - exp(-sceneColor * pc.exposure);
+    // Reinhard 色调映射
+    vec3 mapped = hdrColor / (hdrColor + vec3(1.0));
 
     oColor = vec4(mapped, 1.0);
 }
