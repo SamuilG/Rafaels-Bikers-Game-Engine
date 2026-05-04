@@ -4,20 +4,19 @@
 layout(location = 0) in vec2 inUV;
 layout(location = 0) out float oAoColor;
 
-// 只需要深度和法线！无视 C++ 传来的噪点图和采样核！
 layout(set = 0, binding = 0) uniform sampler2D uDepthMap;
 layout(set = 0, binding = 1) uniform sampler2D uNormalMap;
+layout(set = 0, binding = 2) uniform sampler2D uNoiseMap;
 
-// 匹配你 default.frag 里的 uScene
+// 【防弹设计1】：不再向 C++ 索要 projInv，防止结构体错位
 layout(set = 0, binding = 3) uniform SceneUniforms {
     mat4 view;
     mat4 proj;
 } uScene;
 
-// GPU 内置伪随机发生器
-float hash(vec2 p) {
-    return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
-}
+layout(set = 0, binding = 4) uniform SsaoKernelUniforms {
+    vec4 samples[64];
+} uKernel;
 
 vec3 reconstructViewPos(vec2 uv, mat4 projInv) {
     float depth = texture(uDepthMap, uv).r;
@@ -28,13 +27,13 @@ vec3 reconstructViewPos(vec2 uv, mat4 projInv) {
 
 void main() {
     vec4 normalRaw = texture(uNormalMap, inUV);
-    // 过滤背景
+    // 【防弹设计2】：背景天空盒的法线 Alpha 通常为 0，遇到背景直接返回纯白，不画阴影
     if (length(normalRaw.xyz) < 0.1) {
-        oAoColor = 1.0; 
-        return; 
+        oAoColor = 1.0;
+        return;
     }
     vec3 normal = normalize(normalRaw.xyz);
-
+    // 【防弹设计3】：自己在 Shader 里算逆矩阵，零 C++ 依赖
     mat4 projInv = inverse(uScene.proj);
     vec3 fragPos = reconstructViewPos(inUV, projInv);
 
@@ -65,38 +64,20 @@ void main() {
     int kernelSize = 64; // 32 根射线的黄金螺旋，画质极高
 
     for(int i = 0; i < kernelSize; ++i) {
-        // ==========================================
-        // 核心技术：斐波那契半球分布 (Fibonacci Hemisphere)
-        // 绝对均匀，完美抛弃 C++ 传进来的 UBO！
-        // ==========================================
-        float fi = float(i) + 0.5;
-        float cosTheta = 1.0 - (fi / float(kernelSize)); 
-        float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
-        float phi = 2.39996323 * fi; // 黄金比例角度
-        
-        vec3 sampleDir = vec3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta);
-        
-        // 靠近中心密集采样
-        float scale = fi / float(kernelSize);
-        scale = mix(0.1, 1.0, scale * scale);
-        sampleDir *= scale;
-
-        vec3 samplePos = TBN * sampleDir;
+        vec3 samplePos = TBN * uKernel.samples[i].xyz;
         samplePos = fragPos + samplePos * radius; 
         
-        // 投影到屏幕
         vec4 offset = vec4(samplePos, 1.0);
         offset = uScene.proj * offset; 
         offset.xyz /= offset.w;         
         offset.xyz = offset.xyz * 0.5 + 0.5; 
         
-        if(offset.x < 0.0 || offset.x > 1.0 || offset.y < 0.0 || offset.y > 1.0) continue;
-
         float sampleDepth = texture(uDepthMap, offset.xy).r;
         vec4 sampleClipPos = vec4(offset.xy * 2.0 - 1.0, sampleDepth, 1.0);
         vec4 sampleViewPos = projInv * sampleClipPos;
         float actualZ = sampleViewPos.z / sampleViewPos.w;
 
+        // 防止除以 0 的极小偏移量
         float zDistance = abs(fragPos.z - actualZ);
         
         // 【核心修复】：真正的范围截断！
