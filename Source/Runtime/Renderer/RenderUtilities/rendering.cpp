@@ -582,7 +582,7 @@ void record_commands(
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsaoLayout, 0, 1, &aSsaoDS, 0, nullptr);
 
 		// 推送 SSAO 参数：[采样半径, 偏移容差, 阴影强度, 占位符]
-		float ssaoParams[4] = { 0.5f, 0.025f, 1.5f, 0.0f };
+		float ssaoParams[4] = { 1.5f, 0.15f, 3.0f, 0.0f };     // 新参数：增大半径，提高 Bias 过滤平地，提高对比度
 		vkCmdPushConstants(aCmdBuff, aSsaoLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float) * 4, ssaoParams);
 
 		vkCmdSetViewport(aCmdBuff, 0, 1, &vp);
