@@ -100,14 +100,14 @@ void record_commands(
 	VkPipeline aDebugLinePipe,
 	engine::DebugRenderer& aDebugRenderer,
 	// --- Skeletal skinning (optional; pass VK_NULL_HANDLE to skip) ---
-	VkPipeline aSkinnedPipe ,
-	VkPipeline aSkinnedAlphaPipe ,
-	VkPipelineLayout aSkinnedPipeLayout ,
-	VkDescriptorSet  aBoneDescriptorSet ,
-	const std::unordered_map<uint32_t, lut::Buffer>* aMeshJoints ,
+	VkPipeline aSkinnedPipe,
+	VkPipeline aSkinnedAlphaPipe,
+	VkPipelineLayout aSkinnedPipeLayout,
+	VkDescriptorSet  aBoneDescriptorSet,
+	const std::unordered_map<uint32_t, lut::Buffer>* aMeshJoints,
 	const std::unordered_map<uint32_t, lut::Buffer>* aMeshWeights,
-	const std::vector<RenderBatch>* aSkinnedBatches ,
-	VkPipeline aSkinnedShadowPipe ,
+	const std::vector<RenderBatch>* aSkinnedBatches,
+	VkPipeline aSkinnedShadowPipe,
 	// 在 record_commands 的最后追加：
 	VkPipeline skyboxPipe,
 	VkPipelineLayout skyboxPipeLayout,
@@ -189,11 +189,11 @@ void record_commands(
 				//if (batch.alphaMultiplier < 0.99f) continue;
 				// 【关键】：这里一定要乘上 lightVP，算出投影空间矩阵！
 				glm::mat4 lightModel = aSceneUniform.lightVP[i] * batch.transform;
-            
+
 				// 【关键】：这里只推送 64 字节 (sizeof(glm::mat4))！不要传整个 128 字节！
 				vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(glm::mat4), &lightModel);
 
-				
+
 				vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
 
 				vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset);
@@ -224,14 +224,14 @@ void record_commands(
 				for (const auto& batch : *aSkinnedBatches)
 				{
 					uint32_t meshIdx = batch.meshIndex;
-					uint32_t matIdx  = batch.materialIndex;
+					uint32_t matIdx = batch.materialIndex;
 
 					auto jIt = aMeshJoints->find(meshIdx);
 					auto wIt = aMeshWeights->find(meshIdx);
 					if (jIt == aMeshJoints->end() || wIt == aMeshWeights->end()) continue;
 
 					ShadowSkinnedPC pc{};
-					pc.lightModel    = aSceneUniform.lightVP[i] * batch.transform;
+					pc.lightModel = aSceneUniform.lightVP[i] * batch.transform;
 					pc.boneBaseIndex = batch.boneBaseIndex;
 
 					vkCmdPushConstants(aCmdBuff, aSkinnedPipeLayout,
@@ -288,14 +288,13 @@ void record_commands(
 		VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
 	);
 
-	// ==========================================================
+	// 【新增补漏 1】：将法线缓冲重置为可写入状态
 	lut::image_barrier(aCmdBuff, aNormalImage.image,
-		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE,
-		VK_IMAGE_LAYOUT_UNDEFINED,
-		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, // <--- 准备被渲染管线写入！
+		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
 	);
+
 	// 【新增补漏 2】：将深度缓冲重置为可读写状态！(极其关键，否则深度测试全崩)
 	lut::image_barrier(aCmdBuff, aDepthAttach.image,
 		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
@@ -305,7 +304,7 @@ void record_commands(
 		VkImageSubresourceRange{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 }
 	);
 
-	
+
 	VkRenderingAttachmentInfo depthAttachmentInfo{};
 	depthAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
 	depthAttachmentInfo.imageView = aDepthAttach.view;
@@ -484,7 +483,6 @@ void record_commands(
 
 		vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(meshInfo.indices.size()), 1, 0, 0, 0);
 	}
-
 	// Particles (保持原逻辑)
 	if (particlesEnabled)
 	{
@@ -515,7 +513,7 @@ void record_commands(
 		}
 	}
 
-	
+
 	aDebugRenderer.Render(aCmdBuff, aDebugLinePipe, aGraphicsLayout, aSceneDescriptors);
 
 	if (aSkinnedPipe != VK_NULL_HANDLE &&
@@ -856,11 +854,6 @@ void record_commands(
 		VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1 }
 	);
 
-	lut::image_barrier(aCmdBuff, aCompositeOutput.image,
-		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
-		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1 }
-	);
 	// ==========================================================
 	// 1. Composite Pass (合成阶段: 场景 + Bloom)
 	// ==========================================================
