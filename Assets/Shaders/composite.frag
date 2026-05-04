@@ -1,48 +1,22 @@
 #version 450
 
+// 1. 贴图绑定区 (Bindings)
+layout(set = 0, binding = 0) uniform sampler2D uSceneColor;
+layout(set = 0, binding = 1) uniform sampler2D uBloom;
+layout(set = 0, binding = 2) uniform sampler2D uSsrMap;
+// binding = 3 是你的 UBO (如果有的话)
+layout(set = 0, binding = 4) uniform sampler2D uSsaoMap; // <--- 新增的 SSAO
+
+// 2. 顶点输入与最终输出区 (Inputs & Outputs) - 必须在 main 之前！
 layout(location = 0) in vec2 v2fTexCoord;
-
-layout(set = 0, binding = 0) uniform sampler2D uSceneTexture; 
-layout(set = 0, binding = 1) uniform sampler2D uBloomBlur;    
-
-layout(set = 0, binding = 2) uniform UMosaic {
-    int mosaicOn;
-    float mosaicSize;
-} uMosaic;
-
-layout(set = 0, binding = 3) uniform sampler2D uSsrColor;
-
 layout(location = 0) out vec4 oColor;
 
-layout(push_constant) uniform BloomParams {
-    float exposure;
-    float bloomStrength;
-} params;
-
+// 3. 主函数区
 void main() {
-    vec2 uv = v2fTexCoord;
-    if (uMosaic.mosaicOn == 1) {
-        ivec2 coord = ivec2(gl_FragCoord.xy);
-        coord.x -= coord.x % 5;
-        coord.y -= coord.y % 3;
-        vec2 texSize = vec2(textureSize(uSceneTexture, 0));
-        uv = vec2(coord) / texSize;
-    }
-    
-    vec3 sceneColor = texture(uSceneTexture, uv).rgb;      
-    vec3 bloomColor = texture(uBloomBlur, uv).rgb;
-    vec4 ssrData    = texture(uSsrColor, uv);
+    // 【临时测试代码】：放在这里，它就能认识 v2fTexCoord 和 oColor 了！
+    float ssao = texture(uSsaoMap, v2fTexCoord).r;
+    oColor = vec4(vec3(ssao), 1.0);
+    return; // 强制截断，不执行后面的原来代码
 
-    // ==========================================
-    // 叠加 SSR 倒影 (利用 a 通道控制强度)
-    // ==========================================
-    //sceneColor += ssrData.rgb * ssrData.a; 
-    sceneColor = sceneColor * (1.0 - ssrData.a) + ssrData.rgb * ssrData.a;
-    // 叠加 Bloom
-    vec3 hdrColor = sceneColor + bloomColor * params.bloomStrength; 
-
-    // Reinhard 色调映射
-    vec3 mapped = hdrColor / (hdrColor + vec3(1.0));
-
-    oColor = vec4(mapped, 1.0);
+    // ... 下面保留你原本的混合代码 ...
 }

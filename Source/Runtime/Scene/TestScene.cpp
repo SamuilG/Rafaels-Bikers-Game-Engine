@@ -42,7 +42,7 @@ namespace engine {
         glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
 		glm::mat4 bikeAnchorWorld = glm::mat4(0.0f); // sentinel: [3][3]==0 means anchor not found
 
-        m_render->load_animated_model("Assets/Models/character.glb", tbpos);
+      //  m_render->load_animated_model("Assets/Models/character.glb", tbpos);
         m_scene->LoadModel(m_render, "Assets/Models/tbikeWithAnchor.glb", engine::ModelPhysicsType::CustomC, 90.0f, tbpos);
 
         // 3. 初始化单车控制器

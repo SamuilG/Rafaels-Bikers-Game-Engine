@@ -82,6 +82,7 @@ namespace lut = labut2;
 #include "../Animation/AnimationSystem.hpp"
 #include <unordered_map>
 #include "RenderUtilities/frustum.hpp"
+#include "RenderUtilities/SSAO.hpp"
 namespace glsl {
     struct MosaicUniform {
         int   mosaicOn;
@@ -380,15 +381,44 @@ namespace engine {
             mSsrDescLayout = create_ssr_descriptor_layout(mWindow);
             mSsrPipeLayout = create_ssr_pipeline_layout(mWindow, mSsrDescLayout.handle);
             mSsrPipe = create_ssr_pipeline(mWindow, mSsrPipeLayout.handle);
-
+            mNormalImage = create_normal_buffer(mWindow, mAllocator);
+            mSsrOutputImage = create_offscreen_buffer(mWindow, mAllocator);
+            mSsrDescLayout = create_ssr_descriptor_layout(mWindow);
+            mSsrPipeLayout = create_ssr_pipeline_layout(mWindow, mSsrDescLayout.handle);
+            mSsrPipe = create_ssr_pipeline(mWindow, mSsrPipeLayout.handle);
 
             mVisImage = create_vis_image(mWindow, mAllocator);
             mBrightImage = create_offscreen_buffer(mWindow, mAllocator);
             mBlurTempImage = create_offscreen_buffer(mWindow, mAllocator);
             mFinalBloomImage = create_offscreen_buffer(mWindow, mAllocator);
             mCompositeOutputImage = create_offscreen_buffer(mWindow, mAllocator);
+            // ==========================================
+         // 【新增】：SSAO 资源与管线初始化
+         // ==========================================
+         // 1. 调用我们刚刚手写的专属函数，创建极其省显存的 R8_UNORM 画板
+            // =====================================================================
+                    // 【新增】：重建 SSR 的专属缓冲
+                    // =====================================================================
+            mNormalImage = create_normal_buffer(mWindow, mAllocator);
+            mSsrOutputImage = create_offscreen_buffer(mWindow, mAllocator);
 
-            // 离屏特效布局与描述符
+            // =====================================================================
+            // 【新增】：重建 SSAO 的专属缓冲
+            // =====================================================================
+            mSsaoRawImage = create_ssao_raw_buffer(mWindow, mAllocator);
+           
+            // 2. 调用咱们写的工厂函数，生成 64 个半球采样点和 4x4 噪声贴图
+            // 【注意这里的 .handle】
+            mSsaoResources = engine::create_ssao_resources(mWindow, mCmdPool.handle);
+
+            // 3. 创建 SSAO 的布局和管线
+            mSsaoDescLayout = create_ssao_descriptor_layout(mWindow);
+            mSsaoPipeLayout = create_ssao_pipeline_layout(mWindow, mSsaoDescLayout.handle);
+            mSsaoPipe = create_ssao_pipeline(mWindow, mSsaoPipeLayout.handle);
+
+            // ==========================================
+            // 后处理管线初始化
+            // ==========================================
             mBlurDescLayout = create_blur_descriptor_layout(mWindow);
             mCompDescLayout = create_composite_descriptor_layout(mWindow);
             mBlurPipeLayout = create_blur_pipeline_layout(mWindow, mBlurDescLayout.handle);
@@ -399,24 +429,57 @@ namespace engine {
             mCompositePipe = create_composite_pipeline(mWindow, mCompPipeLayout.handle);
             mSpeedPostPipe = create_speed_post_pipeline(mWindow, mSpeedPostPipeLayout.handle);
 
+            // 【确保只有这一个 for 循环！】
             for (std::size_t i = 0; i < mCmdBuffers.size(); ++i) {
                 mMosaicUBOs.emplace_back(lut::create_buffer(mAllocator, sizeof(glsl::MosaicUniform), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT));
                 mPostDescriptors.push_back(BuildPostDesc(mOffscreenImage.view, mMosaicUBOs.back().buffer));
                 mVisDescriptors.push_back(BuildPostDesc(mVisImage.view, mMosaicUBOs[i].buffer));
                 mBlurHorizDescriptors.push_back(BuildBlurDesc(mBlurDescLayout.handle, mBrightImage.view));
                 mBlurVertDescriptors.push_back(BuildBlurDesc(mBlurDescLayout.handle, mBlurTempImage.view));
-                // 【核心修改】：传入 5 个参数，把 mSsrOutputImage.view 传给 Composite
+
                 mCompositeDescriptors.push_back(BuildCompositeDesc(
                     mCompDescLayout.handle,
                     mOffscreenImage.view,
                     mFinalBloomImage.view,
-                    mSsrOutputImage.view,  // <-- 新增的 SSR 贴图
-                    mMosaicUBOs[i].buffer
+                    mSsrOutputImage.view,
+                    mMosaicUBOs[i].buffer,
+                    mSsaoRawImage.view 
                 ));
                 mSpeedPostDescriptors.push_back(BuildSpeedDesc(mCompositeOutputImage.view));
                 mSsrDescriptors.push_back(BuildSsrDesc(mOffscreenImage.view, mDepthBuffer.view, mNormalImage.view, mSceneUBO.buffer));
-            }
 
+                // ==========================================
+                // 【新增】：绑定每一帧的 SSAO 描述符
+                // ==========================================
+                mSsaoDescriptors.push_back(BuildSsaoDesc(
+                    mDepthBuffer.view, // 传入深度图
+                    mNormalImage.view, // 传入法线图
+                    mSceneUBO.buffer   // 传入场景 UBO (用于反投影)
+                ));
+                // =====================================================================
+                    // 【新增】：更新 SSR 自己的描述符
+                    // =====================================================================
+                for (size_t i = 0; i < mCmdBuffers.size(); ++i) {
+                    mSsrDescriptors[i] = BuildSsrDesc(
+                        mOffscreenImage.view,
+                        mDepthBuffer.view,
+                        mNormalImage.view,
+                        mSceneUBO.buffer
+                    );
+                }
+
+                // =====================================================================
+                // 【新增】：更新 SSAO 自己的描述符 (极其关键！因为深度和法线都换新了)
+                // =====================================================================
+                for (size_t i = 0; i < mCmdBuffers.size(); ++i) {
+                    mSsaoDescriptors[i] = BuildSsaoDesc(
+                        mDepthBuffer.view, // 新的深度图
+                        mNormalImage.view, // 新的法线图
+                        mSceneUBO.buffer
+                    );
+                }
+            }
+    
             // ==========================================
             // 9. UI 与调试初始化
             // ==========================================
@@ -520,51 +583,45 @@ namespace engine {
 
         // 在 RenderSystem.hpp 中更新该函数：
 
-        VkDescriptorSet BuildCompositeDesc(VkDescriptorSetLayout layout, VkImageView sceneView, VkImageView bloomView, VkImageView ssrView, VkBuffer mosaicUbo) {
-            // 确保直接 alloc 并返回，不要在函数内部操作成员 vector
+        // 在 RenderSystem.hpp 中更新该函数：
+        // 在 RenderSystem.hpp 中彻底替换该函数：
+        VkDescriptorSet BuildCompositeDesc(VkDescriptorSetLayout layout, VkImageView sceneView, VkImageView bloomView, VkImageView ssrView, VkBuffer mosaicUbo, VkImageView ssaoView) {
+
             VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, layout);
 
-            // 3 张贴图 (0:Scene, 1:Bloom, 2:SSR view)
-            VkDescriptorImageInfo imgs[3]{};
+            // 4 张贴图 (0:Scene, 1:Bloom, 2:SSR, 3:SSAO)
+            VkDescriptorImageInfo imgs[4]{};
             imgs[0] = { mPostSampler.handle, sceneView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
             imgs[1] = { mPostSampler.handle, bloomView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
             imgs[2] = { mPostSampler.handle, ssrView,   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            imgs[3] = { mPostSampler.handle, ssaoView,  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
 
             // 1 个 UBO (Binding 2)
             VkDescriptorBufferInfo bi{ mosaicUbo, 0, VK_WHOLE_SIZE };
 
-            // 写入 4 个绑定！【关键修复点】：数组大小绝不能是 2 或 3
-            VkWriteDescriptorSet w[4]{};
+
+            VkWriteDescriptorSet w[5]{};
 
             // Binding 0: Scene Color
-            w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            w[0].dstSet = ds; w[0].dstBinding = 0;
-            w[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            w[0].descriptorCount = 1; w[0].pImageInfo = &imgs[0];
+            w[0] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, ds, 0, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &imgs[0], nullptr, nullptr };
 
             // Binding 1: Bloom Color
-            w[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            w[1].dstSet = ds; w[1].dstBinding = 1;
-            w[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            w[1].descriptorCount = 1; w[1].pImageInfo = &imgs[1];
+            w[1] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, ds, 1, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &imgs[1], nullptr, nullptr };
 
             // Binding 2: Mosaic UBO
-            w[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            w[2].dstSet = ds; w[2].dstBinding = 2;
-            w[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            w[2].descriptorCount = 1; w[2].pBufferInfo = &bi;
+            w[2] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, ds, 2, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, &bi, nullptr };
 
             // Binding 3: SSR Color
-            w[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            w[3].dstSet = ds; w[3].dstBinding = 3;
-            w[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            w[3].descriptorCount = 1; w[3].pImageInfo = &imgs[2];
+            w[3] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, ds, 3, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &imgs[2], nullptr, nullptr };
 
-            // 提交更新 4 个！
-            vkUpdateDescriptorSets(mWindow.device, 4, w, 0, nullptr);
+            // Binding 4: SSAO Color
+            w[4] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, ds, 4, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &imgs[3], nullptr, nullptr };
+
+     
+            vkUpdateDescriptorSets(mWindow.device, 5, w, 0, nullptr);
+
             return ds;
         }
-
         void Update(float dt) override
         {
             // Let GLFW process events.
@@ -1010,7 +1067,9 @@ namespace engine {
                             mOffscreenImage.view,
                             mFinalBloomImage.view,
                             mSsrOutputImage.view,  // <--- 传入新建的 SSR 结果贴图
-                            mMosaicUBOs[i].buffer
+                            mMosaicUBOs[i].buffer,
+                            mSsaoRawImage.view // <--- 【新增】：传给 Composite！
+
                         );
                     }
 
@@ -1025,6 +1084,21 @@ namespace engine {
                             mSceneUBO.buffer
                         );
                     }
+
+              
+
+                    // =====================================================================
+                    // 【新增】：更新 SSAO 自己的描述符 (极其关键！因为深度和法线都换新了)
+                    // =====================================================================
+                    for (size_t i = 0; i < mCmdBuffers.size(); ++i) {
+                        mSsaoDescriptors[i] = BuildSsaoDesc(
+                            mDepthBuffer.view, // 新的深度图
+                            mNormalImage.view, // 新的法线图
+                            mSceneUBO.buffer
+                        );
+                    }
+
+
 
                     // Update descriptor set
                     UpdatePostDescImage(mPostDescriptors, mOffscreenImage.view);
@@ -1428,6 +1502,15 @@ namespace engine {
                 mSsrPipe.handle,                                        // aSsrPipe
                 mSsrPipeLayout.handle,                                  // aSsrLayout
                 mSsrDescriptors[mFrameIndex],                           // aSsrDS
+                // ==========================================================
+                // ==========================================================
+            // 【新增】：传递给 rendering.cpp 的 SSAO 资源参数
+            // ==========================================================
+                ImageAndView{ mSsaoRawImage.image, mSsaoRawImage.view }, // aSsaoRawOutput
+                mSsaoPipe.handle,                                        // aSsaoPipe
+                mSsaoPipeLayout.handle,                                  // aSsaoLayout
+                mSsaoDescriptors[mFrameIndex],                           // aSsaoDS
+                mState->ssaoEnabled,                                     // aSsaoEnabled (记得在状态机或UI里加上这个布尔值)
                 // ==========================================================
                 mState->ssrEnabled,
                 ImageAndView{ mBlurTempImage.image, mBlurTempImage.view },
@@ -2450,6 +2533,20 @@ void InitSkybox()
         lut::Pipeline mSsrPipe;
         std::vector<VkDescriptorSet> mSsrDescriptors;
 
+        // =========================================================
+        // 【新增】SSAO (Screen Space Ambient Occlusion) 资源
+        // =========================================================
+        // 创建 SSAO 的单通道 R8_UNORM 渲染目标
+       
+
+                lut::ImageWithView mSsaoRawImage;       // 存 SSAO 计算出的原始黑白遮蔽图
+                lut::DescriptorSetLayout mSsaoDescLayout;
+                lut::PipelineLayout mSsaoPipeLayout;
+                lut::Pipeline mSsaoPipe;
+                std::vector<VkDescriptorSet> mSsaoDescriptors;
+                engine::SSAOResources mSsaoResources;   // 我们在 SSAO.hpp 里打包好的噪声图和半球核
+
+
         // 【新增】：构建 SSR 的描述符
         VkDescriptorSet BuildSsrDesc(VkImageView colorView, VkImageView depthView, VkImageView normalView, VkBuffer uboBuffer) {
             VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, mSsrDescLayout.handle);
@@ -2474,7 +2571,33 @@ void InitSkybox()
             vkUpdateDescriptorSets(mWindow.device, 4, w, 0, nullptr);
             return ds;
         }
+        // 【新增】：构建 SSAO 的描述符
+        VkDescriptorSet BuildSsaoDesc(VkImageView depthView, VkImageView normalView, VkBuffer uboBuffer) {
+            VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, mSsaoDescLayout.handle);
 
+            VkDescriptorImageInfo imgs[3]{};
+            // 0: Depth
+            imgs[0] = { mPostSampler.handle, depthView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            // 1: Normal
+            imgs[1] = { mPostSampler.handle, normalView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            // 2: Noise Texture (极其关键：必须使用我们自己在 SSAO.cpp 里创建的 REPEAT 模式采样器)
+            imgs[2] = { mSsaoResources.noiseSampler, mSsaoResources.noiseImage.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+
+            VkDescriptorBufferInfo ubos[2]{};
+            // 3: Scene UBO (相机矩阵)
+            ubos[0] = { uboBuffer, 0, sizeof(glsl::SceneUniform) };
+            // 【关键修复】：绝对不要用 VK_WHOLE_SIZE！精准指定 64 个 vec4 的大小 (1024 字节)
+            ubos[1] = { mSsaoResources.kernelBuffer.buffer, 0, sizeof(glm::vec4) * 64 };
+            VkWriteDescriptorSet w[5]{};
+            w[0] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, ds, 0, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &imgs[0], nullptr, nullptr };
+            w[1] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, ds, 1, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &imgs[1], nullptr, nullptr };
+            w[2] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, ds, 2, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &imgs[2], nullptr, nullptr };
+            w[3] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, ds, 3, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, &ubos[0], nullptr };
+            w[4] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, ds, 4, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, &ubos[1], nullptr };
+
+            vkUpdateDescriptorSets(mWindow.device, 5, w, 0, nullptr);
+            return ds;
+        }
         private:
             // 存储每个模型专属的照片
             std::unordered_map<std::string, ThumbnailAsset> mThumbnailAssets;

@@ -98,6 +98,7 @@ namespace cfg
 	constexpr char const* kSkinnedVertShaderPath = SHADERDIR_"skinned.vert.spv";
 	// 【新增】：SSR 屏幕空间反射
 	constexpr char const* kSsrFragShaderPath = SHADERDIR_ "ssr.frag.spv";
+	constexpr char const* kSsaorFragShaderPath = SHADERDIR_ "ssao.frag.spv";
 
 #	undef SHADERDIR_
 
@@ -146,6 +147,9 @@ lut::ImageWithView create_offscreen_buffer( lut::VulkanWindow const&, lut::Alloc
 
 // 【新增】：创建用于存储世界空间/观察空间法线的 G-Buffer
 lut::ImageWithView create_normal_buffer(lut::VulkanWindow const&, lut::Allocator const&);
+
+lut::ImageWithView create_ssao_raw_buffer(lut::VulkanWindow const& aWindow, lut::Allocator const& aAllocator);
+
 lut::ImageWithView create_vis_image(lut::VulkanWindow const&, lut::Allocator const&);
 
 lut::ImageWithView create_vis_image( lut::VulkanWindow const&, lut::Allocator const& );
@@ -194,6 +198,17 @@ lut::DescriptorSetLayout create_ssr_descriptor_layout(lut::VulkanWindow const& a
 lut::PipelineLayout create_ssr_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aDescriptorLayout);
 // 【新增】：SSR 渲染管线 (输出一张存储了反射倒影的图像)
 lut::Pipeline create_ssr_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout);
+
+// =============================================================================
+// SSAO (Screen Space Ambient Occlusion) 
+// =============================================================================
+lut::DescriptorSetLayout create_ssao_descriptor_layout(lut::VulkanContext const& aContext);
+
+lut::PipelineLayout create_ssao_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aSsaoLayout);
+
+lut::Pipeline create_ssao_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout);
+
+
 
 // debug render
 lut::Pipeline create_debug_line_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, VkFormat aColorFormat);

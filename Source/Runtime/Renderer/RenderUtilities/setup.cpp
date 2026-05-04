@@ -640,7 +640,7 @@ lut::DescriptorSetLayout create_post_proc_descriptor_layout( lut::VulkanWindow c
 }
 lut::DescriptorSetLayout create_composite_descriptor_layout(lut::VulkanWindow const& aWindow)
 {
-	VkDescriptorSetLayoutBinding bindings[4]{}; // 3-4 for ssr
+	VkDescriptorSetLayoutBinding bindings[5]{}; // 3-4 for ssr
 	bindings[0].binding = 0;
 	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	bindings[0].descriptorCount = 1;
@@ -664,8 +664,13 @@ lut::DescriptorSetLayout create_composite_descriptor_layout(lut::VulkanWindow co
 	bindings[3].descriptorCount = 1;
 	bindings[3].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
+	// 【新增】：Binding 4: SSAO Map
+	bindings[4].binding = 4;
+	bindings[4].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[4].descriptorCount = 1;
+	bindings[4].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 	VkDescriptorSetLayoutCreateInfo layoutInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
-	layoutInfo.bindingCount = 4; 
+	layoutInfo.bindingCount = 5; 
 	layoutInfo.pBindings = bindings;
 
 
@@ -859,8 +864,52 @@ lut::ImageWithView create_normal_buffer(lut::VulkanWindow const& aWindow, lut::A
 
 }
 
+lut::ImageWithView create_ssao_raw_buffer(lut::VulkanWindow const& aWindow, lut::Allocator const& aAllocator)
+{
+	// 创建图像 (R8_UNORM，单通道，极其省显存)
+	VkImageCreateInfo imageInfo{};
+	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imageInfo.imageType = VK_IMAGE_TYPE_2D;
+	imageInfo.format = VK_FORMAT_R8_UNORM; // <--- 关键！
+	imageInfo.extent = { aWindow.swapchainExtent.width, aWindow.swapchainExtent.height, 1 };
+	imageInfo.mipLevels = 1;
+	imageInfo.arrayLayers = 1;
+	imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+	imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+	imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+	imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
+	VmaAllocationCreateInfo allocInfo{};
+	allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY; // 保持与引擎规范一致
 
+	VkImage image = VK_NULL_HANDLE;
+	VmaAllocation allocation = VK_NULL_HANDLE;
+	if (auto const res = vmaCreateImage(aAllocator.allocator, &imageInfo, &allocInfo, &image, &allocation, nullptr); VK_SUCCESS != res) {
+		throw lut::Error("Unable to allocate SSAO raw buffer image\n"
+			"vmaCreateImage() returned {}", lut::to_string(res));
+	}
+
+	// 创建 ImageView
+	VkImageViewCreateInfo viewInfo{};
+	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	viewInfo.image = image;
+	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	viewInfo.format = VK_FORMAT_R8_UNORM;
+	viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	viewInfo.subresourceRange.baseMipLevel = 0;
+	viewInfo.subresourceRange.levelCount = 1;
+	viewInfo.subresourceRange.baseArrayLayer = 0;
+	viewInfo.subresourceRange.layerCount = 1;
+
+	VkImageView view = VK_NULL_HANDLE;
+	if (auto const res = vkCreateImageView(aWindow.device, &viewInfo, nullptr, &view); VK_SUCCESS != res) {
+		throw lut::Error("Unable to create SSAO raw buffer image view\n"
+			"vkCreateImageView() returned {}", lut::to_string(res));
+	}
+
+	return lut::ImageWithView(aAllocator.allocator, image, allocation, view);
+}
 // creates a generic pipeline for debug visualization
 // the vertex shader is typically the same (debug.vert)
 // but the fragment shader depends on keys 1-4
@@ -3375,6 +3424,184 @@ lut::Pipeline create_ssr_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLa
 
 	return lut::Pipeline(aWindow.device, pipe);
 }
+lut::DescriptorSetLayout create_ssao_descriptor_layout(lut::VulkanContext const& aContext)
+{
+	VkDescriptorSetLayoutBinding bindings[5]{};
+
+	// Binding 0: Depth Map
+	bindings[0].binding = 0;
+	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[0].descriptorCount = 1;
+	bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	// Binding 1: Normal Map
+	bindings[1].binding = 1;
+	bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[1].descriptorCount = 1;
+	bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	// Binding 2: Noise Texture (我们自己生成的 4x4 贴图)
+	bindings[2].binding = 2;
+	bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[2].descriptorCount = 1;
+	bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	// Binding 3: UScene UBO (相机矩阵)
+	bindings[3].binding = 3;
+	bindings[3].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	bindings[3].descriptorCount = 1;
+	bindings[3].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	// Binding 4: Kernel UBO (64 个采样点)
+	bindings[4].binding = 4;
+	bindings[4].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	bindings[4].descriptorCount = 1;
+	bindings[4].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	VkDescriptorSetLayoutCreateInfo info{};
+	info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	info.bindingCount = 5;
+	info.pBindings = bindings;
+
+	VkDescriptorSetLayout layout = VK_NULL_HANDLE;
+	if (auto res = vkCreateDescriptorSetLayout(aContext.device, &info, nullptr, &layout); VK_SUCCESS != res)
+	{
+		throw lut::Error("Unable to create SSAO descriptor set layout\n"
+			"vkCreateDescriptorSetLayout() returned {}", lut::to_string(res));
+	}
+	return lut::DescriptorSetLayout(aContext.device, layout);
+}
+lut::PipelineLayout create_ssao_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aSsaoLayout)
+{
+	// PushConstants 对应 Shader 中的 4 个 float = 16 bytes
+	VkPushConstantRange pcRange{};
+	pcRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	pcRange.offset = 0;
+	pcRange.size = sizeof(float) * 4;
+
+	VkPipelineLayoutCreateInfo info{};
+	info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	info.setLayoutCount = 1;
+	info.pSetLayouts = &aSsaoLayout;
+	info.pushConstantRangeCount = 1;
+	info.pPushConstantRanges = &pcRange;
+
+	VkPipelineLayout layout = VK_NULL_HANDLE;
+	if (auto res = vkCreatePipelineLayout(aContext.device, &info, nullptr, &layout); VK_SUCCESS != res)
+	{
+		throw lut::Error("Unable to create SSAO pipeline layout\n"
+			"vkCreatePipelineLayout() returned {}", lut::to_string(res));
+	}
+	return lut::PipelineLayout(aContext.device, layout);
+}
+lut::Pipeline create_ssao_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout)
+{
+	// 加载 Shader
+	// 【请替换为你的实际路径，比如 cfg::kFullscreenVertShaderPath】
+	auto const vertSpirV = lut::load_file_u32(cfg::kFullscreenVertShaderPath);
+	auto const fragSpirV = lut::load_file_u32(cfg::kSsaorFragShaderPath); // 注意：确保在 setup.hpp 的 cfg 命名空间中定义了该路径
+
+
+	VkShaderModuleCreateInfo code[2]{};
+	code[0].sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	code[0].codeSize = vertSpirV.size() * sizeof(uint32_t);
+	code[0].pCode = vertSpirV.data();
+	code[1].sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	code[1].codeSize = fragSpirV.size() * sizeof(uint32_t);
+	code[1].pCode = fragSpirV.data();
+
+	VkPipelineShaderStageCreateInfo stages[2]{};
+	stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+	stages[0].pName = "main";
+	stages[0].pNext = &code[0];
+	stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	stages[1].pName = "main";
+	stages[1].pNext = &code[1];
+
+	// 全屏 Shader 不需要顶点输入
+	VkPipelineVertexInputStateCreateInfo inputInfo{};
+	inputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+	VkPipelineInputAssemblyStateCreateInfo assemblyInfo{};
+	assemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	assemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+	VkViewport vp{ 0, 0, (float)aWindow.swapchainExtent.width, (float)aWindow.swapchainExtent.height, 0, 1 };
+	VkRect2D sc{ {0,0}, aWindow.swapchainExtent };
+	VkPipelineViewportStateCreateInfo vpInfo{};
+	vpInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	vpInfo.viewportCount = 1; vpInfo.pViewports = &vp;
+	vpInfo.scissorCount = 1; vpInfo.pScissors = &sc;
+
+	VkPipelineRasterizationStateCreateInfo raster{};
+	raster.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	raster.polygonMode = VK_POLYGON_MODE_FILL;
+	raster.cullMode = VK_CULL_MODE_NONE; // 全屏三角形不剔除
+	raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	raster.lineWidth = 1.0f;
+
+	VkPipelineMultisampleStateCreateInfo ms{};
+	ms.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+	// SSAO 写入的格式是 R8_UNORM，单通道，所以 WriteMask 只保留 R 就够了 (全部也可以)
+	VkPipelineColorBlendAttachmentState blendAtt{};
+	blendAtt.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	blendAtt.blendEnable = VK_FALSE; // 直接覆盖，不需要和底图 Blend
+
+	VkPipelineColorBlendStateCreateInfo blendInfo{};
+	blendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	blendInfo.attachmentCount = 1;
+	blendInfo.pAttachments = &blendAtt;
+
+	// 后处理不需要深度测试
+	VkPipelineDepthStencilStateCreateInfo depth{};
+	depth.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depth.depthTestEnable = VK_FALSE;
+	depth.depthWriteEnable = VK_FALSE;
+
+	// 【重要】：SSAO 渲染目标的格式必须是 R8_UNORM
+	VkFormat colorFmts[1] = { VK_FORMAT_R8_UNORM };
+	VkPipelineRenderingCreateInfo renderInfo{};
+	renderInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+	renderInfo.colorAttachmentCount = 1;
+	renderInfo.pColorAttachmentFormats = colorFmts;
+
+	VkDynamicState dynS[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+	VkPipelineDynamicStateCreateInfo dynInfo{};
+	dynInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dynInfo.dynamicStateCount = 2;
+	dynInfo.pDynamicStates = dynS;
+
+	VkGraphicsPipelineCreateInfo pipeInfo{};
+	pipeInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipeInfo.pNext = &renderInfo;
+	pipeInfo.stageCount = 2;
+	pipeInfo.pStages = stages;
+	pipeInfo.pVertexInputState = &inputInfo;
+	pipeInfo.pInputAssemblyState = &assemblyInfo;
+	pipeInfo.pViewportState = &vpInfo;
+	pipeInfo.pRasterizationState = &raster;
+	pipeInfo.pMultisampleState = &ms;
+	pipeInfo.pDepthStencilState = &depth;
+	pipeInfo.pColorBlendState = &blendInfo;
+	pipeInfo.pDynamicState = &dynInfo;
+	pipeInfo.layout = aPipelineLayout;
+
+	VkPipeline pipe = VK_NULL_HANDLE;
+	if (auto res = vkCreateGraphicsPipelines(aWindow.device, VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &pipe); VK_SUCCESS != res)
+	{
+		throw lut::Error("Unable to create SSAO pipeline\n"
+			"vkCreateGraphicsPipelines() returned {}", lut::to_string(res));
+	}
+	return lut::Pipeline(aWindow.device, pipe);
+}
+
+
+
+
 // =============================================================================
 // Bone-matrices SSBO descriptor layout  (set = 2, binding = 0)
 // =============================================================================

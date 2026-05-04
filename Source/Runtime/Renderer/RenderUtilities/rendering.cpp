@@ -28,6 +28,7 @@ struct alignas(16) ObjectPC {
 	float alphaCutoff;          // Offset: 104 Size: 4
 	float _pad;                 // Offset: 108 Size: 4  <-- 补齐到 16 字节边界
 };
+
 void record_commands(
 	VkCommandBuffer aCmdBuff,
 	VkPipeline aGraphicsPipe,
@@ -62,6 +63,13 @@ void record_commands(
 	VkPipeline aSsrPipe,                // <--- 【新增】
 	VkPipelineLayout aSsrLayout,        // <--- 【新增】
 	VkDescriptorSet aSsrDS,             // <--- 【新增】
+	// ==============================================================
+	ImageAndView const& aSsaoRawOutput, // SSAO 原始噪点图输出目标
+	VkPipeline aSsaoPipe,               // SSAO 渲染管线
+	VkPipelineLayout aSsaoLayout,       // SSAO 管线布局 (用于传 PushConstants)
+	VkDescriptorSet aSsaoDS,            // SSAO 描述符集 (绑定了深度、法线、噪声贴图和采样核)
+	bool aSsaoEnabled,                  // SSAO 开关
+	// ==============================================================
 	bool aSsrEnabled,
 	ImageAndView const& aBlurTemp,
 	ImageAndView const& aFinalBloom,
@@ -677,6 +685,55 @@ void record_commands(
 	lut::image_barrier(aCmdBuff, aSsrOutput.image,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
+
+	// ==========================================================
+	// SSAO Pass (流程同 SSR，先转状态、再渲染、最后转回只读)
+	// ==========================================================
+	// ==========================================================
+	// 执行 SSAO Pass
+	// ==========================================================
+
+	// 【修正】：只把 SSAO 的画板转为可写状态！不要碰 SSR！
+	lut::image_barrier(aCmdBuff, aSsaoRawOutput.image,
+		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
+
+	VkRenderingAttachmentInfo ssaoAtt{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+	ssaoAtt.imageView = aSsaoRawOutput.view;
+	ssaoAtt.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	ssaoAtt.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	ssaoAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	// 默认清空为纯白 (1.0)，表示没有遮蔽
+	ssaoAtt.clearValue.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+	VkRenderingInfo ssaoRenderInfo{ VK_STRUCTURE_TYPE_RENDERING_INFO };
+	ssaoRenderInfo.renderArea.extent = aImageExtent;
+	ssaoRenderInfo.layerCount = 1;
+	ssaoRenderInfo.colorAttachmentCount = 1;
+	ssaoRenderInfo.pColorAttachments = &ssaoAtt;
+
+	vkCmdBeginRendering(aCmdBuff, &ssaoRenderInfo);
+	if (aSsaoEnabled) {
+		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsaoPipe);
+		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsaoLayout, 0, 1, &aSsaoDS, 0, nullptr);
+
+		// 推送 SSAO 参数：[采样半径, 偏移容差, 阴影强度, 占位符]
+		float ssaoParams[4] = { 0.5f, 0.025f, 1.5f, 0.0f };
+		vkCmdPushConstants(aCmdBuff, aSsaoLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float) * 4, ssaoParams);
+
+		vkCmdSetViewport(aCmdBuff, 0, 1, &vp);
+		vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
+
+		vkCmdDraw(aCmdBuff, 3, 1, 0, 0);
+	}
+	vkCmdEndRendering(aCmdBuff);
+
+	// SSAO 输出完毕，转为只读，准备给下个阶段（Blur 或者 Composite）使用
+	lut::image_barrier(aCmdBuff, aSsaoRawOutput.image,
+		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
+
+
 	// ==========================================================
 	// Blur pass: Horizontal (Bright -> BlurTemp)
 	// ==========================================================

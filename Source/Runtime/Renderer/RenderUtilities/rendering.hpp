@@ -51,6 +51,15 @@ void record_commands(
 	VkPipeline aSsrPipe,                // <--- 【新增】
 	VkPipelineLayout aSsrLayout,        // <--- 【新增】
 	VkDescriptorSet aSsrDS,             // <--- 【新增】
+	// ==============================================================
+	// 【新增】：SSAO (屏幕空间环境光遮蔽) 相关参数
+	// ==============================================================
+	ImageAndView const& aSsaoRawOutput, // SSAO 原始噪点图输出目标
+	VkPipeline aSsaoPipe,               // SSAO 渲染管线
+	VkPipelineLayout aSsaoLayout,       // SSAO 管线布局 (用于传 PushConstants)
+	VkDescriptorSet aSsaoDS,            // SSAO 描述符集 (绑定了深度、法线、噪声贴图和采样核)
+	bool aSsaoEnabled,                  // SSAO 开关
+	// ==============================================================
 	bool aSsrEnabled,
 	ImageAndView const& aBlurTemp,
 	ImageAndView const& aFinalBloom,
