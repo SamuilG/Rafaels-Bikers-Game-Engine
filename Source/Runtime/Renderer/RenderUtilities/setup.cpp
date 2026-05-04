@@ -3166,7 +3166,7 @@ lut::Pipeline create_skybox_pipeline(lut::VulkanWindow const& aWindow, VkPipelin
 	// ==========================================================
 	// 【关键修复 2】：防止天空盒产生诡异的 Bloom
 	// ==========================================================
-	VkPipelineColorBlendAttachmentState blendStates[2]{};
+	VkPipelineColorBlendAttachmentState blendStates[3]{};
 	// Attachment 0: 主颜色照常输出天空
 	blendStates[0].blendEnable = VK_FALSE;
 	blendStates[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
@@ -3174,22 +3174,24 @@ lut::Pipeline create_skybox_pipeline(lut::VulkanWindow const& aWindow, VkPipelin
 	// Attachment 1: 亮度提取层直接屏蔽写入！(Mask = 0)
 	blendStates[1].blendEnable = VK_FALSE;
 	blendStates[1].colorWriteMask = 0;
-
+	// 2: 法线 (天空盒没有法线，不写入)
+	blendStates[2].blendEnable = VK_FALSE;
+	blendStates[2].colorWriteMask = 0;
 	VkPipelineColorBlendStateCreateInfo blendInfo{};
 	blendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
 	blendInfo.logicOpEnable = VK_FALSE;
-	blendInfo.attachmentCount = 2;
+	blendInfo.attachmentCount = 3;
 	blendInfo.pAttachments = blendStates;
 
 	// 让管线自动适应引擎传进来的颜色格式
-	VkFormat colorFormats[] = {
-		colorFormat, // Location 0: 主颜色 (使用传入的格式)
-		colorFormat  // Location 1: Bloom 亮度 (通常与主颜色一致)
+	VkFormat colorFormats[3] = {
+		colorFormat, // 0
+		colorFormat, // 1
+		VK_FORMAT_R16G16B16A16_SFLOAT // 2: 法线格式，保持和管线一致
 	};
-
 	VkPipelineRenderingCreateInfo renderingInfo{};
 	renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-	renderingInfo.colorAttachmentCount = 2;
+	renderingInfo.colorAttachmentCount = 3;
 	renderingInfo.pColorAttachmentFormats = colorFormats;
 	renderingInfo.depthAttachmentFormat = cfg::kDepthFormat;
 

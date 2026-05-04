@@ -373,5 +373,10 @@ void main()
     mappedColor *= finalAlpha; // PREMULTIPLY
 
     oColor = vec4(mappedColor, finalAlpha);
-    oNormal = vec4(N, roughness);
+ // =========================================================
+    //  【核心修复】：把世界空间法线 (N) 乘以相机矩阵 (View Matrix)
+    // 将其转换到相机空间！并且 Alpha 设为 1.0 确保通过 SSAO 的检测！
+    // =========================================================
+    vec3 viewNormal = normalize(mat3(uScene.camera) * N);
+    oNormal = vec4(viewNormal, 1.0);
 }
