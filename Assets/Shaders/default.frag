@@ -373,5 +373,6 @@ void main()
     mappedColor *= finalAlpha; // PREMULTIPLY
 
     oColor = vec4(mappedColor, finalAlpha);
-    oNormal = vec4(N, roughness);
+    //   oNormal = vec4(N, roughness);
+    oNormal = vec4(normalize(N), roughness);
 }

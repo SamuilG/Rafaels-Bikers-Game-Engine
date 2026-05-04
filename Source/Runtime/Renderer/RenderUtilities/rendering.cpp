@@ -673,7 +673,14 @@ void record_commands(
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsrLayout, 0, 1, &aSsrDS, 0, nullptr);
 
 		//float ssrParams[4] = { 0.2f /*步长*/, 100.0f /*最大步数*/, 0.1f /*厚度*/, 0.0f /*留白*/ };
-		float ssrParams[4] = { 0.2f /*步长*/, 64.0f /*最大步数*/, 0.1f /*厚度*/, 50.0f /*最大反射距离*/ };
+		// 缩小步长让射线更密，增加厚度防止射线“穿模”漏判
+		
+		float ssrParams[4] = {
+			0.08f,  /* 步长：稍微放宽一点点，配合 jittering 效果极佳 */
+			128.0f, /* 最大步数 */
+			0.25f,  /* 厚度：大幅收紧（之前是0.5），jittering 会防止漏判 */
+			100.0f  /* 最大反射距离：放大到100，让远处的建筑也能倒映出来 */
+		};
 		vkCmdPushConstants(aCmdBuff, aSsrLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float) * 4, ssrParams);
 		vkCmdSetViewport(aCmdBuff, 0, 1, &vp);
 		vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);

@@ -13,7 +13,7 @@ layout(set = 0, binding = 2) uniform UMosaic {
 layout(set = 0, binding = 3) uniform sampler2D uSsrColor;
 
 // ==========================================
-// 【新增】：接收来自 C++ Binding 4 的 SSAO 贴图
+// 接收来自 C++ Binding 4 的 SSAO 贴图
 // ==========================================
 layout(set = 0, binding = 4) uniform sampler2D uSsaoMap; 
 
@@ -39,27 +39,26 @@ void main() {
     vec4 ssrData    = texture(uSsrColor, uv);
 
     // ==========================================
-    // 【新增】：采样并应用 SSAO
+    // 1. 采样并应用 SSAO
     // ==========================================
-    // 从 SSAO 贴图的 R 通道读取遮蔽值 (1.0 = 无阴影，0.0 = 全阴影)
     float ssao = texture(uSsaoMap, uv).r;
     
-    // 将环境光遮蔽直接乘到场景颜色上 (正片叠底)
-    // 理论上最好只乘到环境光上，但在简单的后处理合成中，直接乘在总颜色上也很有体积感
+    // 将环境光遮蔽直接乘到场景底色上（正片叠底，压暗角落）
     sceneColor *= ssao; 
 
     // ==========================================
-    // 叠加 SSR 倒影 (利用 a 通道控制强度)
+    // 2. 叠加 SSR 倒影（修正变量名与混合逻辑）
     // ==========================================
-    sceneColor = sceneColor * (1.0 - ssrData.a) + ssrData.rgb * ssrData.a;
+    // 使用线性插值 (mix)：在有反射的地方显示反射，无反射的地方保留被 SSAO 压暗的底色
+    sceneColor = mix(sceneColor, ssrData.rgb, ssrData.a);
     
-    // 叠加 Bloom
+    // ==========================================
+    // 3. 叠加 Bloom 并进行色调映射
+    // ==========================================
     vec3 hdrColor = sceneColor + bloomColor * params.bloomStrength; 
 
     // Reinhard 色调映射
     vec3 mapped = hdrColor / (hdrColor + vec3(1.0));
 
     oColor = vec4(mapped, 1.0);
-
-
 }

@@ -12,6 +12,7 @@
 #include "../Particle/ParticleSystem.hpp"
 #include "../Debug/DebugRenderer.hpp"
 #include "../Scene/model_loader/engine_model.hpp" 
+#include "../UserState/UserState.hpp"
 
 lut::PipelineLayout create_triangle_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aSceneLayout, VkDescriptorSetLayout aObjectLayout)
 {
@@ -444,10 +445,10 @@ lut::Pipeline create_alpha_pipeline(lut::VulkanWindow const& aWindow, VkPipeline
 	// 1: Bright Color (Bloom 亮度也需要混合)
 	blendStates[1] = blendStates[0];
 
-	// 2: Normal & Roughness (法线缓冲绝对不能混合，直接关闭！)
+	// 2: Normal & Roughness (半透明物体绝对不准写入法线和粗糙度！)
 	blendStates[2].blendEnable = VK_FALSE;
-	blendStates[2].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-
+	//  核心修改：把写入掩码设为 0，相当于给这个画板上了“物理锁”
+	blendStates[2].colorWriteMask = 0;
 	VkPipelineColorBlendStateCreateInfo blendInfo{};
 	blendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
 	blendInfo.logicOpEnable = VK_FALSE;
@@ -722,6 +723,7 @@ lut::ImageWithView create_depth_buffer(lut::VulkanWindow const& aWindow, lut::Al
 	imageInfo.arrayLayers = 1;
 	imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 	imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+
 	imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 	imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
