@@ -436,193 +436,50 @@ void record_commands(
 
 		vkCmdDraw(aCmdBuff, 36, 1, 0, 0);
 	}
-	// 阶段 2：最后画【半透明】物体
-	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aAlphaPipe);
-	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
 
-	for (const auto& batch : aBatches)
-	{
-		uint32_t meshIdx = batch.meshIndex;
-		uint32_t matIdx = batch.materialIndex;
-
-		bool isMatMasked = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0);
-		if (isMatMasked) continue;
-
-		if (batch.alphaMultiplier >= 0.99f) continue;
-
-		auto const& meshInfo = aMeshInfos[meshIdx];
-
-		// --- 重新完整初始化，不留死角 ---
-		ObjectPC pcData{};
-		pcData.transform = batch.transform;
-
-		if (matIdx < aMaterials.size()) {
-			pcData.baseColorFactor = aMaterials[matIdx].baseColorFactor;
-			pcData.emissiveFactor = aMaterials[matIdx].emissiveFactor;
-			pcData.metallicFactor = aMaterials[matIdx].metallicFactor;
-			pcData.roughnessFactor = aMaterials[matIdx].roughnessFactor;
-			pcData.alphaCutoff = aMaterials[matIdx].alphaCutoff;
-		}
-		else {
-			pcData.baseColorFactor = glm::vec4(1.0f);
-			pcData.emissiveFactor = glm::vec4(0.0f);
-			pcData.metallicFactor = 0.0f;
-			pcData.roughnessFactor = 0.8f;
-			pcData.alphaCutoff = 0.5f;
-		}
-
-		pcData.baseColorFactor.a *= batch.alphaMultiplier;
-		pcData.alphaCutoff = -1.0f; // 设为负数，保证 finalAlpha 永远大于它
-		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ObjectPC), &pcData);
-
-		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
-		vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset);
-		vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &kZeroOffset);
-		vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &kZeroOffset);
-		vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
-
-		vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(meshInfo.indices.size()), 1, 0, 0, 0);
-	}
-	// Particles (保持原逻辑)
-	if (particlesEnabled)
-	{
-		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, particlePipe);
-		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
-
-		struct ParticlePC { int useTexture; int debugMode; int _pad[2]; glm::mat4 transform; };
-
-		for (const auto& ps : allParticles)
-		{
-			// trigger: skip draw submission when a trigger has hidden this particle system.
-			if (!ps->config.isVisible) {
-				continue;
-			}
-
-			ParticlePC pc{};
-			if (ps->config.textureDescriptor != VK_NULL_HANDLE) {
-				vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &ps->config.textureDescriptor, 0, nullptr);
-				pc.useTexture = ps->config.useTexture;
-			}
-			else {
-				pc.useTexture = 0;
-			}
-			pc.debugMode = ps->config.particleDebug ? 1 : 0;
-			vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ParticlePC), &pc);
-			ps->draw(aCmdBuff);
-			ps->drawDebug(aCmdBuff, aGraphicsLayout);
-		}
-	}
-
-
-	aDebugRenderer.Render(aCmdBuff, aDebugLinePipe, aGraphicsLayout, aSceneDescriptors);
-
-	if (aSkinnedPipe != VK_NULL_HANDLE &&
-		aSkinnedBatches && !aSkinnedBatches->empty() &&
-		aMeshJoints && aMeshWeights &&
-		aBoneDescriptorSet != VK_NULL_HANDLE)
+	// =====================================================================
+	// 【新增】：在 MRT 结束前，补上不透明的骨骼动画！
+	// 这样它们才能把深度和法线写入 G-Buffer，参与 SSR 和 SSAO
+	// =====================================================================
+	if (aSkinnedPipe != VK_NULL_HANDLE && aSkinnedBatches && !aSkinnedBatches->empty() && aMeshJoints && aMeshWeights && aBoneDescriptorSet != VK_NULL_HANDLE)
 	{
 		struct alignas(16) SkinnedPC {
-			glm::mat4 transform;
-			glm::vec4 baseColorFactor;
-			float metallicFactor;
-			float roughnessFactor;
-			uint32_t boneBaseIndex;
-			float _pad;
+			glm::mat4 transform; glm::vec4 baseColorFactor; float metallicFactor; float roughnessFactor; uint32_t boneBaseIndex; float _pad;
 		};
-
-		// -- opaque skinned --
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipe);
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 2, 1, &aBoneDescriptorSet, 0, nullptr);
 
-		for (const auto& batch : *aSkinnedBatches)
-		{
-			uint32_t meshIdx = batch.meshIndex;
-			uint32_t matIdx = batch.materialIndex;
-			bool     isAlpha = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0)
-				|| (batch.alphaMultiplier < 0.99f);
-			if (isAlpha) continue; // draw in alpha pass below
+		for (const auto& batch : *aSkinnedBatches) {
+			uint32_t meshIdx = batch.meshIndex; uint32_t matIdx = batch.materialIndex;
+			// 只画不透明的
+			bool isAlpha = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0) || (batch.alphaMultiplier < 0.99f);
+			if (isAlpha) continue;
 
-			auto jIt = aMeshJoints->find(meshIdx);
-			auto wIt = aMeshWeights->find(meshIdx);
+			auto jIt = aMeshJoints->find(meshIdx); auto wIt = aMeshWeights->find(meshIdx);
 			if (jIt == aMeshJoints->end() || wIt == aMeshWeights->end()) continue;
 
 			SkinnedPC pc{};
-			pc.transform = batch.transform;
-			pc.boneBaseIndex = batch.boneBaseIndex;
+			pc.transform = batch.transform; pc.boneBaseIndex = batch.boneBaseIndex;
 			if (matIdx < aMaterials.size()) {
-				pc.baseColorFactor = aMaterials[matIdx].baseColorFactor;
-				pc.metallicFactor = aMaterials[matIdx].metallicFactor;
-				pc.roughnessFactor = aMaterials[matIdx].roughnessFactor;
+				pc.baseColorFactor = aMaterials[matIdx].baseColorFactor; pc.metallicFactor = aMaterials[matIdx].metallicFactor; pc.roughnessFactor = aMaterials[matIdx].roughnessFactor;
 			}
 			else {
-				pc.baseColorFactor = glm::vec4(1.0f);
-				pc.metallicFactor = pc.roughnessFactor = 1.0f;
+				pc.baseColorFactor = glm::vec4(1.0f); pc.metallicFactor = pc.roughnessFactor = 1.0f;
 			}
 
 			vkCmdPushConstants(aCmdBuff, aSkinnedPipeLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(SkinnedPC), &pc);
 			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
 
 			VkDeviceSize z = 0;
-			vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &z);
-			vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &z);
-			vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &z);
-			vkCmdBindVertexBuffers(aCmdBuff, 3, 1, &jIt->second.buffer, &z);
-			vkCmdBindVertexBuffers(aCmdBuff, 4, 1, &wIt->second.buffer, &z);
+			vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &z); vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &z);
+			vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &z); vkCmdBindVertexBuffers(aCmdBuff, 3, 1, &jIt->second.buffer, &z); vkCmdBindVertexBuffers(aCmdBuff, 4, 1, &wIt->second.buffer, &z);
 			vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
 			vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(aMeshInfos[meshIdx].indices.size()), 1, 0, 0, 0);
 		}
-
-		// -- alpha-masked skinned --
-		if (aSkinnedAlphaPipe != VK_NULL_HANDLE) {
-			vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedAlphaPipe);
-			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
-			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 2, 1, &aBoneDescriptorSet, 0, nullptr);
-
-			for (const auto& batch : *aSkinnedBatches)
-			{
-				uint32_t meshIdx = batch.meshIndex;
-				uint32_t matIdx = batch.materialIndex;
-				bool     isAlpha = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0)
-					|| (batch.alphaMultiplier < 0.99f);
-				if (!isAlpha) continue;
-
-				auto jIt = aMeshJoints->find(meshIdx);
-				auto wIt = aMeshWeights->find(meshIdx);
-				if (jIt == aMeshJoints->end() || wIt == aMeshWeights->end()) continue;
-
-				SkinnedPC pc{};
-				pc.transform = batch.transform;
-				pc.boneBaseIndex = batch.boneBaseIndex;
-				if (matIdx < aMaterials.size()) {
-					pc.baseColorFactor = aMaterials[matIdx].baseColorFactor;
-					pc.metallicFactor = aMaterials[matIdx].metallicFactor;
-					pc.roughnessFactor = aMaterials[matIdx].roughnessFactor;
-				}
-				else {
-					pc.baseColorFactor = glm::vec4(1.0f);
-					pc.metallicFactor = pc.roughnessFactor = 1.0f;
-				}
-				pc.baseColorFactor.a *= batch.alphaMultiplier;
-
-				vkCmdPushConstants(aCmdBuff, aSkinnedPipeLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(SkinnedPC), &pc);
-				vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
-
-				VkDeviceSize z = 0;
-				vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &z);
-				vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &z);
-				vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &z);
-				vkCmdBindVertexBuffers(aCmdBuff, 3, 1, &jIt->second.buffer, &z);
-				vkCmdBindVertexBuffers(aCmdBuff, 4, 1, &wIt->second.buffer, &z);
-				vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
-				vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(aMeshInfos[meshIdx].indices.size()), 1, 0, 0, 0);
-			}
-		}
 	}
 
-
-
-	vkCmdEndRendering(aCmdBuff);
+	vkCmdEndRendering(aCmdBuff); // <---- 真正的 MRT 阶段结束！
 
 	// ==========================================================
 	// 准备进入 SSR 阶段：将刚刚画好的法线、深度、颜色转为只读采样状态
@@ -674,7 +531,7 @@ void record_commands(
 
 		//float ssrParams[4] = { 0.2f /*步长*/, 100.0f /*最大步数*/, 0.1f /*厚度*/, 0.0f /*留白*/ };
 		// 缩小步长让射线更密，增加厚度防止射线“穿模”漏判
-		
+
 		float ssrParams[4] = {
 			0.08f,  /* 步长：稍微放宽一点点，配合 jittering 效果极佳 */
 			128.0f, /* 最大步数 */
@@ -818,56 +675,42 @@ void record_commands(
 	vkCmdDraw(aCmdBuff, 3, 1, 0, 0);
 	vkCmdEndRendering(aCmdBuff);
 
-	// ==========================================================
-	// Composite: combine Offscreen + FinalBloom -> Swapchain
-	// ==========================================================
-	//lut::image_barrier(aCmdBuff, aOffscreenColor.image,
-	//	VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-	//	VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-	//	VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-	//	VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-	//	VK_ACCESS_2_SHADER_READ_BIT,
-	//	VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-	//	VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1 }
-	//);
-	lut::image_barrier(aCmdBuff, aFinalBloom.image,
-		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-		VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-		VK_ACCESS_2_SHADER_READ_BIT,
-		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1 }
-	);
 
 
-	// 【修复 1】：把原来对 aSwapchainAttach 的屏障，改成对 aFinalSceneColor 的屏障
-	lut::image_barrier(aCmdBuff, aFinalSceneColor.image,
-		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
-		VK_ACCESS_2_NONE,
-		VK_IMAGE_LAYOUT_UNDEFINED,
-		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-		VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1 }
-	);
-	lut::image_barrier(aCmdBuff, aSwapchainAttach.image,
-		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
-		VK_ACCESS_2_NONE,
-		VK_IMAGE_LAYOUT_UNDEFINED,
-		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-		VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1 }
-	);
+
+
+
 
 	// ==========================================================
-	// 1. Composite Pass (合成阶段: 场景 + Bloom)
+	// 为 Composite 画板准备屏障 (极其重要，防 Vulkan 报错)
 	// ==========================================================
+	//VkImageSubresourceRange range{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+	lut::image_barrier(aCmdBuff, aCompositeOutput.image,
+		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
+
+	// ==========================================================
+	// 1. Composite Pass (终极合成阶段: 场景底色 + Bloom + 所有半透明物体)
+	// ==========================================================
+
+	// 【核心修复】：将深度图转为“只读深度测试”状态！
+	lut::image_barrier(aCmdBuff, aDepthAttach.image,
+		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+		VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+		VkImageSubresourceRange{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 }
+	);
+
+	VkRenderingAttachmentInfo compDepthAtt{};
+	compDepthAtt.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	compDepthAtt.imageView = aDepthAttach.view;
+	compDepthAtt.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+	compDepthAtt.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;   // 保留不透明物体的深度！
+	compDepthAtt.storeOp = VK_ATTACHMENT_STORE_OP_NONE; // 半透明不写深度
+
 	VkRenderingAttachmentInfo compAtt{};
 	compAtt.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-	// 【关键修改 1】：原本这里是 aFinalSceneColor.view，现在改成 aCompositeOutput.view 中转缓冲
-	compAtt.imageView = aCompositeOutput.view;
+	compAtt.imageView = aCompositeOutput.view; // 阶段 1 画到中转缓冲
 	compAtt.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	compAtt.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	compAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -879,35 +722,133 @@ void record_commands(
 	compInfo.layerCount = 1;
 	compInfo.colorAttachmentCount = 1;
 	compInfo.pColorAttachments = &compAtt;
+	compInfo.pDepthAttachment = &compDepthAtt; // 挂载深度画板！
 
 	vkCmdBeginRendering(aCmdBuff, &compInfo);
+
+	// --- 1. 画全屏背景合成 (SSAO + SSR + 场景底色) ---
 	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aCompositePipe);
 	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aCompositeLayout, 0, 1, &aCompositeDS, 0, nullptr);
-
-	// Bloom 参数
 	struct BloomPC { float exposure; float strength; float _pad[2]; } bloomPC{ 1.0f, aBloomStrength, {0.0f,0.0f} };
 	vkCmdPushConstants(aCmdBuff, aCompositeLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(BloomPC), &bloomPC);
-
 	vkCmdSetViewport(aCmdBuff, 0, 1, &vp);
 	vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
 	vkCmdDraw(aCmdBuff, 3, 1, 0, 0);
+
+	// --- 2. 画半透明静态物体 ---
+	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aAlphaPipe);
+	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
+
+	 kZeroOffset = 0; // 【修复 1】：补上类型声明
+	for (const auto& batch : aBatches) {
+		uint32_t meshIdx = batch.meshIndex; uint32_t matIdx = batch.materialIndex;
+		bool isMatMasked = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0);
+		if (isMatMasked) continue;
+		if (batch.alphaMultiplier >= 0.99f) continue;
+
+		auto const& meshInfo = aMeshInfos[meshIdx];
+		ObjectPC pcData{};
+		pcData.transform = batch.transform;
+		if (matIdx < aMaterials.size()) {
+			pcData.baseColorFactor = aMaterials[matIdx].baseColorFactor; pcData.emissiveFactor = aMaterials[matIdx].emissiveFactor;
+			pcData.metallicFactor = aMaterials[matIdx].metallicFactor; pcData.roughnessFactor = aMaterials[matIdx].roughnessFactor;
+			pcData.alphaCutoff = aMaterials[matIdx].alphaCutoff;
+		}
+		else {
+			pcData.baseColorFactor = glm::vec4(1.0f); pcData.emissiveFactor = glm::vec4(0.0f);
+			pcData.metallicFactor = 0.0f; pcData.roughnessFactor = 0.8f; pcData.alphaCutoff = 0.5f;
+		}
+		pcData.baseColorFactor.a *= batch.alphaMultiplier;
+		pcData.alphaCutoff = -1.0f;
+
+		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ObjectPC), &pcData);
+		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
+		vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset);
+		vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &kZeroOffset);
+		vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &kZeroOffset);
+		vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
+		vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(meshInfo.indices.size()), 1, 0, 0, 0);
+	}
+
+	// --- 3. 画半透明骨骼动画 ---
+	if (aSkinnedAlphaPipe != VK_NULL_HANDLE && aSkinnedBatches && !aSkinnedBatches->empty() && aBoneDescriptorSet != VK_NULL_HANDLE) {
+		struct alignas(16) SkinnedPC {
+			glm::mat4 transform; glm::vec4 baseColorFactor; float metallicFactor; float roughnessFactor; uint32_t boneBaseIndex; float _pad;
+		};
+		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedAlphaPipe);
+		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
+		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 2, 1, &aBoneDescriptorSet, 0, nullptr);
+
+		for (const auto& batch : *aSkinnedBatches) {
+			uint32_t meshIdx = batch.meshIndex; uint32_t matIdx = batch.materialIndex;
+			bool isAlpha = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0) || (batch.alphaMultiplier < 0.99f);
+			if (!isAlpha) continue;
+
+			auto jIt = aMeshJoints->find(meshIdx); auto wIt = aMeshWeights->find(meshIdx);
+			if (jIt == aMeshJoints->end() || wIt == aMeshWeights->end()) continue;
+
+			SkinnedPC pc{};
+			pc.transform = batch.transform; pc.boneBaseIndex = batch.boneBaseIndex;
+			if (matIdx < aMaterials.size()) {
+				pc.baseColorFactor = aMaterials[matIdx].baseColorFactor; pc.metallicFactor = aMaterials[matIdx].metallicFactor; pc.roughnessFactor = aMaterials[matIdx].roughnessFactor;
+			}
+			else {
+				pc.baseColorFactor = glm::vec4(1.0f); pc.metallicFactor = pc.roughnessFactor = 1.0f;
+			}
+			pc.baseColorFactor.a *= batch.alphaMultiplier;
+
+			vkCmdPushConstants(aCmdBuff, aSkinnedPipeLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(SkinnedPC), &pc);
+			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
+
+			VkDeviceSize z = 0;
+			vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &z); vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &z);
+			vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &z); vkCmdBindVertexBuffers(aCmdBuff, 3, 1, &jIt->second.buffer, &z); vkCmdBindVertexBuffers(aCmdBuff, 4, 1, &wIt->second.buffer, &z);
+			vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
+			vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(aMeshInfos[meshIdx].indices.size()), 1, 0, 0, 0);
+		}
+	}
+
+	// --- 4. 画粒子系统 ---
+	if (particlesEnabled) {
+		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, particlePipe);
+		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
+		struct ParticlePC { int useTexture; int debugMode; int _pad[2]; glm::mat4 transform; };
+		for (const auto& ps : allParticles) {
+			if (!ps->config.isVisible) continue;
+			ParticlePC pc{};
+			if (ps->config.textureDescriptor != VK_NULL_HANDLE) {
+				vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &ps->config.textureDescriptor, 0, nullptr);
+				pc.useTexture = ps->config.useTexture;
+			}
+			else { pc.useTexture = 0; }
+			pc.debugMode = ps->config.particleDebug ? 1 : 0;
+			vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ParticlePC), &pc);
+			ps->draw(aCmdBuff);
+			ps->drawDebug(aCmdBuff, aGraphicsLayout);
+		}
+	}
+
+	// --- 5. 画调试线 ---
+	aDebugRenderer.Render(aCmdBuff, aDebugLinePipe, aGraphicsLayout, aSceneDescriptors);
+
+	// 最终合成渲染通道结束！
 	vkCmdEndRendering(aCmdBuff);
 
 	// ==========================================================
-	// 【新增】：将 aCompositeOutput 转换为 Shader 可读状态，供下一道工序使用
+	// 2. 【解开注释并修复】：Speed Post-Process Pass 
 	// ==========================================================
-	//VkImageSubresourceRange range{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+	// 将 aCompositeOutput (上一层的成品) 转换为只读，准备作为纹理被采样
 	lut::image_barrier(aCmdBuff, aCompositeOutput.image,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
 
+	// 为 aFinalSceneColor (终极载体) 准备写入状态
+	lut::image_barrier(aCmdBuff, aFinalSceneColor.image,
+		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
 
-	// ==========================================================
-	// 2. 【新增】：Speed Post-Process Pass (极速特效阶段: 畸变 + 色散 + 速度模糊)
-	// ==========================================================
 	VkRenderingAttachmentInfo speedAtt{};
 	speedAtt.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-	// 【关键修改 2】：极速特效画到最终相纸 aFinalSceneColor 上，交给 UI
 	speedAtt.imageView = aFinalSceneColor.view;
 	speedAtt.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	speedAtt.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -925,14 +866,12 @@ void record_commands(
 	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSpeedPipe);
 	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSpeedLayout, 0, 1, &aSpeedDesc, 0, nullptr);
 
-	// 推送计算好的速度比例 (0.0 到 1.0) 给 Shader
 	vkCmdPushConstants(aCmdBuff, aSpeedLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float), &aSpeedFactor);
 
 	vkCmdSetViewport(aCmdBuff, 0, 1, &vp);
 	vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
 	vkCmdDraw(aCmdBuff, 3, 1, 0, 0);
 	vkCmdEndRendering(aCmdBuff);
-
 
 	// ==========================================================
 	// 3. UI Render Pass: Render everything onto the actual Swapchain
