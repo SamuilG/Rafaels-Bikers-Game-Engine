@@ -3,6 +3,7 @@
 #include <string>
 #include <memory>
 #include <any>
+#include <glm/glm.hpp>
 
 namespace engine {
 
@@ -61,23 +62,30 @@ namespace engine {
 
     class CollisionEvent : public Event {
     public:
-        // ideally these would be Entity IDs or Physics Body IDs 
+        // ideally these would be Entity IDs or Physics Body IDs
         // using strings for an abstract functional representation
-        CollisionEvent(const std::string& entityA, const std::string& entityB)
-            : m_EntityA(entityA), m_EntityB(entityB) {}
-
+        CollisionEvent(const std::string& entityA, const std::string& entityB,
+                       float relativeSpeed = 0.0f,
+                       glm::vec3 contactNormal = glm::vec3(0.0f))
+            : m_EntityA(entityA), m_EntityB(entityB),
+              m_RelativeSpeed(relativeSpeed), m_ContactNormal(contactNormal) {}
 
         const std::string& GetEntityA() const { return m_EntityA; }
         const std::string& GetEntityB() const { return m_EntityB; }
 
+        // Speed of approach along the contact normal (m/s, always >= 0)
+        float GetRelativeSpeed() const { return m_RelativeSpeed; }
+        // World-space contact normal (from body2 surface toward body1)
+        const glm::vec3& GetContactNormal() const { return m_ContactNormal; }
+
         EventType GetType() const override { return EventType::Collision; }
         const char* GetName() const override { return "CollisionEvent"; }
-
-
 
     private:
         std::string m_EntityA;
         std::string m_EntityB;
+        float       m_RelativeSpeed  = 0.0f;
+        glm::vec3   m_ContactNormal  = glm::vec3(0.0f);
     };
 
 

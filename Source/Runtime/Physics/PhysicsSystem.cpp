@@ -11,7 +11,6 @@
 #include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include "../Event/EventSystem.hpp"
 #include "../Event/Event.hpp"
-//UI System 射线检测相关
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/Shape/ScaledShape.h>
@@ -136,8 +135,17 @@ public:
 		if (m_sys->m_eventSystem) {
 			std::string nameA = std::to_string(inBody1.GetID().GetIndexAndSequenceNumber());
 			std::string nameB = std::to_string(inBody2.GetID().GetIndexAndSequenceNumber());
-			
-			auto event = std::make_unique<CollisionEvent>(nameA, nameB);
+
+			// Compute approach speed along the contact normal (m/s)
+			// relVel = velA - velB; positive dot = separating, negative = approaching
+			JPH::Vec3 relVel = inBody1.GetLinearVelocity() - inBody2.GetLinearVelocity();
+			JPH::Vec3 jNormal = inManifold.mWorldSpaceNormal;
+			float dot = relVel.Dot(jNormal);
+			float impactSpeed = dot < 0.0f ? -dot : dot;
+
+			glm::vec3 contactNormal(jNormal.GetX(), jNormal.GetY(), jNormal.GetZ());
+
+			auto event = std::make_unique<CollisionEvent>(nameA, nameB, impactSpeed, contactNormal);
 			m_sys->m_eventSystem->QueueEvent(std::move(event));
 		}
 	}

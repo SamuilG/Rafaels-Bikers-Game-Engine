@@ -12,48 +12,48 @@
 
 namespace engine {
 
-    TestScene::TestScene() = default;
-    TestScene::~TestScene() = default;
-    void TestScene::Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, UserState* state, AnimationSystem* anima, AudioSystem* audio) {
-        m_render = render;
-        m_scene = scene;
-        m_physics = physics;
-        m_input = input;
-        m_event = eventSys;		 
-        m_state = state;
-        m_anima = anima;
+	TestScene::TestScene() = default;
+	TestScene::~TestScene() = default;
+	void TestScene::Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, UserState* state, AnimationSystem* anima, AudioSystem* audio) {
+		m_render = render;
+		m_scene = scene;
+		m_physics = physics;
+		m_input = input;
+		m_event = eventSys;
+		m_state = state;
+		m_anima = anima;
 		m_audio = audio;
 
-        // 1. ¼ÓÔØµØÐÎÓë¾²Ì¬Ä£ÐÍ
+		// 1. ï¿½ï¿½ï¿½Øµï¿½ï¿½ï¿½ï¿½ë¾²Ì¬Ä£ï¿½ï¿½
 		// load the terrain and static models
-        m_scene->LoadModel(m_render, "Assets/Models/TScene.glb", engine::ModelPhysicsType::Static, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
-        //m_scene->LoadModel(m_render, "Assets/Models/forest.glb", engine::ModelPhysicsType::Static, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
+		m_scene->LoadModel(m_render, "Assets/Models/TScene.glb", engine::ModelPhysicsType::Static, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
+		//m_scene->LoadModel(m_render, "Assets/Models/forest.glb", engine::ModelPhysicsType::Static, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
 
-        glm::mat4 bridgeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(100.0f, 0.0f, 60.0f));
-        glm::mat4 CplaneSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(120.0f, 0.0f, 250.0f));
-        glm::mat4 darkRoomSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(60.0f, 0.0f, 200.0f));
+		glm::mat4 bridgeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(100.0f, 0.0f, 60.0f));
+		glm::mat4 CplaneSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(120.0f, 0.0f, 250.0f));
+		glm::mat4 darkRoomSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(60.0f, 0.0f, 200.0f));
 
-        m_scene->LoadModel(m_render, "Assets/Models/testBridge.glb", engine::ModelPhysicsType::Static, 0.0f, bridgeSpawnPos);
-        m_scene->LoadModel(m_render, "Assets/Models/testCurvePlane.glb", engine::ModelPhysicsType::Static, 0.0f, CplaneSpawnPos);
-        m_scene->LoadModel(m_render, "Assets/Models/darkRoom.glb", engine::ModelPhysicsType::Static, 0.0f, darkRoomSpawnPos);
+		m_scene->LoadModel(m_render, "Assets/Models/testBridge.glb", engine::ModelPhysicsType::Static, 0.0f, bridgeSpawnPos);
+		m_scene->LoadModel(m_render, "Assets/Models/testCurvePlane.glb", engine::ModelPhysicsType::Static, 0.0f, CplaneSpawnPos);
+		m_scene->LoadModel(m_render, "Assets/Models/darkRoom.glb", engine::ModelPhysicsType::Static, 0.0f, darkRoomSpawnPos);
 
-        // 2. ¼ÓÔØ×ÔÐÐ³µ
-        glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 10.0f, 30.0f));
-        glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
+		// 2. ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð³ï¿½
+		glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 10.0f, 30.0f));
+		glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
 		glm::mat4 bikeAnchorWorld = glm::mat4(0.0f); // sentinel: [3][3]==0 means anchor not found
 
       //  m_render->load_animated_model("Assets/Models/character.glb", tbpos);
         m_scene->LoadModel(m_render, "Assets/Models/tbikeWithAnchor.glb", engine::ModelPhysicsType::CustomC, 90.0f, tbpos);
 
-        // 3. ³õÊ¼»¯µ¥³µ¿ØÖÆÆ÷
-        m_bikeController = std::make_unique<BikeController>(m_physics->GetJoltSystem(), m_input, m_state);
-        flecs::entity bikeEntity = m_scene->find_entity("Bike_0");
-        if (bikeEntity.is_valid()) {
-            uint32_t bikeBodyID = JPH::BodyID::cInvalidBodyID;
-            if (bikeEntity.has<PhysicsBody>()) bikeBodyID = bikeEntity.get<PhysicsBody>().bodyID;
-            else if (bikeEntity.has<CompoundParent>()) bikeBodyID = bikeEntity.get<CompoundParent>().bodyID;
-            m_bikeController->Init(bikeBodyID);
-        }
+		// 3. ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+		m_bikeController = std::make_unique<BikeController>(m_physics->GetJoltSystem(), m_input, m_state);
+		flecs::entity bikeEntity = m_scene->find_entity("Bike_0");
+		if (bikeEntity.is_valid()) {
+			uint32_t bikeBodyID = JPH::BodyID::cInvalidBodyID;
+			if (bikeEntity.has<PhysicsBody>()) bikeBodyID = bikeEntity.get<PhysicsBody>().bodyID;
+			else if (bikeEntity.has<CompoundParent>()) bikeBodyID = bikeEntity.get<CompoundParent>().bodyID;
+			m_bikeController->Init(bikeBodyID);
+		}
 
 		{
 			// --- Find the first skinned entity (the character) ---
@@ -65,10 +65,10 @@ namespace engine {
 
 			// --- Find specific bike-part entities by name substring ---
 			// Names are GLTF node name + "_N" counter suffix set by load_C_model.
-			flecs::entity handleLEntity;  // handle_left_4  ¨C left handlebar grip
-			flecs::entity handleREntity;  // handle_right_5 ¨C right handlebar grip
-			flecs::entity pedalLEntity;   // pedal_left_8   ¨C left pedal plate
-			flecs::entity pedalREntity;   // pedal_right_9  ¨C right pedal plate
+			flecs::entity handleLEntity;  // handle_left_4  ï¿½C left handlebar grip
+			flecs::entity handleREntity;  // handle_right_5 ï¿½C right handlebar grip
+			flecs::entity pedalLEntity;   // pedal_left_8   ï¿½C left pedal plate
+			flecs::entity pedalREntity;   // pedal_right_9  ï¿½C right pedal plate
 			m_scene->get_world().query<CompoundParent>()
 				.each([&](flecs::entity e, CompoundParent&) {
 				const char* n = e.name();
@@ -123,7 +123,7 @@ namespace engine {
 				//   handle_right = (-0.424, +1.265, +0.817)
 				// Pole: elbow should point outward and slightly downward for a natural grip.
 
-				// Left hand ¡ú handle_left_4
+				// Left hand ï¿½ï¿½ handle_left_4
 				{
 					IKChainConfig c;
 					c.rootBone = "LeftArm";
@@ -137,7 +137,7 @@ namespace engine {
 					rik.chains.push_back(c);
 				}
 
-				// Right hand ¡ú handle_right_5
+				// Right hand ï¿½ï¿½ handle_right_5
 				{
 					IKChainConfig c;
 					c.rootBone = "RightArm";
@@ -151,7 +151,7 @@ namespace engine {
 					rik.chains.push_back(c);
 				}
 
-				// Left foot ¡ú pedal_left_8  (pedal_left bike-local ¡Ö +0.30, 0.01, -0.12)
+				// Left foot ï¿½ï¿½ pedal_left_8  (pedal_left bike-local ï¿½ï¿½ +0.30, 0.01, -0.12)
 				{
 					IKChainConfig c;
 					c.rootBone = "LeftUpLeg";
@@ -165,7 +165,7 @@ namespace engine {
 					rik.chains.push_back(c);
 				}
 
-				// Right foot ¡ú pedal_right_9  (pedal_right bike-local ¡Ö -0.30, -0.29, +0.17)
+				// Right foot ï¿½ï¿½ pedal_right_9  (pedal_right bike-local ï¿½ï¿½ -0.30, -0.29, +0.17)
 				{
 					IKChainConfig c;
 					c.rootBone = "RightUpLeg";
@@ -182,27 +182,27 @@ namespace engine {
 				// Apply binding + IK to ALL skinned character entities (character has 2 mesh parts).
 				// Also add a dummy AnimationComponent (animIndex=-1) so AnimationSystem's query
 				// picks them up even though this character has no animation clips.
-// 1. ÏÔÊ½»ñÈ¡ÊÀ½çÒýÓÃ
+// 1. ï¿½ï¿½Ê½ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 				flecs::world& world = m_scene->get_world();
 
-				// 2. ¿ªÆôÑÓ³ÙÐÞ¸Ä¶ÓÁÐ
+				// 2. ï¿½ï¿½ï¿½ï¿½ï¿½Ó³ï¿½ï¿½Þ¸Ä¶ï¿½ï¿½ï¿½
 				world.defer_begin();
 
-				// 3. Ö´ÐÐ±éÀú£¨´ËÊ±ËùÓÐµÄ set ²Ù×÷²»»áÁ¢¼´ÉúÐ§£¬¶øÊÇ±»Ñ¹Èë¶ÓÁÐ£©
+				// 3. Ö´ï¿½Ð±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½Ðµï¿½ set ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð§ï¿½ï¿½ï¿½ï¿½ï¿½Ç±ï¿½Ñ¹ï¿½ï¿½ï¿½ï¿½Ð£ï¿½
 				world.query<SkinComponent>()
 					.each([&](flecs::entity e, SkinComponent&) {
 					e.set<RiderBinding>({ bikeEntity.id(), seatOffset });
 					e.set<RiderIKComponent>(rik);   // copy to each mesh part
 					if (!e.has<AnimationComponent>()) {
 						AnimationComponent ac{};
-						ac.animIndex = -1;   // no clip ¡ú rest pose; IK still runs
+						ac.animIndex = -1;   // no clip ï¿½ï¿½ rest pose; IK still runs
 						ac.playing = false;
 						ac.looping = false;
 						e.set<AnimationComponent>(ac);
 					}
 						});
 
-				// 4. ½áÊøÑÓ³Ù£¬ÅúÁ¿ºÏ²¢ÐÞ¸Ä£¬±í´ËÊ±ÒÑ½âËø£¬°²È«£¡
+				// 4. ï¿½ï¿½ï¿½ï¿½ï¿½Ó³Ù£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï²ï¿½ï¿½Þ¸Ä£ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½Ñ½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È«ï¿½ï¿½
 				world.defer_end();
 
 				printf("[App] Rider bound (2 mesh parts) -> bike '%s'\n",
@@ -215,74 +215,108 @@ namespace engine {
 		}
 
 		//collision event test
-		std::string bikeBodyIDStr;
-		if (bikeEntity.has<CompoundParent>())
-			bikeBodyIDStr = std::to_string(bikeEntity.get<CompoundParent>().bodyID);
+		{
+			std::string bikeBodyIDStr;
+			if (bikeEntity.has<CompoundParent>())
+				bikeBodyIDStr = std::to_string(bikeEntity.get<CompoundParent>().bodyID);
 
-		m_event->Subscribe(EventType::Collision, [this, bikeBodyIDStr](Event& e) {
-			auto& col = static_cast<CollisionEvent&>(e);
-			if ((col.GetEntityA() == bikeBodyIDStr || col.GetEntityB() == bikeBodyIDStr) && m_state->bikeSpeed > 15.0f) {
-				//m_audio->LoadSound("wasted", "Assets/Sounds/wasted.mp3"); // Ô¤¼ÓÔØÅö×²ÒôÐ§
-				//m_audio->SetVolume("wasted", 0.5f); // ÉèÖÃÒôÁ¿£¨¿ÉÑ¡£©
-				//m_audio->PlayOneShot("wasted"); // ²¥·ÅÅö×²ÒôÐ§
-				//m_state->thirdPersonMode = false;
-				printf("collsion!\n");
-			}
-			});
+			m_event->Subscribe(EventType::Collision, [this, bikeBodyIDStr](Event& e) {
+				auto& col = static_cast<CollisionEvent&>(e);
+				if (col.GetEntityA() != bikeBodyIDStr && col.GetEntityB() != bikeBodyIDStr) return;
+				if (m_state->isGameOver) return; // already dead, ignore further events
 
+				// --- Physics-based impact thresholds (SI units: m/s) ---
+				// 15 km/h = 4.17 m/s  -> light hit
+				// 30 km/h = 8.33 m/s  -> fatal
+				constexpr float kLightHitSpeed = 8.33f;
+				constexpr float kFatalSpeed = 12.0f;
+				// normalAlignment: fraction of total bike speed directed into the surface
+				//   ~1.0 = head-on (perpendicular), ~0.0 = pure side-scrape (tangential)
+				constexpr float kScrapeThreshold = 0.35f; // below this -> side scrape, no damage
+				constexpr float kFrontalThreshold = 0.50f; // above this -> counts as frontal for fatal
 
-        // 4. ¼ÓÔØ·¢¹â·½¿éÓëµÆ¹â
-        glm::mat4 emissivecubeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(60.0f, 3.0f, 200.0f));
-        flecs::entity emCubeEntity = m_scene->LoadModel(m_render, "Assets/DELETE_LATER/em1.gltf", engine::ModelPhysicsType::Dynamic, 0.01f, emissivecubeSpawnPos, engine::RenderLayer::Emissive);
+				float impactSpeed = col.GetRelativeSpeed(); // approach speed along normal (m/s)
+				float bikeSpeed = m_state->bikeSpeed;     // horizontal speed (m/s)
 
-        m_scene->create_light_entity("emCubeLight", engine::LightType::Point, glm::vec3(1.0f, 1.0f, 1.0f), 8.0f, glm::mat4(1.0f), 10.0f, glm::vec3(0, -1, 0), 0, 0, emCubeEntity);
+				// Normalised alignment: how much of the bike's speed is directed into the wall
+				float normalAlignment = (bikeSpeed > 0.5f)
+					? glm::clamp(impactSpeed / bikeSpeed, 0.0f, 1.0f)
+					: 0.0f;
 
-        // ³µÍ·µÆ
-        glm::mat4 localLightOffset = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.7f, 1.7f));
-        flecs::entity headlight = m_scene->create_light_entity("headlight", engine::LightType::Spot, glm::vec3(1.0f, 0.95f, 0.85f), 15.0f, localLightOffset, 40.0f, glm::vec3(0.0f, 0, 1.0f), 15.0f, 25.0f);
-        if (bikeEntity.is_valid()) headlight.child_of(bikeEntity);
-        // Ì«ÑôÓëÆäËûµÆ¹â
-        glm::vec3 sunDir = glm::normalize(glm::vec3(-0.5f, 1.0f, -0.3f));
-        glm::mat4 sunTransform = glm::mat4(1.0f); sunTransform[3] = glm::vec4(sunDir, 0.0f);
-        m_scene->create_light_entity("MainSun", engine::LightType::Directional, glm::vec3(1.2f, 0.95f, 0.8f), 2.5f, sunTransform, 0);
+				if (impactSpeed < kLightHitSpeed) return; // too slow, no effect
 
-        glm::mat4 light2SpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(20.0f, 3.0f, 30.0f));
-        m_scene->create_light_entity("voidLight", engine::LightType::Point, glm::vec3(0.5f, 0.0f, 3.0f), 8, light2SpawnPos, 20.0f);
+				if (normalAlignment < kScrapeThreshold) {
+					// Side scrape: tangential contact, no damage
+					printf("[Collision] Side scrape ignored: speed=%.2f m/s align=%.2f\n",
+						impactSpeed, normalAlignment);
+					return;
+				}
 
-        // 5. ÉèÖÃ´¥·¢Æ÷ (Trigger)
-        m_render->AddParticleGroup();
-        auto& triggerParticles = m_render->GetParticles();
-        size_t triggerParticleIndex = triggerParticles.size() - 1;
-        triggerParticles[triggerParticleIndex]->config.emitterPos = glm::vec3(50.0f, 1.0f, 20.0f);
-        triggerParticles[triggerParticleIndex]->config.isVisible = false;
+				if (impactSpeed >= kFatalSpeed && normalAlignment >= kFrontalThreshold) {
+					// Fatal frontal collision -> game over
+					m_audio->LoadSound("wasted", "Assets/Sounds/wasted.mp3");
+					m_audio->SetVolume("wasted", 0.5f);
+					m_audio->PlayOneShot("wasted");
+					m_state->thirdPersonMode = false;
+					printf("[Collision] FATAL: speed=%.2f m/s align=%.2f | %s vs %s\n",
+						impactSpeed, normalAlignment,
+						col.GetEntityA().c_str(), col.GetEntityB().c_str());
+				}
+				});
+		}
 
-        size_t triggerBox01 = m_render->GetTriggerSystem().AddBoxTrigger(
-            glm::vec3(50.0f, 1.0f, 20.0f), glm::vec3(2.0f, 2.0f, 2.0f), triggerParticleIndex, glm::vec3(1.0f, 0.0f, 0.0f), glm::mat4(1.0f), true, false);
+		// 4. ï¿½ï¿½ï¿½Ø·ï¿½ï¿½â·½ï¿½ï¿½ï¿½ï¿½Æ¹ï¿½
+		glm::mat4 emissivecubeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(60.0f, 3.0f, 200.0f));
+		flecs::entity emCubeEntity = m_scene->LoadModel(m_render, "Assets/DELETE_LATER/em1.gltf", engine::ModelPhysicsType::Dynamic, 0.01f, emissivecubeSpawnPos, engine::RenderLayer::Emissive);
 
-        m_render->GetTriggerSystem().SetTriggerCallbacks(triggerBox01,
-            []() { engine::EngineUi::LogPrint("trigger box triggered!!\n"); },
-            []() { engine::EngineUi::LogPrint("trigger box exited!!\n"); }
-        );
+		m_scene->create_light_entity("emCubeLight", engine::LightType::Point, glm::vec3(1.0f, 1.0f, 1.0f), 8.0f, glm::mat4(1.0f), 10.0f, glm::vec3(0, -1, 0), 0, 0, emCubeEntity);
 
-        m_scene->print_all_entities();
-    }
+		// ï¿½ï¿½Í·ï¿½ï¿½
+		glm::mat4 localLightOffset = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.7f, 1.7f));
+		flecs::entity headlight = m_scene->create_light_entity("headlight", engine::LightType::Spot, glm::vec3(1.0f, 0.95f, 0.85f), 15.0f, localLightOffset, 40.0f, glm::vec3(0.0f, 0, 1.0f), 15.0f, 25.0f);
+		if (bikeEntity.is_valid()) headlight.child_of(bikeEntity);
+		// Ì«ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ¹ï¿½
+		glm::vec3 sunDir = glm::normalize(glm::vec3(-0.5f, 1.0f, -0.3f));
+		glm::mat4 sunTransform = glm::mat4(1.0f); sunTransform[3] = glm::vec4(sunDir, 0.0f);
+		m_scene->create_light_entity("MainSun", engine::LightType::Directional, glm::vec3(1.2f, 0.95f, 0.8f), 2.5f, sunTransform, 0);
 
-    void TestScene::Update(float dt) {
-        // ¸üÐÂµ¥³µÎïÀí
-        if (m_bikeController) {
-            m_bikeController->Update(dt);
-        }
+		glm::mat4 light2SpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(20.0f, 3.0f, 30.0f));
+		m_scene->create_light_entity("voidLight", engine::LightType::Point, glm::vec3(0.5f, 0.0f, 3.0f), 8, light2SpawnPos, 20.0f);
 
-        // »æÖÆ²âÊÔ Debug ÏßÌõ (Ö»ÓÐÔÚÕâ¸ö¹Ø¿¨²ÅÐèÒª»­ÕâÐ©)
-        m_render->mDebugRenderer.DrawBox(glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-        m_render->mDebugRenderer.DrawLine(glm::vec3(3.0f, 0.0f, 0.0f), glm::vec3(3.0f, 5.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-        m_render->mDebugRenderer.DrawSphere(glm::vec3(-4.0f, 2.0f, 0.0f), 2.0f, glm::vec3(0.0f, 0.0f, 1.0f));
-        m_render->mDebugRenderer.DrawCapsule(glm::vec3(0.0f, 2.0f, 5.0f), 1.0f, 1.5f, glm::vec3(1.0f, 1.0f, 0.0f));
-    }
+		// 5. ï¿½ï¿½ï¿½Ã´ï¿½ï¿½ï¿½ï¿½ï¿½ (Trigger)
+		m_render->AddParticleGroup();
+		auto& triggerParticles = m_render->GetParticles();
+		size_t triggerParticleIndex = triggerParticles.size() - 1;
+		triggerParticles[triggerParticleIndex]->config.emitterPos = glm::vec3(50.0f, 1.0f, 20.0f);
+		triggerParticles[triggerParticleIndex]->config.isVisible = false;
 
-    void TestScene::Shutdown() {
-        // Èç¹ûÓÐÌØ¶¨µÄ¹Ø¿¨×ÊÔ´ÇåÀí£¬·ÅÔÚÕâÀï
-        m_bikeController.reset();
-    }
+		size_t triggerBox01 = m_render->GetTriggerSystem().AddBoxTrigger(
+			glm::vec3(50.0f, 1.0f, 20.0f), glm::vec3(2.0f, 2.0f, 2.0f), triggerParticleIndex, glm::vec3(1.0f, 0.0f, 0.0f), glm::mat4(1.0f), true, false);
+
+		m_render->GetTriggerSystem().SetTriggerCallbacks(triggerBox01,
+			[]() { engine::EngineUi::LogPrint("trigger box triggered!!\n"); },
+			[]() { engine::EngineUi::LogPrint("trigger box exited!!\n"); }
+		);
+
+		m_scene->print_all_entities();
+	}
+
+	void TestScene::Update(float dt) {
+		// ï¿½ï¿½ï¿½Âµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+		if (m_bikeController) {
+			m_bikeController->Update(dt);
+		}
+
+		// ï¿½ï¿½ï¿½Æ²ï¿½ï¿½ï¿½ Debug ï¿½ï¿½ï¿½ï¿½ (Ö»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ø¿ï¿½ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½ï¿½ï¿½Ð©)
+		m_render->mDebugRenderer.DrawBox(glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+		m_render->mDebugRenderer.DrawLine(glm::vec3(3.0f, 0.0f, 0.0f), glm::vec3(3.0f, 5.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+		m_render->mDebugRenderer.DrawSphere(glm::vec3(-4.0f, 2.0f, 0.0f), 2.0f, glm::vec3(0.0f, 0.0f, 1.0f));
+		m_render->mDebugRenderer.DrawCapsule(glm::vec3(0.0f, 2.0f, 5.0f), 1.0f, 1.5f, glm::vec3(1.0f, 1.0f, 0.0f));
+	}
+
+	void TestScene::Shutdown() {
+		// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ø¶ï¿½ï¿½Ä¹Ø¿ï¿½ï¿½ï¿½Ô´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+		m_bikeController.reset();
+	}
 
 } // namespace engine
