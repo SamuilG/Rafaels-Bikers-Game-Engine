@@ -986,6 +986,11 @@ namespace engine {
                 mState->ssrEnabled = !mState->ssrEnabled;
                 std::printf("Screen Space Reflection (SSR): %s\n", mState->ssrEnabled ? "ON" : "OFF");
             }
+
+            if (mInputSystem->IsActionPressed("SSAOToggle")) {
+                mState->ssaoEnabled = !mState->ssaoEnabled;
+                std::printf("Screen Space Ambient Occlusion (SSAO): %s\n", mState->ssaoEnabled ? "ON" : "OFF");
+            }
             if (glfwWindowShouldClose(mWindow.window)) {
                 mAppRunning = false;
                 //===========================UI System================================

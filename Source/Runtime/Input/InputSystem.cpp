@@ -143,6 +143,8 @@ namespace engine {
         MapKeyboardAction("IBLToggle", GLFW_KEY_I);
         MapKeyboardAction("SSRToggle", GLFW_KEY_O);
         
+        MapKeyboardAction("SSAOToggle", GLFW_KEY_P);
+        
 		MapKeyboardAction("ToggleEngineUi", GLFW_KEY_F1);// F1键：切换引擎UI显示//f1： switch engine UI
 
         // --- Application Control ---
