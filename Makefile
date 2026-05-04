@@ -14,6 +14,7 @@ ifeq ($(config),debug_x64)
   ImGui_config = debug_x64
   Engine_config = debug_x64
   Shaders_config = debug_x64
+  Tracy_config = debug_x64
 
 else ifeq ($(config),release_x64)
   GLFW_config = release_x64
@@ -21,12 +22,13 @@ else ifeq ($(config),release_x64)
   ImGui_config = release_x64
   Engine_config = release_x64
   Shaders_config = release_x64
+  Tracy_config = release_x64
 
 else
   $(error "invalid configuration $(config)")
 endif
 
-PROJECTS := GLFW JoltPhysics ImGui Engine Shaders
+PROJECTS := GLFW JoltPhysics ImGui Engine Shaders Tracy
 
 .PHONY: all clean help $(PROJECTS) 
 
@@ -50,7 +52,7 @@ ifneq (,$(ImGui_config))
 	@${MAKE} --no-print-directory -C Intermediate/Projects -f ImGui.make config=$(ImGui_config)
 endif
 
-Engine: GLFW JoltPhysics ImGui Shaders
+Engine: GLFW JoltPhysics ImGui Tracy Shaders
 ifneq (,$(Engine_config))
 	@echo "==== Building Engine ($(Engine_config)) ===="
 	@${MAKE} --no-print-directory -C Intermediate/Projects -f Engine.make config=$(Engine_config)
@@ -62,12 +64,19 @@ ifneq (,$(Shaders_config))
 	@${MAKE} --no-print-directory -C Intermediate/Projects -f Shaders.make config=$(Shaders_config)
 endif
 
+Tracy:
+ifneq (,$(Tracy_config))
+	@echo "==== Building Tracy ($(Tracy_config)) ===="
+	@${MAKE} --no-print-directory -C Intermediate/Projects -f Tracy.make config=$(Tracy_config)
+endif
+
 clean:
 	@${MAKE} --no-print-directory -C Intermediate/Projects -f GLFW.make clean
 	@${MAKE} --no-print-directory -C Intermediate/Projects -f JoltPhysics.make clean
 	@${MAKE} --no-print-directory -C Intermediate/Projects -f ImGui.make clean
 	@${MAKE} --no-print-directory -C Intermediate/Projects -f Engine.make clean
 	@${MAKE} --no-print-directory -C Intermediate/Projects -f Shaders.make clean
+	@${MAKE} --no-print-directory -C Intermediate/Projects -f Tracy.make clean
 
 help:
 	@echo "Usage: make [config=name] [target]"
@@ -84,5 +93,6 @@ help:
 	@echo "   ImGui"
 	@echo "   Engine"
 	@echo "   Shaders"
+	@echo "   Tracy"
 	@echo ""
 	@echo "For more information, see https://github.com/premake/premake-core/wiki"
