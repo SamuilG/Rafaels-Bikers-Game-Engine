@@ -19,8 +19,8 @@ namespace engine {
 
 
 struct ShadowMapResources {
-	lut::ImageWithView mainArray;           // 用于 Shader 采样的 2D_ARRAY 视图
-	std::vector<VkImageView> cascadeViews;  // 用于渲染的 K 个单层视图
+	lut::ImageWithView mainArray;           // 用于 Shader 采样�?2D_ARRAY 视图
+	std::vector<VkImageView> cascadeViews;  // 用于渲染�?K 个单层视�?
 };
 
 
@@ -54,6 +54,7 @@ namespace cfg
 	constexpr char const* kFragShaderPath = SHADERDIR_ "default.frag.spv";
 	
 	constexpr VkFormat kDepthFormat = VK_FORMAT_D32_SFLOAT;
+	constexpr std::uint32_t kMaxGpuBoneMatrices = 256;
 
 	constexpr char const* kAlphaVertShaderPath = SHADERDIR_ "default.vert.spv";
 	constexpr char const* kAlphaFragShaderPath = SHADERDIR_ "alpha.frag.spv";

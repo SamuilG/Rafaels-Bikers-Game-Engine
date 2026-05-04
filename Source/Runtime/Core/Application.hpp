@@ -4,7 +4,6 @@
 #include <chrono>
 #include "System.h"
 #include "../Scene/GameScene.hpp" // 包含基类头文件
-
 #include "../UserState/UserState.hpp"
 
 namespace engine {
@@ -52,11 +51,10 @@ namespace engine {
         RenderSystem* renderSystem = nullptr;
         InputSystem* inputSystem = nullptr;
         EventSystem* eventSystem = nullptr;
-        UserState mState;
         AnimationSystem* animationSystem = nullptr;
-        std::unique_ptr<GameScene> m_currentScene;
-
         AudioSystem* audioSystem = nullptr;
+        UserState mState;
+        std::unique_ptr<GameScene> m_currentScene;
     };
 
 } // namespace engine

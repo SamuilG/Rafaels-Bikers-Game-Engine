@@ -16,7 +16,7 @@ namespace engine {
         virtual ~GameScene() = default;
 
         // 传入引擎的核心系统指针，供关卡使用
-        virtual void Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, UserState* state, AnimationSystem* anima) = 0;
+        virtual void Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, AnimationSystem* animation, UserState* state) = 0;
 
         // 关卡每帧的更新逻辑
         virtual void Update(float dt) = 0;

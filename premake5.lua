@@ -162,7 +162,41 @@ workspace "EngineWorkspace"
 
     filter "*"
     -- ==========================================
-    -- Project 4: Core Engine Application
+    -- Project 4: ozz-animation Static Library
+    -- ==========================================
+    project "OzzAnimation"
+        location "Intermediate/Projects"
+        kind "StaticLib"
+        language "C++"
+        cppdialect "C++17"
+
+        targetdir "Intermediate/Bin/%{cfg.buildcfg}-%{cfg.platform}/%{prj.name}"
+
+        includedirs {
+            "ThirdParty/ozz-animation/include",
+            "ThirdParty/ozz-animation/src"
+        }
+
+        files {
+            "ThirdParty/ozz-animation/include/**.h",
+            "ThirdParty/ozz-animation/src/base/**.cc",
+            "ThirdParty/ozz-animation/src/base/**.h",
+            "ThirdParty/ozz-animation/src/animation/runtime/**.cc",
+            "ThirdParty/ozz-animation/src/animation/runtime/**.h"
+        }
+
+        filter "system:windows"
+            systemversion "latest"
+
+        filter "configurations:Debug"
+            symbols "On"
+
+        filter "configurations:Release"
+            optimize "On"
+
+        filter "*"
+    -- ==========================================
+    -- Project 5: Core Engine Application
     -- ==========================================
     project "Engine"
         -- [Garbage] Hide the Engine project file in the Intermediate folder
@@ -199,6 +233,7 @@ workspace "EngineWorkspace"
             "ThirdParty/reflect/include",
             "ThirdParty/flecs-4.1.4/include",
             "ThirdParty/JoltPhysics",
+            "ThirdParty/ozz-animation/include",
             "ThirdParty/imgui",
 			"ThirdParty/imgui/backends",
 			"ThirdParty/imgui/ImGuizmo",
@@ -224,7 +259,7 @@ workspace "EngineWorkspace"
             compileas "C"
         filter "*"
 
-        links { "GLFW", "JoltPhysics" ,"ImGui" }
+        links { "GLFW", "JoltPhysics" ,"ImGui", "OzzAnimation" }
         dependson { "Shaders" } 
 
         filter "system:windows"
@@ -236,7 +271,7 @@ workspace "EngineWorkspace"
         filter "*"
 
     -- ==========================================
-    -- Project 5: Automatic Shader Compilation
+    -- Project 6: Automatic Shader Compilation
     -- ==========================================
     project "Shaders"
         -- [Garbage] Hide the Shaders project file in the Intermediate folder

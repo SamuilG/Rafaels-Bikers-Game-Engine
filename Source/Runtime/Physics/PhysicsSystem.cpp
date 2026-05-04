@@ -3,12 +3,16 @@
 #include <Jolt/Core/Factory.h>
 #include <Jolt/Physics/PhysicsSettings.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
+#include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Collision/ContactListener.h>
 #include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
+#include <Jolt/Physics/Constraints/HingeConstraint.h>
+#include <Jolt/Physics/Constraints/PointConstraint.h>
+#include <Jolt/Physics/Constraints/SwingTwistConstraint.h>
 #include "../Event/EventSystem.hpp"
 #include "../Event/Event.hpp"
 //UI System 射线检测相关
@@ -16,6 +20,8 @@
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/Shape/ScaledShape.h>
 #include <glm/gtx/matrix_decompose.hpp>
+#include "../Debug/PhysicsDebugDraw.hpp"
+#include "../Debug/DebugRenderer.hpp"
 
 #include <iostream>
 #include <cstdarg>
@@ -183,7 +189,6 @@ void PhysicsSystem::Init()
 	m_contactListener = std::make_unique<ContactListenerImpl>(this);
 	m_physicsSystem->SetContactListener(m_contactListener.get());
 
-	//create_bicycle(8388679);
 }
 
 void PhysicsSystem::optimize_broad_phase()
@@ -202,12 +207,61 @@ void PhysicsSystem::Update(float dt)
 		return;
 	}
 
+	if (mInputSystem && mInputSystem->IsActionPressed("Jump")) {
+		JPH::BodyInterface& bodyInterface = m_physicsSystem->GetBodyInterface();
+
+		for (const auto& ragdoll : m_ragdolls) {
+			if (ragdoll.bodyIDs.empty()) {
+				continue;
+			}
+
+			JPH::BodyID pelvisID = ragdoll.bodyIDs.front();
+			if (pelvisID.IsInvalid() || !bodyInterface.IsAdded(pelvisID)) {
+				continue;
+			}
+
+			bool isGrounded = false;
+			for (JPH::BodyID bodyID : ragdoll.bodyIDs) {
+				if (bodyID.IsInvalid() || !bodyInterface.IsAdded(bodyID)) {
+					continue;
+				}
+
+				JPH::RVec3 bodyPos = bodyInterface.GetPosition(bodyID);
+				JPH::RRayCast ray{ bodyPos, JPH::Vec3(0.0f, -1.35f, 0.0f) };
+				JPH::RayCastResult hit;
+				JPH::IgnoreSingleBodyFilter bodyFilter(bodyID);
+				if (m_physicsSystem->GetNarrowPhaseQuery().CastRay(ray, hit, { }, { }, bodyFilter)) {
+					isGrounded = true;
+					break;
+				}
+			}
+
+			if (!isGrounded) {
+				continue;
+			}
+
+			for (JPH::BodyID bodyID : ragdoll.bodyIDs) {
+				if (!bodyID.IsInvalid() && bodyInterface.IsAdded(bodyID)) {
+					JPH::Vec3 vel = bodyInterface.GetLinearVelocity(bodyID);
+					vel.SetY(vel.GetY() + 10.0f);
+					bodyInterface.SetLinearVelocity(bodyID, vel);
+				}
+			}
+
+			JPH::Vec3 pelvisAngularVelocity = bodyInterface.GetAngularVelocity(pelvisID);
+			pelvisAngularVelocity += JPH::Vec3(2.2f, 0.0f, 0.8f);
+			bodyInterface.SetAngularVelocity(pelvisID, pelvisAngularVelocity);
+		}
+	}
+
 	const int cCollisionSteps = 1;
 	// Step the system
 	m_physicsSystem->Update(dt, cCollisionSteps, m_tempAllocator.get(), m_jobSystem.get());
 }
 void PhysicsSystem::Shutdown()
 {
+	ClearRagdolls();
+
 	if (m_physicsSystem) {
 		m_physicsSystem = nullptr;
 		m_jobSystem = nullptr;
@@ -220,6 +274,223 @@ void PhysicsSystem::Shutdown()
 		JPH::UnregisterTypes();
 		delete JPH::Factory::sInstance;
 		JPH::Factory::sInstance = nullptr;
+	}
+}
+
+size_t PhysicsSystem::CreateCapsuleRagdoll(const glm::vec3& pelvisPosition)
+{
+	if (!m_physicsSystem) {
+		return static_cast<size_t>(-1);
+	}
+
+	JPH::BodyInterface& bodyInterface = m_physicsSystem->GetBodyInterface();
+	SimpleRagdoll ragdoll{};
+
+	constexpr JPH::CollisionGroup::GroupID kRagdollGroupID = 7;
+	ragdoll.collisionFilter = new JPH::GroupFilterTable(11);
+	for (JPH::CollisionGroup::SubGroupID a = 0; a < 11; ++a) {
+		for (JPH::CollisionGroup::SubGroupID b = a + 1; b < 11; ++b) {
+			ragdoll.collisionFilter->DisableCollision(a, b);
+		}
+	}
+
+	auto createBody = [&](const JPH::Shape* shape, const glm::vec3& position, const JPH::Quat& rotation, JPH::CollisionGroup::SubGroupID subGroupID, float linearDamping = 0.05f, float angularDamping = 0.05f) -> JPH::BodyID {
+		JPH::BodyCreationSettings settings(
+			shape,
+			JPH::RVec3(position.x, position.y, position.z),
+			rotation,
+			JPH::EMotionType::Dynamic,
+			Layers::MOVING
+		);
+		settings.mMotionQuality = JPH::EMotionQuality::LinearCast;
+		settings.mLinearDamping = linearDamping;
+		settings.mAngularDamping = angularDamping;
+		settings.mCollisionGroup = JPH::CollisionGroup(ragdoll.collisionFilter, kRagdollGroupID, subGroupID);
+
+		JPH::Body* body = bodyInterface.CreateBody(settings);
+		if (!body) {
+			return JPH::BodyID();
+		}
+
+		JPH::BodyID bodyID = body->GetID();
+		bodyInterface.AddBody(bodyID, JPH::EActivation::Activate);
+		bodyInterface.SetGravityFactor(bodyID, 1.2f);
+		ragdoll.bodyIDs.push_back(bodyID);
+		return bodyID;
+	};
+
+	JPH::ShapeRefC headShape = new JPH::SphereShape(0.22f);
+	JPH::ShapeRefC chestShape = new JPH::CapsuleShape(0.45f, 0.22f);
+	JPH::ShapeRefC pelvisShape = new JPH::BoxShape(JPH::Vec3(0.22f, 0.16f, 0.16f));
+	JPH::ShapeRefC upperArmShape = new JPH::CapsuleShape(0.28f, 0.09f);
+	JPH::ShapeRefC lowerArmShape = new JPH::CapsuleShape(0.26f, 0.08f);
+	JPH::ShapeRefC upperLegShape = new JPH::CapsuleShape(0.40f, 0.11f);
+	JPH::ShapeRefC lowerLegShape = new JPH::CapsuleShape(0.38f, 0.10f);
+
+	const glm::vec3 pelvisPos = pelvisPosition;
+	const glm::vec3 chestPos = pelvisPos + glm::vec3(0.0f, 0.55f, 0.0f);
+	const glm::vec3 headPos = pelvisPos + glm::vec3(0.0f, 1.18f, 0.0f);
+
+	const glm::vec3 leftUpperArmPos = chestPos + glm::vec3(-0.50f, 0.18f, 0.0f);
+	const glm::vec3 rightUpperArmPos = chestPos + glm::vec3(0.50f, 0.18f, 0.0f);
+	const glm::vec3 leftLowerArmPos = chestPos + glm::vec3(-1.05f, 0.18f, 0.0f);
+	const glm::vec3 rightLowerArmPos = chestPos + glm::vec3(1.05f, 0.18f, 0.0f);
+
+	const glm::vec3 leftUpperLegPos = pelvisPos + glm::vec3(-0.16f, -0.58f, 0.0f);
+	const glm::vec3 rightUpperLegPos = pelvisPos + glm::vec3(0.16f, -0.58f, 0.0f);
+	const glm::vec3 leftLowerLegPos = pelvisPos + glm::vec3(-0.16f, -1.38f, 0.0f);
+	const glm::vec3 rightLowerLegPos = pelvisPos + glm::vec3(0.16f, -1.38f, 0.0f);
+
+	const JPH::Quat horizontalLimbRotation = JPH::Quat::sRotation(JPH::Vec3::sAxisZ(), 0.5f * JPH::JPH_PI);
+
+	JPH::BodyID pelvisID = createBody(pelvisShape.GetPtr(), pelvisPos, JPH::Quat::sIdentity(), 0, 0.03f, 0.12f);
+	JPH::BodyID chestID = createBody(chestShape.GetPtr(), chestPos, JPH::Quat::sIdentity(), 1, 0.03f, 0.12f);
+	JPH::BodyID headID = createBody(headShape.GetPtr(), headPos, JPH::Quat::sIdentity(), 2, 0.03f, 0.08f);
+	JPH::BodyID leftUpperArmID = createBody(upperArmShape.GetPtr(), leftUpperArmPos, horizontalLimbRotation, 3);
+	JPH::BodyID rightUpperArmID = createBody(upperArmShape.GetPtr(), rightUpperArmPos, horizontalLimbRotation, 4);
+	JPH::BodyID leftLowerArmID = createBody(lowerArmShape.GetPtr(), leftLowerArmPos, horizontalLimbRotation, 5);
+	JPH::BodyID rightLowerArmID = createBody(lowerArmShape.GetPtr(), rightLowerArmPos, horizontalLimbRotation, 6);
+	JPH::BodyID leftUpperLegID = createBody(upperLegShape.GetPtr(), leftUpperLegPos, JPH::Quat::sIdentity(), 7);
+	JPH::BodyID rightUpperLegID = createBody(upperLegShape.GetPtr(), rightUpperLegPos, JPH::Quat::sIdentity(), 8);
+	JPH::BodyID leftLowerLegID = createBody(lowerLegShape.GetPtr(), leftLowerLegPos, JPH::Quat::sIdentity(), 9);
+	JPH::BodyID rightLowerLegID = createBody(lowerLegShape.GetPtr(), rightLowerLegPos, JPH::Quat::sIdentity(), 10);
+
+	auto addSwingTwistConstraint = [&](JPH::BodyID bodyA, JPH::BodyID bodyB, const glm::vec3& anchor,
+		const glm::vec3& twistAxis, const glm::vec3& planeAxis,
+		float coneAngleDeg, float planeAngleDeg, float twistMinDeg, float twistMaxDeg, float frictionTorque = 25.0f) {
+		if (bodyA.IsInvalid() || bodyB.IsInvalid()) {
+			return;
+		}
+
+		JPH::SwingTwistConstraintSettings settings;
+		settings.mSpace = JPH::EConstraintSpace::WorldSpace;
+		settings.mPosition1 = JPH::RVec3(anchor.x, anchor.y, anchor.z);
+		settings.mPosition2 = JPH::RVec3(anchor.x, anchor.y, anchor.z);
+		settings.mTwistAxis1 = JPH::Vec3(twistAxis.x, twistAxis.y, twistAxis.z);
+		settings.mTwistAxis2 = JPH::Vec3(twistAxis.x, twistAxis.y, twistAxis.z);
+		settings.mPlaneAxis1 = JPH::Vec3(planeAxis.x, planeAxis.y, planeAxis.z);
+		settings.mPlaneAxis2 = JPH::Vec3(planeAxis.x, planeAxis.y, planeAxis.z);
+		settings.mNormalHalfConeAngle = glm::radians(coneAngleDeg);
+		settings.mPlaneHalfConeAngle = glm::radians(planeAngleDeg);
+		settings.mTwistMinAngle = glm::radians(twistMinDeg);
+		settings.mTwistMaxAngle = glm::radians(twistMaxDeg);
+		settings.mMaxFrictionTorque = frictionTorque;
+
+		JPH::Constraint* constraint = bodyInterface.CreateConstraint(&settings, bodyA, bodyB);
+		if (constraint) {
+			m_physicsSystem->AddConstraint(constraint);
+			ragdoll.constraints.push_back(constraint);
+		}
+	};
+
+	auto addHingeConstraint = [&](JPH::BodyID bodyA, JPH::BodyID bodyB, const glm::vec3& anchor,
+		const glm::vec3& hingeAxis, const glm::vec3& normalAxis,
+		float minAngleDeg, float maxAngleDeg, float frictionTorque = 20.0f) {
+		if (bodyA.IsInvalid() || bodyB.IsInvalid()) {
+			return;
+		}
+
+		JPH::HingeConstraintSettings settings;
+		settings.mSpace = JPH::EConstraintSpace::WorldSpace;
+		settings.mPoint1 = JPH::RVec3(anchor.x, anchor.y, anchor.z);
+		settings.mPoint2 = JPH::RVec3(anchor.x, anchor.y, anchor.z);
+		settings.mHingeAxis1 = JPH::Vec3(hingeAxis.x, hingeAxis.y, hingeAxis.z);
+		settings.mHingeAxis2 = JPH::Vec3(hingeAxis.x, hingeAxis.y, hingeAxis.z);
+		settings.mNormalAxis1 = JPH::Vec3(normalAxis.x, normalAxis.y, normalAxis.z);
+		settings.mNormalAxis2 = JPH::Vec3(normalAxis.x, normalAxis.y, normalAxis.z);
+		settings.mLimitsMin = glm::radians(minAngleDeg);
+		settings.mLimitsMax = glm::radians(maxAngleDeg);
+		settings.mMaxFrictionTorque = frictionTorque;
+
+		JPH::Constraint* constraint = bodyInterface.CreateConstraint(&settings, bodyA, bodyB);
+		if (constraint) {
+			m_physicsSystem->AddConstraint(constraint);
+			ragdoll.constraints.push_back(constraint);
+		}
+	};
+
+	addSwingTwistConstraint(headID, chestID, pelvisPos + glm::vec3(0.0f, 0.92f, 0.0f),
+		glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f),
+		20.0f, 25.0f, -30.0f, 30.0f, 18.0f);
+	addSwingTwistConstraint(chestID, pelvisID, pelvisPos + glm::vec3(0.0f, 0.28f, 0.0f),
+		glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f),
+		18.0f, 15.0f, -20.0f, 20.0f, 30.0f);
+
+	addSwingTwistConstraint(chestID, leftUpperArmID, chestPos + glm::vec3(-0.24f, 0.18f, 0.0f),
+		glm::vec3(-1.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f),
+		55.0f, 40.0f, -55.0f, 55.0f, 18.0f);
+	addSwingTwistConstraint(chestID, rightUpperArmID, chestPos + glm::vec3(0.24f, 0.18f, 0.0f),
+		glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f),
+		55.0f, 40.0f, -55.0f, 55.0f, 18.0f);
+
+	addHingeConstraint(leftUpperArmID, leftLowerArmID, chestPos + glm::vec3(-0.78f, 0.18f, 0.0f),
+		glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(-1.0f, 0.0f, 0.0f),
+		0.0f, 145.0f, 10.0f);
+	addHingeConstraint(rightUpperArmID, rightLowerArmID, chestPos + glm::vec3(0.78f, 0.18f, 0.0f),
+		glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(1.0f, 0.0f, 0.0f),
+		-145.0f, 0.0f, 10.0f);
+
+	addSwingTwistConstraint(pelvisID, leftUpperLegID, pelvisPos + glm::vec3(-0.14f, -0.20f, 0.0f),
+		glm::vec3(0.0f, -1.0f, 0.0f), glm::vec3(-1.0f, 0.0f, 0.0f),
+		35.0f, 25.0f, -35.0f, 55.0f, 22.0f);
+	addSwingTwistConstraint(pelvisID, rightUpperLegID, pelvisPos + glm::vec3(0.14f, -0.20f, 0.0f),
+		glm::vec3(0.0f, -1.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f),
+		35.0f, 25.0f, -35.0f, 55.0f, 22.0f);
+
+	addHingeConstraint(leftUpperLegID, leftLowerLegID, pelvisPos + glm::vec3(-0.16f, -0.98f, 0.0f),
+		glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(-1.0f, 0.0f, 0.0f),
+		0.0f, 125.0f, 14.0f);
+	addHingeConstraint(rightUpperLegID, rightLowerLegID, pelvisPos + glm::vec3(0.16f, -0.98f, 0.0f),
+		glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(1.0f, 0.0f, 0.0f),
+		-125.0f, 0.0f, 14.0f);
+
+	m_physicsSystem->OptimizeBroadPhase();
+	m_ragdolls.push_back(std::move(ragdoll));
+	return m_ragdolls.size() - 1;
+}
+
+void PhysicsSystem::ClearRagdolls()
+{
+	if (!m_physicsSystem) {
+		m_ragdolls.clear();
+		return;
+	}
+
+	JPH::BodyInterface& bodyInterface = m_physicsSystem->GetBodyInterface();
+	for (auto& ragdoll : m_ragdolls) {
+		for (JPH::Constraint* constraint : ragdoll.constraints) {
+			if (constraint) {
+				m_physicsSystem->RemoveConstraint(constraint);
+			}
+		}
+
+		for (JPH::BodyID bodyID : ragdoll.bodyIDs) {
+			if (!bodyID.IsInvalid() && bodyInterface.IsAdded(bodyID)) {
+				bodyInterface.RemoveBody(bodyID);
+				bodyInterface.DestroyBody(bodyID);
+			}
+		}
+	}
+
+	m_ragdolls.clear();
+}
+
+void PhysicsSystem::DebugDrawRagdolls(DebugRenderer& debugRenderer) const
+{
+	if (!m_physicsSystem) {
+		return;
+	}
+
+	const JPH::BodyInterface& bodyInterface = m_physicsSystem->GetBodyInterface();
+	for (const auto& ragdoll : m_ragdolls) {
+		for (JPH::BodyID bodyID : ragdoll.bodyIDs) {
+			if (bodyID.IsInvalid() || !bodyInterface.IsAdded(bodyID)) {
+				continue;
+			}
+
+			JPH::TransformedShape transformedShape = bodyInterface.GetTransformedShape(bodyID);
+			physics_debug::DrawCollisionShapeWireframe(debugRenderer, transformedShape, glm::vec3(1.0f));
+		}
 	}
 }
 

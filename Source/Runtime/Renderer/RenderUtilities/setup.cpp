@@ -101,11 +101,11 @@ lut::PipelineLayout create_composite_pipeline_layout(lut::VulkanContext const& a
 lut::PipelineLayout create_blur_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aDescriptorLayout)
 {
 	// 定义 Push Constant 范围
-	// 我们只需要一个 int (或者 bool) 来表示 horizontal 状态
+	// 我们只需要一�?int (或�?bool) 来表�?horizontal 状�?
 	VkPushConstantRange pushConstant{};
 	pushConstant.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 	pushConstant.offset = 0;
-	pushConstant.size = sizeof(int32_t); // 传递一个 4 字节的整数
+	pushConstant.size = sizeof(int32_t); // 传递一�?4 字节的整�?
 
 	VkDescriptorSetLayout layouts[] = {
 		aDescriptorLayout // set 0: 包含输入的采样器纹理
@@ -156,40 +156,25 @@ lut::Pipeline create_triangle_pipeline( lut::VulkanWindow const& aWindow, VkPipe
 	stages[1].pName = "main";
 	stages[1].pNext = &code[1];
 
-	VkVertexInputBindingDescription vertexInputs[3]{};
-	vertexInputs[0].binding = 0;
-	vertexInputs[0].stride = sizeof(float)*3; 
-	vertexInputs[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	VkVertexInputBindingDescription vertexInputs[5]{};
+	vertexInputs[0].binding = 0; vertexInputs[0].stride = sizeof(float) * 3; vertexInputs[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[1].binding = 1; vertexInputs[1].stride = sizeof(float) * 2; vertexInputs[1].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[2].binding = 2; vertexInputs[2].stride = sizeof(float) * 3; vertexInputs[2].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[3].binding = 3; vertexInputs[3].stride = sizeof(uint32_t) * 4; vertexInputs[3].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[4].binding = 4; vertexInputs[4].stride = sizeof(float) * 4; vertexInputs[4].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-	vertexInputs[1].binding = 1;
-	vertexInputs[1].stride = sizeof(float)*2; 
-	vertexInputs[1].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-	vertexInputs[2].binding = 2;
-	vertexInputs[2].stride = sizeof(float)*3; 
-	vertexInputs[2].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-	VkVertexInputAttributeDescription vertexAttributes[3]{};
-	vertexAttributes[0].binding = 0; 
-	vertexAttributes[0].location = 0; 
-	vertexAttributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-	vertexAttributes[0].offset = 0;
-
-	vertexAttributes[1].binding = 1; 
-	vertexAttributes[1].location = 1; 
-	vertexAttributes[1].format = VK_FORMAT_R32G32_SFLOAT; 
-	vertexAttributes[1].offset = 0;
-
-	vertexAttributes[2].binding = 2; 
-	vertexAttributes[2].location = 2; 
-	vertexAttributes[2].format = VK_FORMAT_R32G32B32_SFLOAT; 
-	vertexAttributes[2].offset = 0;
+	VkVertexInputAttributeDescription vertexAttributes[5]{};
+	vertexAttributes[0].binding = 0; vertexAttributes[0].location = 0; vertexAttributes[0].format = VK_FORMAT_R32G32B32_SFLOAT; vertexAttributes[0].offset = 0;
+	vertexAttributes[1].binding = 1; vertexAttributes[1].location = 1; vertexAttributes[1].format = VK_FORMAT_R32G32_SFLOAT; vertexAttributes[1].offset = 0;
+	vertexAttributes[2].binding = 2; vertexAttributes[2].location = 2; vertexAttributes[2].format = VK_FORMAT_R32G32B32_SFLOAT; vertexAttributes[2].offset = 0;
+	vertexAttributes[3].binding = 3; vertexAttributes[3].location = 3; vertexAttributes[3].format = VK_FORMAT_R32G32B32A32_UINT; vertexAttributes[3].offset = 0;
+	vertexAttributes[4].binding = 4; vertexAttributes[4].location = 4; vertexAttributes[4].format = VK_FORMAT_R32G32B32A32_SFLOAT; vertexAttributes[4].offset = 0;
 
 	VkPipelineVertexInputStateCreateInfo inputInfo{};
 	inputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-	inputInfo.vertexBindingDescriptionCount = 3;
+	inputInfo.vertexBindingDescriptionCount = 5;
 	inputInfo.pVertexBindingDescriptions = vertexInputs;
-	inputInfo.vertexAttributeDescriptionCount = 3;
+	inputInfo.vertexAttributeDescriptionCount = 5;
 	inputInfo.pVertexAttributeDescriptions = vertexAttributes;
 
 	// Define which primitive (point, line, triangle, ...) the input is assembled into for rasterization.
@@ -240,7 +225,7 @@ lut::Pipeline create_triangle_pipeline( lut::VulkanWindow const& aWindow, VkPipe
 	// need one. Right now, we don't do any blending, so we can ignore most of the members.
 	// Define blend state
 	VkPipelineColorBlendAttachmentState blendStates[2]{};
-	// Attachment 0: 主颜色 (Main Color)
+	// Attachment 0: 主颜�?(Main Color)
 	blendStates[0].blendEnable = VK_FALSE;
 	blendStates[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
@@ -253,16 +238,16 @@ lut::Pipeline create_triangle_pipeline( lut::VulkanWindow const& aWindow, VkPipe
 	blendInfo.logicOpEnable = VK_FALSE;
 	blendInfo.attachmentCount = 2;
 	blendInfo.pAttachments = blendStates;
-	// 4. 【关键修复】渲染信息 (Dynamic Rendering)
-	// 定义格式数组，确保在创建 Pipeline 时内存有效
+	// 4. 【关键修复】渲染信�?(Dynamic Rendering)
+	// 定义格式数组，确保在创建 Pipeline 时内存有�?
 	VkFormat colorFormats[] = {
-		VK_FORMAT_R16G16B16A16_SFLOAT,                    // Location 0: 正常颜色 (通常是 Swapchain 格式)
-		VK_FORMAT_R16G16B16A16_SFLOAT        // Location 1: Bloom 亮度图 (必须是 HDR 格式)
+		VK_FORMAT_R16G16B16A16_SFLOAT,                    // Location 0: 正常颜色 (通常�?Swapchain 格式)
+		VK_FORMAT_R16G16B16A16_SFLOAT        // Location 1: Bloom 亮度�?(必须�?HDR 格式)
 	};
 
 	VkPipelineRenderingCreateInfo renderingInfo{};
 	renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-	renderingInfo.colorAttachmentCount = 2;      // 必须是 2
+	renderingInfo.colorAttachmentCount = 2;      // 必须�?2
 	renderingInfo.pColorAttachmentFormats = colorFormats; // 指向数组首地址
 	renderingInfo.depthAttachmentFormat = cfg::kDepthFormat;
 	// Define depth stencil state
@@ -325,7 +310,7 @@ lut::Pipeline create_triangle_pipeline( lut::VulkanWindow const& aWindow, VkPipe
 lut::Pipeline create_alpha_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, VkFormat aColorFormat)
 {
 	// =================================================================
-	// 1. 【核心修复】复用正常场景的 Shader！旧的 alpha shader 读不到颜色！
+	// 1. 【核心修复】复用正常场景的 Shader！旧�?alpha shader 读不到颜色！
 	// =================================================================
 	auto const vertSpirV = lut::load_file_u32(cfg::kVertShaderPath);
 	auto const fragSpirV = lut::load_file_u32(cfg::kFragShaderPath);
@@ -350,21 +335,25 @@ lut::Pipeline create_alpha_pipeline(lut::VulkanWindow const& aWindow, VkPipeline
 	stages[1].pName = "main";
 	stages[1].pNext = &code[1];
 
-	VkVertexInputBindingDescription vertexInputs[3]{};
+	VkVertexInputBindingDescription vertexInputs[5]{};
 	vertexInputs[0].binding = 0; vertexInputs[0].stride = sizeof(float) * 3; vertexInputs[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 	vertexInputs[1].binding = 1; vertexInputs[1].stride = sizeof(float) * 2; vertexInputs[1].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 	vertexInputs[2].binding = 2; vertexInputs[2].stride = sizeof(float) * 3; vertexInputs[2].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[3].binding = 3; vertexInputs[3].stride = sizeof(uint32_t) * 4; vertexInputs[3].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[4].binding = 4; vertexInputs[4].stride = sizeof(float) * 4; vertexInputs[4].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-	VkVertexInputAttributeDescription vertexAttributes[3]{};
+	VkVertexInputAttributeDescription vertexAttributes[5]{};
 	vertexAttributes[0].binding = 0; vertexAttributes[0].location = 0; vertexAttributes[0].format = VK_FORMAT_R32G32B32_SFLOAT; vertexAttributes[0].offset = 0;
-	vertexAttributes[1].binding = 1; vertexAttributes[1].location = 1; vertexAttributes[1].format = VK_FORMAT_R32G32_SFLOAT;    vertexAttributes[1].offset = 0;
+	vertexAttributes[1].binding = 1; vertexAttributes[1].location = 1; vertexAttributes[1].format = VK_FORMAT_R32G32_SFLOAT; vertexAttributes[1].offset = 0;
 	vertexAttributes[2].binding = 2; vertexAttributes[2].location = 2; vertexAttributes[2].format = VK_FORMAT_R32G32B32_SFLOAT; vertexAttributes[2].offset = 0;
+	vertexAttributes[3].binding = 3; vertexAttributes[3].location = 3; vertexAttributes[3].format = VK_FORMAT_R32G32B32A32_UINT; vertexAttributes[3].offset = 0;
+	vertexAttributes[4].binding = 4; vertexAttributes[4].location = 4; vertexAttributes[4].format = VK_FORMAT_R32G32B32A32_SFLOAT; vertexAttributes[4].offset = 0;
 
 	VkPipelineVertexInputStateCreateInfo inputInfo{};
 	inputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-	inputInfo.vertexBindingDescriptionCount = 3;
+	inputInfo.vertexBindingDescriptionCount = 5;
 	inputInfo.pVertexBindingDescriptions = vertexInputs;
-	inputInfo.vertexAttributeDescriptionCount = 3;
+	inputInfo.vertexAttributeDescriptionCount = 5;
 	inputInfo.pVertexAttributeDescriptions = vertexAttributes;
 
 	VkPipelineInputAssemblyStateCreateInfo assemblyInfo{};
@@ -405,7 +394,7 @@ lut::Pipeline create_alpha_pipeline(lut::VulkanWindow const& aWindow, VkPipeline
 	samplingInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
 	// =================================================================
-	// 3. 【核心修复】开启透明混合 (Color Blending)！
+	// 3. 【核心修复】开启透明混合 (Color Blending)�?
 	// =================================================================
 	VkPipelineColorBlendAttachmentState blendStates[2]{};
 	blendStates[0].blendEnable = VK_TRUE;
@@ -426,12 +415,12 @@ lut::Pipeline create_alpha_pipeline(lut::VulkanWindow const& aWindow, VkPipeline
 	blendInfo.pAttachments = blendStates;
 
 	// =================================================================
-	// 4. 【核心修复】关闭深度写入 (Depth Write)！让它不要挡住后面的单车！
+	// 4. 【核心修复】关闭深度写�?(Depth Write)！让它不要挡住后面的单车�?
 	// =================================================================
 	VkPipelineDepthStencilStateCreateInfo depthInfo{};
 	depthInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
 	depthInfo.depthTestEnable = VK_TRUE;
-	depthInfo.depthWriteEnable = VK_FALSE; // <--- 最重要的一行
+	depthInfo.depthWriteEnable = VK_FALSE; // <--- 最重要的一�?
 	depthInfo.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
 	depthInfo.minDepthBounds = 0.f;
 	depthInfo.maxDepthBounds = 1.f;
@@ -483,7 +472,7 @@ lut::Pipeline create_alpha_pipeline(lut::VulkanWindow const& aWindow, VkPipeline
 }
 lut::DescriptorSetLayout create_scene_descriptor_layout( lut::VulkanWindow const& aWindow )
 {
-	VkDescriptorSetLayoutBinding bindings[2]{};
+	VkDescriptorSetLayoutBinding bindings[3]{};
 	bindings[0].binding = 0; // number must match the index of the corresponding binding
 	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	bindings[0].descriptorCount = 1;
@@ -494,6 +483,11 @@ lut::DescriptorSetLayout create_scene_descriptor_layout( lut::VulkanWindow const
 	bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	bindings[1].descriptorCount = 1;
 	bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	bindings[2].binding = 2;
+	bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	bindings[2].descriptorCount = 1;
+	bindings[2].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
 	VkDescriptorSetLayoutCreateInfo layoutInfo{};
 	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -568,6 +562,11 @@ lut::DescriptorSetLayout create_post_proc_descriptor_layout( lut::VulkanWindow c
 	bindings[1].descriptorCount = 1;
 	bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
+	bindings[2].binding = 2;
+	bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	bindings[2].descriptorCount = 1;
+	bindings[2].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
 	VkDescriptorSetLayoutCreateInfo layoutInfo{};
 	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 	layoutInfo.bindingCount = 2;
@@ -625,7 +624,7 @@ lut::DescriptorSetLayout create_composite_descriptor_layout(lut::VulkanWindow co
 lut::DescriptorSetLayout create_blur_descriptor_layout(lut::VulkanContext const& aContext)
 {
 	VkDescriptorSetLayoutBinding binding{};
-	// Binding 0: 输入纹理（横向模糊时为 Brightness 图，纵向模糊时为 Temp 中间图）
+	// Binding 0: 输入纹理（横向模糊时�?Brightness 图，纵向模糊时为 Temp 中间图）
 	binding.binding = 0;
 	binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	binding.descriptorCount = 1;
@@ -783,41 +782,25 @@ lut::Pipeline create_debug_pipeline( lut::VulkanWindow const& aWindow, VkPipelin
 
 	// debug pipelines use the same vertex input format as the standard pipeline
 	// reuse the same mesh buffers
-	VkVertexInputBindingDescription vertexInputs[3]{};
-	vertexInputs[0].binding = 0;
-	vertexInputs[0].stride = sizeof(float)*3; 
-	vertexInputs[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	VkVertexInputBindingDescription vertexInputs[5]{};
+	vertexInputs[0].binding = 0; vertexInputs[0].stride = sizeof(float) * 3; vertexInputs[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[1].binding = 1; vertexInputs[1].stride = sizeof(float) * 2; vertexInputs[1].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[2].binding = 2; vertexInputs[2].stride = sizeof(float) * 3; vertexInputs[2].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[3].binding = 3; vertexInputs[3].stride = sizeof(uint32_t) * 4; vertexInputs[3].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[4].binding = 4; vertexInputs[4].stride = sizeof(float) * 4; vertexInputs[4].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-	vertexInputs[1].binding = 1;
-	vertexInputs[1].stride = sizeof(float)*2; 
-	vertexInputs[1].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	VkVertexInputAttributeDescription vertexAttributes[5]{};
+	vertexAttributes[0].binding = 0; vertexAttributes[0].location = 0; vertexAttributes[0].format = VK_FORMAT_R32G32B32_SFLOAT; vertexAttributes[0].offset = 0;
+	vertexAttributes[1].binding = 1; vertexAttributes[1].location = 1; vertexAttributes[1].format = VK_FORMAT_R32G32_SFLOAT; vertexAttributes[1].offset = 0;
+	vertexAttributes[2].binding = 2; vertexAttributes[2].location = 2; vertexAttributes[2].format = VK_FORMAT_R32G32B32_SFLOAT; vertexAttributes[2].offset = 0;
+	vertexAttributes[3].binding = 3; vertexAttributes[3].location = 3; vertexAttributes[3].format = VK_FORMAT_R32G32B32A32_UINT; vertexAttributes[3].offset = 0;
+	vertexAttributes[4].binding = 4; vertexAttributes[4].location = 4; vertexAttributes[4].format = VK_FORMAT_R32G32B32A32_SFLOAT; vertexAttributes[4].offset = 0;
 
-	vertexInputs[2].binding = 2;
-	vertexInputs[2].stride = sizeof(float)*3; 
-	vertexInputs[2].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-	VkVertexInputAttributeDescription vertexAttributes[3]{};
-	vertexAttributes[0].binding = 0; 
-	vertexAttributes[0].location = 0; 
-	vertexAttributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-	vertexAttributes[0].offset = 0;
-
-	vertexAttributes[1].binding = 1; 
-	vertexAttributes[1].location = 1; 
-	vertexAttributes[1].format = VK_FORMAT_R32G32_SFLOAT; 
-	vertexAttributes[1].offset = 0;
-
-	vertexAttributes[2].binding = 2; 
-	vertexAttributes[2].location = 2; 
-	vertexAttributes[2].format = VK_FORMAT_R32G32B32_SFLOAT; 
-	vertexAttributes[2].offset = 0;
-
-	// standard input assembly, viewport, rasterization setup
 	VkPipelineVertexInputStateCreateInfo inputInfo{};
 	inputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-	inputInfo.vertexBindingDescriptionCount = 3;
+	inputInfo.vertexBindingDescriptionCount = 5;
 	inputInfo.pVertexBindingDescriptions = vertexInputs;
-	inputInfo.vertexAttributeDescriptionCount = 3;
+	inputInfo.vertexAttributeDescriptionCount = 5;
 	inputInfo.pVertexAttributeDescriptions = vertexAttributes;
 
 	VkPipelineInputAssemblyStateCreateInfo assemblyInfo{};
@@ -1455,41 +1438,25 @@ lut::Pipeline create_overdraw_pipeline( lut::VulkanWindow const& aWindow, VkPipe
 	stages[1].pName = "main";
 	stages[1].pNext = &code[1];
 
-	VkVertexInputBindingDescription vertexInputs[3]{};
-	vertexInputs[0].binding = 0;
-	vertexInputs[0].stride = sizeof(float)*3; 
-	vertexInputs[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	VkVertexInputBindingDescription vertexInputs[5]{};
+	vertexInputs[0].binding = 0; vertexInputs[0].stride = sizeof(float) * 3; vertexInputs[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[1].binding = 1; vertexInputs[1].stride = sizeof(float) * 2; vertexInputs[1].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[2].binding = 2; vertexInputs[2].stride = sizeof(float) * 3; vertexInputs[2].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[3].binding = 3; vertexInputs[3].stride = sizeof(uint32_t) * 4; vertexInputs[3].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[4].binding = 4; vertexInputs[4].stride = sizeof(float) * 4; vertexInputs[4].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-	vertexInputs[1].binding = 1;
-	vertexInputs[1].stride = sizeof(float)*2; 
-	vertexInputs[1].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-	vertexInputs[2].binding = 2;
-	vertexInputs[2].stride = sizeof(float)*3; 
-	vertexInputs[2].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-	VkVertexInputAttributeDescription vertexAttributes[3]{};
-	vertexAttributes[0].binding = 0; 
-	vertexAttributes[0].location = 0; 
-	vertexAttributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-	vertexAttributes[0].offset = 0;
-
-
-	vertexAttributes[1].binding = 1; 
-	vertexAttributes[1].location = 1; 
-	vertexAttributes[1].format = VK_FORMAT_R32G32_SFLOAT; 
-	vertexAttributes[1].offset = 0;
-
-	vertexAttributes[2].binding = 2; 
-	vertexAttributes[2].location = 2; 
-	vertexAttributes[2].format = VK_FORMAT_R32G32B32_SFLOAT; 
-	vertexAttributes[2].offset = 0;
+	VkVertexInputAttributeDescription vertexAttributes[5]{};
+	vertexAttributes[0].binding = 0; vertexAttributes[0].location = 0; vertexAttributes[0].format = VK_FORMAT_R32G32B32_SFLOAT; vertexAttributes[0].offset = 0;
+	vertexAttributes[1].binding = 1; vertexAttributes[1].location = 1; vertexAttributes[1].format = VK_FORMAT_R32G32_SFLOAT; vertexAttributes[1].offset = 0;
+	vertexAttributes[2].binding = 2; vertexAttributes[2].location = 2; vertexAttributes[2].format = VK_FORMAT_R32G32B32_SFLOAT; vertexAttributes[2].offset = 0;
+	vertexAttributes[3].binding = 3; vertexAttributes[3].location = 3; vertexAttributes[3].format = VK_FORMAT_R32G32B32A32_UINT; vertexAttributes[3].offset = 0;
+	vertexAttributes[4].binding = 4; vertexAttributes[4].location = 4; vertexAttributes[4].format = VK_FORMAT_R32G32B32A32_SFLOAT; vertexAttributes[4].offset = 0;
 
 	VkPipelineVertexInputStateCreateInfo inputInfo{};
 	inputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-	inputInfo.vertexBindingDescriptionCount = 3;
+	inputInfo.vertexBindingDescriptionCount = 5;
 	inputInfo.pVertexBindingDescriptions = vertexInputs;
-	inputInfo.vertexAttributeDescriptionCount = 3;
+	inputInfo.vertexAttributeDescriptionCount = 5;
 	inputInfo.pVertexAttributeDescriptions = vertexAttributes;
 
 	VkPipelineInputAssemblyStateCreateInfo assemblyInfo{};
@@ -1638,40 +1605,25 @@ lut::Pipeline create_overshading_pipeline( lut::VulkanWindow const& aWindow, VkP
 	stages[1].pName = "main";
 	stages[1].pNext = &code[1];
 
-	VkVertexInputBindingDescription vertexInputs[3]{};
-	vertexInputs[0].binding = 0;
-	vertexInputs[0].stride = sizeof(float)*3; 
-	vertexInputs[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	VkVertexInputBindingDescription vertexInputs[5]{};
+	vertexInputs[0].binding = 0; vertexInputs[0].stride = sizeof(float) * 3; vertexInputs[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[1].binding = 1; vertexInputs[1].stride = sizeof(float) * 2; vertexInputs[1].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[2].binding = 2; vertexInputs[2].stride = sizeof(float) * 3; vertexInputs[2].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[3].binding = 3; vertexInputs[3].stride = sizeof(uint32_t) * 4; vertexInputs[3].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[4].binding = 4; vertexInputs[4].stride = sizeof(float) * 4; vertexInputs[4].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-	vertexInputs[1].binding = 1;
-	vertexInputs[1].stride = sizeof(float)*2; 
-	vertexInputs[1].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-	vertexInputs[2].binding = 2;
-	vertexInputs[2].stride = sizeof(float)*3; 
-	vertexInputs[2].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-	VkVertexInputAttributeDescription vertexAttributes[3]{};
-	vertexAttributes[0].binding = 0; 
-	vertexAttributes[0].location = 0; 
-	vertexAttributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-	vertexAttributes[0].offset = 0;
-
-	vertexAttributes[1].binding = 1; 
-	vertexAttributes[1].location = 1; 
-	vertexAttributes[1].format = VK_FORMAT_R32G32_SFLOAT; 
-	vertexAttributes[1].offset = 0;
-
-	vertexAttributes[2].binding = 2; 
-	vertexAttributes[2].location = 2; 
-	vertexAttributes[2].format = VK_FORMAT_R32G32B32_SFLOAT; 
-	vertexAttributes[2].offset = 0;
+	VkVertexInputAttributeDescription vertexAttributes[5]{};
+	vertexAttributes[0].binding = 0; vertexAttributes[0].location = 0; vertexAttributes[0].format = VK_FORMAT_R32G32B32_SFLOAT; vertexAttributes[0].offset = 0;
+	vertexAttributes[1].binding = 1; vertexAttributes[1].location = 1; vertexAttributes[1].format = VK_FORMAT_R32G32_SFLOAT; vertexAttributes[1].offset = 0;
+	vertexAttributes[2].binding = 2; vertexAttributes[2].location = 2; vertexAttributes[2].format = VK_FORMAT_R32G32B32_SFLOAT; vertexAttributes[2].offset = 0;
+	vertexAttributes[3].binding = 3; vertexAttributes[3].location = 3; vertexAttributes[3].format = VK_FORMAT_R32G32B32A32_UINT; vertexAttributes[3].offset = 0;
+	vertexAttributes[4].binding = 4; vertexAttributes[4].location = 4; vertexAttributes[4].format = VK_FORMAT_R32G32B32A32_SFLOAT; vertexAttributes[4].offset = 0;
 
 	VkPipelineVertexInputStateCreateInfo inputInfo{};
 	inputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-	inputInfo.vertexBindingDescriptionCount = 3;
+	inputInfo.vertexBindingDescriptionCount = 5;
 	inputInfo.pVertexBindingDescriptions = vertexInputs;
-	inputInfo.vertexAttributeDescriptionCount = 3;
+	inputInfo.vertexAttributeDescriptionCount = 5;
 	inputInfo.pVertexAttributeDescriptions = vertexAttributes;
 
 	VkPipelineInputAssemblyStateCreateInfo assemblyInfo{};
@@ -1952,7 +1904,7 @@ lut::Sampler create_shadow_sampler( lut::VulkanWindow const& aWindow )
 
 lut::ImageWithView create_shadow_map(lut::VulkanWindow const& aWindow, lut::Allocator const& aAllocator)
 {
-	// 1. 创建支持多层的图像
+	// 1. 创建支持多层的图�?
 	VkImageCreateInfo imageInfo{};
 	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -1961,7 +1913,7 @@ lut::ImageWithView create_shadow_map(lut::VulkanWindow const& aWindow, lut::Allo
 	imageInfo.extent.height = kShadowMapResolution;
 	imageInfo.extent.depth = 1;
 	imageInfo.mipLevels = 1;
-	imageInfo.arrayLayers = kCascadeCount; // 核心：设为 4 层级联
+	imageInfo.arrayLayers = kCascadeCount; // 核心：设�?4 层级�?
 	imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 	imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
 	imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
@@ -1979,11 +1931,11 @@ lut::ImageWithView create_shadow_map(lut::VulkanWindow const& aWindow, lut::Allo
 		throw lut::Error("Unable to create shadow map image: {}", lut::to_string(res));
 	}
 
-	// 2. 创建主 Array View (给主着色器 default.frag 采样用)
+	// 2. 创建�?Array View (给主着色器 default.frag 采样�?
 	VkImageViewCreateInfo viewInfo{};
 	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	viewInfo.image = image;
-	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY; // 关键：数组类型
+	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY; // 关键：数组类�?
 	viewInfo.format = cfg::kShadowMapFormat;
 	viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
 	viewInfo.subresourceRange.baseMipLevel = 0;
@@ -1999,7 +1951,7 @@ lut::ImageWithView create_shadow_map(lut::VulkanWindow const& aWindow, lut::Allo
 	}
 
 	// 提示：你可以在此处手动创建分层视图，或者在 main.cpp 中初始化它们
-	// 为了简化，这里返回 ImageWithView，稍后我们在 main.cpp 补充 cascadeViews 的创建
+	// 为了简化，这里返回 ImageWithView，稍后我们在 main.cpp 补充 cascadeViews 的创�?
 
 	return lut::ImageWithView(aAllocator.allocator, image, allocation, mainView);
 }
@@ -2029,37 +1981,25 @@ lut::Pipeline create_shadow_pipeline( lut::VulkanWindow const& aWindow, VkPipeli
 	stages[1].pName = "main";
 	stages[1].pNext = &code[1];
 
-	// reuse generic vertex inputs
-	// remove Normals from shadow pipeline
-	VkVertexInputBindingDescription vertexInputs[2]{}; // 2 bindings
-	vertexInputs[0].binding = 0;
-	vertexInputs[0].stride = sizeof(float)*3; 
-	vertexInputs[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	VkVertexInputBindingDescription vertexInputs[5]{};
+	vertexInputs[0].binding = 0; vertexInputs[0].stride = sizeof(float) * 3; vertexInputs[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[1].binding = 1; vertexInputs[1].stride = sizeof(float) * 2; vertexInputs[1].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[2].binding = 2; vertexInputs[2].stride = sizeof(float) * 3; vertexInputs[2].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[3].binding = 3; vertexInputs[3].stride = sizeof(uint32_t) * 4; vertexInputs[3].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[4].binding = 4; vertexInputs[4].stride = sizeof(float) * 4; vertexInputs[4].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-	vertexInputs[1].binding = 1;
-	vertexInputs[1].stride = sizeof(float)*2; 
-	vertexInputs[1].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-	// No binding 2
-
-	VkVertexInputAttributeDescription vertexAttributes[2]{}; // 2 attributes
-	vertexAttributes[0].binding = 0; 
-	vertexAttributes[0].location = 0; 
-	vertexAttributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-	vertexAttributes[0].offset = 0;
-
-	vertexAttributes[1].binding = 1; 
-	vertexAttributes[1].location = 1; 
-	vertexAttributes[1].format = VK_FORMAT_R32G32_SFLOAT; 
-	vertexAttributes[1].offset = 0;
-
-	// No location 2
+	VkVertexInputAttributeDescription vertexAttributes[5]{};
+	vertexAttributes[0].binding = 0; vertexAttributes[0].location = 0; vertexAttributes[0].format = VK_FORMAT_R32G32B32_SFLOAT; vertexAttributes[0].offset = 0;
+	vertexAttributes[1].binding = 1; vertexAttributes[1].location = 1; vertexAttributes[1].format = VK_FORMAT_R32G32_SFLOAT; vertexAttributes[1].offset = 0;
+	vertexAttributes[2].binding = 2; vertexAttributes[2].location = 2; vertexAttributes[2].format = VK_FORMAT_R32G32B32_SFLOAT; vertexAttributes[2].offset = 0;
+	vertexAttributes[3].binding = 3; vertexAttributes[3].location = 3; vertexAttributes[3].format = VK_FORMAT_R32G32B32A32_UINT; vertexAttributes[3].offset = 0;
+	vertexAttributes[4].binding = 4; vertexAttributes[4].location = 4; vertexAttributes[4].format = VK_FORMAT_R32G32B32A32_SFLOAT; vertexAttributes[4].offset = 0;
 
 	VkPipelineVertexInputStateCreateInfo inputInfo{};
 	inputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-	inputInfo.vertexBindingDescriptionCount = 2; // Reduced
+	inputInfo.vertexBindingDescriptionCount = 5;
 	inputInfo.pVertexBindingDescriptions = vertexInputs;
-	inputInfo.vertexAttributeDescriptionCount = 2; // Reduced
+	inputInfo.vertexAttributeDescriptionCount = 5;
 	inputInfo.pVertexAttributeDescriptions = vertexAttributes;
 
 	VkPipelineInputAssemblyStateCreateInfo assemblyInfo{};
@@ -2253,7 +2193,7 @@ lut::Pipeline create_particle_pipeline(lut::VulkanWindow const& aWindow, VkPipel
 	VkPipelineColorBlendAttachmentState cbAtt[2]{};
 	cbAtt[0].blendEnable = VK_TRUE;
 	cbAtt[0].srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-	cbAtt[0].dstColorBlendFactor = VK_BLEND_FACTOR_ONE; //  ON为实现色彩相加
+	cbAtt[0].dstColorBlendFactor = VK_BLEND_FACTOR_ONE; //  ON为实现色彩相�?
 	cbAtt[0].colorBlendOp = VK_BLEND_OP_ADD;
 	cbAtt[0].srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
 	cbAtt[0].dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
@@ -2451,40 +2391,25 @@ lut::Pipeline create_alpha_pipeline_1_attachment( lut::VulkanWindow const& aWind
 	stages[1].pName = "main";
 	stages[1].pNext = &code[1];
 
-	VkVertexInputBindingDescription vertexInputs[3]{};
-	vertexInputs[0].binding = 0;
-	vertexInputs[0].stride = sizeof(float)*3; 
-	vertexInputs[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	VkVertexInputBindingDescription vertexInputs[5]{};
+	vertexInputs[0].binding = 0; vertexInputs[0].stride = sizeof(float) * 3; vertexInputs[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[1].binding = 1; vertexInputs[1].stride = sizeof(float) * 2; vertexInputs[1].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[2].binding = 2; vertexInputs[2].stride = sizeof(float) * 3; vertexInputs[2].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[3].binding = 3; vertexInputs[3].stride = sizeof(uint32_t) * 4; vertexInputs[3].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[4].binding = 4; vertexInputs[4].stride = sizeof(float) * 4; vertexInputs[4].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-	vertexInputs[1].binding = 1;
-	vertexInputs[1].stride = sizeof(float)*2; 
-	vertexInputs[1].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-	vertexInputs[2].binding = 2;
-	vertexInputs[2].stride = sizeof(float)*3; 
-	vertexInputs[2].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-	VkVertexInputAttributeDescription vertexAttributes[3]{};
-	vertexAttributes[0].binding = 0; 
-	vertexAttributes[0].location = 0; 
-	vertexAttributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-	vertexAttributes[0].offset = 0;
-
-	vertexAttributes[1].binding = 1; 
-	vertexAttributes[1].location = 1; 
-	vertexAttributes[1].format = VK_FORMAT_R32G32_SFLOAT; 
-	vertexAttributes[1].offset = 0;
-
-	vertexAttributes[2].binding = 2; 
-	vertexAttributes[2].location = 2; 
-	vertexAttributes[2].format = VK_FORMAT_R32G32B32_SFLOAT; 
-	vertexAttributes[2].offset = 0;
+	VkVertexInputAttributeDescription vertexAttributes[5]{};
+	vertexAttributes[0].binding = 0; vertexAttributes[0].location = 0; vertexAttributes[0].format = VK_FORMAT_R32G32B32_SFLOAT; vertexAttributes[0].offset = 0;
+	vertexAttributes[1].binding = 1; vertexAttributes[1].location = 1; vertexAttributes[1].format = VK_FORMAT_R32G32_SFLOAT; vertexAttributes[1].offset = 0;
+	vertexAttributes[2].binding = 2; vertexAttributes[2].location = 2; vertexAttributes[2].format = VK_FORMAT_R32G32B32_SFLOAT; vertexAttributes[2].offset = 0;
+	vertexAttributes[3].binding = 3; vertexAttributes[3].location = 3; vertexAttributes[3].format = VK_FORMAT_R32G32B32A32_UINT; vertexAttributes[3].offset = 0;
+	vertexAttributes[4].binding = 4; vertexAttributes[4].location = 4; vertexAttributes[4].format = VK_FORMAT_R32G32B32A32_SFLOAT; vertexAttributes[4].offset = 0;
 
 	VkPipelineVertexInputStateCreateInfo inputInfo{};
 	inputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-	inputInfo.vertexBindingDescriptionCount = 3;
+	inputInfo.vertexBindingDescriptionCount = 5;
 	inputInfo.pVertexBindingDescriptions = vertexInputs;
-	inputInfo.vertexAttributeDescriptionCount = 3;
+	inputInfo.vertexAttributeDescriptionCount = 5;
 	inputInfo.pVertexAttributeDescriptions = vertexAttributes;
 
 	// Define which primitive (point, line, triangle, ...) the input is assembled into for rasterization.
@@ -2608,11 +2533,11 @@ lut::Pipeline create_alpha_pipeline_1_attachment( lut::VulkanWindow const& aWind
 
 }
 // ==============================================================================
-// 极速特效 (Speed Post-Process) 的管线布局
+// 极速特�?(Speed Post-Process) 的管线布局
 // ==============================================================================
 lut::PipelineLayout create_speed_post_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aDescriptorLayout)
 {
-	// 定义 Push Constant 范围，传递一个 4 字节的 float (speedFactor)
+	// 定义 Push Constant 范围，传递一�?4 字节�?float (speedFactor)
 	VkPushConstantRange pushConstant{};
 	pushConstant.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 	pushConstant.offset = 0;
@@ -2641,7 +2566,7 @@ lut::PipelineLayout create_speed_post_pipeline_layout(lut::VulkanContext const& 
 }
 
 // ==============================================================================
-// 极速特效 (Speed Post-Process) 的管线
+// 极速特�?(Speed Post-Process) 的管�?
 // ==============================================================================
 lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout)
 {
@@ -2693,7 +2618,7 @@ lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPip
 	rasterInfo.depthClampEnable = VK_FALSE;
 	rasterInfo.rasterizerDiscardEnable = VK_FALSE;
 	rasterInfo.polygonMode = VK_POLYGON_MODE_FILL;
-	rasterInfo.cullMode = VK_CULL_MODE_NONE; // 全屏矩形不需要背面剔除
+	rasterInfo.cullMode = VK_CULL_MODE_NONE; // 全屏矩形不需要背面剔�?
 	rasterInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	rasterInfo.depthBiasEnable = VK_FALSE;
 	rasterInfo.lineWidth = 1.f;
@@ -2703,7 +2628,7 @@ lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPip
 	samplingInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
 	VkPipelineColorBlendAttachmentState blendStates[1]{};
-	blendStates[0].blendEnable = VK_FALSE; // 直接覆盖，不需要混合
+	blendStates[0].blendEnable = VK_FALSE; // 直接覆盖，不需要混�?
 	blendStates[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
 	VkPipelineColorBlendStateCreateInfo blendInfo{};
@@ -2712,7 +2637,7 @@ lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPip
 	blendInfo.attachmentCount = 1;
 	blendInfo.pAttachments = blendStates;
 
-	// 后期处理不需要深度测试
+	// 后期处理不需要深度测�?
 	VkPipelineDepthStencilStateCreateInfo depthInfo{};
 	depthInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
 	depthInfo.depthTestEnable = VK_FALSE;
@@ -2728,7 +2653,7 @@ lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPip
 	dynamicInfo.dynamicStateCount = 2;
 	dynamicInfo.pDynamicStates = dynamicStates;
 
-	// 渲染目标：通常后期处理直接输出到 Swapchain
+	// 渲染目标：通常后期处理直接输出�?Swapchain
 	VkPipelineRenderingCreateInfo renderingInfo{};
 	renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
 	renderingInfo.colorAttachmentCount = 1;

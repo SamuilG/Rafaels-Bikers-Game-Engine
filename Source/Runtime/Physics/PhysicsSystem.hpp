@@ -16,6 +16,8 @@
 #include <Jolt/Core/TempAllocator.h>
 #include <Jolt/Physics/Character/CharacterVirtual.h>
 #include <Jolt/Physics/Body/BodyLock.h>
+#include <Jolt/Physics/Collision/GroupFilterTable.h>
+#include <Jolt/Physics/Constraints/Constraint.h>
 
 
 #include <memory>
@@ -46,6 +48,7 @@ namespace Layers
 
 namespace engine {
 class EventSystem;
+class DebugRenderer;
 
 class PhysicsSystem final : public System {
 public:
@@ -101,13 +104,21 @@ public:
     void SetInputSystem(engine::InputSystem* sys) { mInputSystem = sys; }
     void SetUserState(UserState* state) { this->mState = state; }
 
+    size_t CreateCapsuleRagdoll(const glm::vec3& pelvisPosition);
+    void ClearRagdolls();
+    void DebugDrawRagdolls(DebugRenderer& debugRenderer) const;
   
     // 【关键修复】：暴露底层的 Jolt PhysicsSystem 给控制器使用！
     JPH::PhysicsSystem* GetJoltSystem() const {
         return m_physicsSystem.get();
     }
 private:
-    
+    struct SimpleRagdoll {
+        std::vector<JPH::BodyID> bodyIDs;
+        std::vector<JPH::Constraint*> constraints;
+        JPH::Ref<JPH::GroupFilterTable> collisionFilter;
+    };
+
 
     std::unique_ptr<JPH::TempAllocatorImpl> m_tempAllocator;
     std::unique_ptr<JPH::JobSystemThreadPool> m_jobSystem;
@@ -133,9 +144,7 @@ private:
     class ContactListenerImpl;
     std::unique_ptr<ContactListenerImpl> m_contactListener;
 
-
-
-
+    std::vector<SimpleRagdoll> m_ragdolls;
 };
 
 } // namespace engine

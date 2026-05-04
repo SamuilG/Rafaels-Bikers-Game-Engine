@@ -28,9 +28,14 @@ void record_commands(
 	glsl::SceneUniform const& aSceneUniform,
 	VkPipelineLayout aGraphicsLayout,
 	VkDescriptorSet aSceneDescriptors,
+	VkBuffer aSkeletonMatricesUBO,
+	std::vector<glm::mat4> const& aSkeletonMatrices,
+	std::vector<uint32_t> const& aSkeletonMatrixOffsets,
 	std::vector<lut::Buffer> const& aMeshPositions,
 	std::vector<lut::Buffer> const& aMeshTexCoords,
 	std::vector<lut::Buffer> const& aMeshNormals,
+	std::vector<lut::Buffer> const& aMeshBoneIndices,
+	std::vector<lut::Buffer> const& aMeshBoneWeights,
 	std::vector<lut::Buffer> const& aMeshIndices,
 	std::vector<EngineMesh> const& aMeshInfos,
 	std::vector<EngineMaterial> const& aMaterials,
@@ -59,10 +64,10 @@ void record_commands(
 	VkPipelineLayout aSpeedLayout,
 	VkDescriptorSet aSpeedDesc,
 	float aSpeedFactor,
-	ImageAndView const& aFinalSceneColor, // 最终场景渲染缓冲区（输出到 ImGui）
+	ImageAndView const& aFinalSceneColor, // 最终场景渲染缓冲区（输出到 ImGui�?
 	// ==============================================================
 
-	// --- 原有后处理/阴影/粒子参数 ---
+	// --- 原有后处�?阴影/粒子参数 ---
 	VkPipeline aPostProcPipe,
 	VkDescriptorSet aPostProcDescriptors,
 	VkPipelineLayout aPostProcLayout,
@@ -74,16 +79,6 @@ void record_commands(
 	const std::vector<std::unique_ptr<ParticleSystem>>& allParticles,
 	VkPipeline aDebugLinePipe,
 	engine::DebugRenderer& aDebugRenderer,
-	// --- Skeletal skinning (optional; pass VK_NULL_HANDLE to skip) ---
-	VkPipeline aSkinnedPipe                                          = VK_NULL_HANDLE,
-	VkPipeline aSkinnedAlphaPipe                                     = VK_NULL_HANDLE,
-	VkPipelineLayout aSkinnedPipeLayout                              = VK_NULL_HANDLE,
-	VkDescriptorSet  aBoneDescriptorSet                              = VK_NULL_HANDLE,
-	const std::unordered_map<uint32_t, lut::Buffer>* aMeshJoints    = nullptr,
-	const std::unordered_map<uint32_t, lut::Buffer>* aMeshWeights   = nullptr,
-	const std::vector<RenderBatch>*                  aSkinnedBatches = nullptr,
-
-	// 在 record_commands 的最后追加：
 	VkPipeline skyboxPipe = VK_NULL_HANDLE,
 	VkPipelineLayout skyboxPipeLayout = VK_NULL_HANDLE,
 	VkDescriptorSet skyboxDescSet = VK_NULL_HANDLE,

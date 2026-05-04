@@ -8,4 +8,4 @@ Cache/
 *.spv
 .xmake/
 *.sln
-*.vcxproj
+*.vcxprojThirdParty/ozz-animation/

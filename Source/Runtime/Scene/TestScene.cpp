@@ -5,257 +5,208 @@
 #include "../Physics/bikeController.hpp"
 #include "../Input/InputSystem.hpp"
 #include "../Event/EventSystem.hpp"
-#include "../UserState/UserState.hpp"
 #include "../Animation/AnimationSystem.hpp"
+#include "../UserState/UserState.hpp"
 #include "../Debug/DebugRenderer.hpp"
+
+#include <unordered_set>
+#include <glm/gtc/matrix_transform.hpp>
 
 namespace engine {
 
     TestScene::TestScene() = default;
     TestScene::~TestScene() = default;
-    void TestScene::Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, UserState* state, AnimationSystem* anima) {
+
+    void TestScene::Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, AnimationSystem* animation, UserState* state) {
         m_render = render;
         m_scene = scene;
         m_physics = physics;
         m_input = input;
-        m_event = eventSys; 
+        m_event = eventSys;
+        m_animation = animation;
         m_state = state;
-        m_anima = anima;
 
-        // 1. 加载地形与静态模型
-		// load the terrain and static models
         m_scene->LoadModel(m_render, "Assets/Models/TScene.glb", engine::ModelPhysicsType::Static, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
-        //m_scene->LoadModel(m_render, "Assets/Models/forest.glb", engine::ModelPhysicsType::Static, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
 
         glm::mat4 bridgeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(100.0f, 0.0f, 60.0f));
-        glm::mat4 CplaneSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(120.0f, 0.0f, 250.0f));
+        glm::mat4 cplaneSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(120.0f, 0.0f, 250.0f));
         glm::mat4 darkRoomSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(60.0f, 0.0f, 200.0f));
 
         m_scene->LoadModel(m_render, "Assets/Models/testBridge.glb", engine::ModelPhysicsType::Static, 0.0f, bridgeSpawnPos);
-        m_scene->LoadModel(m_render, "Assets/Models/testCurvePlane.glb", engine::ModelPhysicsType::Static, 0.0f, CplaneSpawnPos);
+        m_scene->LoadModel(m_render, "Assets/Models/testCurvePlane.glb", engine::ModelPhysicsType::Static, 0.0f, cplaneSpawnPos);
         m_scene->LoadModel(m_render, "Assets/Models/darkRoom.glb", engine::ModelPhysicsType::Static, 0.0f, darkRoomSpawnPos);
 
-        // 2. 加载自行车
-        glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 10.0f, 30.0f));
-        glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
-		glm::mat4 bikeAnchorWorld = glm::mat4(0.0f); // sentinel: [3][3]==0 means anchor not found
+        std::unordered_set<flecs::entity_t> existingEntities;
+        m_scene->get_world().query<EntityStatus>().each([&](flecs::entity e, EntityStatus&) {
+            existingEntities.insert(e.id());
+        });
 
-        m_render->load_animated_model("Assets/Models/character.glb", tbpos);
-        m_scene->LoadModel(m_render, "Assets/Models/tbikeWithAnchor.glb", engine::ModelPhysicsType::CustomC, 90.0f, tbpos);
+        const glm::mat4 playerTransform =
+            glm::translate(glm::mat4(1.0f), m_playerPosition) *
+            glm::rotate(glm::mat4(1.0f), m_playerYaw, glm::vec3(0.0f, 1.0f, 0.0f)) *
+            glm::scale(glm::mat4(1.0f), glm::vec3(m_playerScale));
 
-        // 3. 初始化单车控制器
-        m_bikeController = std::make_unique<BikeController>(m_physics->GetJoltSystem(), m_input, m_state);
-        flecs::entity bikeEntity = m_scene->find_entity("Bike_0");
-        if (bikeEntity.is_valid()) {
-            uint32_t bikeBodyID = JPH::BodyID::cInvalidBodyID;
-            if (bikeEntity.has<PhysicsBody>()) bikeBodyID = bikeEntity.get<PhysicsBody>().bodyID;
-            else if (bikeEntity.has<CompoundParent>()) bikeBodyID = bikeEntity.get<CompoundParent>().bodyID;
-            m_bikeController->Init(bikeBodyID);
+        flecs::entity firstPlayer = m_scene->LoadModel(
+            m_render,
+            "Assets/X Bot/X Bot.mesh",
+            engine::ModelPhysicsType::Static,
+            0.0f,
+            playerTransform);
+
+        std::vector<flecs::entity> spawnedPlayerEntities;
+        m_scene->get_world().query<SkeletonComponent>().each([&](flecs::entity e, SkeletonComponent&) {
+            if (existingEntities.find(e.id()) != existingEntities.end()) {
+                return;
+            }
+
+            spawnedPlayerEntities.push_back(e);
+        });
+
+        m_playerEntities.clear();
+        for (flecs::entity playerEntity : spawnedPlayerEntities) {
+            m_playerEntities.push_back(playerEntity);
+            playerEntity.set<EntityStatus>({ true, false });
+            if (playerEntity.has<PhysicsBody>()) {
+                playerEntity.remove<PhysicsBody>();
+            }
         }
 
-		{
-			// --- Find the first skinned entity (the character) ---
-			flecs::entity charEntity;
-			m_scene->get_world().query<SkinComponent>()
-				.each([&](flecs::entity e, SkinComponent&) {
-				if (!charEntity.is_valid()) charEntity = e;
-					});
+        if (m_playerEntities.empty() && firstPlayer.is_valid()) {
+            m_playerEntities.push_back(firstPlayer);
+        }
 
-			// --- Find specific bike-part entities by name substring ---
-			// Names are GLTF node name + "_N" counter suffix set by load_C_model.
-			flecs::entity handleLEntity;  // handle_left_4  – left handlebar grip
-			flecs::entity handleREntity;  // handle_right_5 – right handlebar grip
-			flecs::entity pedalLEntity;   // pedal_left_8   – left pedal plate
-			flecs::entity pedalREntity;   // pedal_right_9  – right pedal plate
-			m_scene->get_world().query<CompoundParent>()
-				.each([&](flecs::entity e, CompoundParent&) {
-				const char* n = e.name();
-				if (!n) return;
-				if (!handleLEntity.is_valid() && strstr(n, "handle_left_4"))  handleLEntity = e;
-				if (!handleREntity.is_valid() && strstr(n, "handle_right_5")) handleREntity = e;
-				if (!pedalLEntity.is_valid() && strstr(n, "pedal_left_8"))   pedalLEntity = e;
-				if (!pedalREntity.is_valid() && strstr(n, "pedal_right_9"))  pedalREntity = e;
-					});
+        m_cameraTarget = m_scene->get_world().entity("Player_0")
+            .set<EntityStatus>({ false, false })
+            .set<LocalTransform>({ playerTransform })
+            .set<WorldTransform>({ playerTransform });
 
-			printf("[App] Bike parts found - handleL:%d handleR:%d pedalL:%d pedalR:%d\n",
-				handleLEntity.is_valid(), handleREntity.is_valid(),
-				pedalLEntity.is_valid(), pedalREntity.is_valid());
+        if (m_animation && !m_playerEntities.empty() && m_playerEntities.front().has<SkeletonComponent>()) {
+            EngineModel* model = m_animation->GetModel();
+            if (model) {
+                m_playerSkeletonIndex = m_playerEntities.front().get<SkeletonComponent>().skeletonIndex;
+                m_playerPoseIndex = m_playerSkeletonIndex;
 
-			if (charEntity.is_valid() && bikeEntity.is_valid()) {
-				// Bone names confirmed from debug_print_nodes() output (Mixamo rig):
-				//   Arms:  LeftArm / LeftForeArm / LeftHand
-				//          RightArm / RightForeArm / RightHand
-				//   Legs:  LeftUpLeg / LeftLeg / LeftFoot
-				//          RightUpLeg / RightLeg / RightFoot
+                for (uint32_t i = 0; i < model->skeletonPoses.size(); ++i) {
+                    if (model->skeletonPoses[i].skeletonIndex == m_playerSkeletonIndex) {
+                        m_playerPoseIndex = i;
+                        break;
+                    }
+                }
 
-				// --- Seat offset: character root placed at the "Anchor" node in bike-local space ---
-				// bikeAnchorWorld[3][3] == 1 means the Anchor node was found in the GLB.
-				// We strip scale from the bike's initial world transform (matching what load_C_model
-				// does when it sets up the physics body) then express the anchor in body-local space.
-				glm::mat4 seatOffset;
-				bool anchorFound = (bikeAnchorWorld[3][3] == 1.0f);
-				printf("[App] Anchor node %s, world pos (%.3f, %.3f, %.3f)\n",
-					anchorFound ? "FOUND" : "NOT FOUND",
-					bikeAnchorWorld[3][0], bikeAnchorWorld[3][1], bikeAnchorWorld[3][2]);
-				if (anchorFound) {
-					glm::mat4 bikeMat = bikeEntity.get<LocalTransform>().matrix;
-					glm::vec3 s, t, skew; glm::quat r; glm::vec4 persp;
-					glm::decompose(bikeMat, s, r, t, skew, persp);
-					glm::mat4 bodyTR = glm::translate(glm::mat4(1.0f), t)
-						* glm::mat4_cast(glm::normalize(r));
-					seatOffset = glm::inverse(bodyTR) * bikeAnchorWorld
-						* glm::scale(glm::mat4(1.0f), glm::vec3(2.1f));
-				}
-				else {
-					seatOffset = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -0.7f, 0.0f))
-						* glm::scale(glm::mat4(1.0f), glm::vec3(2.1f));
-				}
+                Animator& animator = m_animation->CreateAnimator();
+                (void)animator;
+                if (m_animation->BindAnimator(m_playerAnimatorIndex, m_playerSkeletonIndex, m_playerPoseIndex)) {
+                    m_idleClip = m_animation->FindClipByName("Idle");
+                    m_walkClip = m_animation->FindClipByName("Female Walk");
+                    m_runClip = m_animation->FindClipByName("Running");
 
-				// --- Build shared IK chains (Mixamo bone names) ---
-				RiderIKComponent rik;
-				rik.bikeEntityId = bikeEntity.id();
-				rik.leanAngleDeg = 35.0f; // torso forward lean in degrees
+                    if (!m_idleClip.IsValid() && !model->animationClips.empty()) {
+                        for (size_t clipIndex = 0; clipIndex < model->animationClips.size(); ++clipIndex) {
+                            if (model->animationClips[clipIndex].skeletonIndex == m_playerSkeletonIndex) {
+                                m_idleClip = m_animation->MakeClipReference(clipIndex);
+                                break;
+                            }
+                        }
+                    }
 
-				// handle positions in bike-local space (from startup log):
-				//   handle_left  = (+0.430, +1.265, +0.817)
-				//   handle_right = (-0.424, +1.265, +0.817)
-				// Pole: elbow should point outward and slightly downward for a natural grip.
+                    SwitchToClip(m_idleClip.IsValid() ? m_idleClip : m_walkClip);
+                }
+            }
+        }
 
-				// Left hand → handle_left_4
-				{
-					IKChainConfig c;
-					c.rootBone = "LeftArm";
-					c.midBone = "LeftForeArm";
-					c.endBone = "LeftHand";
-					c.targetEntityId = handleLEntity.is_valid() ? handleLEntity.id() : 0;
-					c.localTargetOffset = glm::vec3(0.0f, 0.06f, 0.0f);     // grip slightly above entity origin
-					c.localBikeTarget = glm::vec3(0.43f, 1.35f, 0.817f);  // exact handle pos (raised)
-					c.localBikePole = glm::vec3(0.80f, 0.60f, 0.30f);   // elbow out-left & down
-					c.enabled = true;
-					rik.chains.push_back(c);
-				}
-
-				// Right hand → handle_right_5
-				{
-					IKChainConfig c;
-					c.rootBone = "RightArm";
-					c.midBone = "RightForeArm";
-					c.endBone = "RightHand";
-					c.targetEntityId = handleREntity.is_valid() ? handleREntity.id() : 0;
-					c.localTargetOffset = glm::vec3(0.0f, 0.06f, 0.0f);      // grip slightly above entity origin
-					c.localBikeTarget = glm::vec3(-0.424f, 1.35f, 0.817f); // exact handle pos (raised)
-					c.localBikePole = glm::vec3(-0.80f, 0.60f, 0.30f);   // elbow out-right & down
-					c.enabled = true;
-					rik.chains.push_back(c);
-				}
-
-				// Left foot → pedal_left_8  (pedal_left bike-local ≈ +0.30, 0.01, -0.12)
-				{
-					IKChainConfig c;
-					c.rootBone = "LeftUpLeg";
-					c.midBone = "LeftLeg";
-					c.endBone = "LeftFoot";
-					c.targetEntityId = pedalLEntity.is_valid() ? pedalLEntity.id() : 0;
-					c.localTargetOffset = glm::vec3(0.0f, 0.06f, 0.0f);    // foot slightly above pedal center
-					c.localBikeTarget = glm::vec3(0.30f, 0.12f, -0.12f); // pedal pos fallback (raised)
-					c.localBikePole = glm::vec3(0.45f, 0.2f, 0.40f);  // knee out-left
-					c.enabled = true;
-					rik.chains.push_back(c);
-				}
-
-				// Right foot → pedal_right_9  (pedal_right bike-local ≈ -0.30, -0.29, +0.17)
-				{
-					IKChainConfig c;
-					c.rootBone = "RightUpLeg";
-					c.midBone = "RightLeg";
-					c.endBone = "RightFoot";
-					c.targetEntityId = pedalREntity.is_valid() ? pedalREntity.id() : 0;
-					c.localTargetOffset = glm::vec3(0.0f, 0.06f, 0.0f);     // foot slightly above pedal center
-					c.localBikeTarget = glm::vec3(-0.30f, -0.10f, 0.17f); // pedal pos fallback (raised)
-					c.localBikePole = glm::vec3(-0.45f, 0.2f, 0.40f);  // knee out-right
-					c.enabled = true;
-					rik.chains.push_back(c);
-				}
-
-				// Apply binding + IK to ALL skinned character entities (character has 2 mesh parts).
-				// Also add a dummy AnimationComponent (animIndex=-1) so AnimationSystem's query
-				// picks them up even though this character has no animation clips.
-// 1. 显式获取世界引用
-				flecs::world& world = m_scene->get_world();
-
-				// 2. 开启延迟修改队列
-				world.defer_begin();
-
-				// 3. 执行遍历（此时所有的 set 操作不会立即生效，而是被压入队列）
-				world.query<SkinComponent>()
-					.each([&](flecs::entity e, SkinComponent&) {
-					e.set<RiderBinding>({ bikeEntity.id(), seatOffset });
-					e.set<RiderIKComponent>(rik);   // copy to each mesh part
-					if (!e.has<AnimationComponent>()) {
-						AnimationComponent ac{};
-						ac.animIndex = -1;   // no clip → rest pose; IK still runs
-						ac.playing = false;
-						ac.looping = false;
-						e.set<AnimationComponent>(ac);
-					}
-						});
-
-				// 4. 结束延迟，批量合并修改，表此时已解锁，安全！
-				world.defer_end();
-
-				printf("[App] Rider bound (2 mesh parts) -> bike '%s'\n",
-					bikeEntity.name() ? bikeEntity.name() : "?");
-			}
-			else {
-				printf("[App] Warning: rider bind failed (char=%d bike=%d)\n",
-					charEntity.is_valid(), bikeEntity.is_valid());
-			}
-		}
-
-        // 4. 加载发光方块与灯光
         glm::mat4 emissivecubeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(60.0f, 3.0f, 200.0f));
         flecs::entity emCubeEntity = m_scene->LoadModel(m_render, "Assets/DELETE_LATER/em1.gltf", engine::ModelPhysicsType::Dynamic, 0.01f, emissivecubeSpawnPos, engine::RenderLayer::Emissive);
-
         m_scene->create_light_entity("emCubeLight", engine::LightType::Point, glm::vec3(1.0f, 1.0f, 1.0f), 8.0f, glm::mat4(1.0f), 10.0f, glm::vec3(0, -1, 0), 0, 0, emCubeEntity);
 
-        // 车头灯
-        glm::mat4 localLightOffset = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.7f, 1.7f));
-        flecs::entity headlight = m_scene->create_light_entity("headlight", engine::LightType::Spot, glm::vec3(1.0f, 0.95f, 0.85f), 15.0f, localLightOffset, 40.0f, glm::vec3(0.0f, 0, 1.0f), 15.0f, 25.0f);
-        if (bikeEntity.is_valid()) headlight.child_of(bikeEntity);
-
-        // 太阳与其他灯光
         glm::vec3 sunDir = glm::normalize(glm::vec3(-0.5f, 1.0f, -0.3f));
-        glm::mat4 sunTransform = glm::mat4(1.0f); sunTransform[3] = glm::vec4(sunDir, 0.0f);
+        glm::mat4 sunTransform = glm::mat4(1.0f);
+        sunTransform[3] = glm::vec4(sunDir, 0.0f);
         m_scene->create_light_entity("MainSun", engine::LightType::Directional, glm::vec3(1.2f, 0.95f, 0.8f), 2.5f, sunTransform, 0);
 
-        glm::mat4 light2SpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(20.0f, 3.0f, 30.0f));
-        m_scene->create_light_entity("voidLight", engine::LightType::Point, glm::vec3(0.5f, 0.0f, 3.0f), 8, light2SpawnPos, 20.0f);
-
-        // 5. 设置触发器 (Trigger)
-        m_render->AddParticleGroup();
-        auto& triggerParticles = m_render->GetParticles();
-        size_t triggerParticleIndex = triggerParticles.size() - 1;
-        triggerParticles[triggerParticleIndex]->config.emitterPos = glm::vec3(50.0f, 1.0f, 20.0f);
-        triggerParticles[triggerParticleIndex]->config.isVisible = false;
-
-        size_t triggerBox01 = m_render->GetTriggerSystem().AddBoxTrigger(
-            glm::vec3(50.0f, 1.0f, 20.0f), glm::vec3(2.0f, 2.0f, 2.0f), triggerParticleIndex, glm::vec3(1.0f, 0.0f, 0.0f), glm::mat4(1.0f), true, false);
-
-        m_render->GetTriggerSystem().SetTriggerCallbacks(triggerBox01,
-            []() { engine::EngineUi::LogPrint("trigger box triggered!!\n"); },
-            []() { engine::EngineUi::LogPrint("trigger box exited!!\n"); }
-        );
+        if (m_state) {
+            m_state->thirdPersonMode = true;
+            m_state->followTargetPos = m_playerPosition + glm::vec3(0.0f, 0.9f, 0.0f);
+            m_state->playerYaw = m_playerYaw;
+            m_state->playerSpeed = 0.0f;
+            m_state->bikeYaw = 0.0f;
+            m_state->bikeSpeed = 0.0f;
+        }
 
         m_scene->print_all_entities();
     }
 
     void TestScene::Update(float dt) {
-        // 更新单车物理
-        if (m_bikeController) {
-            m_bikeController->Update(dt);
+        float forward = 0.0f;
+        float strafe = 0.0f;
+        if (m_input) {
+            forward += m_input->GetActionValue("MoveForward");
+            forward -= m_input->GetActionValue("MoveBackward");
+            strafe += m_input->GetActionValue("StrafeRight");
+            strafe -= m_input->GetActionValue("StrafeLeft");
         }
 
-        // 绘制测试 Debug 线条 (只有在这个关卡才需要画这些)
+        const glm::vec2 moveInput(strafe, forward);
+        const float inputMagnitude = glm::length(moveInput);
+        const bool isRunning = m_input && m_input->IsActionHeld("Fast");
+        const float moveSpeed = isRunning ? 6.0f : 3.0f;
+
+        if (inputMagnitude > 0.001f) {
+            glm::vec3 cameraForward = glm::vec3(0.0f, 0.0f, -1.0f);
+            glm::vec3 cameraRight = glm::vec3(1.0f, 0.0f, 0.0f);
+            if (m_state) {
+                cameraForward = -glm::vec3(m_state->camera2world[2]);
+                cameraRight = glm::vec3(m_state->camera2world[0]);
+            }
+
+            cameraForward.y = 0.0f;
+            cameraRight.y = 0.0f;
+            if (glm::length(cameraForward) < 0.001f) cameraForward = glm::vec3(0.0f, 0.0f, -1.0f);
+            if (glm::length(cameraRight) < 0.001f) cameraRight = glm::vec3(1.0f, 0.0f, 0.0f);
+            cameraForward = glm::normalize(cameraForward);
+            cameraRight = glm::normalize(cameraRight);
+
+            glm::vec3 moveDir = cameraForward * forward + cameraRight * strafe;
+            if (glm::length(moveDir) > 0.001f) {
+                moveDir = glm::normalize(moveDir);
+                m_playerPosition += moveDir * moveSpeed * dt;
+                m_playerYaw = std::atan2(moveDir.x, moveDir.z);
+            }
+        }
+
+        const glm::mat4 playerTransform =
+            glm::translate(glm::mat4(1.0f), m_playerPosition) *
+            glm::rotate(glm::mat4(1.0f), m_playerYaw, glm::vec3(0.0f, 1.0f, 0.0f)) *
+            glm::scale(glm::mat4(1.0f), glm::vec3(m_playerScale));
+
+        for (flecs::entity playerPart : m_playerEntities) {
+            if (playerPart.is_valid()) {
+                m_scene->set_local_transform(playerPart, playerTransform);
+            }
+        }
+
+        if (m_cameraTarget.is_valid()) {
+            m_cameraTarget.set<LocalTransform>({ playerTransform });
+            m_cameraTarget.set<WorldTransform>({ playerTransform });
+        }
+
+        if (m_state) {
+            m_state->followTargetPos = m_playerPosition + glm::vec3(0.0f, 0.9f, 0.0f);
+            m_state->playerYaw = m_playerYaw;
+            m_state->playerSpeed = inputMagnitude > 0.001f ? moveSpeed : 0.0f;
+            m_state->bikeYaw = 0.0f;
+            m_state->bikeSpeed = 0.0f;
+        }
+
+        if (inputMagnitude <= 0.001f) {
+            SwitchToClip(m_idleClip);
+        }
+        else if (isRunning && m_runClip.IsValid()) {
+            SwitchToClip(m_runClip);
+        }
+        else {
+            SwitchToClip(m_walkClip.IsValid() ? m_walkClip : m_idleClip);
+        }
+
         m_render->mDebugRenderer.DrawBox(glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
         m_render->mDebugRenderer.DrawLine(glm::vec3(3.0f, 0.0f, 0.0f), glm::vec3(3.0f, 5.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f));
         m_render->mDebugRenderer.DrawSphere(glm::vec3(-4.0f, 2.0f, 0.0f), 2.0f, glm::vec3(0.0f, 0.0f, 1.0f));
@@ -263,8 +214,28 @@ namespace engine {
     }
 
     void TestScene::Shutdown() {
-        // 如果有特定的关卡资源清理，放在这里
         m_bikeController.reset();
+        m_playerEntities.clear();
+        m_cameraTarget = flecs::entity::null();
+    }
+
+    void TestScene::SwitchToClip(const AnimationClip& clip)
+    {
+        if (!m_animation || !clip.IsValid()) {
+            return;
+        }
+
+        Animator* animator = m_animation->GetAnimator(m_playerAnimatorIndex);
+        if (!animator) {
+            return;
+        }
+
+        const AnimationClip& current = animator->GetClip();
+        if (current.clipIndex == clip.clipIndex) {
+            return;
+        }
+
+        m_animation->PlayClip(m_playerAnimatorIndex, clip, true);
     }
 
 } // namespace engine

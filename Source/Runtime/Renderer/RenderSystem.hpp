@@ -58,7 +58,7 @@ namespace lut = labut2;
 #include "RenderUtilities/rendering.hpp"
 
 #include "../Input/InputSystem.hpp"
-#include <chrono> // 确保顶部包含了这个
+#include <chrono> // 确保顶部包含了这�?
 
 // ================= UI System =================
 #include "../UI/ui.hpp"
@@ -78,8 +78,6 @@ namespace lut = labut2;
 #include "../Debug/DebugRenderer.hpp"
 #include "../Trigger/trigger.hpp"
 #include "../Debug/PhysicsDebugDraw.hpp"
-#include "../Animation/AnimationSystem.hpp"
-#include <unordered_map>
 #include "RenderUtilities/frustum.hpp"
 namespace glsl {
     struct MosaicUniform {
@@ -99,8 +97,8 @@ namespace engine {
 
 		//==============camera follow =======================
 		// name of the entity to follow in the scene
-		//TODO 把这个做到ui里面，允许用户输入想要跟随的实体名字，或者在场景视口直接点击选中一个实体进行跟随
-		const char* player = "Bike_0"; 
+		//TODO 把这个做到ui里面，允许用户输入想要跟随的实体名字，或者在场景视口直接点击选中一个实体进行跟�?
+		const char* player = "Player_0"; 
 
 
 
@@ -111,7 +109,6 @@ namespace engine {
     private:
         bool& mAppRunning;
         SceneManager* mSceneManager;
-        engine::AnimationSystem* mAnimationSystem = nullptr;
         engine::AudioSystem* mAudioSystem = nullptr;
 
         lut::VulkanWindow  mWindow;
@@ -129,18 +126,18 @@ namespace engine {
 
         //==============UI System========= Draw the main menu UI
         void DrawMainMenuUI() {
-            // 游戏未开始// Game not started
+            // 游戏未开�?/ Game not started
             if (!mState->isGameStarted) {
-                // Draw the main menu UI主菜单
+                // Draw the main menu UI主菜�?
                 EngineUi::DrawMainMenu(this, mAppRunning, mState->isGameStarted);
             }
         }
 
-        //==========UI System（particle）======================
+        //==========UI System（particle�?=====================
         // 存储 ImGui 专用的贴图描述符// Store ImGui-specific texture descriptors
         std::unordered_map<std::string, VkDescriptorSet> particleImGuiTextureDict;
 
-        // 获取 ImGui 专用的渲染句柄
+        // 获取 ImGui 专用的渲染句�?
         // Get the rendering handle for ImGui-specific textures
         VkDescriptorSet GetImGuiTextureDescriptor(const std::string& name) {
             if (particleImGuiTextureDict.count(name)) {
@@ -167,7 +164,7 @@ namespace engine {
             }
             return VK_NULL_HANDLE;
         }
-        //调整最大粒子数量（重建粒子系统）
+        //调整最大粒子数量（重建粒子系统�?
         //adjust the maximum number of particles (rebuild the particle system)
         void ResizeParticleGroup(size_t index, uint32_t newMaxParticles) {
             if (index < allParticles.size()) {
@@ -198,6 +195,8 @@ namespace engine {
         std::vector<std::unique_ptr<ParticleSystem>>& GetParticles() { return allParticles; }
         // trigger:
         TriggerSystem& GetTriggerSystem() { return mTriggerSystem; }
+        EngineModel& GetModel() { return mModel; }
+        const EngineModel& GetModel() const { return mModel; }
         //动态安全创建粒子组
         //create particle group
         void AddParticleGroup() {
@@ -210,7 +209,7 @@ namespace engine {
             //blind default texture
             if (particleTextureDict.count(cfg::ParticleTextures[0])) {
                 ps->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]];
-                // 新增：同时绑定 UI 专用的贴图！
+                // 新增：同时绑�?UI 专用的贴图！
                 ps->config.uiIconDescriptor = particleImGuiTextureDict[cfg::ParticleTextures[5]];
                 ps->config.useTexture = 1;
                 ps->config.atlasCols = 4;
@@ -228,7 +227,7 @@ namespace engine {
             allParticles.push_back(std::move(ps));
         }
 
-        //删除粒子组
+        //删除粒子�?
         //delete particle group
         void RemoveParticleGroup(size_t index) {
             if (index < allParticles.size()) {
@@ -236,7 +235,7 @@ namespace engine {
                 allParticles.erase(allParticles.begin() + index);
             }
         }
-        //==========UI System（particle）======================
+        //==========UI System（particle�?=====================
 
 
         void Init() override
@@ -326,7 +325,7 @@ namespace engine {
                     mWindow, mDefaultBlackTex.image, VK_FORMAT_R8G8B8A8_UNORM);
 
 
-                // 2. 【新增】标准的蓝色法线图 (朝向 Z 轴)
+                // 2. 【新增】标准的蓝色法线�?(朝向 Z �?
                 std::uint8_t normalBlue[4] = { 128, 128, 255, 255 };
                 mDefaultNormalTex = lut::load_image_texture2d_from_memory(
                     normalBlue, 1, 1, mWindow, mCmdPool.handle, mAllocator, VK_FORMAT_R8G8B8A8_UNORM);
@@ -422,19 +421,19 @@ namespace engine {
             glm::vec3 emitterPos3(4, 0.5, 2);
             glm::vec3 emitterPos4(2, 0.8, 2);
 
-            // 創建第 1 組：火焰
+            // 創建�?1 組：火焰
             {
                 auto fire = std::make_unique<ParticleSystem>();
                 //發射器形狀
                 fire->setEmitterShape(EmitterShape::Cone);
-                fire->config.coneSpread = 0.1f;// 控制锥形的开口大小
+                fire->config.coneSpread = 0.1f;// 控制锥形的开口大�?
                 //debug
-                fire->config.particleDebug = false; // 开启粒子调试输出
+                fire->config.particleDebug = false; // 开启粒子调试输�?
                 //貼圖設定
                 fire->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // 綁定貼圖
                 fire->config.useTexture = 1;
-                fire->config.atlasCols = 4;   // 贴图切成 4 列
-                fire->config.atlasRows = 4;   // 贴图切成 4 行
+                fire->config.atlasCols = 4;   // 贴图切成 4 �?
+                fire->config.atlasRows = 4;   // 贴图切成 4 �?
                 fire->config.animateAtlas = true;
                 //顔色
                 fire->config.startColor = glm::vec4(255.0f, 125.8f, 0.3f, .05f);
@@ -445,8 +444,8 @@ namespace engine {
                 //重力
                 fire->config.gravity = glm::vec3(0.0f, 0.01f, 0.0f);
                 //持续时间
-                fire->config.lifeMin = 1.f;  // 最短存活时间
-                fire->config.lifeMax = 3.0f;  // 最长存活时间
+                fire->config.lifeMin = 1.f;  // 最短存活时�?
+                fire->config.lifeMax = 3.0f;  // 最长存活时�?
                 //粒子尺寸
                 fire->config.sizeMin = 50.0f;
                 fire->config.sizeMax = 130.0f;
@@ -461,19 +460,19 @@ namespace engine {
                 fire->init(mAllocator, 300, emitterPos1);
                 allParticles.push_back(std::move(fire)); 
             }
-            //創建第 2組：灰煙
+            //創建�?2組：灰煙
             {
                 auto smoke = std::make_unique<ParticleSystem>();
                 //發射器形狀
                 smoke->setEmitterShape(EmitterShape::Cone);
-                smoke->config.coneSpread = 0.1f;// 控制锥形的开口大小
+                smoke->config.coneSpread = 0.1f;// 控制锥形的开口大�?
                 //debug
-                smoke->config.particleDebug = false; // 开启粒子调试输出
+                smoke->config.particleDebug = false; // 开启粒子调试输�?
                 //貼圖設定
                 smoke->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // 綁定貼圖
                 smoke->config.useTexture = 1;
-                smoke->config.atlasCols = 4;   // 贴图切成 4 列
-                smoke->config.atlasRows = 4;   // 贴图切成 4 行
+                smoke->config.atlasCols = 4;   // 贴图切成 4 �?
+                smoke->config.atlasRows = 4;   // 贴图切成 4 �?
                 smoke->config.animateAtlas = true;
                 //顔色
                 smoke->config.startColor = glm::vec4(.5f, .5f, .5f, .01f);
@@ -484,9 +483,9 @@ namespace engine {
                 //重力
                 smoke->config.gravity = glm::vec3(0.0f, 0.01f, 0.0f);
                 //持续时间
-                smoke->config.lifeMin = 1.f;  // 最短存活时间
-                smoke->config.lifeMax = 3.0f;  // 最长存活时间
-                //粒子尺寸（像素
+                smoke->config.lifeMin = 1.f;  // 最短存活时�?
+                smoke->config.lifeMax = 3.0f;  // 最长存活时�?
+                //粒子尺寸（像�?
                 smoke->config.sizeMin = 80.0f;
                 smoke->config.sizeMax = 200.0f;
                 //粒子尺寸缩放：出生时和死亡时的放大倍数
@@ -501,7 +500,7 @@ namespace engine {
                 allParticles.push_back(std::move(smoke));
             }
 
-            // 創建第 3組：火花
+            // 創建�?3組：火花
             {
 				auto magic = std::make_unique<ParticleSystem>();
                 magic->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[1]];// 綁定貼圖
@@ -513,28 +512,28 @@ namespace engine {
                 allParticles.push_back(std::move(magic));
             }
 
-            // 創建第 4組：火焰黑
+            // 創建�?4組：火焰�?
             {
 				auto c = std::make_unique<ParticleSystem>();
-                c->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // TODO:綁定星星貼圖 这里是错的
+                c->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // TODO:綁定星星貼圖 这里是错�?
                 c->config.emitterPos = emitterPos3;
                 c->init(mAllocator, 1000, emitterPos3);
                 allParticles.push_back(std::move(c));
             }
 
-            // 創建第 五 組：爆炸火焰
+            // 創建�?�?組：爆炸火焰
             {
                 auto boom = std::make_unique<ParticleSystem>();
                 //發射器形狀
                 boom->setEmitterShape(EmitterShape::Sphere);
-                boom->config.sphereRadius = 0.3f;// 控制锥形的开口大小
+                boom->config.sphereRadius = 0.3f;// 控制锥形的开口大�?
                 //debug
-                boom->config.particleDebug = false; // 开启粒子调试输出
+                boom->config.particleDebug = false; // 开启粒子调试输�?
                 //貼圖設定
                 boom->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]]; // 綁定貼圖
                 boom->config.useTexture = 1;
-                boom->config.atlasCols = 4;   // 贴图切成 4 列
-                boom->config.atlasRows = 4;   // 贴图切成 4 行
+                boom->config.atlasCols = 4;   // 贴图切成 4 �?
+                boom->config.atlasRows = 4;   // 贴图切成 4 �?
                 boom->config.animateAtlas = true;
                 //顔色
                 boom->config.startColor = glm::vec4(255.0f, 125.8f, 0.3f, .05f);
@@ -545,8 +544,8 @@ namespace engine {
                 //重力
                 boom->config.gravity = glm::vec3(0.0f, 0.01f, 0.0f);
                 //持续时间
-                boom->config.lifeMin = 1.f;  // 最短存活时间
-                boom->config.lifeMax = 3.0f;  // 最长存活时间
+                boom->config.lifeMin = 1.f;  // 最短存活时�?
+                boom->config.lifeMax = 3.0f;  // 最长存活时�?
                 //粒子尺寸
                 boom->config.sizeMin = 50.0f;
                 boom->config.sizeMax = 130.0f;
@@ -571,31 +570,31 @@ namespace engine {
                 0,
                 VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
 
+            mSkeletonMatricesUBO = lut::create_buffer(mAllocator,
+                sizeof(glm::mat4) * cfg::kMaxGpuBoneMatrices,
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                0,
+                VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
+
             mSceneDescriptors = lut::alloc_desc_set(mWindow, mDescPool.handle, mSceneLayout.handle);
-            {
+                        {
                 VkDescriptorBufferInfo bi{ mSceneUBO.buffer, 0, VK_WHOLE_SIZE };
-                VkWriteDescriptorSet w{};
-                w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                w.dstSet = mSceneDescriptors; w.dstBinding = 0;
-                w.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-                w.descriptorCount = 1; w.pBufferInfo = &bi;
-                vkUpdateDescriptorSets(mWindow.device, 1, &w, 0, nullptr);
+                VkDescriptorBufferInfo skeletonBi{ mSkeletonMatricesUBO.buffer, 0, sizeof(glm::mat4) * cfg::kMaxGpuBoneMatrices };
+                VkWriteDescriptorSet w[2]{};
+                w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                w[0].dstSet = mSceneDescriptors; w[0].dstBinding = 0;
+                w[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                w[0].descriptorCount = 1; w[0].pBufferInfo = &bi;
+                w[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                w[1].dstSet = mSceneDescriptors; w[1].dstBinding = 2;
+                w[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                w[1].descriptorCount = 1; w[1].pBufferInfo = &skeletonBi;
+                vkUpdateDescriptorSets(mWindow.device, 2, w, 0, nullptr);
             }
 
             mAlphaPipe = create_alpha_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
             mThumbnailAlphaPipe = create_alpha_pipeline_1_attachment(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
 
-            // Skeletal animation pipeline resources
-            mBoneLayout = create_bone_descriptor_layout(mWindow);
-            mSkinnedPipeLayout = create_skinned_pipeline_layout(mWindow, mSceneLayout.handle, mObjectLayout.handle, mBoneLayout.handle);
-            mSkinnedPipe = create_skinned_pipeline(mWindow, mSkinnedPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
-            mSkinnedAlphaPipe = create_skinned_alpha_pipeline(mWindow, mSkinnedPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
-
-            // Host-visible bone matrix SSBO (kMaxBoneMatrices mat4s)
-            mBoneSSBO = lut::create_buffer(mAllocator,
-                kMaxBoneMatrices * sizeof(glm::mat4),
-                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
             // p2_1.5 Shadow Resources
             mShadowMap = create_shadow_map(mWindow, mAllocator);
             mShadowSampler = create_shadow_sampler(mWindow);
@@ -627,19 +626,6 @@ namespace engine {
             mOffscreenImage = create_offscreen_buffer(mWindow, mAllocator);
             mVisImage = create_vis_image(mWindow, mAllocator); // p2_1.1
             mPostSampler = create_post_proc_sampler(mWindow);
-            // Bone descriptor set (set=2, binding=0 → SSBO)
-            {
-                mBoneDescriptorSet = lut::alloc_desc_set(mWindow, mDescPool.handle, mBoneLayout.handle);
-                VkDescriptorBufferInfo boneBI{ mBoneSSBO.buffer, 0, kMaxBoneMatrices * sizeof(glm::mat4) };
-                VkWriteDescriptorSet w{};
-                w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                w.dstSet = mBoneDescriptorSet;
-                w.dstBinding = 0;
-                w.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-                w.descriptorCount = 1;
-                w.pBufferInfo = &boneBI;
-                vkUpdateDescriptorSets(mWindow.device, 1, &w, 0, nullptr);
-            }
 
             // main scene descriptors need shadow map
             // update scene descriptors
@@ -650,7 +636,7 @@ namespace engine {
                 si.imageView = mShadowMap.view;
                 si.sampler = mShadowSampler.handle;
 
-                VkWriteDescriptorSet w[2]{};
+                VkWriteDescriptorSet w[3]{};
                 w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                 w[0].dstSet = mSceneDescriptors; w[0].dstBinding = 0;
                 w[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -661,7 +647,13 @@ namespace engine {
                 w[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
                 w[1].descriptorCount = 1; w[1].pImageInfo = &si;
 
-                vkUpdateDescriptorSets(mWindow.device, 2, w, 0, nullptr);
+                VkDescriptorBufferInfo skeletonBi{ mSkeletonMatricesUBO.buffer, 0, sizeof(glm::mat4) * cfg::kMaxGpuBoneMatrices };
+                w[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                w[2].dstSet = mSceneDescriptors; w[2].dstBinding = 2;
+                w[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                w[2].descriptorCount = 1; w[2].pBufferInfo = &skeletonBi;
+
+                vkUpdateDescriptorSets(mWindow.device, 3, w, 0, nullptr);
             }
 
             // mosaic UBOs
@@ -697,7 +689,7 @@ namespace engine {
             mBlurTempImage = create_offscreen_buffer(mWindow, mAllocator);
             mFinalBloomImage = create_offscreen_buffer(mWindow, mAllocator);
 
-            // --- 3. 创建管线布局与管线 ---
+            // --- 3. 创建管线布局与管�?---
 
             mBlurPipeLayout = create_blur_pipeline_layout(mWindow, mBlurDescLayout.handle);
             mBlurPipe = create_blur_pipeline(mWindow, mBlurPipeLayout.handle);
@@ -710,7 +702,7 @@ namespace engine {
             }
 
 
-            // 在 Init() 里面：
+            // �?Init() 里面�?
             auto t_start = std::chrono::high_resolution_clock::now();
             auto print_time = [&](const char* name) {
                 auto t_now = std::chrono::high_resolution_clock::now();
@@ -719,7 +711,7 @@ namespace engine {
                 t_start = t_now;
                 };
 
-            // 挨个测试：
+            // 挨个测试�?
             mPipe = create_triangle_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
             print_time("Main Triangle Pipe");
 
@@ -739,7 +731,7 @@ namespace engine {
             mSpeedPostPipe = create_speed_post_pipeline(mWindow, mSpeedPostPipeLayout.handle);
 
             for (size_t i = 0; i < mCmdBuffers.size(); ++i) {
-                // 将合成完毕的中间图绑定给极速特效作为输入
+                // 将合成完毕的中间图绑定给极速特效作为输�?
                 mSpeedPostDescriptors.push_back(BuildSpeedDesc(mCompositeOutputImage.view));
             }
             // =========================================================
@@ -764,7 +756,7 @@ namespace engine {
             imageInfo.imageType = VK_IMAGE_TYPE_2D;
             imageInfo.format = mWindow.swapchainFormat;
             imageInfo.extent = { mWindow.swapchainExtent.width, mWindow.swapchainExtent.height, 1 };
-            imageInfo.mipLevels = 1; //强制只有 1 层
+            imageInfo.mipLevels = 1; //强制只有 1 �?
             imageInfo.arrayLayers = 1;
             imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
             imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
@@ -780,7 +772,7 @@ namespace engine {
             vmaCreateImage(mAllocator.allocator, &imageInfo, &allocInfo, &rawImage, &rawAlloc, nullptr);
             mFinalSceneImg = lut::Image(mAllocator.allocator, rawImage, rawAlloc);
 
-            // 2. 创建配套的单层 ImageView
+            // 2. 创建配套的单�?ImageView
             VkImageViewCreateInfo viewInfo{};
             viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
             viewInfo.image = mFinalSceneImg.image;
@@ -788,7 +780,7 @@ namespace engine {
             viewInfo.format = mWindow.swapchainFormat;
             viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
             viewInfo.subresourceRange.baseMipLevel = 0;
-            viewInfo.subresourceRange.levelCount = 1; //强制 1 层
+            viewInfo.subresourceRange.levelCount = 1; //强制 1 �?
             viewInfo.subresourceRange.baseArrayLayer = 0;
             viewInfo.subresourceRange.layerCount = 1;
 
@@ -796,7 +788,7 @@ namespace engine {
             vkCreateImageView(mWindow.device, &viewInfo, nullptr, &rawView);
             mFinalSceneView = lut::ImageView(mWindow.device, rawView);
 
-            // 3.注册给 ImGui，拿到 ID
+            // 3.注册�?ImGui，拿�?ID
             m_sceneViewportTexId = ImGui_ImplVulkan_AddTexture(mDefaultSampler.handle, mFinalSceneView.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             
 //为粒子系统的贴图创建 ImGui 专用的描述符// Create ImGui-specific descriptors for particle system textures
@@ -811,9 +803,9 @@ namespace engine {
                 particleImGuiTextureDict[path] = imguiTexId;
             }
 
-            // ImGui 贴图 ID 补发给已经建好的粒子！
+            // ImGui 贴图 ID 补发给已经建好的粒子�?
             for (auto& ps : allParticles) {
-                // 通过粒子系统当前绑定的 3D 贴图描述符找到对应的 ImGui 贴图描述符
+                // 通过粒子系统当前绑定�?3D 贴图描述符找到对应的 ImGui 贴图描述�?
                 for (const auto& pair : particleTextureDict) {
                     if (ps->config.textureDescriptor == pair.second) {
                         ps->config.uiIconDescriptor = particleImGuiTextureDict[pair.first];
@@ -823,15 +815,13 @@ namespace engine {
             }
 
             ImGuiIO& io = ImGui::GetIO();
-            io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; //开启停靠功能核心开关
+            io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; //开启停靠功能核心开�?
 
             //初始化缩略图管线
             InitThumbnailPipeline();
-
-			//初始化天空盒资源
             InitSkybox();
 
-            //扫描 Assets/Models 生成缩略图
+            //扫描 Assets/Models 生成缩略�?
             namespace fs = std::filesystem;
             std::string modelFolder = "Assets/Models";
             if (fs::exists(modelFolder)) {
@@ -859,7 +849,7 @@ namespace engine {
         }
 
         VkDescriptorSet BuildCompositeDesc(VkDescriptorSetLayout layout, VkImageView sceneView, VkImageView bloomView) {
-            // 确保直接 alloc 并返回，不要在函数内部操作成员 vector
+            // 确保直接 alloc 并返回，不要在函数内部操作成�?vector
             VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, layout);
 
             VkDescriptorImageInfo imgs[2]{};
@@ -897,7 +887,7 @@ namespace engine {
             // game over debug
             if (ImGui::IsKeyPressed(ImGuiKey_G))
             {
-                mState->isGameOver = !mState->isGameOver; // 切换死亡状态进行测试// Toggle game over state for testing
+                mState->isGameOver = !mState->isGameOver; // 切换死亡状态进行测�?/ Toggle game over state for testing
 
                 if (mState->isGameOver)
                 {
@@ -912,7 +902,7 @@ namespace engine {
             // game pause debug
             if (ImGui::IsKeyPressed(ImGuiKey_H))
             {
-                mState->isGamePause = !mState->isGamePause; // 切换死亡状态进行测试// Toggle game pause state for testing
+                mState->isGamePause = !mState->isGamePause; // 切换死亡状态进行测�?/ Toggle game pause state for testing
 
                 if (mState->isGamePause)
                 {
@@ -926,7 +916,7 @@ namespace engine {
 
 
             // 1. Ctrl + S 保存项目
-            // io.KeyCtrl 会在左 Ctrl 或右 Ctrl 按下时为 true
+            // io.KeyCtrl 会在�?Ctrl 或右 Ctrl 按下时为 true
             if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S)) {
                 // 调用我们刚刚写好的高精度 JSON 保存函数
                 EngineUi::SaveProject(mSceneManager, this, "Assets/MySceneSave.json");
@@ -938,18 +928,18 @@ namespace engine {
 
             // 
 
-            //启动 ImGui 帧// Start ImGui frame
+            //启动 ImGui �?/ Start ImGui frame
             imguiRenderer.BeginFrame();
 
             //铺设全屏底层 DockSpace
-            // 必须在绘制任何其他 ImGui 窗口（如 MainMenu, ContentBrowser）之前调用！传 0 表示让 ImGui 自动为我们生成主窗口的 ID
+            // 必须在绘制任何其�?ImGui 窗口（如 MainMenu, ContentBrowser）之前调用！�?0 表示�?ImGui 自动为我们生成主窗口�?ID
             ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
 
             //ImGui::DockSpace(ImGui::GetID("MyDockSpace"), ImVec2(0, 0), ImGuiDockNodeFlags_PassthruCentralNode);
             //调用顶部菜单栏！
             EngineUi::DrawMainMenuBar(this, mSceneManager, *mState, mAppRunning);
             //start gmae menu
-           // 如果游戏还没开始，只画主菜单
+           // 如果游戏还没开始，只画主菜�?
             if (!mState->isGameStarted) {
                 EngineUi::DrawMainMenu(this, mAppRunning, mState->isGameStarted);
             }
@@ -965,7 +955,7 @@ namespace engine {
             {
                 // Prepare data for this frame
                 glsl::SceneUniform sceneUniforms{};
-                // 1. 获取真实的 UI 视口大小
+                // 1. 获取真实�?UI 视口大小
                 ImVec2 vpSize = EngineUi::GetSceneViewportSize();
                 float width = std::abs(vpSize.x);
                 float height = std::abs(vpSize.y);
@@ -984,11 +974,11 @@ namespace engine {
                 float fovRadians = lut::Radians(cfg::kCameraFov).value();
                 glm::mat4 gizmoProj = glm::perspective(
                     fovRadians,
-                    aspect, // 用算好的 aspect 替换原来的计算
+                    aspect, // 用算好的 aspect 替换原来的计�?
                     cfg::kCameraNear,
                     cfg::kCameraFar
                 );
-                //3D 场景拖放接收器绘制视口上的拖放目标
+                //3D 场景拖放接收器绘制视口上的拖放目�?
                 //EngineUi::DrawViewportDropTarget(this, mSceneManager, view, gizmoProj);
 
                 static flecs::entity_t lastSelectedId = 0;
@@ -1021,14 +1011,14 @@ namespace engine {
                 //    }
                 //    lastSelectedId = mSelectedEntityId;
                 //}
-            // debug: 选中更换材质（方便观察==============
+            // debug: 选中更换材质（方便观�?=============
 
-                // 获取全局鼠标位置和 Viewport 数据
+                // 获取全局鼠标位置�?Viewport 数据
                 ImVec2 mousePosAbs = ImGui::GetMousePos();
                 ImVec2 vpPos = EngineUi::GetSceneViewportPos();
                 //ImVec2 vpSize = EngineUi::GetSceneViewportSize();
 
-                // 计算出鼠标在 3D 画面内部的“局部坐标”
+                // 计算出鼠标在 3D 画面内部的“局部坐标�?
                 float localMouseX = mousePosAbs.x - vpPos.x;
                 float localMouseY = mousePosAbs.y - vpPos.y;
 
@@ -1040,7 +1030,7 @@ namespace engine {
                 EngineUi::DrawSceneViewport(m_sceneViewportTexId, this, mSceneManager, view, gizmoProj, mSelectedEntityId, *mState);
 
                 glm::mat4 viewProj = gizmoProj * view;
-                glm::vec3 cameraPos = glm::vec3(glm::inverse(view)[3]); // 提取逆 view 矩阵第 4 列作为位置
+                glm::vec3 cameraPos = glm::vec3(glm::inverse(view)[3]); // 提取�?view 矩阵�?4 列作为位�?
 
                 // 给面板加上开关判断：
                 if (mState->showControlPanel) {
@@ -1066,7 +1056,6 @@ namespace engine {
                 if (mState->showDebugPanel) {
                     EngineUi::DrawDebugPanel(*mState);
                 }
-				//audio UI
                 if (mState->showAudioPanel) {
                     EngineUi::DrawAudioPanel(*mState, mAudioSystem);
                 }
@@ -1074,7 +1063,7 @@ namespace engine {
                 if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && isMouseInViewport && !ImGuizmo::IsOver())
                 {
                     flecs::entity hitEntity = MousePicker::PickEntity(
-                        localMouseX, localMouseY,  // 传局部鼠标坐标
+                        localMouseX, localMouseY,  // 传局部鼠标坐�?
                         vpSize.x, vpSize.y,        // 传真实的视口大小
                         mState->camera2world, gizmoProj, mSceneManager
                     );
@@ -1121,7 +1110,7 @@ namespace engine {
                         JPH::BodyInterface& bodyInterface = physics->get_body_interface();
                         JPH::BodyID joltBodyID(pb.bodyID);
 
-                        //获取包围盒
+                        //获取包围�?
                         //get AABB from Jolt
                         JPH::TransformedShape ts = bodyInterface.GetTransformedShape(joltBodyID);
                         JPH::AABox aabb = ts.GetWorldSpaceBounds();
@@ -1182,6 +1171,12 @@ namespace engine {
                     }
                 }
 
+                if (mSceneManager) {
+                    if (auto* physics = mSceneManager->get_physics_system()) {
+                        physics->DebugDrawRagdolls(mDebugRenderer);
+                    }
+                }
+
                 // //官方 Demo
                 // //imguiRenderer.BuildDemoUI();
                 // //===========================UI System================================
@@ -1201,7 +1196,7 @@ namespace engine {
             if (glfwWindowShouldClose(mWindow.window)) {
                 mAppRunning = false;
                 //===========================UI System================================
-                ImGui::EndFrame(); // 结束 ImGui 帧
+                ImGui::EndFrame(); // 结束 ImGui �?
                 //===========================UI System================================
                 return;
             }
@@ -1236,7 +1231,7 @@ namespace engine {
                     // 重建极速特效中间图
                     mCompositeOutputImage = create_offscreen_buffer(mWindow, mAllocator);
                     UpdatePostDescImage(mSpeedPostDescriptors, mCompositeOutputImage.view);
-                    // 1。创建严格 1 层 Mipmap 的图像，
+                    // 1。创建严�?1 �?Mipmap 的图像，
                     VkImageCreateInfo imageInfo{};
                     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
                     imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -1258,7 +1253,7 @@ namespace engine {
                     vmaCreateImage(mAllocator.allocator, &imageInfo, &allocInfo, &rawImage, &rawAlloc, nullptr);
                     mFinalSceneImg = lut::Image(mAllocator.allocator, rawImage, rawAlloc);
 
-                    // 2. 创建配套的单层 ImageView
+                    // 2. 创建配套的单�?ImageView
                     VkImageViewCreateInfo viewInfo{};
                     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
                     viewInfo.image = mFinalSceneImg.image;
@@ -1266,7 +1261,7 @@ namespace engine {
                     viewInfo.format = mWindow.swapchainFormat;
                     viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
                     viewInfo.subresourceRange.baseMipLevel = 0;
-                    viewInfo.subresourceRange.levelCount = 1; //强制 1 层
+                    viewInfo.subresourceRange.levelCount = 1; //强制 1 �?
                     viewInfo.subresourceRange.baseArrayLayer = 0;
                     viewInfo.subresourceRange.layerCount = 1;
 
@@ -1274,7 +1269,7 @@ namespace engine {
                     vkCreateImageView(mWindow.device, &viewInfo, nullptr, &rawView);
                     mFinalSceneView = lut::ImageView(mWindow.device, rawView);
 
-                    // 更新 ImGui 的图片绑定
+                    // 更新 ImGui 的图片绑�?
                    /* if (m_sceneViewportTexId) ImGui_ImplVulkan_RemoveTexture(m_sceneViewportTexId);
                     m_sceneViewportTexId = ImGui_ImplVulkan_AddTexture(mDefaultSampler.handle, mFinalSceneView.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);*/
                     if (m_sceneViewportTexId) ImGui_ImplVulkan_RemoveTexture(m_sceneViewportTexId);
@@ -1282,17 +1277,17 @@ namespace engine {
                     // ----------------------------------------
 
                     // =====================================================================
-                    // 【新增核心修复】：必须重新创建 Bloom 相关的离屏缓冲 
+                    // 【新增核心修复】：必须重新创建 Bloom 相关的离屏缓�?
                     // =====================================================================
                     mBrightImage = create_offscreen_buffer(mWindow, mAllocator);
                     mBlurTempImage = create_offscreen_buffer(mWindow, mAllocator);
                     mFinalBloomImage = create_offscreen_buffer(mWindow, mAllocator);
 
-                    // 更新 Blur 水平和垂直阶段的描述符 (绑定 0 为 inputView)
+                    // 更新 Blur 水平和垂直阶段的描述�?(绑定 0 �?inputView)
                     UpdatePostDescImage(mBlurHorizDescriptors, mBrightImage.view);
                     UpdatePostDescImage(mBlurVertDescriptors, mBlurTempImage.view);
 
-                    // 更新 Composite (合成) 阶段的描述符，它需要绑定两张图 (0: 场景图, 1: Bloom图)
+                    // 更新 Composite (合成) 阶段的描述符，它需要绑定两张图 (0: 场景�? 1: Bloom�?
                     for (size_t i = 0; i < mCmdBuffers.size(); ++i) {
                         VkDescriptorImageInfo imgs[2]{};
                         imgs[0] = { mPostSampler.handle, mOffscreenImage.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
@@ -1326,7 +1321,7 @@ namespace engine {
 
                 mRecreateSwapchain = false;
                 //===========================UI System================================
-                ImGui::EndFrame(); // 结束 ImGui 帧
+                ImGui::EndFrame(); // 结束 ImGui �?
                 //===========================UI System================================
                 return;
             }
@@ -1352,7 +1347,7 @@ namespace engine {
                 mRecreateSwapchain = true;
                 mFrameIndex = (mFrameIndex + mCmdBuffers.size() - 1) % mCmdBuffers.size();
                 //===========================UI System================================
-                ImGui::EndFrame(); // 结束 ImGui 帧
+                ImGui::EndFrame(); // 结束 ImGui �?
                 //===========================UI System================================
                 return;
             }
@@ -1373,7 +1368,7 @@ namespace engine {
                 if (target.is_valid() && target.has<WorldTransform>()) {
                     const auto& wt = target.get<WorldTransform>();
 
-                    // 1. 获取角色脚底底座的原始世界坐标
+                    // 1. 获取角色脚底底座的原始世界坐�?
                     glm::vec3 basePos = glm::vec3(wt.matrix[3]);
 
                     // =========================================================
@@ -1387,9 +1382,9 @@ namespace engine {
                     // 2. 设置越肩的偏移量 
                     float shoulderOffsetX = 1.0f; //left and right
                     float shoulderOffsetY = -1.0f; // height
-                    float shoulderOffsetZ = 0.0f; // 调整注视点前后
+                    float shoulderOffsetZ = 0.0f; // 调整注视点前�?
 
-                    // 3. 计算出最终的越肩目标点
+                    // 3. 计算出最终的越肩目标�?
                     mState->followTargetPos = basePos
                         + (camRight * shoulderOffsetX)
                         + glm::vec3(0.0f, shoulderOffsetY, 0.0f);
@@ -1438,12 +1433,12 @@ namespace engine {
             // Prepare data for this frame
             glsl::SceneUniform sceneUniforms{};
 
-			//重新获取一次 UI 视口尺寸//re-fetch UI viewport size
+			//重新获取一�?UI 视口尺寸//re-fetch UI viewport size
          
             ImVec2 finalVpSize = EngineUi::GetSceneViewportSize();
             float finalWidth = std::max(1.0f, std::abs(finalVpSize.x));
             float finalHeight = std::max(1.0f, std::abs(finalVpSize.y));
-            // 【关键修复】：删掉带 void 的声明，换成真正的函数调用！
+            // 【关键修复】：删掉�?void 的声明，换成真正的函数调用！
             update_scene_uniforms(
                 sceneUniforms,
                 static_cast<uint32_t>(finalWidth),
@@ -1554,7 +1549,7 @@ namespace engine {
                     }
                     else 
                     {
-                        //直接讀取它自己身上存的位置！
+                        //直接讀取它自己身上存的位置�?
                         ps->update(dt, ps->config.emitterPos);
                         ps->upload(mAllocator);
                         ps->uploadDebug(mAllocator, ps->config.emitterPos);
@@ -1582,7 +1577,7 @@ namespace engine {
             // =========================================================
             //UI system 拖拽
             // =========================================================
-            // 1. 获取正常场景里的所有实体渲染批次
+            // 1. 获取正常场景里的所有实体渲染批�?
             //std::vector<RenderBatch> finalBatches = mSceneManager ? mSceneManager->get_render_batches() : std::vector<RenderBatch>{};
             const Frustum* activeFrustum = nullptr; // new frustum culling
             Frustum cameraFrustum{}; // new frustum culling
@@ -1592,17 +1587,16 @@ namespace engine {
             }
 
             //std::vector<RenderBatch> finalBatches = mSceneManager ? mSceneManager->get_render_batches(activeFrustum) : std::vector<RenderBatch>{};
-            glm::vec3 camPosWorld = glm::vec3(sceneUniforms.cameraPos);
-            std::vector<RenderBatch> finalBatches = mSceneManager ? mSceneManager->get_render_batches(activeFrustum, mState->frustumCullingPadding, camPosWorld) : std::vector<RenderBatch>{};
+            std::vector<RenderBatch> finalBatches = mSceneManager ? mSceneManager->get_render_batches(activeFrustum, mState->frustumCullingPadding) : std::vector<RenderBatch>{};
             if (mSceneManager) {
                 mState->frustumCullingTotalCandidates = mSceneManager->get_last_frustum_culling_candidates(); // new frustum culling
                 mState->frustumCullingVisibleCandidates = mSceneManager->get_last_frustum_culling_visible(); // new frustum culling
             }
-            // 2. 如果正在拖拽预览，把预览的 Batch 强行加进列表最后面！
+            // 2. 如果正在拖拽预览，把预览�?Batch 强行加进列表最后面�?
             if (!m_previewModelPath.empty() && m_previewPrefabCache.count(m_previewModelPath)) {
                 for (const auto& originalBatch : m_previewPrefabCache[m_previewModelPath]) {
                     RenderBatch previewBatch = originalBatch;
-                    // 用鼠标的矩阵 * 模型部件自身的原始偏移矩阵
+                    // 用鼠标的矩阵 * 模型部件自身的原始偏移矩�?
                     previewBatch.transform = m_previewTransform * originalBatch.transform;
                     finalBatches.push_back(previewBatch);
                 }
@@ -1616,19 +1610,19 @@ namespace engine {
                     sceneUniforms.lights[i] = lights[i];
                 }
             }
-            // --- 【新增】：为车头灯计算独有的 Shadow 矩阵，并塞进第 4 个槽位 (索引 3) ---
+            // --- 【新增】：为车头灯计算独有�?Shadow 矩阵，并塞进�?4 个槽�?(索引 3) ---
             for (size_t i = 0; i < sceneUniforms.lightCount; ++i) {
-                if (sceneUniforms.lights[i].position.w == 2.0f) { // 2.0 代表聚光灯
-                    // 我们之前把 outerCutOff 的 cos 值存在了 params.y，现在反算回角度
+                if (sceneUniforms.lights[i].position.w == 2.0f) { // 2.0 代表聚光�?
+                    // 我们之前�?outerCutOff �?cos 值存在了 params.y，现在反算回角度
                     float outerCutOff = glm::degrees(glm::acos(sceneUniforms.lights[i].params.y));
 
                     sceneUniforms.lightVP[3] = engine::compute_spotlight_matrix(
                         glm::vec3(sceneUniforms.lights[i].position), // 光源位置
                         glm::vec3(sceneUniforms.lights[i].direction), // 光源朝向
-                        outerCutOff,                                 // 外锥角
+                        outerCutOff,                                 // 外锥�?
                         sceneUniforms.lights[i].direction.w          // 范围 (Range)
                     );
-                    break; // 假设场景目前只有一个车灯投射阴影
+                    break; // 假设场景目前只有一个车灯投射阴�?
                 }
             }
             // trigger: draw every visible trigger volume through DebugRendere
@@ -1651,46 +1645,44 @@ namespace engine {
                 targetSpeedFactor = std::clamp(targetSpeedFactor, 0.0f, 1.0f);
             }
 
-            // 使用 static 变量进行平滑插值，防止掉帧或特效闪烁
-            // 2. 特效弹簧阻尼 (防闪烁)
+            // 使用 static 变量进行平滑插值，防止掉帧或特效闪�?
+            // 2. 特效弹簧阻尼 (防闪�?
             // 【修改这里的 5.0f】：
-            // 调大 (比如 10.0f)：特效响应极其灵敏，一踩油门特效瞬间拉满。
-            // 调小 (比如 2.0f) ：特效会非常缓慢地浮现，有种“逐渐进入超空间”的深邃感
+            // 调大 (比如 10.0f)：特效响应极其灵敏，一踩油门特效瞬间拉满�?
+            // 调小 (比如 2.0f) ：特效会非常缓慢地浮现，有种“逐渐进入超空间”的深邃�?
             static float smoothedSpeedFactor = 1.0f;
             smoothedSpeedFactor += (targetSpeedFactor - smoothedSpeedFactor) * 5.0f * dt;
-            std::vector<RenderBatch> skinnedBatches;
-            if (mSceneManager && mBoneSSBO.buffer != VK_NULL_HANDLE) {
-                void* ptr;
-                vmaMapMemory(mAllocator.allocator, mBoneSSBO.allocation, &ptr);
-                size_t boneCount = 0;
-                skinnedBatches = mSceneManager->get_skinned_batches(
-                    static_cast<glm::mat4*>(ptr), kMaxBoneMatrices, boneCount);
-                vmaUnmapMemory(mAllocator.allocator, mBoneSSBO.allocation);
-            }
             // =========================================================
+            RebuildSkeletonMatrixUpload();
+
             // Record and submit commands for this frame
-            // 在 Update 函数末尾找到 record_commands 调用，修改如下：
+            // �?Update 函数末尾找到 record_commands 调用，修改如下：
             record_commands(
                 mCmdBuffers[mFrameIndex],
                 currentOpaque,
                 currentAlpha,
-                colorTarget,           // 现在的 Swapchain 目标
+                colorTarget,           // 现在�?Swapchain 目标
                 depthTarget,
                 mWindow.swapchainExtent,
                 mSceneUBO.buffer,
                 sceneUniforms,
                 mPipeLayout.handle,
                 mSceneDescriptors,
+                mSkeletonMatricesUBO.buffer,
+                mSkeletonMatrices,
+                mSkeletonMatrixOffsets,
                 mMeshPositions,
                 mMeshTexCoords,
                 mMeshNormals,
+                mMeshBoneIndices,
+                mMeshBoneWeights,
                 mMeshIndices,
                 mModel.meshes,
                 mModel.materials,
                 *currentDescs,
                 finalBatches,
                 //mSceneManager ? mSceneManager->get_render_batches() : std::vector<RenderBatch>{},
-                // --- 新增 Bloom 参数 (必须与 rendering.cpp 顺序一致) ---
+                // --- 新增 Bloom 参数 (必须�?rendering.cpp 顺序一�? ---
                 mBlurPipe.handle,              // VkPipeline aBlurPipe
                 mBlurPipeLayout.handle,        // VkPipelineLayout aBlurLayout
                 mCompositePipe.handle,         // VkPipeline aCompositePipe
@@ -1703,7 +1695,7 @@ namespace engine {
                 ImageAndView{ mBlurTempImage.image, mBlurTempImage.view },
                 ImageAndView{ mFinalBloomImage.image, mFinalBloomImage.view },
                 // 【注意这里的变化】：
-                // 原本这里传的是 finalSceneTarget，现在 Composite 必须输出到 mCompositeOutputImage
+                // 原本这里传的�?finalSceneTarget，现�?Composite 必须输出�?mCompositeOutputImage
                 ImageAndView{ mCompositeOutputImage.image, mCompositeOutputImage.view },
                 //finalSceneTarget,
                 clearColor,                    // VkClearColorValue aClearColor
@@ -1713,9 +1705,9 @@ namespace engine {
                 mSpeedPostPipe.handle,
                 mSpeedPostPipeLayout.handle,
                 mSpeedPostDescriptors[mFrameIndex],
-                smoothedSpeedFactor, // 传递我们刚算好的平滑因子
-                finalSceneTarget,    // 极速特效输出到最终
-                // --- 剩下的原有参数 ---
+                smoothedSpeedFactor, // 传递我们刚算好的平滑因�?
+                finalSceneTarget,    // 极速特效输出到最�?
+                // --- 剩下的原有参�?---
                 mPostProcPipe.handle,          // 这里的顺序要核对你的 rendering.cpp
                 mPostDescriptors[mFrameIndex],
                 mPostPipeLayout.handle,
@@ -1727,14 +1719,6 @@ namespace engine {
                 allParticles,
                 mDebugLinePipe.handle,
                 mDebugRenderer,
-                // Skeletal skinning
-                mSkinnedPipe.handle,
-                mSkinnedAlphaPipe.handle,
-                mSkinnedPipeLayout.handle,
-                mBoneDescriptorSet,
-                & mMeshJointIndices,
-                & mMeshJointWeights,
-                & skinnedBatches,
                 mSkyboxPipe.handle,
                 mSkyboxPipeLayout.handle,
                 mSkyboxDescSet,
@@ -1756,7 +1740,7 @@ namespace engine {
 
         void Shutdown() override
         {
-            // 1. 确保 GPU 已经完全停下，再开始拆除资源
+            // 1. 确保 GPU 已经完全停下，再开始拆除资�?
             vkDeviceWaitIdle(mWindow.device);
 
             // (Removed redundant RAII wrapper destructions)
@@ -1795,20 +1779,42 @@ namespace engine {
             return meshIdx;
         }
 
-        // 定义一个结构体用于返回偏移量
+        // 定义一个结构体用于返回偏移�?
         struct ModelAssetOffsets {
             uint32_t baseMeshIdx;
             uint32_t baseMaterialIdx;
+            uint32_t baseSkeletonIdx;
         };
 
-        // 【新增】：专注 GPU 上传的纯粹渲染接口
+        // 【新增】：专注 GPU 上传的纯粹渲染接�?
         ModelAssetOffsets RegisterModelAssets(EngineModel& newModel)
         {
             uint32_t baseTextureIdx = static_cast<uint32_t>(mModelTextures.size());
             uint32_t baseMaterialIdx = static_cast<uint32_t>(mModel.materials.size());
             uint32_t baseMeshIdx = static_cast<uint32_t>(mModel.meshes.size());
+            uint32_t baseNodeIdx = static_cast<uint32_t>(mModel.nodes.size());
+            uint32_t baseSkeletonIdx = static_cast<uint32_t>(mModel.skeletons.size());
 
-            // 1. 上传贴图 (不变)
+            for (auto node : newModel.nodes) {
+                if (node.parentIndex >= 0) node.parentIndex += static_cast<int>(baseNodeIdx);
+                mModel.nodes.push_back(std::move(node));
+            }
+
+            for (auto& skeleton : newModel.skeletons) {
+                if (skeleton.rootNodeIndex >= 0) skeleton.rootNodeIndex += static_cast<int>(baseNodeIdx);
+                for (auto& jointNode : skeleton.jointNodeIndices) jointNode += baseNodeIdx;
+                mModel.skeletons.push_back(std::move(skeleton));
+            }
+
+            for (auto pose : newModel.skeletonPoses) {
+                pose.skeletonIndex += baseSkeletonIdx;
+                mModel.skeletonPoses.push_back(std::move(pose));
+            }
+            for (auto& clip : newModel.animationClips) {
+                clip.skeletonIndex += baseSkeletonIdx;
+                mModel.animationClips.push_back(std::move(clip));
+            }
+            // 1. upload textures
             for (auto const& tex : newModel.textures) {
                 glfwPollEvents();
                 VkFormat fmt = (tex.space == ETextureSpace::srgb) ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
@@ -1816,7 +1822,7 @@ namespace engine {
                 mModelTextureViews.emplace_back(lut::create_image_view_texture2d(mWindow, mModelTextures.back().image, fmt));
             }
 
-            // 2. 追加材质并修复贴图索引 (不变)
+            // 2. 追加材质并修复贴图索�?(不变)
             for (auto mat : newModel.materials) {
                 if (mat.baseColorTexture >= 0) mat.baseColorTexture += baseTextureIdx;
                 if (mat.normalTexture >= 0) mat.normalTexture += baseTextureIdx;
@@ -1830,7 +1836,7 @@ namespace engine {
                 AddOneMaterialDescriptor(mDebugSampler.handle, mDebugMaterialDescriptors, mat);
             }
 
-            // 3. 追加网格并上传 VBO/IBO (不变)
+            // 3. 追加网格并上�?VBO/IBO (不变)
             for (auto mesh : newModel.meshes) {
                 mesh.materialIndex += baseMaterialIdx;
                 mModel.meshes.push_back(mesh);
@@ -1841,11 +1847,12 @@ namespace engine {
             //for (auto& instance : newModel.scenes) {
             for (auto instance : newModel.scenes) {
                 instance.meshIndex += baseMeshIdx;
+                if (instance.skeletonIndex >= 0) instance.skeletonIndex += static_cast<int>(baseSkeletonIdx);
                 mModel.scenes.push_back(instance);
             }
 
             // 把偏移量返回给外面的 SceneManager，让它去配置 ECS
-            return { baseMeshIdx, baseMaterialIdx };
+            return { baseMeshIdx, baseMaterialIdx, baseSkeletonIdx };
         }
         // add an entire model file to the renderer and physics scene
     //    void load_additional_model(const char* path, bool isStatic, float mass = 1.0f, const glm::mat4& initialTransform = glm::mat4(1.0f), bool isCompound = false, bool isC = false)
@@ -1946,78 +1953,6 @@ namespace engine {
         // Allow application to pass in the input system
         void SetInputSystem(engine::InputSystem* sys) { mInputSystem = sys; }
 
-        // Wire up the animation system so we can call register_model
-        void set_animation_system(engine::AnimationSystem* anim) { mAnimationSystem = anim; }
-
-        // Load a skinned GLB and register it with the animation system.
-        // Creates entities with AnimationComponent + SkinComponent.
-        void load_animated_model(const char* path,
-            const glm::mat4& initialTransform = glm::mat4(1.0f))
-        {
-            EngineModel newModel = load_engine_model_glb(path);
-            uint32_t baseTexIdx = static_cast<uint32_t>(mModelTextures.size());
-            uint32_t baseMatIdx = static_cast<uint32_t>(mModel.materials.size());
-            uint32_t baseMeshIdx = static_cast<uint32_t>(mModel.meshes.size());
-
-            // 1. Upload textures
-            for (auto const& tex : newModel.textures) {
-                glfwPollEvents();
-                VkFormat fmt = (tex.space == ETextureSpace::srgb)
-                    ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
-                mModelTextures.emplace_back(lut::load_image_texture2d_from_memory(
-                    tex.pixels.data(), tex.width, tex.height,
-                    mWindow, mCmdPool.handle, mAllocator, fmt));
-                mModelTextureViews.emplace_back(lut::create_image_view_texture2d(
-                    mWindow, mModelTextures.back().image, fmt));
-            }
-
-            // 2. Upload materials
-            for (auto mat : newModel.materials) {
-                if (mat.baseColorTexture >= 0) mat.baseColorTexture += baseTexIdx;
-                if (mat.normalTexture >= 0) mat.normalTexture += baseTexIdx;
-                if (mat.metalRoughTexture >= 0) mat.metalRoughTexture += baseTexIdx;
-                if (mat.occlusionTexture >= 0) mat.occlusionTexture += baseTexIdx;
-                if (mat.emissiveTexture >= 0) mat.emissiveTexture += baseTexIdx;
-                if (mat.alphaMaskTexture >= 0) mat.alphaMaskTexture += baseTexIdx;
-                mModel.materials.push_back(mat);
-                AddOneMaterialDescriptor(mDefaultSampler.handle, mMaterialDescriptors, mat);
-                AddOneMaterialDescriptor(mDebugSampler.handle, mDebugMaterialDescriptors, mat);
-            }
-
-            // 3. Upload meshes (position/normal/texcoord + skinning buffers)
-            for (auto mesh : newModel.meshes) {
-                mesh.materialIndex += baseMatIdx;
-                mModel.meshes.push_back(mesh);
-                uint32_t meshIdx = static_cast<uint32_t>(mModel.meshes.size() - 1);
-                UploadSingleMesh(mesh);
-                if (mesh.isSkinned) {
-                    UploadSkinningBuffers(mesh, meshIdx);
-                }
-            }
-
-            // 4. Apply initial transform
-            for (auto& inst : newModel.scenes)
-                inst.transform = initialTransform * inst.transform;
-
-            // 5. Register with AnimationSystem and create ECS entities
-            uint32_t baseSkinIdx = 0, baseAnimIdx = 0;
-            if (mAnimationSystem) {
-                auto reg = mAnimationSystem->register_model(newModel);
-                baseSkinIdx = reg.baseSkinIndex;
-                baseAnimIdx = reg.baseAnimIndex;
-            }
-
-            if (mSceneManager)
-                mSceneManager->load_animated_model(newModel, baseMeshIdx, baseMatIdx,
-                    baseSkinIdx, baseAnimIdx);
-
-            // 6. Merge scenes into global model
-            for (auto& inst : newModel.scenes) {
-                inst.meshIndex += baseMeshIdx;
-                mModel.scenes.push_back(inst);
-            }
-        }
-
         void SetUserState(UserState* state) { this->mState = state; }
         void SetAudioSystem(AudioSystem* audioSystem) { this->mAudioSystem = audioSystem; }
         AudioSystem* GetAudioSystem() const { return mAudioSystem; }
@@ -2028,6 +1963,28 @@ namespace engine {
 
         engine::InputSystem* mInputSystem = nullptr;
 
+        void RebuildSkeletonMatrixUpload()
+        {
+            update_model_skeleton_poses(mModel);
+            mSkeletonMatrices.clear();
+            mSkeletonMatrixOffsets.assign(mModel.skeletons.size(), cfg::kMaxGpuBoneMatrices);
+
+            for (size_t i = 0; i < mModel.skeletonPoses.size(); ++i) {
+                const auto& pose = mModel.skeletonPoses[i];
+                if (pose.skeletonIndex >= mSkeletonMatrixOffsets.size()) continue;
+                if (pose.boneMatrices.empty()) continue;
+                if (mSkeletonMatrices.size() + pose.boneMatrices.size() > cfg::kMaxGpuBoneMatrices) continue;
+
+                mSkeletonMatrixOffsets[pose.skeletonIndex] = static_cast<uint32_t>(mSkeletonMatrices.size());
+                for (const glm::mat4& boneMatrix : pose.boneMatrices) {
+                    mSkeletonMatrices.push_back(boneMatrix);
+                }
+            }
+
+            if (mSkeletonMatrices.empty()) {
+                mSkeletonMatrices.push_back(glm::mat4(1.0f));
+            }
+        }
         bool TryGetDebugBodyID(flecs::entity entity, uint32_t& outBodyID) const
         {
             if (entity.has<PhysicsBody>()) {
@@ -2046,8 +2003,8 @@ namespace engine {
         // (Bloom/Composite members moved below mAllocator for correct RAII destruction order)
         
         VkDescriptorSet BuildBlurDesc(VkImageView inputView) {
-            // 模糊阶段只需要 1 个输入纹理 (binding 0)
-            // 我们可以复用 mPostLayout，但如果报错，建议创建一个专用的单纹理 Layout
+            // 模糊阶段只需�?1 个输入纹�?(binding 0)
+            // 我们可以复用 mPostLayout，但如果报错，建议创建一个专用的单纹�?Layout
             VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, mPostLayout.handle);
 
             VkDescriptorImageInfo ii{};
@@ -2112,26 +2069,26 @@ namespace engine {
             VkImageView normView = mDefaultNormalView.handle;
             if (mat.normalTexture >= 0) normView = mModelTextureViews[mat.normalTexture].handle;
 
-            // --- 【关键1：提取自发光图】 ---
+            // --- 【关�?：提取自发光图�?---
             VkImageView emissiveView = mDefaultBlackView.handle;
             if (mat.emissiveTexture >= 0) emissiveView = mModelTextureViews[mat.emissiveTexture].handle;
 
-            // --- 【关键2：数组大小必须是 4 ！！！】 ---
+            // --- 【关�?：数组大小必须是 4 ！！！�?---
             VkDescriptorImageInfo imgs[4]{};
             imgs[0] = { sampler, baseView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
             imgs[1] = { sampler, mrView,   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
             imgs[2] = { sampler, normView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-            imgs[3] = { sampler, emissiveView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL }; // 绑定第 4 张
+            imgs[3] = { sampler, emissiveView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL }; // 绑定�?4 �?
 
-            VkWriteDescriptorSet w[4]{}; // --- 【关键3：数组大小必须是 4 ！！！】 ---
-            for (int j = 0; j < 4; ++j) { // --- 【关键4：循环条件改成 j < 4 ！！！】 ---
+            VkWriteDescriptorSet w[4]{}; // --- 【关�?：数组大小必须是 4 ！！！�?---
+            for (int j = 0; j < 4; ++j) { // --- 【关�?：循环条件改�?j < 4 ！！！�?---
                 w[j].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                 w[j].dstSet = ds; w[j].dstBinding = (uint32_t)j;
                 w[j].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
                 w[j].descriptorCount = 1; w[j].pImageInfo = &imgs[j];
             }
 
-            // --- 【关键5：更新数量改成 4 ！！！】 ---
+            // --- 【关�?：更新数量改�?4 ！！！�?---
             vkUpdateDescriptorSets(mWindow.device, 4, w, 0, nullptr);
             out.emplace_back(ds);
         }
@@ -2143,235 +2100,189 @@ namespace engine {
                 mWindow, mDescPool.handle, mObjectLayout.handle);
 
             VkImageView grayView = mDefaultGrayView.handle;
-            VkDescriptorImageInfo imgs[3]{};
+            VkDescriptorImageInfo imgs[4]{};
             imgs[0] = { sampler, grayView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
             imgs[1] = { sampler, grayView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
             imgs[2] = { sampler, mDefaultNormalView.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            imgs[3] = { sampler, mDefaultBlackView.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
 
-            VkWriteDescriptorSet w[3]{};
-            for (int j = 0; j < 3; ++j) {
+            VkWriteDescriptorSet w[4]{};
+            for (int j = 0; j < 4; ++j) {
                 w[j].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                 w[j].dstSet = ds; w[j].dstBinding = (uint32_t)j;
                 w[j].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
                 w[j].descriptorCount = 1; w[j].pImageInfo = &imgs[j];
             }
-            vkUpdateDescriptorSets(mWindow.device, 3, w, 0, nullptr);
+            vkUpdateDescriptorSets(mWindow.device, 4, w, 0, nullptr);
             out.emplace_back(ds);
         }
 
+        void InitSkybox()
+        {
+            stbi_set_flip_vertically_on_load(0);
+            int fullWidth = 0, fullHeight = 0, channels = 0;
+            stbi_uc* pixels = stbi_load("Assets/Skybox/StandardCubeMap.png", &fullWidth, &fullHeight, &channels, STBI_rgb_alpha);
+            if (!pixels) throw std::runtime_error("Failed to load skybox cubemap cross image");
 
+            uint32_t faceW = static_cast<uint32_t>(fullWidth / 4);
+            uint32_t faceH = static_cast<uint32_t>(fullHeight / 3);
+            VkDeviceSize layerSize = static_cast<VkDeviceSize>(faceW) * faceH * 4;
+            VkDeviceSize imageSize = layerSize * 6;
 
+            lut::Buffer stgBuf = lut::create_buffer(mAllocator, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+            void* data = nullptr;
+            vmaMapMemory(mAllocator.allocator, stgBuf.allocation, &data);
+            stbi_uc* dst = static_cast<stbi_uc*>(data);
 
-        // 【新增】：加载并初始化整个天空盒
-void InitSkybox() {
-    // 1. 加载单张十字天空盒图片
-    stbi_set_flip_vertically_on_load(0);
-    int fullWidth, fullHeight, channels;
-    // 换成你的十字图路径
-    //stbi_uc* pixels = stbi_load("Assets/Skybox/skybox.png", &fullWidth, &fullHeight, &channels, STBI_rgb_alpha);
-    stbi_uc* pixels = stbi_load("Assets/Skybox/StandardCubeMap.png", &fullWidth, &fullHeight, &channels, STBI_rgb_alpha);
-    if (!pixels) throw std::runtime_error("Failed to load cross skybox image!");
+            struct FaceCoord { int col, row; };
+            FaceCoord coords[6] = {
+                {2, 1}, {0, 1}, {1, 0}, {1, 2}, {1, 1}, {3, 1}
+            };
 
-    // 计算单个面的大小 (十字图是 4 列 3 行)
-    uint32_t faceW = fullWidth / 4;
-    uint32_t faceH = fullHeight / 3;
-    VkDeviceSize layerSize = faceW * faceH * 4;
-    VkDeviceSize imageSize = layerSize * 6;
+            for (int i = 0; i < 6; ++i) {
+                int startX = coords[i].col * static_cast<int>(faceW);
+                int startY = coords[i].row * static_cast<int>(faceH);
+                stbi_uc* faceDst = dst + i * layerSize;
+                for (uint32_t y = 0; y < faceH; ++y) {
+                    stbi_uc* srcRow = pixels + ((startY + static_cast<int>(y)) * fullWidth + startX) * 4;
+                    stbi_uc* dstRow = faceDst + y * faceW * 4;
+                    std::memcpy(dstRow, srcRow, faceW * 4);
+                }
+            }
 
-    // 2. 创建 Staging Buffer 并手工“切图”
-    lut::Buffer stgBuf = lut::create_buffer(mAllocator, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-    void* data;
-    vmaMapMemory(mAllocator.allocator, stgBuf.allocation, &data);
-    stbi_uc* dst = static_cast<stbi_uc*>(data);
+            vmaUnmapMemory(mAllocator.allocator, stgBuf.allocation);
+            stbi_image_free(pixels);
 
-   
+            VkImageCreateInfo imgInfo{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+            imgInfo.imageType = VK_IMAGE_TYPE_2D;
+            imgInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+            imgInfo.extent = { faceW, faceH, 1 };
+            imgInfo.mipLevels = 1;
+            imgInfo.arrayLayers = 6;
+            imgInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+            imgInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+            imgInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+            imgInfo.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 
-// 定义 Vulkan 6个面在十字图中的 (列, 行) 坐标
-    // 顺序必须是: +X(右), -X(左), +Y(上), -Y(下), +Z(前), -Z(后)
-    struct FaceCoord { int col, row; };
-    FaceCoord coords[6] = {
-        {2, 1}, // Right
-        {0, 1}, // Left
-        {1, 0}, // Top
-        {1, 2}, // Bottom
-        {1, 1}, // Front
-        {3, 1}  // Back
-    };
-    // 逐个面、逐行拷贝像素
-    for (int i = 0; i < 6; i++) {
-        int startX = coords[i].col * faceW;
-        int startY = coords[i].row * faceH;
-        stbi_uc* faceDst = dst + (i * layerSize);
+            VmaAllocationCreateInfo allocInfo{};
+            allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+            VkImage rawImg = VK_NULL_HANDLE;
+            VmaAllocation rawAlloc = VK_NULL_HANDLE;
+            vmaCreateImage(mAllocator.allocator, &imgInfo, &allocInfo, &rawImg, &rawAlloc, nullptr);
+            mSkyboxTex = lut::Image(mAllocator.allocator, rawImg, rawAlloc);
 
-        for (uint32_t y = 0; y < faceH; y++) {
-            stbi_uc* srcRow = pixels + ((startY + y) * fullWidth + startX) * 4;
-            stbi_uc* dstRow = faceDst + (y * faceW) * 4;
-            memcpy(dstRow, srcRow, faceW * 4);
+            VkCommandBuffer cmd = lut::alloc_command_buffer(mWindow, mCmdPool.handle);
+            VkCommandBufferBeginInfo bi{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+            bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            vkBeginCommandBuffer(cmd, &bi);
+
+            VkImageSubresourceRange range{};
+            range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            range.levelCount = 1;
+            range.layerCount = 6;
+
+            lut::image_barrier(cmd, mSkyboxTex.image,
+                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_IMAGE_LAYOUT_UNDEFINED,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                range);
+
+            std::vector<VkBufferImageCopy> regions;
+            regions.reserve(6);
+            for (uint32_t i = 0; i < 6; ++i) {
+                VkBufferImageCopy region{};
+                region.bufferOffset = layerSize * i;
+                region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                region.imageSubresource.baseArrayLayer = i;
+                region.imageSubresource.layerCount = 1;
+                region.imageExtent = imgInfo.extent;
+                regions.push_back(region);
+            }
+            vkCmdCopyBufferToImage(cmd, stgBuf.buffer, mSkyboxTex.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 6, regions.data());
+
+            lut::image_barrier(cmd, mSkyboxTex.image,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                range);
+
+            vkEndCommandBuffer(cmd);
+            VkSubmitInfo si{ VK_STRUCTURE_TYPE_SUBMIT_INFO };
+            si.commandBufferCount = 1;
+            si.pCommandBuffers = &cmd;
+            vkQueueSubmit(mWindow.graphicsQueue, 1, &si, VK_NULL_HANDLE);
+            vkQueueWaitIdle(mWindow.graphicsQueue);
+
+            VkImageViewCreateInfo viewInfo{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+            viewInfo.image = mSkyboxTex.image;
+            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+            viewInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+            viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            viewInfo.subresourceRange.levelCount = 1;
+            viewInfo.subresourceRange.layerCount = 6;
+            VkImageView rawView = VK_NULL_HANDLE;
+            vkCreateImageView(mWindow.device, &viewInfo, nullptr, &rawView);
+            mSkyboxView = lut::ImageView(mWindow.device, rawView);
+
+            float skyboxVertices[] = {
+                -1.0f,  1.0f, -1.0f,  -1.0f, -1.0f, -1.0f,   1.0f, -1.0f, -1.0f,
+                 1.0f, -1.0f, -1.0f,   1.0f,  1.0f, -1.0f,  -1.0f,  1.0f, -1.0f,
+                -1.0f, -1.0f,  1.0f,  -1.0f, -1.0f, -1.0f,  -1.0f,  1.0f, -1.0f,
+                -1.0f,  1.0f, -1.0f,  -1.0f,  1.0f,  1.0f,  -1.0f, -1.0f,  1.0f,
+                 1.0f, -1.0f, -1.0f,   1.0f, -1.0f,  1.0f,   1.0f,  1.0f,  1.0f,
+                 1.0f,  1.0f,  1.0f,   1.0f,  1.0f, -1.0f,   1.0f, -1.0f, -1.0f,
+                -1.0f, -1.0f,  1.0f,  -1.0f,  1.0f,  1.0f,   1.0f,  1.0f,  1.0f,
+                 1.0f,  1.0f,  1.0f,   1.0f, -1.0f,  1.0f,  -1.0f, -1.0f,  1.0f,
+                -1.0f,  1.0f, -1.0f,   1.0f,  1.0f, -1.0f,   1.0f,  1.0f,  1.0f,
+                 1.0f,  1.0f,  1.0f,  -1.0f,  1.0f,  1.0f,  -1.0f,  1.0f, -1.0f,
+                -1.0f, -1.0f, -1.0f,  -1.0f, -1.0f,  1.0f,   1.0f, -1.0f, -1.0f,
+                 1.0f, -1.0f, -1.0f,  -1.0f, -1.0f,  1.0f,   1.0f, -1.0f,  1.0f
+            };
+            VkDeviceSize vboSize = sizeof(skyboxVertices);
+            mSkyboxVBO = lut::create_buffer(mAllocator, vboSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
+            lut::Buffer stgVbo = lut::create_buffer(mAllocator, vboSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+            void* vboData = nullptr;
+            vmaMapMemory(mAllocator.allocator, stgVbo.allocation, &vboData);
+            std::memcpy(vboData, skyboxVertices, static_cast<size_t>(vboSize));
+            vmaUnmapMemory(mAllocator.allocator, stgVbo.allocation);
+
+            VkCommandBuffer cmdVbo = lut::alloc_command_buffer(mWindow, mCmdPool.handle);
+            VkCommandBufferBeginInfo biVbo{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+            biVbo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            vkBeginCommandBuffer(cmdVbo, &biVbo);
+            VkBufferCopy copyRegion{};
+            copyRegion.size = vboSize;
+            vkCmdCopyBuffer(cmdVbo, stgVbo.buffer, mSkyboxVBO.buffer, 1, &copyRegion);
+            lut::buffer_barrier(cmdVbo, mSkyboxVBO.buffer,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT);
+            vkEndCommandBuffer(cmdVbo);
+            VkSubmitInfo siVbo{ VK_STRUCTURE_TYPE_SUBMIT_INFO };
+            siVbo.commandBufferCount = 1;
+            siVbo.pCommandBuffers = &cmdVbo;
+            vkQueueSubmit(mWindow.graphicsQueue, 1, &siVbo, VK_NULL_HANDLE);
+            vkQueueWaitIdle(mWindow.graphicsQueue);
+
+            mSkyboxDescLayout = create_skybox_descriptor_layout(mWindow);
+            mSkyboxPipeLayout = create_skybox_pipeline_layout(mWindow, mSkyboxDescLayout.handle);
+            mSkyboxPipe = create_skybox_pipeline(mWindow, mSkyboxPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+            mSkyboxDescSet = lut::alloc_desc_set(mWindow, mDescPool.handle, mSkyboxDescLayout.handle);
+
+            VkDescriptorBufferInfo uboInfo{ mSceneUBO.buffer, 0, VK_WHOLE_SIZE };
+            VkDescriptorImageInfo imgDesc{ mDefaultSampler.handle, mSkyboxView.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            VkWriteDescriptorSet writes[2]{};
+            writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writes[0].dstSet = mSkyboxDescSet;
+            writes[0].dstBinding = 0;
+            writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            writes[0].descriptorCount = 1;
+            writes[0].pBufferInfo = &uboInfo;
+            writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writes[1].dstSet = mSkyboxDescSet;
+            writes[1].dstBinding = 1;
+            writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            writes[1].descriptorCount = 1;
+            writes[1].pImageInfo = &imgDesc;
+            vkUpdateDescriptorSets(mWindow.device, 2, writes, 0, nullptr);
         }
-    }
-
-    vmaUnmapMemory(mAllocator.allocator, stgBuf.allocation);
-    stbi_image_free(pixels); // 释放原始图片内存
-
-    // ==========================================
-    // ⚠️ 注意：接下来的第 3 步创建 Image 时，
-    // imgInfo.extent 必须改成单个面的尺寸：
-    // imgInfo.extent = { faceW, faceH, 1 }; 
-    // ==========================================
-
-  // 3. 创建 Cube Image (必须带 VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT)
-    VkImageCreateInfo imgInfo{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
-    imgInfo.imageType = VK_IMAGE_TYPE_2D;
-    imgInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
-
-    // 【致命修复】：把原来的 width 和 height 换成刚才算好的 faceW 和 faceH！
-    // 因为对于 Vulkan 的 Cube Image 来说，它需要知道的是【单个面】的尺寸！
-    imgInfo.extent = { faceW, faceH, 1 };
-
-    imgInfo.mipLevels = 1;
-    imgInfo.arrayLayers = 6;
-  
-    imgInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-    imgInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-    imgInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-    imgInfo.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-
-    VmaAllocationCreateInfo allocInfo{ .usage = VMA_MEMORY_USAGE_GPU_ONLY };
-    VkImage rawImg; VmaAllocation rawAlloc;
-    vmaCreateImage(mAllocator.allocator, &imgInfo, &allocInfo, &rawImg, &rawAlloc, nullptr);
-    mSkyboxTex = lut::Image(mAllocator.allocator, rawImg, rawAlloc);
-
-    // 4. 录制命令拷贝数据
-    VkCommandBuffer cmd = lut::alloc_command_buffer(mWindow, mCmdPool.handle);
-    VkCommandBufferBeginInfo bi{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
-    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmd, &bi);
-
-    // 【修复】：显式创建 Range 结构体
-    VkImageSubresourceRange range{};
-    range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    range.baseMipLevel = 0;
-    range.levelCount = 1;
-    range.baseArrayLayer = 0;
-    range.layerCount = 6;
-
-    // 第一次屏障：UNDEFINED -> TRANSFER_DST
-    lut::image_barrier(cmd, mSkyboxTex.image,
-        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_IMAGE_LAYOUT_UNDEFINED,
-        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        range);
-    
-    std::vector<VkBufferImageCopy> regions;
-    for (uint32_t i = 0; i < 6; i++) {
-        VkBufferImageCopy region{};
-        region.bufferOffset = layerSize * i;
-        region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        region.imageSubresource.baseArrayLayer = i;
-        region.imageSubresource.layerCount = 1;
-        region.imageExtent = imgInfo.extent;
-        regions.push_back(region);
-    }
-    vkCmdCopyBufferToImage(cmd, stgBuf.buffer, mSkyboxTex.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 6, regions.data());
-
-    // 第二次屏障：TRANSFER_DST -> SHADER_READ_ONLY
-    lut::image_barrier(cmd, mSkyboxTex.image,
-        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        range);
-
-    vkEndCommandBuffer(cmd);
-
-    VkSubmitInfo si{ VK_STRUCTURE_TYPE_SUBMIT_INFO };
-    si.commandBufferCount = 1; si.pCommandBuffers = &cmd;
-    vkQueueSubmit(mWindow.graphicsQueue, 1, &si, VK_NULL_HANDLE);
-    vkQueueWaitIdle(mWindow.graphicsQueue);
-
-    // 5. 创建 Cube ImageView
-    VkImageViewCreateInfo viewInfo{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
-    viewInfo.image = mSkyboxTex.image;
-    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE; // 关键！
-    viewInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
-    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    viewInfo.subresourceRange.levelCount = 1;
-    viewInfo.subresourceRange.layerCount = 6;
-    VkImageView rawView;
-    vkCreateImageView(mWindow.device, &viewInfo, nullptr, &rawView);
-    mSkyboxView = lut::ImageView(mWindow.device, rawView);
-
-    // 6. 创建 1x1x1 的极简 VBO
-    float skyboxVertices[] = {
-        -1.0f,  1.0f, -1.0f,  -1.0f, -1.0f, -1.0f,   1.0f, -1.0f, -1.0f,
-         1.0f, -1.0f, -1.0f,   1.0f,  1.0f, -1.0f,  -1.0f,  1.0f, -1.0f,
-        -1.0f, -1.0f,  1.0f,  -1.0f, -1.0f, -1.0f,  -1.0f,  1.0f, -1.0f,
-        -1.0f,  1.0f, -1.0f,  -1.0f,  1.0f,  1.0f,  -1.0f, -1.0f,  1.0f,
-         1.0f, -1.0f, -1.0f,   1.0f, -1.0f,  1.0f,   1.0f,  1.0f,  1.0f,
-         1.0f,  1.0f,  1.0f,   1.0f,  1.0f, -1.0f,   1.0f, -1.0f, -1.0f,
-        -1.0f, -1.0f,  1.0f,  -1.0f,  1.0f,  1.0f,   1.0f,  1.0f,  1.0f,
-         1.0f,  1.0f,  1.0f,   1.0f, -1.0f,  1.0f,  -1.0f, -1.0f,  1.0f,
-        -1.0f,  1.0f, -1.0f,   1.0f,  1.0f, -1.0f,   1.0f,  1.0f,  1.0f,
-         1.0f,  1.0f,  1.0f,  -1.0f,  1.0f,  1.0f,  -1.0f,  1.0f, -1.0f,
-        -1.0f, -1.0f, -1.0f,  -1.0f, -1.0f,  1.0f,   1.0f, -1.0f, -1.0f,
-         1.0f, -1.0f, -1.0f,  -1.0f, -1.0f,  1.0f,   1.0f, -1.0f,  1.0f
-    };
-    VkDeviceSize vboSize = sizeof(skyboxVertices);
-
-    mSkyboxVBO = lut::create_buffer(mAllocator, vboSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
-    lut::Buffer stgVbo = lut::create_buffer(mAllocator, vboSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-
-    void* vboData;
-    vmaMapMemory(mAllocator.allocator, stgVbo.allocation, &vboData);
-    memcpy(vboData, skyboxVertices, (size_t)vboSize);
-    vmaUnmapMemory(mAllocator.allocator, stgVbo.allocation);
-
-    // 【关键修复】：正式将顶点数据推送到 GPU
-    VkCommandBuffer cmdVbo = lut::alloc_command_buffer(mWindow, mCmdPool.handle);
-    VkCommandBufferBeginInfo biVbo{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
-    biVbo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmdVbo, &biVbo);
-
-    VkBufferCopy copyRegion{};
-    copyRegion.size = vboSize;
-    vkCmdCopyBuffer(cmdVbo, stgVbo.buffer, mSkyboxVBO.buffer, 1, &copyRegion);
-
-    lut::buffer_barrier(cmdVbo, mSkyboxVBO.buffer,
-        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-        VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT);
-
-    vkEndCommandBuffer(cmdVbo);
-
-    VkSubmitInfo siVbo{ VK_STRUCTURE_TYPE_SUBMIT_INFO };
-    siVbo.commandBufferCount = 1;
-    siVbo.pCommandBuffers = &cmdVbo;
-    vkQueueSubmit(mWindow.graphicsQueue, 1, &siVbo, VK_NULL_HANDLE);
-    vkQueueWaitIdle(mWindow.graphicsQueue);
-    
-    // 7. 在 setup.cpp 中获取并调用 Layout 和 Pipeline (见下一步)
-    mSkyboxDescLayout = create_skybox_descriptor_layout(mWindow);
-    mSkyboxPipeLayout = create_skybox_pipeline_layout(mWindow, mSkyboxDescLayout.handle);
-    mSkyboxPipe = create_skybox_pipeline(mWindow, mSkyboxPipeLayout.handle, mWindow.swapchainFormat);
-
-    // 8. 填充描述符
-    mSkyboxDescSet = lut::alloc_desc_set(mWindow, mDescPool.handle, mSkyboxDescLayout.handle);
-    VkDescriptorBufferInfo uboInfo{ mSceneUBO.buffer, 0, VK_WHOLE_SIZE };
-// --- 修改为： ---
-    VkDescriptorImageInfo descImgInfo{ mDefaultSampler.handle, mSkyboxView.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-
-    VkWriteDescriptorSet writes[2]{};
-    writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writes[0].dstSet = mSkyboxDescSet; writes[0].dstBinding = 0;
-    writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    writes[0].descriptorCount = 1; writes[0].pBufferInfo = &uboInfo;
-
-    writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writes[1].dstSet = mSkyboxDescSet; writes[1].dstBinding = 1;
-    writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    writes[1].descriptorCount = 1; 
-    writes[1].pImageInfo = &descImgInfo; // <--- 名字换成 descImgInfo！
-
-    vkUpdateDescriptorSets(mWindow.device, 2, writes, 0, nullptr);
-}
-
-
         // upload a single mesh to GPU, appending to the mesh buffer vectors
         void UploadSingleMesh(const EngineMesh& mesh)
         {
@@ -2382,7 +2293,22 @@ void InitSkybox() {
 
             VkDeviceSize posSz  = mesh.positions.size() * sizeof(glm::vec3);
             VkDeviceSize texSz  = mesh.texcoords.size() * sizeof(glm::vec2);
+            std::vector<glm::uvec4> defaultBoneIndices;
+            std::vector<glm::vec4> defaultBoneWeights;
+            const std::vector<glm::uvec4>* boneIndices = &mesh.boneIndices;
+            const std::vector<glm::vec4>* boneWeights = &mesh.boneWeights;
+            if (boneIndices->size() != mesh.positions.size()) {
+                defaultBoneIndices.assign(mesh.positions.size(), glm::uvec4(0, 0, 0, 0));
+                boneIndices = &defaultBoneIndices;
+            }
+            if (boneWeights->size() != mesh.positions.size()) {
+                defaultBoneWeights.assign(mesh.positions.size(), glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+                boneWeights = &defaultBoneWeights;
+            }
+
             VkDeviceSize normSz = mesh.normals.size()   * sizeof(glm::vec3);
+            VkDeviceSize boneIdxSz = boneIndices->size() * sizeof(glm::uvec4);
+            VkDeviceSize boneWeightSz = boneWeights->size() * sizeof(glm::vec4);
             VkDeviceSize idxSz  = mesh.indices.size()   * sizeof(std::uint32_t);
 
             auto mkGpu = [&](VkDeviceSize sz, VkBufferUsageFlags usage) {
@@ -2393,6 +2319,8 @@ void InitSkybox() {
             mMeshPositions.emplace_back(mkGpu(posSz, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT));
             mMeshTexCoords.emplace_back(mkGpu(texSz, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT));
             mMeshNormals.emplace_back(mkGpu(normSz, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT));
+            mMeshBoneIndices.emplace_back(mkGpu(boneIdxSz, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT));
+            mMeshBoneWeights.emplace_back(mkGpu(boneWeightSz, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT));
             mMeshIndices.emplace_back(mkGpu(idxSz, VK_BUFFER_USAGE_INDEX_BUFFER_BIT));
 
             auto mkStg = [&](VkDeviceSize sz) {
@@ -2401,7 +2329,7 @@ void InitSkybox() {
                     VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
             };
             lut::Buffer ps = mkStg(posSz), ts = mkStg(texSz),
-                        ns = mkStg(normSz), is = mkStg(idxSz);
+                        ns = mkStg(normSz), bis = mkStg(boneIdxSz), bws = mkStg(boneWeightSz), is = mkStg(idxSz);
 
             auto up = [&](lut::Buffer& b, const void* src, VkDeviceSize sz) {
                 void* ptr;
@@ -2412,6 +2340,8 @@ void InitSkybox() {
             up(ps, mesh.positions.data(), posSz);
             up(ts, mesh.texcoords.data(), texSz);
             up(ns, mesh.normals.data(),   normSz);
+            up(bis, boneIndices->data(), boneIdxSz);
+            up(bws, boneWeights->data(), boneWeightSz);
             up(is, mesh.indices.data(),   idxSz);
 
             auto cpy = [&](lut::Buffer& src, lut::Buffer& dst, VkDeviceSize sz) {
@@ -2421,6 +2351,8 @@ void InitSkybox() {
             cpy(ps, mMeshPositions.back(), posSz);
             cpy(ts, mMeshTexCoords.back(), texSz);
             cpy(ns, mMeshNormals.back(),   normSz);
+            cpy(bis, mMeshBoneIndices.back(), boneIdxSz);
+            cpy(bws, mMeshBoneWeights.back(), boneWeightSz);
             cpy(is, mMeshIndices.back(),   idxSz);
 
             lut::buffer_barrier(uploadCmd, mMeshPositions.back().buffer,
@@ -2430,6 +2362,12 @@ void InitSkybox() {
                 VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
                 VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT, VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT);
             lut::buffer_barrier(uploadCmd, mMeshNormals.back().buffer,
+                VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT, VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT);
+            lut::buffer_barrier(uploadCmd, mMeshBoneIndices.back().buffer,
+                VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT, VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT);
+            lut::buffer_barrier(uploadCmd, mMeshBoneWeights.back().buffer,
                 VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
                 VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT, VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT);
             lut::buffer_barrier(uploadCmd, mMeshIndices.back().buffer,
@@ -2447,69 +2385,7 @@ void InitSkybox() {
             vkQueueWaitIdle(mWindow.graphicsQueue);
 
             glfwPollEvents(); // 保持窗口心跳
-        } // 函数结束，旧的 ps, ts 等变成空壳被安全销毁，真正的显存已经归 vector 管了
-
-        void UploadSkinningBuffers(const EngineMesh& mesh, uint32_t meshIdx)
-        {
-            if (mesh.jointIndices.empty() || mesh.jointWeights.empty()) return;
-
-            VkCommandBuffer uploadCmd = lut::alloc_command_buffer(mWindow, mCmdPool.handle);
-            VkCommandBufferBeginInfo bi{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
-            bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-            vkBeginCommandBuffer(uploadCmd, &bi);
-
-            VkDeviceSize jSz = mesh.jointIndices.size() * sizeof(glm::uvec4);
-            VkDeviceSize wSz = mesh.jointWeights.size() * sizeof(glm::vec4);
-
-            auto mkGpu = [&](VkDeviceSize sz, VkBufferUsageFlags usage) {
-                return lut::create_buffer(mAllocator, sz,
-                    usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                    VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
-                };
-            auto mkStg = [&](VkDeviceSize sz) {
-                return lut::create_buffer(mAllocator, sz,
-                    VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-                };
-
-            lut::Buffer jGpu = mkGpu(jSz, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-            lut::Buffer wGpu = mkGpu(wSz, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-            lut::Buffer jStg = mkStg(jSz);
-            lut::Buffer wStg = mkStg(wSz);
-
-            auto up = [&](lut::Buffer& b, const void* src, VkDeviceSize sz) {
-                void* ptr;
-                vmaMapMemory(mAllocator.allocator, b.allocation, &ptr);
-                std::memcpy(ptr, src, static_cast<std::size_t>(sz));
-                vmaUnmapMemory(mAllocator.allocator, b.allocation);
-                };
-            up(jStg, mesh.jointIndices.data(), jSz);
-            up(wStg, mesh.jointWeights.data(), wSz);
-
-            VkBufferCopy cj{ 0, 0, jSz }, cw{ 0, 0, wSz };
-            vkCmdCopyBuffer(uploadCmd, jStg.buffer, jGpu.buffer, 1, &cj);
-            vkCmdCopyBuffer(uploadCmd, wStg.buffer, wGpu.buffer, 1, &cw);
-
-            lut::buffer_barrier(uploadCmd, jGpu.buffer,
-                VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT, VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT);
-            lut::buffer_barrier(uploadCmd, wGpu.buffer,
-                VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT, VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT);
-
-            vkEndCommandBuffer(uploadCmd);
-
-            VkCommandBufferSubmitInfo ci{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO };
-            ci.commandBuffer = uploadCmd;
-            VkSubmitInfo2 si{ VK_STRUCTURE_TYPE_SUBMIT_INFO_2 };
-            si.commandBufferInfoCount = 1; si.pCommandBufferInfos = &ci;
-            vkQueueSubmit2(mWindow.graphicsQueue, 1, &si, VK_NULL_HANDLE);
-            vkQueueWaitIdle(mWindow.graphicsQueue);
-
-            mMeshJointIndices.emplace(meshIdx, std::move(jGpu));
-            mMeshJointWeights.emplace(meshIdx, std::move(wGpu));
-            glfwPollEvents();
-        }
+        } // 函数结束，旧�?ps, ts 等变成空壳被安全销毁，真正的显存已经归 vector 管了
 
         VkDescriptorSet BuildPostDesc(VkImageView imageView, VkBuffer mosaicBuf)
         {
@@ -2591,12 +2467,9 @@ void InitSkybox() {
         lut::ImageView mDefaultBlackView;
 
         lut::Image     mDefaultNormalTex;  // 【新增】：正确的法线占位图
-        lut::ImageView mDefaultNormalView; // 【新增】
+        lut::ImageView mDefaultNormalView; // 【新增�?
 
 
-        // =========================================================
-        // 天空盒资源 (Skybox Resources)
-        // =========================================================
         lut::Image               mSkyboxTex;
         lut::ImageView           mSkyboxView;
         lut::Buffer              mSkyboxVBO;
@@ -2604,7 +2477,6 @@ void InitSkybox() {
         lut::PipelineLayout      mSkyboxPipeLayout;
         lut::Pipeline            mSkyboxPipe;
         VkDescriptorSet          mSkyboxDescSet = VK_NULL_HANDLE;
-
         lut::Pipeline mThumbnailAlphaPipe;
 
         // Samplers
@@ -2615,23 +2487,15 @@ void InitSkybox() {
         std::vector<lut::Buffer> mMeshPositions;
         std::vector<lut::Buffer> mMeshTexCoords;
         std::vector<lut::Buffer> mMeshNormals;
+        std::vector<lut::Buffer> mMeshBoneIndices;
+        std::vector<lut::Buffer> mMeshBoneWeights;
         std::vector<lut::Buffer> mMeshIndices;
-
-        // Skinning vertex buffers 
-        std::unordered_map<uint32_t, lut::Buffer> mMeshJointIndices;
-        std::unordered_map<uint32_t, lut::Buffer> mMeshJointWeights;
-
-        // Skeletal animation / skinning GPU resources
-        static constexpr size_t kMaxBoneMatrices = 16 * 128; // 16 entities * 128 joints
-        lut::Buffer              mBoneSSBO;           // host-visible, updated each frame
-        lut::DescriptorSetLayout mBoneLayout;
-        VkDescriptorSet          mBoneDescriptorSet = VK_NULL_HANDLE;
-        lut::PipelineLayout      mSkinnedPipeLayout;
-        lut::Pipeline            mSkinnedPipe;
-        lut::Pipeline            mSkinnedAlphaPipe;
 
         // UBOs
         lut::Buffer              mSceneUBO;
+        lut::Buffer              mSkeletonMatricesUBO;
+        std::vector<glm::mat4>   mSkeletonMatrices;
+        std::vector<uint32_t>    mSkeletonMatrixOffsets;
         std::vector<lut::Buffer> mMosaicUBOs;
 
         // Descriptor sets
@@ -2655,14 +2519,14 @@ void InitSkybox() {
         std::unordered_map<std::string, VkDescriptorSet> particleTextureDict;
 
         //===========================UI System================================
-        // UI System 保存当前选中的实体 ID saved selected entity ID for UI system
+        // UI System 保存当前选中的实�?ID saved selected entity ID for UI system
         flecs::entity_t mSelectedEntityId = 0;
         //===========================UI System================================
 
-        // 最终 3D 画面相纸
+        // 最�?3D 画面相纸
         lut::Image mFinalSceneImg;
         lut::ImageView mFinalSceneView;
-        // 给 ImGui 用的 UI 贴纸 ID
+        // �?ImGui 用的 UI 贴纸 ID
         VkDescriptorSet m_sceneViewportTexId = VK_NULL_HANDLE;
 
         // UI System 预览专用的照片和描述符集
@@ -2700,23 +2564,23 @@ void InitSkybox() {
         // =========================================================
         // (Speed Post-Process) 的句柄和资源
         // =========================================================
-        lut::ImageWithView mCompositeOutputImage; // 存放 Composite 合成结果的中间缓冲
+        lut::ImageWithView mCompositeOutputImage; // 存放 Composite 合成结果的中间缓�?
         lut::Pipeline mSpeedPostPipe;
         lut::PipelineLayout mSpeedPostPipeLayout;
         std::vector<VkDescriptorSet> mSpeedPostDescriptors;
         private:
-            // 存储每个模型专属的照片
+            // 存储每个模型专属的照�?
             std::unordered_map<std::string, ThumbnailAsset> mThumbnailAssets;
-            std::unordered_map<std::string, ThumbnailAsset> mContentBrowserImageAssets; //缓存内容浏览器按路径加载的普通图片
+            std::unordered_map<std::string, ThumbnailAsset> mContentBrowserImageAssets;
 
-            // 共用的深度缓冲
+            // 共用的深度缓�?
             lut::Image mThumbnailDepthImg;
             lut::ImageView mThumbnailDepthView;
 
             // 缓存渲染批次
             std::unordered_map<std::string, std::vector<RenderBatch>> m_previewPrefabCache;
 
-            // 预览状态
+            // 预览状�?
             std::string m_previewModelPath = "";
             glm::mat4   m_previewTransform = glm::mat4(1.0f);
 
@@ -2725,9 +2589,9 @@ void InitSkybox() {
             void GenerateModelThumbnail(const std::string& modelPath);
             void PreloadModelForPreview(const std::string& path);
 
-            // 【新增】：为极速特效构建 Descriptor Set
+            // 【新增】：为极速特效构�?Descriptor Set
             VkDescriptorSet BuildSpeedDesc(VkImageView inputView) {
-                // 复用 mBlurDescLayout，因为它也是一个 Binding 0 的 Sampler
+                // 复用 mBlurDescLayout，因为它也是一�?Binding 0 �?Sampler
                 VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, mBlurDescLayout.handle);
 
                 VkDescriptorImageInfo ii{};
