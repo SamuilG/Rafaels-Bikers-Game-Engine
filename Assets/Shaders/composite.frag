@@ -60,5 +60,11 @@ void main() {
     vec3 mapped = hdrColor / (hdrColor + vec3(1.0));
 
     oColor = vec4(mapped, 1.0);
+   // ssao = texture(uSsaoMap, uv).r;
+   // if (isnan(ssao) || isinf(ssao)) { ssao = 1.0; }
+    
+    // 直接把黑白的 ssao 输出到屏幕上，不混合任何场景颜色！
+   // oColor = vec4(vec3(ssao), 1.0); 
+   // return;
 
 }
