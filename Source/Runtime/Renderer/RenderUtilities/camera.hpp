@@ -17,7 +17,7 @@ namespace glsl {
 namespace cfg
 {
 	constexpr float kCameraNear  = 0.1f;
-	constexpr float kCameraFar   = 500.f;
+	constexpr float kCameraFar   = 1000.f;
 	constexpr auto kCameraFov    = labut2::literals::operator""_degf(60.0);
 	
 	constexpr float kCameraBaseSpeed = 2.0f;
