@@ -319,9 +319,7 @@ namespace engine {
 			m_audio->SetVolume("Horn", 0.2f);
 			m_audio->PlayOneShot("Horn");
 		}
-		// =========================================================
-		// 【新增】：原地复活逻辑 (DEPLOY - 默认键 R)
-		// =========================================================
+	
 		if (m_input && m_input->IsActionPressed("DEPLOY")) {
 			
 			if (!mState->isAlive) {
@@ -335,34 +333,43 @@ namespace engine {
 						JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
 						JPH::BodyID id(bikeBodyID);
 
-						// 1. 获取当前位置，并向上抬高 1.0 米，防止模型卡入地下引起物理爆炸
-						JPH::RVec3 currentPos = bi.GetPosition(id);
-						currentPos.SetY(currentPos.GetY() + 1.0f);
+						// -----------------------------------------------------
+						// 【新增】运动检测逻辑 (Motion Check)
+						// -----------------------------------------------------
+						// 使用 LengthSq (长度的平方) 代替 Length，省去了开平方的运算，性能更高
+						float linVelSq = bi.GetLinearVelocity(id).LengthSq();
+						float angVelSq = bi.GetAngularVelocity(id).LengthSq();
 
-						// 2. 获取当前朝向 (Yaw)，但强制清除倾斜和翻滚 (使其直立)
-						JPH::Quat currentRot = bi.GetRotation(id);
-						JPH::Vec3 fwd = currentRot.RotateAxisZ();
-						float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
-						// 重新生成一个只有 Yaw 轴旋转的四元数 (强行扶正单车)
-						JPH::Quat uprightRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), currentYaw + JPH::JPH_PI);
+						// 设定静止阈值 (0.25f 意味着速度必须降到 0.5 m/s 以下才算停稳)
+						const float stopThresholdSq = 0.25f;
 
-						// 3. 将新的位置和旋转强行写入物理引擎，并激活刚体
-						bi.SetPositionAndRotation(id, currentPos, uprightRot, JPH::EActivation::Activate);
+						if (linVelSq < stopThresholdSq && angVelSq < stopThresholdSq) {
+							// === 单车已经停稳，执行复活 ===
+							JPH::RVec3 currentPos = bi.GetPosition(id);
+							currentPos.SetY(currentPos.GetY() + 1.0f);
 
-						// 4. 清除所有线速度和角速度，让单车静止在空中落下
-						bi.SetLinearVelocity(id, JPH::Vec3::sZero());
-						bi.SetAngularVelocity(id, JPH::Vec3::sZero());
+							JPH::Quat currentRot = bi.GetRotation(id);
+							JPH::Vec3 fwd = currentRot.RotateAxisZ();
+							float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
+							JPH::Quat uprightRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), currentYaw + JPH::JPH_PI);
 
-						// 5. 重置玩家状态机
-						mState->isAlive = true;
-						mState->deathTimer = 0.0f;
-						mState->isGameOver = false;
-						mState->thirdPersonMode = true; // 复活后默认第三人称视角
-						// 6. 清除控制器的残余角度参数（防止一复活又倾斜）
-						mState->bikeLeanAngle = 0.0f;
-						mState->bikeSteerAngle = 0.0f;
+							bi.SetPositionAndRotation(id, currentPos, uprightRot, JPH::EActivation::Activate);
+							bi.SetLinearVelocity(id, JPH::Vec3::sZero());
+							bi.SetAngularVelocity(id, JPH::Vec3::sZero());
 
-						printf("[Gameplay] Bike respawned in place!\n");
+							mState->isAlive = true;
+							mState->deathTimer = 0.0f;
+							mState->isGameOver = false;
+							mState->bikeLeanAngle = 0.0f;
+							mState->bikeSteerAngle = 0.0f;
+							mState->thirdPersonMode = true;
+							printf("[Gameplay] Bike stopped and respawned in place!\n");
+						}
+						else {
+							// === 单车还在滚动，拒绝复活，可以考虑在这里触发个 UI 提示音 ===
+							// printf("[Gameplay] Cannot respawn yet, bike is still tumbling...\n");
+						}
+						// -----------------------------------------------------
 					}
 				}
 			}
