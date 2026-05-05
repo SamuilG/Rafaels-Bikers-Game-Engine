@@ -709,6 +709,37 @@ void PhysicsSystem::set_body_scale(uint32_t bodyID, const glm::vec3& newScale, c
 		m_physicsSystem->OptimizeBroadPhase();
 	}
 }
+
+// 将以下代码添加到 PhysicsSystem.cpp 末尾
+
+void PhysicsSystem::set_body_damping(uint32_t bodyID, float linearDamping, float angularDamping)
+{
+	if (!m_physicsSystem || bodyID == JPH::BodyID::cInvalidBodyID) return;
+
+	// 使用写锁安全地获取并修改刚体属性
+	JPH::BodyLockWrite lock(m_physicsSystem->GetBodyLockInterface(), JPH::BodyID(bodyID));
+	if (lock.Succeeded())
+	{
+		JPH::Body& body = lock.GetBody();
+		if (body.IsDynamic())
+		{
+			body.GetMotionProperties()->SetLinearDamping(linearDamping);
+			body.GetMotionProperties()->SetAngularDamping(angularDamping);
+		}
+	}
+}
+
+void PhysicsSystem::apply_impulse(uint32_t bodyID, const glm::vec3& impulse, const glm::vec3& point)
+{
+	if (!m_physicsSystem || bodyID == JPH::BodyID::cInvalidBodyID) return;
+
+	JPH::BodyInterface& bodyInterface = m_physicsSystem->GetBodyInterface();
+	bodyInterface.AddImpulse(
+		JPH::BodyID(bodyID),
+		JPH::Vec3(impulse.x, impulse.y, impulse.z),
+		JPH::RVec3(point.x, point.y, point.z)
+	);
+}
 //=============================UI System Interactions=============================
 
 //void PhysicsSystem::create_bicycle(uint32_t chassisBodyID) {

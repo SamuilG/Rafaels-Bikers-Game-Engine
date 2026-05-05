@@ -12,7 +12,7 @@
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Body/BodyFilter.h>
 #include <Jolt/Physics/Body/BodyLock.h>
-
+#include "PhysicsSystem.hpp"
 namespace engine
 {
     float speed;
@@ -41,6 +41,8 @@ namespace engine
         JPH::BodyInterface& bi = m_joltPhysics->GetBodyInterface();
         JPH::BodyID id = m_bicycle->chassisID;
         if (!bi.IsAdded(id)) return;
+
+
 
         float inputThrottle = 0.0f;
         float inputSteer = 0.0f;
@@ -111,9 +113,60 @@ namespace engine
         float yawRate = steerYawRate + leanYawRate;
         float newYaw = currentYaw + yawRate * dt;
 
+        // 在 BikeController::Update 的前半部分提取 Pitch 角度
         JPH::Vec3 fwdLocalUnit(0.0f, 0.0f, -1.0f);
         JPH::Vec3 currentNose = currentRot * fwdLocalUnit;
         float currentPitch = std::asin(std::clamp(currentNose.GetY(), -1.0f, 1.0f));
+
+        // ==========================================
+        // 脱力检测逻辑 (Loss of strength check)
+        // ==========================================
+        bool isLosingStrength = false;
+
+        // 如果速度极低 (例如小于 0.5) 且 处于明显斜坡 (例如坡度大于 10度 / 0.17弧度)
+        if (std::abs(signedSpeed) < 3.5f && std::abs(currentPitch) > 0.17f && m_state->isAlive == true && isLosingStrength == false) {
+            isLosingStrength = true;
+            m_state->isAlive = false; // 触发死亡/脱力状态
+			m_state->deathTimer = 0.0f; // 重置死亡计时器
+			m_state->thirdPersonMode = false; // 切换到第一人称视角
+        }
+
+        if (isLosingStrength) {
+            // 1. 恢复物理引擎的真实阻尼 (让其自然、快速地侧翻)
+            // 直接使用 Jolt 原生的写锁来修改当前刚体
+            {
+                JPH::BodyLockWrite lock(m_joltPhysics->GetBodyLockInterface(), id);
+                if (lock.Succeeded()) {
+                    lock.GetBody().GetMotionProperties()->SetLinearDamping(0.05f);
+                    lock.GetBody().GetMotionProperties()->SetAngularDamping(0.05f);
+                }
+            }
+
+            // 2. 为了打破绝对平衡，给单车侧面施加一个微小的推力让它倒下
+            if (bi.GetAngularVelocity(id).LengthSq() < 0.1f) {
+                JPH::Vec3 rightDir = currentRot.RotateAxisX();
+                bi.AddImpulse(id, rightDir * 0.5f); // 轻轻推一下侧面
+            }
+
+            // 3. 关键：直接 return！不再执行下方任何 SetRotation 和 SetAngularVelocity 的代码
+            // 让 Jolt Physics 完全接管重力与侧翻的物理结算
+            return;
+        }
+        else {
+            // 恢复骑行时的高阻尼 (防止平时抽搐)
+            {
+                JPH::BodyLockWrite lock(m_joltPhysics->GetBodyLockInterface(), id);
+                if (lock.Succeeded()) {
+                    lock.GetBody().GetMotionProperties()->SetLinearDamping(1.0f);
+                    lock.GetBody().GetMotionProperties()->SetAngularDamping(10.0f);
+                }
+				isLosingStrength = true; // 只需要设置一次，后续每帧都会保持高阻尼，直到再次触发脱力
+            }
+        }
+        // ... 下方继续保留你原有的控制逻辑 (SetRotation 等) ...
+
+
+
 
         JPH::Quat yawQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), newYaw + JPH::JPH_PI);
         JPH::Quat leanQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisZ(), m_bicycle->leanAngle);
@@ -200,7 +253,7 @@ namespace engine
         JPH::Vec3 angVel = bi.GetAngularVelocity(id);
         JPH::Vec3 localX = finalRot.RotateAxisX();
         float pitchAngVel = angVel.Dot(localX);
-        bi.SetAngularVelocity(id, localX * (pitchAngVel ));
+        bi.SetAngularVelocity(id, localX * (pitchAngVel * 0.85f));
 
         m_state->bikeSpeed = speed; 
         m_state->bikeSteerAngle = m_bicycle->steerAngle;

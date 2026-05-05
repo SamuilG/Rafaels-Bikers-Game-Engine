@@ -267,7 +267,7 @@ namespace engine {
 					m_audio->SetVolume("wasted", 0.5f);
 					m_audio->PlayOneShot("wasted");
 					mState->deathTimer = 0.0f;
-					mState->thirdPersonMode = false;
+					//mState->thirdPersonMode = false;
 					printf("[Collision] FATAL: speed=%.2f m/s align=%.2f | %s vs %s\n",
 						impactSpeed, normalAlignment,
 						col.GetEntityA().c_str(), col.GetEntityB().c_str());
@@ -319,7 +319,55 @@ namespace engine {
 			m_audio->SetVolume("Horn", 0.2f);
 			m_audio->PlayOneShot("Horn");
 		}
+		// =========================================================
+		// 【新增】：原地复活逻辑 (DEPLOY - 默认键 R)
+		// =========================================================
+		if (m_input && m_input->IsActionPressed("DEPLOY")) {
+			
+			if (!mState->isAlive) {
+				flecs::entity bikeEntity = m_scene->find_entity("Bike_0");
+				if (bikeEntity.is_valid()) {
+					uint32_t bikeBodyID = JPH::BodyID::cInvalidBodyID;
+					if (bikeEntity.has<PhysicsBody>()) bikeBodyID = bikeEntity.get<PhysicsBody>().bodyID;
+					else if (bikeEntity.has<CompoundParent>()) bikeBodyID = bikeEntity.get<CompoundParent>().bodyID;
 
+					if (bikeBodyID != JPH::BodyID::cInvalidBodyID) {
+						JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
+						JPH::BodyID id(bikeBodyID);
+
+						// 1. 获取当前位置，并向上抬高 1.0 米，防止模型卡入地下引起物理爆炸
+						JPH::RVec3 currentPos = bi.GetPosition(id);
+						currentPos.SetY(currentPos.GetY() + 1.0f);
+
+						// 2. 获取当前朝向 (Yaw)，但强制清除倾斜和翻滚 (使其直立)
+						JPH::Quat currentRot = bi.GetRotation(id);
+						JPH::Vec3 fwd = currentRot.RotateAxisZ();
+						float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
+						// 重新生成一个只有 Yaw 轴旋转的四元数 (强行扶正单车)
+						JPH::Quat uprightRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), currentYaw + JPH::JPH_PI);
+
+						// 3. 将新的位置和旋转强行写入物理引擎，并激活刚体
+						bi.SetPositionAndRotation(id, currentPos, uprightRot, JPH::EActivation::Activate);
+
+						// 4. 清除所有线速度和角速度，让单车静止在空中落下
+						bi.SetLinearVelocity(id, JPH::Vec3::sZero());
+						bi.SetAngularVelocity(id, JPH::Vec3::sZero());
+
+						// 5. 重置玩家状态机
+						mState->isAlive = true;
+						mState->deathTimer = 0.0f;
+						mState->isGameOver = false;
+						mState->thirdPersonMode = true; // 复活后默认第三人称视角
+						// 6. 清除控制器的残余角度参数（防止一复活又倾斜）
+						mState->bikeLeanAngle = 0.0f;
+						mState->bikeSteerAngle = 0.0f;
+
+						printf("[Gameplay] Bike respawned in place!\n");
+					}
+				}
+			}
+		}
+		// =========================================================
 		// ���µ�������
 		if (m_bikeController) {
 			m_bikeController->Update(dt);

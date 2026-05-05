@@ -5,7 +5,9 @@
 #include <memory>
 #include <glm/glm.hpp>
 
-namespace engine { class AudioSystem; }
+namespace engine { class AudioSystem; 
+class PhysicsSystem;
+}
 
 // ǰ������ Jolt ����ϵͳ
 namespace JPH { class PhysicsSystem; }
@@ -35,9 +37,10 @@ namespace engine {
 
         float get_steer_angle() const { return m_bicycle ? m_bicycle->steerAngle : 0.0f; }
         float get_speed() const { return m_bicycle ? m_bicycle->currentSpeed : 0.0f; }
+        JPH::PhysicsSystem* m_joltPhysics = nullptr;
 
     private:
-        JPH::PhysicsSystem* m_joltPhysics = nullptr;
+        PhysicsSystem* m_physicsSystem; // Store your engine's wrapper
         InputSystem* m_inputSystem = nullptr;
         UserState* m_state = nullptr;
         AudioSystem* m_audio = nullptr;

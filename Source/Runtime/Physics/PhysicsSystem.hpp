@@ -107,6 +107,14 @@ namespace engine {
         JPH::PhysicsSystem* GetJoltSystem() const {
             return m_physicsSystem.get();
         }
+
+        // 在 PhysicsSystem.hpp 中添加:
+        void set_body_damping(uint32_t bodyID, float linearDamping, float angularDamping);
+        void apply_impulse(uint32_t bodyID, const glm::vec3& impulse, const glm::vec3& point);
+
+
+
+
     private:
 
 

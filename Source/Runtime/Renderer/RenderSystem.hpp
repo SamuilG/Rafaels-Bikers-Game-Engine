@@ -1251,12 +1251,13 @@ namespace engine {
                     mState->particlesEnabled = !mState->particlesEnabled;
                     std::printf("Particles: %s\n", mState->particlesEnabled ? "ON" : "OFF");
                 }
-                if (mInputSystem->IsActionPressed("CameraThirdPersonToggle")) {
+                if (mInputSystem->IsActionPressed("CameraThirdPersonToggle" ) ) {
                     // T
                     mState->thirdPersonMode = !mState->thirdPersonMode;
                     std::printf("Camera: %s\n", mState->thirdPersonMode ? "Third Person" : "Free Fly");
                     if(mState->isAlive == false ) mState->isAlive = true; 
                 }
+              
                 if (mInputSystem->IsActionPressed("ToggleEngineUi")) {
                     mState->showEngineUi = !mState->showEngineUi;
                     EngineUi::ShowToast(mState->showEngineUi ? "[ Engine UI Visible ]" : "[ Engine UI Hidden ]");

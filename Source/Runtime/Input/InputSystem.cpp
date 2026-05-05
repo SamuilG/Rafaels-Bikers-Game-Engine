@@ -118,7 +118,7 @@ namespace engine {
         
 
         // --- Game Systems & Effects ---
-        MapKeyboardAction("ToggleParticles", GLFW_KEY_R);
+        MapKeyboardAction("DEPLOY", GLFW_KEY_R);
         // MapGamepadButtonAction("ToggleParticles", GLFW_GAMEPAD_BUTTON_X);
 
         // --- Debug Toggles ---
