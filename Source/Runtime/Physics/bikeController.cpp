@@ -141,7 +141,7 @@ namespace engine
         JPH::Quat leanQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisZ(), m_bicycle->leanAngle);
         JPH::Quat pitchQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisX(), currentPitch);
 
-        JPH::Quat finalRot = yawQuat * leanQuat * pitchQuat;
+        JPH::Quat finalRot = yawQuat * pitchQuat * leanQuat;
         bi.SetRotation(id, finalRot, JPH::EActivation::Activate);
         // ==========================================================
         // 5. Grip and drive power combined 
