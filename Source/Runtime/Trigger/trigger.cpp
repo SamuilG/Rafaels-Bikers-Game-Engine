@@ -92,7 +92,9 @@ namespace engine {
         }
 
         for (auto& trigger : mTriggers) {
-            if (!trigger.isEnabled || trigger.particleIndex >= particles.size()) continue;
+            if (!trigger.isEnabled) continue;
+            // oneShot triggers that already fired are fully disabled
+            if (trigger.oneShot && trigger.hasTriggered) continue;
 
             bool inside = false;
 
@@ -126,27 +128,21 @@ namespace engine {
             }
             }
 
-            bound[trigger.particleIndex] = true;
-
-            // trigger: fire enter and exit callbacks only on boundary crossings
+            // fire enter/exit callbacks on boundary crossings (regardless of particle binding)
             if (inside && !trigger.wasInside && trigger.onEnter) {
                 trigger.onEnter();
+                if (trigger.oneShot) trigger.hasTriggered = true;
             }
             if (!inside && trigger.wasInside && trigger.onExit) {
                 trigger.onExit();
             }
             trigger.wasInside = inside;
 
-            if (trigger.oneShot) {
-                if (inside) {
-                    trigger.hasTriggered = true;
-                }
-                if (trigger.hasTriggered) {
-                    active[trigger.particleIndex] = true;
-                }
-            }
-            else if (inside) {
-                active[trigger.particleIndex] = true;
+            // particle visibility — only when this trigger owns a valid particle
+            bool hasParticle = trigger.particleIndex < particles.size();
+            if (hasParticle) {
+                bound[trigger.particleIndex] = true;
+                if (inside) active[trigger.particleIndex] = true;
             }
         }
 

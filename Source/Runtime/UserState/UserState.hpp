@@ -101,6 +101,12 @@ namespace engine {
 		float bikeSteerAngle = 0.0f;
 		//================player================================
 
+
+		int  collectedItems  = 0;   
+		int  totalCollectibles = 4; 
+		bool allCollected    = false; 
+
+
 		bool bloomEnabled = true;
 		bool iblEnabled = true; // 默认开启 IBL
 
