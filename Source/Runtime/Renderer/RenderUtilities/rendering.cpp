@@ -86,6 +86,7 @@ void record_commands(
 	VkDescriptorSet aSpeedDesc,
 	float aSpeedFactor,
 	bool isAlive,       // <--- 直接把 userState 里的变量喂给渲染器！
+	float deathFactor,
 	ImageAndView const& aFinalSceneColor, // 最终场景渲染缓冲区（输出到 ImGui）
 	// ==============================================================
 
@@ -877,7 +878,7 @@ void record_commands(
 
 	PostProcessPC ppData{};
 	ppData.speedFactor = aSpeedFactor;
-	ppData.deathFactor = isAlive ? 0.0f : 1.0f;
+	ppData.deathFactor = deathFactor; // <--- 这里直接传入 0.0 到 1.0 之间的插值
 
 	// 2. 将打包好的结构体推送给 Shader
 	vkCmdPushConstants(aCmdBuff, aSpeedLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PostProcessPC), &ppData);

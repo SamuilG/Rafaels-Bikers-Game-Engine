@@ -31,7 +31,7 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 {
 	auto& cam = aState.camera2world;
 
-	if (inputSys->IsActionPressed("CaptureMouse"))
+	if (inputSys->IsActionPressed("CaptureMouse") && aState.isAlive)
 	{
 		aState.previousMouseState = !aState.previousMouseState;
 		inputSys->SetMouseCaptured(aState.previousMouseState);
@@ -220,19 +220,22 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 		auto const move = aElapsedTime * cfg::kCameraBaseSpeed *
 			(inputSys->IsActionHeld("Fast") ? cfg::kCameraFastMult : 1.f) *
 			(inputSys->IsActionHeld("Slow") ? cfg::kCameraSlowMult : 1.f);
-
-		if (inputSys->IsActionHeld("MoveForward"))
-			cam = cam * glm::translate(glm::vec3(0.f, 0.f, -move));
-		if (inputSys->IsActionHeld("MoveBackward"))
-			cam = cam * glm::translate(glm::vec3(0.f, 0.f, +move));
-		if (inputSys->IsActionHeld("StrafeLeft"))
-			cam = cam * glm::translate(glm::vec3(-move, 0.f, 0.f));
-		if (inputSys->IsActionHeld("StrafeRight"))
-			cam = cam * glm::translate(glm::vec3(+move, 0.f, 0.f));
-		if (inputSys->IsActionHeld("Upward"))
-			cam = cam * glm::translate(glm::vec3(0.f, +move, 0.f));
-		if (inputSys->IsActionHeld("Downward"))
-			cam = cam * glm::translate(glm::vec3(0.f, -move, 0.f));
+		if (aState.isAlive)
+		{
+			if (inputSys->IsActionHeld("MoveForward"))
+				cam = cam * glm::translate(glm::vec3(0.f, 0.f, -move));
+			if (inputSys->IsActionHeld("MoveBackward"))
+				cam = cam * glm::translate(glm::vec3(0.f, 0.f, +move));
+			if (inputSys->IsActionHeld("StrafeLeft"))
+				cam = cam * glm::translate(glm::vec3(-move, 0.f, 0.f));
+			if (inputSys->IsActionHeld("StrafeRight"))
+				cam = cam * glm::translate(glm::vec3(+move, 0.f, 0.f));
+			if (inputSys->IsActionHeld("Upward"))
+				cam = cam * glm::translate(glm::vec3(0.f, +move, 0.f));
+			if (inputSys->IsActionHeld("Downward"))
+				cam = cam * glm::translate(glm::vec3(0.f, -move, 0.f));
+		}
+		
 	}
 }
 

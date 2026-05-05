@@ -20,7 +20,7 @@ namespace engine {
 		m_physics = physics;
 		m_input = input;
 		m_event = eventSys;
-		m_state = state;
+		mState = state;
 		m_anima = anima;
 		m_audio = audio;
 
@@ -48,7 +48,7 @@ namespace engine {
         m_scene->LoadModel(m_render, "Assets/Models/tbikeWithAnchor.glb", engine::ModelPhysicsType::CustomC, 90.0f, tbpos);
 
 		// 3. ��ʼ������������
-		m_bikeController = std::make_unique<BikeController>(m_physics->GetJoltSystem(), m_input, m_state);
+		m_bikeController = std::make_unique<BikeController>(m_physics->GetJoltSystem(), m_input, mState);
 		m_audio->LoadSound("Jump", "Assets/Sounds/jump_effect.mp3");
 		m_bikeController->SetAudioSystem(m_audio);
 		flecs::entity bikeEntity = m_scene->find_entity("Bike_0");
@@ -227,7 +227,7 @@ namespace engine {
 			m_event->Subscribe(EventType::Collision, [this, bikeBodyIDStr](Event& e) {
 				auto& col = static_cast<CollisionEvent&>(e);
 				if (col.GetEntityA() != bikeBodyIDStr && col.GetEntityB() != bikeBodyIDStr) return;
-				if (m_state->isGameOver) return; // already dead, ignore further events
+				if (mState->isGameOver) return; // already dead, ignore further events
 
 				// --- Physics-based impact thresholds (SI units: m/s) ---
 				// 15 km/h = 4.17 m/s  -> light hit
@@ -240,7 +240,7 @@ namespace engine {
 				constexpr float kFrontalThreshold = 0.50f; // above this -> counts as frontal for fatal
 
 				float impactSpeed = col.GetRelativeSpeed(); // approach speed along normal (m/s)
-				float bikeSpeed = m_state->bikeSpeed;     // horizontal speed (m/s)
+				float bikeSpeed = mState->bikeSpeed;     // horizontal speed (m/s)
 
 				// Normalised alignment: how much of the bike's speed is directed into the wall
 				float normalAlignment = (bikeSpeed > 0.5f)
@@ -258,13 +258,14 @@ namespace engine {
 
 				if (impactSpeed >= kFatalSpeed && normalAlignment >= kFrontalThreshold) {
 					// Fatal frontal collision -> game over
-					m_state->isAlive = false;
+					mState->isAlive = false;
 
 
 					m_audio->LoadSound("wasted", "Assets/Sounds/wasted.mp3");
 					m_audio->SetVolume("wasted", 0.5f);
 					m_audio->PlayOneShot("wasted");
-					m_state->thirdPersonMode = false;
+					mState->deathTimer = 0.0f;
+					mState->thirdPersonMode = false;
 					printf("[Collision] FATAL: speed=%.2f m/s align=%.2f | %s vs %s\n",
 						impactSpeed, normalAlignment,
 						col.GetEntityA().c_str(), col.GetEntityB().c_str());

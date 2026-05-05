@@ -14,7 +14,7 @@ struct BikeTuning
 	float driveForce = 1000.0f;
 	float brakeForce = 20.0f;
 	float maxSpeed = 60.0f;
-	float gravityFactor = 1.0f;
+	float gravityFactor = 10.0f;
 };
 namespace engine {
 	struct UserState
@@ -95,6 +95,8 @@ namespace engine {
 		glm::vec3 followTargetPos = glm::vec3(2.f);
 		bool thirdPersonMode = true;
 		bool isAlive = true;
+		float deathFactor = 0.0f;
+		float deathTimer = 0.0f;
 		float bikeSpeed = 0.0f;
 		float bikeSteerAngle = 0.0f;
 		//================player================================

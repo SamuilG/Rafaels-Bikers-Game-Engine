@@ -22,7 +22,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
-
+#include <chrono>
 #define GLFW_INCLUDE_NONE
 
 #include <GLFW/glfw3.h>
@@ -647,8 +647,8 @@ namespace engine {
 
             vkUpdateDescriptorSets(mWindow.device, 5, w, 0, nullptr);
         }
-        
-        
+
+        std::chrono::time_point<std::chrono::high_resolution_clock> lastTime = std::chrono::high_resolution_clock::now();
         void Update(float dt) override
         {
             // Let GLFW process events.
@@ -660,7 +660,63 @@ namespace engine {
             // input-driven applications, where redrawing is only needed in
             // reaction to user input (or similar).
             glfwPollEvents(); // or: glfwWaitEvents()
+            // =======================================================
+            // 2. 计算本帧的 deltaTime (单位：秒)
+            // =======================================================
+            auto currentTime = std::chrono::high_resolution_clock::now();
+            float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - lastTime).count();
+            lastTime = currentTime;
 
+            // 可选：为了防止断点调试时 deltaTime 变得极其巨大导致物理穿模或动画飞跃，通常会加一个上限约束
+            if (deltaTime > 0.1f) {
+                deltaTime = 0.1f;
+            }
+
+            // =======================================================
+       // 基于时间轴（Timeline）的死亡特效计算
+       // =======================================================
+            if (!mState->isAlive) {
+                // 1. 累加死亡时间
+                mState->deathTimer += deltaTime;
+
+                // 2. 定义动画曲线参数 (导演控制台)
+                const float totalDuration = 8.0f;    // 整个特效持续 5 秒
+                const float spikeRatio = 0.02f;       // 前 10% 的时间用来暴击变黑白 (0.5秒)
+
+                // 计算分界点的时间
+                const float spikeTime = totalDuration * spikeRatio;
+
+                // 3. 根据当前时间，用数学分段计算 deathFactor
+                if (mState->deathTimer <= spikeTime) {
+                    // 前半段：从 0.0 快速飙升到 1.0
+                    // math: current_time / target_time
+                    mState->deathFactor = mState->deathTimer / spikeTime;
+                }
+                else if (mState->deathTimer <= totalDuration) {
+                    // 后半段：从 1.0 缓慢回落到 0.0
+                    // 算出在后半段里经过了多少时间
+                    float decayTimePassed = mState->deathTimer - spikeTime;
+                    float decayTotalTime = totalDuration - spikeTime;
+
+                    // math: 1.0 - (passed / total)
+                    mState->deathFactor = 1.0f - (decayTimePassed / decayTotalTime);
+                }
+                else {
+                    // 特效结束，彻底黑死或者维持某一个底色 (这里设为 0.0 完全恢复彩色)
+                    mState->deathFactor = 0.0f;
+                }
+
+            }
+            else {
+                // 存活状态：重置参数
+                mState->deathTimer = 0.0f;
+
+                // 快速恢复彩色（防止复活瞬间画面突变）
+                mState->deathFactor -= deltaTime * 5.0f;
+                if (mState->deathFactor < 0.0f) {
+                    mState->deathFactor = 0.0f;
+                }
+            }
             //===========================UI System================================
             // game over debug
             if (ImGui::IsKeyPressed(ImGuiKey_G))
@@ -1535,6 +1591,7 @@ namespace engine {
                 mSpeedPostDescriptors[mFrameIndex],
                 smoothedSpeedFactor, // 传递我们刚算好的平滑因子
                 mState->isAlive,       // <--- 直接把 userState 里的变量喂给渲染器！
+                mState->deathFactor,
                 finalSceneTarget,    // 极速特效输出到最终
 
                 // --- 剩下的原有参数 ---

@@ -75,6 +75,7 @@ void record_commands(
 	VkDescriptorSet aSpeedDesc,
 	float aSpeedFactor,
 	bool isAlive,       // <--- 直接把 userState 里的变量喂给渲染器！
+	float deathFactor,
 	ImageAndView const& aFinalSceneColor, // 最终场景渲染缓冲区（输出到 ImGui）
 	// ==============================================================
 

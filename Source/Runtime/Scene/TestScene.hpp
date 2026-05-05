@@ -21,7 +21,7 @@ namespace engine {
         PhysicsSystem* m_physics = nullptr;
         InputSystem* m_input = nullptr;
         EventSystem* m_event = nullptr;
-        UserState* m_state = nullptr;
+        UserState* mState = nullptr;
 		AnimationSystem* m_anima = nullptr;
         AudioSystem* m_audio = nullptr;
 

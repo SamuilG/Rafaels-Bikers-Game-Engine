@@ -67,20 +67,22 @@ void main()
     vec3 sceneColor = finalColor.rgb;
 
     // =======================================================
-    //  Wasted 死亡特效 (黑白滤镜)
+    //  Wasted 死亡特效 (平滑插值版)
     // =======================================================
-    if (pc.deathFactor > 0.0) {
-        // 1. 标准的物理亮度公式 (Luminance) 转换为灰度
-        float gray = dot(sceneColor, vec3(0.299, 0.587, 0.114));
-        vec3 wastedColor = vec3(gray);
+    // 1. 始终计算出“完全死亡”状态下应该是什么颜色 (黑白 + 高对比度)
+    float gray = dot(sceneColor, vec3(0.299, 0.587, 0.114));
+    vec3 wastedColor = vec3(gray);
+    wastedColor = smoothstep(0.1, 0.9, wastedColor); // 增强惨烈的对比度
+    
+    // （可选）给死亡颜色稍微混入一点暗红色，模拟血迹/绝望感
+    // wastedColor = mix(wastedColor, vec3(0.4, 0.0, 0.0), 0.3);
 
-        // 2. 增强对比度，让黑白更压抑、更惨烈
-        wastedColor = smoothstep(0.1, 0.9, wastedColor);
-        
-        // 3. 根据 deathFactor 平滑混合 (如果后续加渐变，这里就能丝滑过渡)
-        sceneColor = mix(sceneColor, wastedColor, pc.deathFactor);
-    }
+    // 2. 【核心插值】使用 mix 函数将 生与死 平滑混合
+    // 当 pc.deathFactor = 0.0 时，100% 显示 sceneColor
+    // 当 pc.deathFactor = 1.0 时，100% 显示 wastedColor
+    // 当 pc.deathFactor = 0.5 时，两者各占一半，形成褪色过程
+    vec3 finalOutput = mix(sceneColor, wastedColor, pc.deathFactor);
 
-    // 【核心修复 3】：统一使用 FragColor 输出
-    FragColor = vec4(sceneColor, 1.0);
+    // 3. 输出最终颜色
+    FragColor = vec4(finalOutput, 1.0);
 }
