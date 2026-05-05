@@ -15,7 +15,7 @@ namespace engine {
         void Shutdown() override;
 
     private:
-        // 保存系统指针供 Update 使用
+
         RenderSystem* m_render = nullptr;
         SceneManager* m_scene = nullptr;
         PhysicsSystem* m_physics = nullptr;
@@ -25,9 +25,11 @@ namespace engine {
 		AnimationSystem* m_anima = nullptr;
         AudioSystem* m_audio = nullptr;
 
-        // 【关键】：把 BikeController 从 Application 移交到具体关卡中管理
-        // 因为别的关卡（比如主菜单）可能根本不需要自行车
+
         std::unique_ptr<BikeController> m_bikeController;
+
+        //sound delay
+        float m_allCollectSoundDelay = -1.0f;
     };
 
 } // namespace engine

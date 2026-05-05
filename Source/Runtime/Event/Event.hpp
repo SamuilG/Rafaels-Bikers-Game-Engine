@@ -20,6 +20,8 @@ namespace engine {
         MouseButtonReleased,
         Collision,
         GameStateChanged,
+        ItemCollected,      // single item
+        AllItemsCollected,  // all items
         Custom
     };
 
@@ -96,7 +98,7 @@ namespace engine {
 
 
         const std::string& GetCustomName() const { return m_CustomName; }
-        
+
         template<typename T>
         T GetPayloadAs() const {
             return std::any_cast<T>(m_Payload);
@@ -109,7 +111,32 @@ namespace engine {
     private:
         std::string m_CustomName;
         std::any m_Payload;
-        
+
     };
+
+
+
+    class ItemCollectedEvent : public Event {
+    public:
+        ItemCollectedEvent(int itemIndex, int currentTotal)
+            : m_ItemIndex(itemIndex), m_CurrentTotal(currentTotal) {}
+
+        int GetItemIndex()    const { return m_ItemIndex; }    
+        int GetCurrentTotal() const { return m_CurrentTotal; } 
+
+        EventType GetType() const override { return EventType::ItemCollected; }
+        const char* GetName() const override { return "ItemCollectedEvent"; }
+
+    private:
+        int m_ItemIndex;
+        int m_CurrentTotal;
+    };
+
+    class AllItemsCollectedEvent : public Event {
+    public:
+        EventType GetType() const override { return EventType::AllItemsCollected; }
+        const char* GetName() const override { return "AllItemsCollectedEvent"; }
+    };
+
 
 } // namespace engine
