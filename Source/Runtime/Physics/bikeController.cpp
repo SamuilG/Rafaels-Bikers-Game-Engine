@@ -1,4 +1,5 @@
  #include "bikeController.hpp"
+#include "../AudioSystem/AudioSystem.hpp"
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Physics/Body/BodyInterface.h>
 #include <iostream>
@@ -74,6 +75,11 @@ namespace engine
         if (isGrounded && m_inputSystem->IsActionPressed("Jump")) {
             vel.SetY(vel.GetY() + 16.0f); // Higher impulse to counteract the 3x gravity
             bi.SetLinearVelocity(id, vel);
+            {
+                    //m_audio->LoadSound("Horn", "Assets/Sounds/bicycle_horn.mp3");
+                    m_audio->SetVolume("Jump", 0.5f);
+                    m_audio->PlayOneShot("Jump");
+            }
         }
         // ==============================================================
         //  (Speed Blend Factor)

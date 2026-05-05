@@ -51,7 +51,7 @@ namespace engine {
             audioSystem->PlayLoop("BackgroundTestMusic");
             //bike chain sound effect
             audioSystem->LoadSound("BikeChain", "Assets/Sounds/BikeChain.mp3");
-            audioSystem->SetVolume("BikeChain", 0.6f);
+            audioSystem->SetVolume("BikeChain", 0.2f);
             audioSystem->SetRuntimeVolume("BikeChain", 0.0f);
             audioSystem->SetPitch("BikeChain", 1.0f);
             audioSystem->PlayLoop("BikeChain");
