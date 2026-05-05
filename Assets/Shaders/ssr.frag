@@ -27,6 +27,13 @@ vec3 GetViewPos(vec2 uv, float depth) {
     return viewPos.xyz / viewPos.w;
 }
 
+// =========================================================
+// 【补回缺失的函数】：伪随机哈希函数，用于生成抖动噪声
+// =========================================================
+float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
 void main() {
     vec2 uv = gl_FragCoord.xy / vec2(textureSize(uSceneColor, 0));
     float depth = texture(uDepthMap, uv).r;
@@ -60,23 +67,32 @@ void main() {
     vec2 hitUV = vec2(-1.0);
     float hitResult = 0.0;
 
-    // 起点推进
-    vec3 currentPos = viewPos + reflectDir * 0.1;
-
     // =========================================================
-    // 【保留优化】：远距离步长缩放，降低循环次数
+    // 2. 远距离步长缩放
     // =========================================================
     float distFactor = smoothstep(10.0, safeMaxDist, pixelDist);
     float dynamicStepSize = mix(pc.stepSize, pc.stepSize * 1.5, distFactor);
     int dynamicMaxSteps = int(mix(pc.maxSteps, pc.maxSteps * 0.6, distFactor));
+    
+    //  【核心修复 1】：彻底移除 0.5 的强制厚度！完全信任外部传入的严格厚度
+    float adaptiveThickness = pc.thickness;
 
-    // 为老版本的 Thickness 加一个安全下限，防止穿透
-    float safeThickness = max(pc.thickness, 0.5);
+    // =========================================================
+    // 3. 应用随机起点抖动 (Jittering)
+    // =========================================================
+    float jitter = hash(gl_FragCoord.xy);
+    //vec3 currentPos = viewPos + reflectDir * (0.1 + jitter * dynamicStepSize);
+    vec3 currentPos = viewPos + normalView * 0.05 + reflectDir * (0.05 + jitter * dynamicStepSize);
+    vec3 lastPos = currentPos; // 记录上一步的位置，为二分查找做准备
 
+    // =========================================================
+    // 4. 开始 Ray Marching
+    // =========================================================
     for (int i = 0; i < dynamicMaxSteps; ++i) {
+        lastPos = currentPos;
         currentPos += reflectDir * dynamicStepSize;
 
-        if (currentPos.z > 0.0) break;
+        if (currentPos.z > 0.0) break; // 跑出屏幕背面
 
         vec4 projPos = uScene.projection * vec4(currentPos, 1.0);
         if (projPos.w <= 0.0) break; 
@@ -87,16 +103,42 @@ void main() {
         if (sampleUV.x < 0.0 || sampleUV.x > 1.0 || sampleUV.y < 0.0 || sampleUV.y > 1.0) break; 
 
         float sampleDepth = texture(uDepthMap, sampleUV).r;
-        if(sampleDepth >= 1.0) continue;
+        if(sampleDepth >= 1.0) continue; // 击中天空，继续飞
 
         vec3 sampleViewPos = GetViewPos(sampleUV, sampleDepth);
         float depthDiff = currentPos.z - sampleViewPos.z;
 
-        // =========================================================
-        // 【核心回归】：完全恢复你老版本的严苛碰撞逻辑！
-        // =========================================================
-        if (depthDiff < 0.0 && depthDiff > -safeThickness) {
-            hitUV = sampleUV;
+        //  【核心修复 2】：严格厚度判定 + 触发二分查找
+        if (depthDiff < 0.0 && depthDiff > -adaptiveThickness) {
+            
+            // ==========================================
+            // 触发【二分查找】精确贴合表面，彻底消除断层！
+            // ==========================================
+            vec3 p1 = lastPos;     // 在表面外的上一个点
+            vec3 p2 = currentPos;  // 钻进表面内的当前点
+            vec3 midPoint;
+            vec2 midUV;
+            
+            for(int j = 0; j < 5; ++j) {
+                midPoint = mix(p1, p2, 0.5); // 取中点
+                
+                vec4 midProj = uScene.projection * vec4(midPoint, 1.0);
+                midProj /= midProj.w;
+                midUV = midProj.xy * 0.5 + 0.5;
+                
+                float d = texture(uDepthMap, midUV).r;
+                vec3 vPos = GetViewPos(midUV, d);
+                float dDiff = midPoint.z - vPos.z;
+                
+                if (dDiff < 0.0) {
+                    p2 = midPoint; // 依然在物体内部，把内侧点往外拉
+                } else {
+                    p1 = midPoint; // 跑到物体外面了，把外侧点往内推
+                }
+            }
+            
+            // 二分查找结束，确认最终的精准击中点！
+            hitUV = midUV;
             hitResult = 1.0;
             break;
         }
@@ -106,25 +148,18 @@ void main() {
         // =========================================================
         // 1. 强力屏幕边缘淡出 (专治拉伸形变)
         // =========================================================
-        // 把 UV 转换到 -1 到 1 的 NDC 坐标
         vec2 screenNDC = hitUV * 2.0 - 1.0;
-        // 找到距离屏幕边缘最近的轴
         float maxNDC = max(abs(screenNDC.x), abs(screenNDC.y));
-        // 在屏幕边缘 20% 的区域内，让反射平滑消失，斩断拉伸的像素！
         float edgeFactor = 1.0 - smoothstep(0.8, 1.0, maxNDC);
         
         // =========================================================
-        // 2. 菲涅尔视角衰减 (解决你说的“调整生效视角”)
+        // 2. 菲涅尔视角衰减 
         // =========================================================
-        // 计算视线和法线的夹角。越垂直直视表面，NdotV 越接近 1；越斜视，越接近 0。
         float NdotV = max(dot(normalView, -viewDir), 0.0);
-        
-        // 菲涅尔公式：斜着看时反射极强 (1.0)，垂直直视时反射变弱 (这里设为最低保留 20% 反射)
-        // 这样可以避免直视时看到 SSR 穿帮的空洞。
         float fresnelFade = mix(0.2, 1.0, pow(1.0 - NdotV, 3.0));
         
         // =========================================================
-        // 3. 距离淡出 (保持原样)
+        // 3. 距离淡出 
         // =========================================================
         float distFade = 1.0 - smoothstep(safeMaxDist * 0.8, safeMaxDist, pixelDist);
         

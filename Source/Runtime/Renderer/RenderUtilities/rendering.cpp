@@ -11,6 +11,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "../../UI/ui.hpp"
+#include "../../UserState/UserState.hpp"
 
 // multi-pass rendering
 // render scene to offscreen image
@@ -28,7 +29,7 @@ struct alignas(16) ObjectPC {
 	float alphaCutoff;          // Offset: 104 Size: 4
 	float _pad;                 // Offset: 108 Size: 4  <-- 补齐到 16 字节边界
 };
-
+// 在 rendering.cpp 顶部定义：
 void record_commands(
 	VkCommandBuffer aCmdBuff,
 	VkPipeline aGraphicsPipe,
@@ -84,6 +85,7 @@ void record_commands(
 	VkPipelineLayout aSpeedLayout,
 	VkDescriptorSet aSpeedDesc,
 	float aSpeedFactor,
+	bool isAlive,       // <--- 直接把 userState 里的变量喂给渲染器！
 	ImageAndView const& aFinalSceneColor, // 最终场景渲染缓冲区（输出到 ImGui）
 	// ==============================================================
 
@@ -532,11 +534,12 @@ void record_commands(
 		//float ssrParams[4] = { 0.2f /*步长*/, 100.0f /*最大步数*/, 0.1f /*厚度*/, 0.0f /*留白*/ };
 		// 缩小步长让射线更密，增加厚度防止射线“穿模”漏判
 
+		// 在 rendering.cpp 中修改 ssrParams：
 		float ssrParams[4] = {
-			0.08f,  /* 步长：稍微放宽一点点，配合 jittering 效果极佳 */
+			0.05f,  /* 步长：稍微调密一点，配合二分查找精度极高 */
 			128.0f, /* 最大步数 */
-			0.25f,  /* 厚度：大幅收紧（之前是0.5），jittering 会防止漏判 */
-			100.0f  /* 最大反射距离：放大到100，让远处的建筑也能倒映出来 */
+			0.3f,   /* 🔴 厚度：0.12 太薄会导致大面积漏判，0.5 会拖影，0.3 是最完美的黄金点 */
+			100.0f  /* 最大反射距离 */
 		};
 		vkCmdPushConstants(aCmdBuff, aSsrLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float) * 4, ssrParams);
 		vkCmdSetViewport(aCmdBuff, 0, 1, &vp);
@@ -582,7 +585,7 @@ void record_commands(
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsaoLayout, 0, 1, &aSsaoDS, 0, nullptr);
 
 		// 推送 SSAO 参数：[采样半径, 偏移容差, 阴影强度, 占位符]
-		float ssaoParams[4] = { 1.5f, 0.15f, 3.0f, 0.0f };     // 新参数：增大半径，提高 Bias 过滤平地，提高对比度
+		float ssaoParams[4] = { 0.5f, 0.025f, 1.5f, 0.0f };
 		vkCmdPushConstants(aCmdBuff, aSsaoLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float) * 4, ssaoParams);
 
 		vkCmdSetViewport(aCmdBuff, 0, 1, &vp);
@@ -865,9 +868,19 @@ void record_commands(
 	vkCmdBeginRendering(aCmdBuff, &speedInfo);
 	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSpeedPipe);
 	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSpeedLayout, 0, 1, &aSpeedDesc, 0, nullptr);
+	// 1. 组装一个包含所有后处理参数的结构体 (注意 16 字节对齐)
+	struct alignas(16) PostProcessPC {
+		float speedFactor; // 极速特效比例
+		float deathFactor; // 死亡滤镜比例 (0.0 = 活, 1.0 = 死)
+		float _pad[2];     // 补齐到 16 字节，防止 Vulkan 报错
+	};
 
-	vkCmdPushConstants(aCmdBuff, aSpeedLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float), &aSpeedFactor);
+	PostProcessPC ppData{};
+	ppData.speedFactor = aSpeedFactor;
+	ppData.deathFactor = isAlive ? 0.0f : 1.0f;
 
+	// 2. 将打包好的结构体推送给 Shader
+	vkCmdPushConstants(aCmdBuff, aSpeedLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PostProcessPC), &ppData);
 	vkCmdSetViewport(aCmdBuff, 0, 1, &vp);
 	vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
 	vkCmdDraw(aCmdBuff, 3, 1, 0, 0);

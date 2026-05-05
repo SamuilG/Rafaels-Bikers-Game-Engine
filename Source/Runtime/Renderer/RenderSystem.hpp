@@ -1196,8 +1196,10 @@ namespace engine {
                     std::printf("Particles: %s\n", mState->particlesEnabled ? "ON" : "OFF");
                 }
                 if (mInputSystem->IsActionPressed("CameraThirdPersonToggle")) {
+                    // T
                     mState->thirdPersonMode = !mState->thirdPersonMode;
                     std::printf("Camera: %s\n", mState->thirdPersonMode ? "Third Person" : "Free Fly");
+                    if(mState->isAlive == false ) mState->isAlive = true; 
                 }
                 if (mInputSystem->IsActionPressed("ToggleEngineUi")) {
                     mState->showEngineUi = !mState->showEngineUi;
@@ -1532,7 +1534,9 @@ namespace engine {
                 mSpeedPostPipeLayout.handle,
                 mSpeedPostDescriptors[mFrameIndex],
                 smoothedSpeedFactor, // 传递我们刚算好的平滑因子
+                mState->isAlive,       // <--- 直接把 userState 里的变量喂给渲染器！
                 finalSceneTarget,    // 极速特效输出到最终
+
                 // --- 剩下的原有参数 ---
                 mPostProcPipe.handle,          // 这里的顺序要核对你的 rendering.cpp
                 mPostDescriptors[mFrameIndex],

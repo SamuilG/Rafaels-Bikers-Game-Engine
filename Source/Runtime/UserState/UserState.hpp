@@ -38,8 +38,7 @@ namespace engine {
 
 		int renderMode = 0; // 0=Default, 1=Mip, 2=Depth, 3=Deriv
 
-		bool mosaicEnabled = false; // key 5 toggle
-
+		
 		//================UI System================================
 		bool showEngineUi = true;//engine UI toggle with key F1
 
@@ -75,8 +74,6 @@ namespace engine {
 		bool  lodEnabled = true;    // distance-based LOD selection
 		float lodDebugDistance = -1.0f;   // -1 = inactive; positive value overrides distance for testing
 
-		float bikeSpeed = 0.0f;
-		float bikeSteerAngle = 0.0f;
 		//extreme speed state
 		bool isExtremeSpeed = false;
 
@@ -87,12 +84,28 @@ namespace engine {
 
 		bool isSceneViewportHovered = false;
 		//================UI System================================
+		
 
+
+
+
+
+
+		//================player================================
 		glm::vec3 followTargetPos = glm::vec3(2.f);
 		bool thirdPersonMode = true;
+		bool isAlive = true;
+		float bikeSpeed = 0.0f;
+		float bikeSteerAngle = 0.0f;
+		//================player================================
 
 		bool bloomEnabled = true;
 		bool iblEnabled = true; // 默认开启 IBL
+
+
+
+		//================Graphic================================
+		bool mosaicEnabled = false; // key 5 toggle
 
 		// 【新增】：SSR 开关，默认开启
 		bool ssrEnabled = true;
@@ -103,6 +116,14 @@ namespace engine {
 		float bloomThreshold = 1.0f;     // 亮度提取阈值（preview / reserved）
 		int   bloomKernelRadius = 7;     // 模糊核半径提示（仅作为 shader 调整参考）
 		bool  bloomUseACES = true;       // 是否使用 ACES 风格色调映射（reserved）
+		//================Graphic================================
+
+
+
+
+
+
+		//================camera================================
 
 		float cameraFov = 85.0f;
 		float targetFov = 85.0f; // 【新增】用于插值的 FOV 目标值
@@ -121,5 +142,7 @@ namespace engine {
 		float cameraRoll = 0.0f;       // 相机当前的 Roll 角度
 		float targetCameraRoll = 0.0f; // 相机目标的 Roll 角度
 		// ==========================================
+		//================camera================================
+
 	};
 } // namespace engine

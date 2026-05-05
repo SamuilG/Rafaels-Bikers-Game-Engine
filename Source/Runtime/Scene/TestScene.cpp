@@ -35,6 +35,8 @@ namespace engine {
 
 		m_scene->LoadModel(m_render, "Assets/Models/testBridge.glb", engine::ModelPhysicsType::Static, 0.0f, bridgeSpawnPos);
 		m_scene->LoadModel(m_render, "Assets/Models/testCurvePlane.glb", engine::ModelPhysicsType::Static, 0.0f, CplaneSpawnPos);
+		//m_scene->LoadModel(m_render, "Assets/Models/sponza.glb", engine::ModelPhysicsType::Static, 0.0f, CplaneSpawnPos);
+
 		m_scene->LoadModel(m_render, "Assets/Models/darkRoom.glb", engine::ModelPhysicsType::Static, 0.0f, darkRoomSpawnPos);
 
 		// 2. �������г�
@@ -254,6 +256,9 @@ namespace engine {
 
 				if (impactSpeed >= kFatalSpeed && normalAlignment >= kFrontalThreshold) {
 					// Fatal frontal collision -> game over
+					m_state->isAlive = false;
+
+
 					m_audio->LoadSound("wasted", "Assets/Sounds/wasted.mp3");
 					m_audio->SetVolume("wasted", 0.5f);
 					m_audio->PlayOneShot("wasted");
