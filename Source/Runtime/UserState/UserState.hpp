@@ -13,7 +13,7 @@ struct BikeTuning
 	float wheelBase = 1.6f;
 	float driveForce = 1000.0f;
 	float brakeForce = 20.0f;
-	float maxSpeed = 60.0f;
+	float maxSpeed = 120.0f;
 	float gravityFactor = 100.0f;
 };
 namespace engine {
