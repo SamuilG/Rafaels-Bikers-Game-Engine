@@ -200,7 +200,7 @@ namespace engine
         JPH::Vec3 angVel = bi.GetAngularVelocity(id);
         JPH::Vec3 localX = finalRot.RotateAxisX();
         float pitchAngVel = angVel.Dot(localX);
-        bi.SetAngularVelocity(id, localX * (pitchAngVel * 0.85f));
+        bi.SetAngularVelocity(id, localX * (pitchAngVel ));
 
         m_state->bikeSpeed = speed; 
         m_state->bikeSteerAngle = m_bicycle->steerAngle;
