@@ -6,6 +6,7 @@
 #include "../Event/EventSystem.hpp"
 #include "../Animation/AnimationSystem.hpp"
 #include "../Scene/TestScene.hpp" // 引入你的测试关卡
+#include "../Scene/Level1.hpp" 
 #include "../AudioSystem/AudioSystem.hpp"
 
 namespace engine {
@@ -68,6 +69,8 @@ namespace engine {
         // 【核心】：加载当前关卡 (未来切换关卡，只需要 new 不同的 Scene 即可)
         // ==============================================================
         m_currentScene = std::make_unique<TestScene>();
+        //m_currentScene = std::make_unique<level>();
+
         m_currentScene->Init(renderSystem, sceneManager, physicsSystem, inputSystem, eventSystem, &mState, animationSystem, audioSystem);
     }
 

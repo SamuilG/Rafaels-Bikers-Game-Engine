@@ -1,4 +1,4 @@
-#include "TestScene.hpp"
+﻿#include "Level1.hpp"
 #include "../Renderer/RenderSystem.hpp"
 #include "../Scene/SceneManager.hpp"
 #include "../Physics/PhysicsSystem.hpp"
@@ -12,9 +12,9 @@
 
 namespace engine {
 
-	TestScene::TestScene() = default;
-	TestScene::~TestScene() = default;
-	void TestScene::Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, UserState* state, AnimationSystem* anima, AudioSystem* audio) {
+	level::level() = default;
+	level::~level() = default;
+	void level::Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, UserState* state, AnimationSystem* anima, AudioSystem* audio) {
 		m_render = render;
 		m_scene = scene;
 		m_physics = physics;
@@ -24,9 +24,10 @@ namespace engine {
 		m_anima = anima;
 		m_audio = audio;
 
+		// 1. ���ص����뾲̬ģ��
 		// load the terrain and static models
-		m_scene->LoadModel(m_render, "Assets/Models/TScene.glb", engine::ModelPhysicsType::Static, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
-		//m_scene->LoadModel(m_render, "Assets/Models/Level.glb", engine::ModelPhysicsType::Static, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
+		//m_scene->LoadModel(m_render, "Assets/Models/TScene.glb", engine::ModelPhysicsType::Static, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
+		m_scene->LoadModel(m_render, "Assets/Models/Level.glb", engine::ModelPhysicsType::Static, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
 		//
 		//m_scene->LoadModel(m_render, "Assets/Models/forest.glb", engine::ModelPhysicsType::Static, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
 
@@ -34,19 +35,19 @@ namespace engine {
 		glm::mat4 CplaneSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(120.0f, 0.0f, 250.0f));
 		glm::mat4 darkRoomSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(60.0f, 0.0f, 200.0f));
 
-		m_scene->LoadModel(m_render, "Assets/Models/testBridge.glb", engine::ModelPhysicsType::Static, 0.0f, bridgeSpawnPos);
-		m_scene->LoadModel(m_render, "Assets/Models/testCurvePlane.glb", engine::ModelPhysicsType::Static, 0.0f, CplaneSpawnPos);
+		//m_scene->LoadModel(m_render, "Assets/Models/testBridge.glb", engine::ModelPhysicsType::Static, 0.0f, bridgeSpawnPos);
+		//m_scene->LoadModel(m_render, "Assets/Models/testCurvePlane.glb", engine::ModelPhysicsType::Static, 0.0f, CplaneSpawnPos);
 		////m_scene->LoadModel(m_render, "Assets/Models/sponza.glb", engine::ModelPhysicsType::Static, 0.0f, CplaneSpawnPos);
 
-		m_scene->LoadModel(m_render, "Assets/Models/darkRoom.glb", engine::ModelPhysicsType::Static, 0.0f, darkRoomSpawnPos);
+		//m_scene->LoadModel(m_render, "Assets/Models/darkRoom.glb", engine::ModelPhysicsType::Static, 0.0f, darkRoomSpawnPos);
 
 		// 2. �������г�
 		glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 10.0f, 30.0f));
 		glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
 		glm::mat4 bikeAnchorWorld = glm::mat4(0.0f); // sentinel: [3][3]==0 means anchor not found
 
-        m_render->load_animated_model("Assets/Models/character.glb", tbpos);
-        m_scene->LoadModel(m_render, "Assets/Models/tbikeWithAnchor.glb", engine::ModelPhysicsType::CustomC, 90.0f, tbpos);
+		m_render->load_animated_model("Assets/Models/character.glb", tbpos);
+		m_scene->LoadModel(m_render, "Assets/Models/tbikeWithAnchor.glb", engine::ModelPhysicsType::CustomC, 90.0f, tbpos);
 
 		// 3. ��ʼ������������
 		m_bikeController = std::make_unique<BikeController>(m_physics->GetJoltSystem(), m_input, mState);
@@ -187,7 +188,7 @@ namespace engine {
 				// Apply binding + IK to ALL skinned character entities (character has 2 mesh parts).
 				// Also add a dummy AnimationComponent (animIndex=-1) so AnimationSystem's query
 				// picks them up even though this character has no animation clips.
-
+// 1. ��ʽ��ȡ��������
 				flecs::world& world = m_scene->get_world();
 
 				// 2. �����ӳ��޸Ķ���
@@ -274,17 +275,17 @@ namespace engine {
 				});
 		}
 
-
+		// 4. ���ط��ⷽ����ƹ�
 		glm::mat4 emissivecubeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(60.0f, 3.0f, 200.0f));
 		flecs::entity emCubeEntity = m_scene->LoadModel(m_render, "Assets/DELETE_LATER/em1.gltf", engine::ModelPhysicsType::Dynamic, 0.01f, emissivecubeSpawnPos, engine::RenderLayer::Emissive);
 
 		m_scene->create_light_entity("emCubeLight", engine::LightType::Point, glm::vec3(1.0f, 1.0f, 1.0f), 8.0f, glm::mat4(1.0f), 10.0f, glm::vec3(0, -1, 0), 0, 0, emCubeEntity);
 
-
+		// ��ͷ��
 		glm::mat4 localLightOffset = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.7f, 1.7f));
 		flecs::entity headlight = m_scene->create_light_entity("headlight", engine::LightType::Spot, glm::vec3(1.0f, 0.95f, 0.85f), 15.0f, localLightOffset, 40.0f, glm::vec3(0.0f, 0, 1.0f), 15.0f, 25.0f);
 		if (bikeEntity.is_valid()) headlight.child_of(bikeEntity);
-
+		// ̫���������ƹ�
 		glm::vec3 sunDir = glm::normalize(glm::vec3(-0.5f, 1.0f, -0.3f));
 		glm::mat4 sunTransform = glm::mat4(1.0f); sunTransform[3] = glm::vec4(sunDir, 0.0f);
 		m_scene->create_light_entity("MainSun", engine::LightType::Directional, glm::vec3(1.2f, 0.95f, 0.8f), 2.5f, sunTransform, 0);
@@ -292,7 +293,7 @@ namespace engine {
 		glm::mat4 light2SpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(20.0f, 3.0f, 30.0f));
 		m_scene->create_light_entity("voidLight", engine::LightType::Point, glm::vec3(0.5f, 0.0f, 3.0f), 8, light2SpawnPos, 20.0f);
 
-
+		// 5. ���ô����� (Trigger)
 		m_render->AddParticleGroup();
 		auto& triggerParticles = m_render->GetParticles();
 		size_t triggerParticleIndex = triggerParticles.size() - 1;
@@ -310,81 +311,17 @@ namespace engine {
 		m_scene->print_all_entities();
 
 		m_input->MapKeyboardAction("Horn", GLFW_KEY_F);
-
-		static const glm::vec3 kCollectPositions[4] = {
-			{ 40.0f,  0.0f,  35.0f }, 
-			{ 80.0f,  0.0f,  55.0f }, 
-			{ 70.0f,  0.0f, 150.0f },
-			{115.0f,  0.0f, 250.0f },
-		};
-
-		auto collectedCount = std::make_shared<int>(0);
-		constexpr int kTotalCollectibles = 4;
-
-		for (int i = 0; i < kTotalCollectibles; ++i) {
-			size_t tid = m_render->GetTriggerSystem().AddSphereTrigger(
-				kCollectPositions[i],
-				/*radius=*/5.0f,
-				/*particleIndex=*/static_cast<size_t>(-1),
-				/*color=*/glm::vec3(1.0f, 0.85f, 0.0f),
-				/*isVisible=*/true,
-				/*oneShot=*/true
-			);
-
-			m_render->GetTriggerSystem().SetTriggerCallbacks(tid,
-				[this, i, collectedCount, kTotalCollectibles]() {
-					int total = ++(*collectedCount);
-					m_event->QueueEvent(std::make_unique<ItemCollectedEvent>(i, total));
-					if (total >= kTotalCollectibles)
-						m_event->QueueEvent(std::make_unique<AllItemsCollectedEvent>());
-				},
-				nullptr
-			);
-		}
-
-		m_audio->LoadSound("Collect",    "Assets/Sounds/Collect.mp3");
-		m_audio->SetVolume("Collect", 0.4f);
-		m_audio->LoadSound("AllCollectd", "Assets/Sounds/AllCollectd.mp3");
-		m_audio->SetVolume("AllCollectd", 0.8f);
-
-
-		m_event->Subscribe(EventType::ItemCollected, [this](Event& e) {
-			auto& col = static_cast<ItemCollectedEvent&>(e);
-			mState->collectedItems = col.GetCurrentTotal();
-			EngineUi::LogPrint("[Collection] {}/{} collected\n",
-				col.GetCurrentTotal(), mState->totalCollectibles);
-
-			m_audio->PlayOneShot("Collect");
-		});
-
-		m_event->Subscribe(EventType::AllItemsCollected, [this](Event& e) {
-			mState->allCollected = true;
-			mState->bikeTuning.maxSpeed *= 2.0f;
-			EngineUi::LogPrint("[Collection] ALL ITEMS COLLECTED — max speed unlocked!\n");
-			EngineUi::ShowToast("All collectibles found! MAX SPEED UNLOCKED!");
-			m_allCollectSoundDelay = 0.8f; 
-		});
 	}
 
-	void TestScene::Update(float dt) {
-
-
-
-		if (m_allCollectSoundDelay >= 0.0f) {
-			m_allCollectSoundDelay -= dt;
-			if (m_allCollectSoundDelay < 0.0f) {
-				m_audio->PlayOneShot("AllCollectd");
-			}
-		}
-
+	void level::Update(float dt) {
 		if (m_input && m_audio && m_input->IsActionPressed("Horn")) {
 			m_audio->LoadSound("Horn", "Assets/Sounds/bicycle_horn.mp3");
 			m_audio->SetVolume("Horn", 0.2f);
 			m_audio->PlayOneShot("Horn");
 		}
-	
+
 		if (m_input && m_input->IsActionPressed("DEPLOY")) {
-			
+
 			if (!mState->isAlive) {
 				flecs::entity bikeEntity = m_scene->find_entity("Bike_0");
 				if (bikeEntity.is_valid()) {
@@ -396,14 +333,18 @@ namespace engine {
 						JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
 						JPH::BodyID id(bikeBodyID);
 
-
+						// -----------------------------------------------------
+						// 【新增】运动检测逻辑 (Motion Check)
+						// -----------------------------------------------------
+						// 使用 LengthSq (长度的平方) 代替 Length，省去了开平方的运算，性能更高
 						float linVelSq = bi.GetLinearVelocity(id).LengthSq();
 						float angVelSq = bi.GetAngularVelocity(id).LengthSq();
 
+						// 设定静止阈值 (0.25f 意味着速度必须降到 0.5 m/s 以下才算停稳)
 						const float stopThresholdSq = 0.25f;
 
 						if (linVelSq < stopThresholdSq && angVelSq < stopThresholdSq) {
-
+							// === 单车已经停稳，执行复活 ===
 							JPH::RVec3 currentPos = bi.GetPosition(id);
 							currentPos.SetY(currentPos.GetY() + 1.0f);
 
@@ -425,27 +366,29 @@ namespace engine {
 							printf("[Gameplay] Bike stopped and respawned in place!\n");
 						}
 						else {
-
+							// === 单车还在滚动，拒绝复活，可以考虑在这里触发个 UI 提示音 ===
+							// printf("[Gameplay] Cannot respawn yet, bike is still tumbling...\n");
 						}
 						// -----------------------------------------------------
 					}
 				}
 			}
 		}
-
+		// =========================================================
+		// ���µ�������
 		if (m_bikeController) {
 			m_bikeController->Update(dt);
 		}
 
-
+		// ���Ʋ��� Debug ���� (ֻ��������ؿ�����Ҫ����Щ)
 		m_render->mDebugRenderer.DrawBox(glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 		m_render->mDebugRenderer.DrawLine(glm::vec3(3.0f, 0.0f, 0.0f), glm::vec3(3.0f, 5.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 		m_render->mDebugRenderer.DrawSphere(glm::vec3(-4.0f, 2.0f, 0.0f), 2.0f, glm::vec3(0.0f, 0.0f, 1.0f));
 		m_render->mDebugRenderer.DrawCapsule(glm::vec3(0.0f, 2.0f, 5.0f), 1.0f, 1.5f, glm::vec3(1.0f, 1.0f, 0.0f));
 	}
 
-	void TestScene::Shutdown() {
-
+	void level::Shutdown() {
+		// ������ض��Ĺؿ���Դ��������������
 		m_bikeController.reset();
 	}
 
