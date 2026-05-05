@@ -49,6 +49,8 @@ namespace engine {
 
 		// 3. ��ʼ������������
 		m_bikeController = std::make_unique<BikeController>(m_physics->GetJoltSystem(), m_input, m_state);
+		m_audio->LoadSound("Jump", "Assets/Sounds/jump_effect.mp3");
+		m_bikeController->SetAudioSystem(m_audio);
 		flecs::entity bikeEntity = m_scene->find_entity("Bike_0");
 		if (bikeEntity.is_valid()) {
 			uint32_t bikeBodyID = JPH::BodyID::cInvalidBodyID;
@@ -304,9 +306,17 @@ namespace engine {
 		);
 
 		m_scene->print_all_entities();
+
+		m_input->MapKeyboardAction("Horn", GLFW_KEY_F);
 	}
 
 	void TestScene::Update(float dt) {
+		if (m_input && m_audio && m_input->IsActionPressed("Horn")) {
+			m_audio->LoadSound("Horn", "Assets/Sounds/bicycle_horn.mp3");
+			m_audio->SetVolume("Horn", 0.2f);
+			m_audio->PlayOneShot("Horn");
+		}
+
 		// ���µ�������
 		if (m_bikeController) {
 			m_bikeController->Update(dt);

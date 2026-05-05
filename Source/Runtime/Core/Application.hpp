@@ -3,7 +3,7 @@
 #include <memory>
 #include <chrono>
 #include "System.h"
-#include "../Scene/GameScene.hpp" // °üº¬»ùÀàÍ·ÎÄ¼þ
+#include "../Scene/GameScene.hpp" // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í·ï¿½Ä¼ï¿½
 
 #include "../UserState/UserState.hpp"
 
