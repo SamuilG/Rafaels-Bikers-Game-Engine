@@ -137,6 +137,43 @@ namespace engine
         JPH::Vec3 currentNose = currentRot * fwdLocalUnit;
         float currentPitch = std::asin(std::clamp(currentNose.GetY(), -1.0f, 1.0f));
 
+        // Use raycasts to find terrain slope and adapt pitch to prevent clipping into slopes
+        JPH::RVec3 centerPos2 = bi.GetPosition(id);
+        JPH::Vec3 fwdDir = currentRot * fwdLocalUnit;
+        fwdDir.SetY(0.0f);
+        float fwdDirLen = fwdDir.Length();
+        if (fwdDirLen > 1.0e-4f) {
+            fwdDir = fwdDir / fwdDirLen;
+            
+        } else {
+            fwdDir = JPH::Vec3(0, 0, -1);
+
+        }
+        
+        float halfWheelBase = 0.8f;
+        JPH::RVec3 frontPos = centerPos2 + fwdDir * halfWheelBase;
+        JPH::RVec3 backPos  = centerPos2 - fwdDir * halfWheelBase;
+
+        JPH::RRayCast frontRay{ frontPos + JPH::Vec3(0, 1.0f, 0), JPH::Vec3(0, -3.0f, 0) };
+        JPH::RRayCast backRay{ backPos + JPH::Vec3(0, 1.0f, 0), JPH::Vec3(0, -3.0f, 0) };
+        
+        JPH::RayCastResult hitFront, hitBack;
+        JPH::IgnoreSingleBodyFilter bodyFilter2(id);
+        bool frontHit = m_joltPhysics->GetNarrowPhaseQuery().CastRay(frontRay, hitFront, { }, { }, bodyFilter2);
+        bool backHit  = m_joltPhysics->GetNarrowPhaseQuery().CastRay(backRay, hitBack, { }, { }, bodyFilter2);
+
+        if (frontHit && backHit) {
+
+            float frontY = frontPos.GetY() + 1.0f - hitFront.mFraction * 3.0f;
+            float backY  = backPos.GetY() + 1.0f - hitBack.mFraction * 3.0f;
+            float targetPitch = std::atan2(frontY - backY, halfWheelBase * 2.0f);
+            
+            // smoothly interpolate to target pitch to avoid jitter
+            float t = std::clamp(15.0f * dt, 0.0f, 1.0f);
+            currentPitch = currentPitch + (targetPitch - currentPitch) * t;
+
+        }
+
         JPH::Quat yawQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), newYaw + JPH::JPH_PI);
         JPH::Quat leanQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisZ(), m_bicycle->leanAngle);
         JPH::Quat pitchQuat = JPH::Quat::sRotation(JPH::Vec3::sAxisX(), currentPitch);
