@@ -344,7 +344,8 @@ void main()
         vec3 LambientSpecular = iblSpecularColor * kS_env * roughnessFade * metalFade;
 
         // c. 合并并应用 AO 遮蔽
-        Lambient = (LambientDiffuse + LambientSpecular) * ao;
+        //Lambient = (LambientDiffuse + LambientSpecular) * ao;
+        Lambient = ( LambientSpecular) * ao;
     }
 
     // 最终合并（如果 IBL 关闭，Lambient 就是 vec3(0.0)）
