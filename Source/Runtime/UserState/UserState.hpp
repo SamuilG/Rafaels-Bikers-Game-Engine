@@ -102,9 +102,9 @@ namespace engine {
 		//================player================================
 
 
-		int  collectedItems  = 0;   
-		int  totalCollectibles = 4; 
-		bool allCollected    = false; 
+		int  collectedItems  = 0;
+		int  totalCollectibles = 15;
+		bool allCollected    = false;
 
 
 		bool bloomEnabled = true;

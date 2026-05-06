@@ -499,15 +499,47 @@ EngineModel load_engine_model_glb(const char* path)
     tinygltf::TinyGLTF loader;
     std::string err, warn;
 
-    // --- �ؼ��޸ģ������ļ���׺��ѡ����ط�ʽ ---
+    // Custom image loader: tries STB first; falls back to a 1×1 white pixel
+    // for unsupported formats (WebP, KTX2, …) so the engine never hard-crashes
+    // on an exotic texture encoding.
+    loader.SetImageLoader(
+        [](tinygltf::Image* image, const int /*idx*/,
+           std::string* /*err*/, std::string* /*warn*/,
+           int /*reqW*/, int /*reqH*/,
+           const unsigned char* bytes, int size, void* /*user*/) -> bool
+        {
+            int w = 0, h = 0, comp = 0;
+            unsigned char* data = stbi_load_from_memory(bytes, size, &w, &h, &comp, 4);
+            if (data) {
+                image->width      = w;
+                image->height     = h;
+                image->component  = 4;
+                image->bits       = 8;
+                image->pixel_type = TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE;
+                image->image.assign(data, data + w * h * 4);
+                stbi_image_free(data);
+                return true;
+            }
+            // Unsupported format (WebP, KTX2 …) – use 1×1 white placeholder
+            fprintf(stderr, "[tinygltf] Unsupported image format '%s', using white fallback.\n",
+                    image->name.c_str());
+            image->width      = 1;
+            image->height     = 1;
+            image->component  = 4;
+            image->bits       = 8;
+            image->pixel_type = TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE;
+            image->image      = { 255, 255, 255, 255 };
+            return true;
+        },
+        nullptr);
+
+    // --- 根据文件扩展名选择加载方式 ---
     std::string filePath(path);
     bool ret = false;
 
-    
     if (filePath.length() >= 5 && filePath.substr(filePath.length() - 5) == ".gltf") {
         ret = loader.LoadASCIIFromFile(&gltf, &err, &warn, path);
     }
-    
     else {
         ret = loader.LoadBinaryFromFile(&gltf, &err, &warn, path);
     }
