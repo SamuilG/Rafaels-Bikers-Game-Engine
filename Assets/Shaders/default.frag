@@ -308,7 +308,7 @@ void main()
         vec3 F0_env = mix(vec3(0.04), baseColor, metalness);
         
         // a. 环境漫反射
-        vec3 skyColorEnv = vec3(0.35, 0.45, 0.65) * 0.3; 
+        vec3 skyColorEnv = vec3(0.35, 0.45, 0.65) * 0.1; 
         vec3 groundColorEnv = vec3(0.05, 0.04, 0.03);    
         float hemiWeight = 0.5 * N.y + 0.5;
         vec3 ambientIrradiance = mix(groundColorEnv, skyColorEnv, hemiWeight);
@@ -344,8 +344,8 @@ void main()
         vec3 LambientSpecular = iblSpecularColor * kS_env * roughnessFade * metalFade;
 
         // c. 合并并应用 AO 遮蔽
-        //Lambient = (LambientDiffuse + LambientSpecular) * ao;
-        Lambient = ( LambientSpecular) * ao;
+        Lambient = (LambientDiffuse + LambientSpecular) * ao;
+        //Lambient = ( LambientSpecular) * ao;
     }
 
     // 最终合并（如果 IBL 关闭，Lambient 就是 vec3(0.0)）
