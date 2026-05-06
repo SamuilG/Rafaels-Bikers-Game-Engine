@@ -9,6 +9,8 @@
 #include "../Animation/AnimationSystem.hpp"
 #include "../Debug/DebugRenderer.hpp"
 #include "../AudioSystem/AudioSystem.hpp"
+#include "../UI/EngineUi.hpp"
+#include <Jolt/Physics/Body/BodyLock.h>
 
 namespace engine {
 
@@ -318,10 +320,146 @@ namespace engine {
 
 		m_scene->print_all_entities();
 
+
+		{
+
+			uint32_t bikeBodyID_raw = JPH::BodyID::cInvalidBodyID;
+			if (bikeEntity.is_valid()) {
+				if (bikeEntity.has<CompoundParent>()) bikeBodyID_raw = bikeEntity.get<CompoundParent>().bodyID;
+				else if (bikeEntity.has<PhysicsBody>())  bikeBodyID_raw = bikeEntity.get<PhysicsBody>().bodyID;
+			}
+
+
+			static const glm::vec3 kCollectPos[15] = {
+				{  5.0f, 1.0f,  15.0f }, { 20.0f, 1.0f,  20.0f }, { 45.0f, 1.0f,  18.0f },
+				{ 58.0f, 1.0f,  10.0f }, {  0.0f, 1.0f,   5.0f }, { 15.0f, 1.0f,   2.0f },
+				{ 35.0f, 1.0f,  -2.0f }, { 55.0f, 1.0f,   0.0f }, { 62.0f, 1.0f,  14.0f },
+				{ -5.0f, 1.0f,  -2.0f }, { 10.0f, 1.0f, -15.0f }, { 38.0f, 1.0f, -18.0f },
+				{ 58.0f, 1.0f, -12.0f }, {  0.0f, 1.0f, -22.0f }, { 30.0f, 1.0f, -28.0f },
+			};
+			constexpr int kTotalCollectibles = 15;
+
+
+			flecs::entity collectEntities[kTotalCollectibles] = {};
+			collectEntities[0] = m_scene->LoadModel(
+				m_render, "Assets/Models/gas_tank.glb",
+				engine::ModelPhysicsType::Dynamic, 0.5f,
+				glm::translate(glm::mat4(1.0f), kCollectPos[0]));
+
+			uint32_t collectMeshIdx = 0;
+			uint32_t collectMatIdx  = 0;
+			if (collectEntities[0].is_valid()) {
+				if (collectEntities[0].has<MeshComponent>())
+					collectMeshIdx = collectEntities[0].get<MeshComponent>().meshIndex;
+				if (collectEntities[0].has<MaterialComponent>())
+					collectMatIdx = collectEntities[0].get<MaterialComponent>().materialIndex;
+				if (collectEntities[0].has<PhysicsBody>()) {
+					JPH::BodyID bid(collectEntities[0].get<PhysicsBody>().bodyID);
+					JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
+					bi.SetGravityFactor(bid, 0.0f);
+					JPH::BodyLockWrite lock(m_physics->GetJoltSystem()->GetBodyLockInterface(), bid);
+					if (lock.Succeeded()) lock.GetBody().SetIsSensor(true);
+				}
+			}
+
+
+			for (int i = 1; i < kTotalCollectibles; ++i) {
+				std::string eName = "gas_tank_" + std::to_string(i);
+				collectEntities[i] = m_scene->create_dynamic_entity(
+					eName.c_str(), collectMeshIdx, collectMatIdx,
+					glm::translate(glm::mat4(1.0f), kCollectPos[i]));
+				collectEntities[i].set<EntityStatus>({ true, false });
+			}
+
+
+			auto collectedCount = std::make_shared<int>(0);
+
+			for (int i = 0; i < kTotalCollectibles; ++i) {
+				flecs::entity ce = collectEntities[i];
+				size_t tid = m_render->GetTriggerSystem().AddSphereTrigger(
+					kCollectPos[i],
+					/*radius=*/2.5f,
+					/*particleIndex=*/static_cast<size_t>(-1),
+					/*color=*/glm::vec3(1.0f, 0.85f, 0.0f),
+					/*isVisible=*/false,
+					/*oneShot=*/true
+				);
+				m_render->GetTriggerSystem().SetTriggerCallbacks(tid,
+					[this, ce, i, collectedCount, kTotalCollectibles]() mutable {
+						if (ce.is_valid()) {
+							ce.set<EntityStatus>({ false, false });
+							if (ce.has<PhysicsBody>()) {
+								JPH::BodyID bid(ce.get<PhysicsBody>().bodyID);
+								JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
+								if (bi.IsAdded(bid)) { bi.RemoveBody(bid); bi.DestroyBody(bid); }
+							}
+						}
+						int total = ++(*collectedCount);
+						m_event->QueueEvent(std::make_unique<ItemCollectedEvent>(i, total));
+						if (total >= kTotalCollectibles)
+							m_event->QueueEvent(std::make_unique<AllItemsCollectedEvent>());
+					},
+					nullptr
+				);
+			}
+
+
+			m_audio->LoadSound("Collect",     "Assets/Sounds/Collect.mp3");
+			m_audio->SetVolume("Collect",     0.5f);
+			m_audio->LoadSound("AllCollectd", "Assets/Sounds/AllCollectd.mp3");
+			m_audio->SetVolume("AllCollectd", 0.8f);
+
+
+			m_event->Subscribe(EventType::ItemCollected, [this, bikeBodyID_raw](Event& e) {
+				auto& col = static_cast<ItemCollectedEvent&>(e);
+				int collected = col.GetCurrentTotal();
+				mState->collectedItems = collected;
+				EngineUi::LogPrint("[Collection] {}/{} collected\n",
+					collected, mState->totalCollectibles);
+
+				m_audio->PlayOneShot("Collect");
+
+
+				if (collected % 5 == 0 && bikeBodyID_raw != JPH::BodyID::cInvalidBodyID) {
+					m_allCollectSoundDelay = 0.6f;
+
+					constexpr float kInitialMass = 90.0f;
+					constexpr float kMassStep    = 15.0f;
+					float newMass = kInitialMass - (collected / 5) * kMassStep;
+					if (newMass > 0.0f) {
+						JPH::BodyID bid(bikeBodyID_raw);
+						JPH::BodyLockWrite lock(m_physics->GetJoltSystem()->GetBodyLockInterface(), bid);
+						if (lock.Succeeded()) {
+							lock.GetBody().GetMotionProperties()->SetInverseMass(1.0f / newMass);
+							printf("[Collect] Bike mass -> %.1f kg (%d/%d)\n",
+								newMass, collected, mState->totalCollectibles);
+						}
+					}
+				}
+			});
+
+			// === 事件订阅：全部收集完毕 ===
+			m_event->Subscribe(EventType::AllItemsCollected, [this](Event& /*e*/) {
+				mState->allCollected = true;
+				EngineUi::LogPrint("[Collection] ALL {} ITEMS COLLECTED!\n",
+					mState->totalCollectibles);
+				EngineUi::ShowToast("All gas tanks collected! Bike fully lightened!");
+			});
+		}
+		// =========================================================
+
 		m_input->MapKeyboardAction("Horn", GLFW_KEY_F);
 	}
 
 	void level::Update(float dt) {
+		// 延迟音效（与 TestScene 风格一致）
+		if (m_allCollectSoundDelay >= 0.0f) {
+			m_allCollectSoundDelay -= dt;
+			if (m_allCollectSoundDelay < 0.0f) {
+				m_audio->PlayOneShot("AllCollectd");
+			}
+		}
+
 		if (m_input && m_audio && m_input->IsActionPressed("Horn")) {
 			m_audio->LoadSound("Horn", "Assets/Sounds/bicycle_horn.mp3");
 			m_audio->SetVolume("Horn", 0.2f);
@@ -341,18 +479,14 @@ namespace engine {
 						JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
 						JPH::BodyID id(bikeBodyID);
 
-						// -----------------------------------------------------
-						// 【新增】运动检测逻辑 (Motion Check)
-						// -----------------------------------------------------
-						// 使用 LengthSq (长度的平方) 代替 Length，省去了开平方的运算，性能更高
 						float linVelSq = bi.GetLinearVelocity(id).LengthSq();
 						float angVelSq = bi.GetAngularVelocity(id).LengthSq();
 
-						// 设定静止阈值 (0.25f 意味着速度必须降到 0.5 m/s 以下才算停稳)
+
 						const float stopThresholdSq = 0.25f;
 
 						if (linVelSq < stopThresholdSq && angVelSq < stopThresholdSq) {
-							// === 单车已经停稳，执行复活 ===
+
 							JPH::RVec3 currentPos = bi.GetPosition(id);
 							currentPos.SetY(currentPos.GetY() + 1.0f);
 

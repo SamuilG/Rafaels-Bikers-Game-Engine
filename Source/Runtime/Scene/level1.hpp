@@ -15,7 +15,6 @@ namespace engine {
         void Shutdown() override;
 
     private:
-        // ±£´æÏµÍ³Ö¸Õë¹© Update Ê¹ÓÃ
         RenderSystem* m_render = nullptr;
         SceneManager* m_scene = nullptr;
         PhysicsSystem* m_physics = nullptr;
@@ -25,9 +24,10 @@ namespace engine {
         AnimationSystem* m_anima = nullptr;
         AudioSystem* m_audio = nullptr;
 
-        // ¡¾¹Ø¼ü¡¿£º°Ñ BikeController ´Ó Application ÒÆ½»µ½¾ßÌå¹Ø¿¨ÖÐ¹ÜÀí
-        // ÒòÎª±ðµÄ¹Ø¿¨£¨±ÈÈçÖ÷²Ëµ¥£©¿ÉÄÜ¸ù±¾²»ÐèÒª×ÔÐÐ³µ
         std::unique_ptr<BikeController> m_bikeController;
+
+        // sound delay â€” matches TestScene pattern
+        float m_allCollectSoundDelay = -1.0f;
     };
 
 } // namespace engine
