@@ -4,17 +4,14 @@
 layout(location = 0) in vec2 inUV;
 layout(location = 0) out float oAoColor;
 
-// 只需要深度和法线！无视 C++ 传来的噪点图和采样核！
 layout(set = 0, binding = 0) uniform sampler2D uDepthMap;
 layout(set = 0, binding = 1) uniform sampler2D uNormalMap;
 
-// 匹配你 default.frag 里的 uScene
 layout(set = 0, binding = 3) uniform SceneUniforms {
     mat4 view;
     mat4 proj;
 } uScene;
 
-// GPU 内置伪随机发生器
 float hash(vec2 p) {
     return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
 }
@@ -33,50 +30,53 @@ void main() {
         oAoColor = 1.0; 
         return; 
     }
-    vec3 normal = normalize(normalRaw.xyz);
+    
+    // ==========================================
+    // 【核心修复 1】：空间统一
+    // G-Buffer 存的通常是世界空间法线，必须将其转换到观察空间 (View Space)
+    // 这样才能和 reconstructViewPos 算出来的 View Space 坐标匹配！
+    // ==========================================
+    vec3 normalWorld = normalize(normalRaw.xyz);
+    // 乘以 view 矩阵的左上角 3x3 部分，剥离位移，只保留旋转
+    vec3 normal = normalize(mat3(uScene.view) * normalWorld);
 
     mat4 projInv = inverse(uScene.proj);
     vec3 fragPos = reconstructViewPos(inUV, projInv);
 
     // ==========================================
-    // 物理参数调优 (专治全屏变暗)
+    // 物理参数调优
     // ==========================================
-    float radius = 4.0;  // 半径可以稍微缩一点，避免远处的物体错误遮挡
+    float radius = 9.5;  // 缩小半径，只捕捉角落的细节遮挡
     
-    // 这能彻底消灭平地上的“假阴影”
-    float bias = 1.0;    
+    // 【核心修复 2】：Bias 调优
+    // 1.0 的 bias 在 1单位=1米 的游戏里意味着“忽略1米以内的厚度”，太大了！
+    // 修改为 0.05 左右，刚好能避免平地上的自我遮挡噪点
+    float bias = 0.05;    
 
-   
-    // 这会让那些只有轻微遮挡的地方重新变成纯白 (1.0)
-    // 只保留那些深度遮挡（缝隙、车底）的死角，并把它们变得极黑
-    float power = 5.0;
-    // 用 Shader 内部算出的噪点，绝对安全
+    float power = 7.0; // 加深死角的黑度
+
     vec3 randomVec = normalize(vec3(
         hash(inUV) * 2.0 - 1.0,
         hash(inUV + 1.23) * 2.0 - 1.0,
         0.0
     ));
 
+    // 使用转换到观察空间后的法线构建 TBN
     vec3 tangent = normalize(randomVec - normal * dot(randomVec, normal)); 
     vec3 bitangent = cross(normal, tangent);
     mat3 TBN = mat3(tangent, bitangent, normal);
 
     float occlusion = 0.0;
-    int kernelSize = 64; // 32 根射线的黄金螺旋，画质极高
+    int kernelSize = 32; // 32 根已经能得到极高的画质了，64 有点费性能
 
     for(int i = 0; i < kernelSize; ++i) {
-        // ==========================================
-        // 核心技术：斐波那契半球分布 (Fibonacci Hemisphere)
-        // 绝对均匀，完美抛弃 C++ 传进来的 UBO！
-        // ==========================================
         float fi = float(i) + 0.5;
         float cosTheta = 1.0 - (fi / float(kernelSize)); 
         float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
-        float phi = 2.39996323 * fi; // 黄金比例角度
+        float phi = 2.39996323 * fi; 
         
         vec3 sampleDir = vec3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta);
         
-        // 靠近中心密集采样
         float scale = fi / float(kernelSize);
         scale = mix(0.1, 1.0, scale * scale);
         sampleDir *= scale;
@@ -84,7 +84,6 @@ void main() {
         vec3 samplePos = TBN * sampleDir;
         samplePos = fragPos + samplePos * radius; 
         
-        // 投影到屏幕
         vec4 offset = vec4(samplePos, 1.0);
         offset = uScene.proj * offset; 
         offset.xyz /= offset.w;         
@@ -99,8 +98,6 @@ void main() {
 
         float zDistance = abs(fragPos.z - actualZ);
         
-        // 【核心修复】：真正的范围截断！
-        // 如果 zDistance 大于 radius，clamp 结果为 1.0，1.0 - 1.0 = 0.0，彻底消除遮挡！
         float rangeCheck = smoothstep(0.0, 1.0, 1.0 - clamp(zDistance / radius, 0.0, 1.0));
         occlusion += (actualZ >= samplePos.z + bias ? 1.0 : 0.0) * rangeCheck;
     }
