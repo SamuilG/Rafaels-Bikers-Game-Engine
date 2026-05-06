@@ -46,7 +46,9 @@ namespace engine {
         // audio system test
         if (audioSystem) {
             //background music
-            audioSystem->LoadSound("BackgroundTestMusic", "Assets/Sounds/BackgroundTestMusic.mp3");
+            //audioSystem->LoadSound("BackgroundTestMusic", "Assets/Sounds/BackgroundTestMusic.mp3");
+            audioSystem->LoadSound("BackgroundTestMusic", "Assets/Sounds/Looping_radio_mix.mp3");
+
             audioSystem->SetVolume("BackgroundTestMusic", 0.1f);
             audioSystem->SetPitch("BackgroundTestMusic", 1.0f);
             audioSystem->PlayLoop("BackgroundTestMusic");

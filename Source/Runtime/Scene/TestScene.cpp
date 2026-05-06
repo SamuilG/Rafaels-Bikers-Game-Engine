@@ -219,6 +219,8 @@ namespace engine {
 			}
 		}
 
+
+
 		//collision event test
 		{
 			std::string bikeBodyIDStr;
@@ -273,7 +275,7 @@ namespace engine {
 				}
 				});
 		}
-
+		
 
 		glm::mat4 emissivecubeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(60.0f, 3.0f, 200.0f));
 		flecs::entity emCubeEntity = m_scene->LoadModel(m_render, "Assets/DELETE_LATER/em1.gltf", engine::ModelPhysicsType::Dynamic, 0.01f, emissivecubeSpawnPos, engine::RenderLayer::Emissive);
