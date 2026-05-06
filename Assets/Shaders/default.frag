@@ -35,7 +35,7 @@ struct GpuLight {
     vec4 position;  // xyz: position/direction, w: type (0:Dir, 1:Point, 2:Spot)
     vec4 color;     // rgb: color, a: intensity
     vec4 direction; // xyz: direction, w: range
-    vec4 params;    // x: cosInner, y: cosOuter, z: pad, w: pad
+    vec4 params;    // x: cosInner, y: cosOuter, z: specularMultiplier, w: pad
 };
 
 layout( scalar, set = 0, binding = 0 ) uniform UScene
@@ -291,7 +291,14 @@ void main()
         float D = D_Beckmann(alphaBRDF, NdotH);
         float G = G_CookTorrance(NdotL, NdotV, NdotH, VdotH);
         
-        vec3 Lspecular = (D * G * F) / max(4.0 * NdotL * NdotV, 0.0001);
+      vec3 Lspecular = (D * G * F) / max(4.0 * NdotL * NdotV, 0.0001);
+
+        // =========================================================
+        // 【核心修改】：应用从 C++ 传来的高光系数
+        // =========================================================
+        float specMultiplier = light.params.z; 
+        Lspecular *= specMultiplier; // 瞬间抹除或减弱特定光源的高光！
+
         // =========================================================
         // 【新增防闪烁 1】：防止微平面高光除以极小值导致数值爆炸
         // =========================================================

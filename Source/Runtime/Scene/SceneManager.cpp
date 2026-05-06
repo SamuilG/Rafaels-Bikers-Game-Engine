@@ -486,17 +486,27 @@ namespace engine {
     // =========================================================================
     // 灯光与渲染数据提取
     // =========================================================================
-
     flecs::entity SceneManager::create_light_entity(
         const char* name, LightType type, glm::vec3 color, float intensity,
         const glm::mat4& transform, float range, glm::vec3 direction,
         float innerCutOff, float outerCutOff, flecs::entity parent)
     {
+        // 【修改】：使用结构体明确赋值，防止成员增加导致初始化错位
+        LightComponent lc{};
+        lc.color = color;
+        lc.intensity = intensity;
+        lc.type = type;
+        lc.range = range;
+        lc.specularMultiplier = 1.0f; // 默认所有灯光都产生正常高光
+        lc.direction = direction;
+        lc.innerCutOff = innerCutOff;
+        lc.outerCutOff = outerCutOff;
+
         auto e = m_world->entity(name)
             .set<EntityStatus>({ true, false })
             .set<LocalTransform>({ transform })
             .set<WorldTransform>({ transform })
-            .set<LightComponent>({ color, intensity, type, range, direction, innerCutOff, outerCutOff });
+            .set<LightComponent>(lc); // 传入打包好的组件
 
         if (parent.is_valid()) {
             e.child_of(parent);
@@ -504,7 +514,6 @@ namespace engine {
 
         return e;
     }
-
     void SceneManager::get_light_data(std::vector<GpuLight>& outLights) {
         outLights.clear();
 
@@ -523,7 +532,11 @@ namespace engine {
 
             float cosInner = glm::cos(glm::radians(lc.innerCutOff));
             float cosOuter = glm::cos(glm::radians(lc.outerCutOff));
-            gpuLight.params = glm::vec4(cosInner, cosOuter, 0.0f, 0.0f);
+
+            // =======================================================
+            // 【核心修改】：将高光系数 (specularMultiplier) 塞入 Z 通道！
+            // =======================================================
+            gpuLight.params = glm::vec4(cosInner, cosOuter, lc.specularMultiplier, 0.0f);
 
             outLights.push_back(gpuLight);
                 });

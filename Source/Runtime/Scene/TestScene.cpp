@@ -265,7 +265,7 @@ namespace engine {
 
 
 					m_audio->LoadSound("wasted", "Assets/Sounds/wasted.mp3");
-					m_audio->SetVolume("wasted", 0.5f);
+					m_audio->SetVolume("wasted", 1.2f);
 					m_audio->PlayOneShot("wasted");
 					mState->deathTimer = 0.0f;
 					mState->thirdPersonMode = false;

@@ -49,7 +49,7 @@ namespace engine {
 		glm::mat4 bikeAnchorWorld = glm::mat4(0.0f); // sentinel: [3][3]==0 means anchor not found
 
 		m_render->load_animated_model("Assets/Models/character.glb", tbpos);
-		m_scene->LoadModel(m_render, "Assets/Models/tbikeWithAnchor.glb", engine::ModelPhysicsType::CustomC, 90.0f, tbpos);
+		flecs::entity playerBike = m_scene->LoadModel(m_render, "Assets/Models/tbikeWithAnchor.glb", engine::ModelPhysicsType::CustomC, 90.0f, tbpos);
 
 		// 3. ��ʼ������������
 		m_bikeController = std::make_unique<BikeController>(m_physics->GetJoltSystem(), m_input, mState);
@@ -281,8 +281,8 @@ namespace engine {
 		glm::mat4 emissivecubeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(60.0f, 3.0f, 200.0f));
 		flecs::entity emCubeEntity = m_scene->LoadModel(m_render, "Assets/DELETE_LATER/em1.gltf", engine::ModelPhysicsType::Dynamic, 0.01f, emissivecubeSpawnPos, engine::RenderLayer::Emissive);
 
-		m_scene->create_light_entity("emCubeLight", engine::LightType::Point, glm::vec3(1.0f, 1.0f, 1.0f), 8.0f, glm::mat4(1.0f), 10.0f, glm::vec3(0, -1, 0), 0, 0, emCubeEntity);
-
+		flecs::entity emc = m_scene->create_light_entity("emCubeLight", engine::LightType::Point, glm::vec3(1.0f, 1.0f, 1.0f), 8.0f, glm::mat4(1.0f), 10.0f, glm::vec3(0, -1, 0), 0, 0, emCubeEntity);
+		emc.get_mut<engine::LightComponent>().specularMultiplier = 0.0f;
 
 
 
@@ -294,15 +294,21 @@ namespace engine {
 		//light
 		glm::mat4 localLightOffset = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.7f, 1.7f));
 		flecs::entity headlight = m_scene->create_light_entity("headlight", engine::LightType::Spot, glm::vec3(1.0f, 0.95f, 0.85f), 15.0f, localLightOffset, 40.0f, glm::vec3(0.0f, 0, 1.0f), 15.0f, 25.0f);
-		if (bikeEntity.is_valid()) headlight.child_of(bikeEntity);
+		flecs::entity playerLight = m_scene->create_light_entity("playerLight", engine::LightType::Point, glm::vec3(1.0f, 1.0f, 1.0f), 1.0f, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 0.0f)), 20.0f, glm::vec3(0, -1, 0), 0, 0, playerBike);
+		playerLight.get_mut<engine::LightComponent>().specularMultiplier = 0.0f;
+		if (bikeEntity.is_valid())
+		{
+			headlight.child_of(bikeEntity);
+		}
+
 		// ̫���������ƹ�
 		glm::vec3 sunDir = glm::normalize(glm::vec3(-0.5f, 1.0f, -0.3f));
 		glm::mat4 sunTransform = glm::mat4(1.0f); sunTransform[3] = glm::vec4(sunDir, 0.0f);
 		m_scene->create_light_entity("MainSun", engine::LightType::Directional, glm::vec3(1.2f, 0.95f, 0.8f), 2.5f, sunTransform, 0);
 
 		glm::mat4 light2SpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(20.0f, 3.0f, 30.0f));
-		m_scene->create_light_entity("voidLight", engine::LightType::Point, glm::vec3(0.5f, 0.0f, 3.0f), 8, light2SpawnPos, 20.0f);
-
+		flecs::entity vidl =  m_scene->create_light_entity("voidLight", engine::LightType::Point, glm::vec3(0.5f, 0.0f, 3.0f), 8, light2SpawnPos, 20.0f);
+		vidl.get_mut<engine::LightComponent>().specularMultiplier = 0.0f;
 		// 5. ���ô����� (Trigger)
 		m_render->AddParticleGroup();
 		auto& triggerParticles = m_render->GetParticles();
