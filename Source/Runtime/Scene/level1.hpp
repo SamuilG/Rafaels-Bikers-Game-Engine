@@ -37,11 +37,26 @@ namespace engine {
         std::vector<std::string> m_radioSongs;  // radio: sound names loaded from RadioMusic/
         std::vector<std::string> m_radioLabels; // radio: display names (filename stems)
 
+        flecs::entity m_bikeEntity;          // bike root entity — pickups are parented here
+
         // Spinning pickup entities
         flecs::entity m_springPickupEntity;
         flecs::entity m_hornPickupEntity;
         std::vector<flecs::entity> m_gasPickupEntities;
         std::vector<flecs::entity> m_radioPickupEntities;
+
+        // Mounted horn — kept after collection for squeeze animation
+        flecs::entity m_hornMountedEntity;
+        glm::mat4     m_hornBaseMountT  = glm::mat4(1.0f);
+        float         m_hornAnimTimer   = -1.0f;           // -1 = idle; ≥0 = animating
+
+        // Mounted spring — kept after collection for squeeze animation on jump
+        flecs::entity m_springMountedEntity;
+        glm::mat4     m_springBaseMountT = glm::mat4(1.0f);
+        float         m_springAnimTimer  = -1.0f;          // -1 = idle; ≥0 = animating
+
+        // Rocket — hidden at start, mounted to rear frame on first gas tank collection
+        flecs::entity m_rocketEntity;
     };
 
 } // namespace engine

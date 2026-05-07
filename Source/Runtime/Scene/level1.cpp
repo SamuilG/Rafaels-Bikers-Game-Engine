@@ -58,9 +58,10 @@ namespace engine {
 		m_bikeController = std::make_unique<BikeController>(m_physics->GetJoltSystem(), m_input, mState);
 		m_audio->LoadSound("Jump", "Assets/Sounds/jump_effect.mp3");
 		m_audio->LoadSound("SpringJump", "Assets/Sounds/spring.mp3");
-		m_audio->SetVolume("SpringJump", 0.6f);
+		m_audio->SetVolume("SpringJump", 1.2f);
 		m_bikeController->SetAudioSystem(m_audio);
 		flecs::entity bikeEntity = m_scene->find_entity("Bike_0");
+		m_bikeEntity = bikeEntity;
 		if (bikeEntity.is_valid()) {
 			uint32_t bikeBodyID = JPH::BodyID::cInvalidBodyID;
 			if (bikeEntity.has<PhysicsBody>()) bikeBodyID = bikeEntity.get<PhysicsBody>().bodyID;
@@ -400,8 +401,31 @@ namespace engine {
 				);
 				m_render->GetTriggerSystem().SetTriggerCallbacks(tid,
 					[this, i, collectedCount, kTotalCollectibles]() mutable {
-						if (i < static_cast<int>(m_gasPickupEntities.size()))
-							m_gasPickupEntities[i].set<EntityStatus>({ false, false });
+						if (i < static_cast<int>(m_gasPickupEntities.size()) && m_gasPickupEntities[i].is_valid()) {
+							if (m_bikeEntity.is_valid()) {
+								// Mount gas tank onto bike frame — 3-col × 5-row grid, no tilt
+								float col = static_cast<float>(i % 3) - 1.0f; // -1, 0, +1
+								float row = static_cast<float>(i / 3);         // 0..4
+								glm::vec3 mountPos(col * 0.12f, 0.15f + row * 0.18f, 0.25f);
+								glm::mat4 mountT =
+									glm::translate(glm::mat4(1.0f), mountPos) *
+									glm::scale(glm::mat4(1.0f), glm::vec3(0.25f));
+								m_gasPickupEntities[i].child_of(m_bikeEntity);
+								m_gasPickupEntities[i].set<LocalTransform>({ mountT });
+							} else {
+								m_gasPickupEntities[i].set<EntityStatus>({ false, false });
+							}
+							m_gasPickupEntities[i] = {}; // stop spinning
+						}
+						// First gas tank: mount rocket to rear of bike frame
+						if (i == 0 && m_rocketEntity.is_valid() && m_bikeEntity.is_valid()) {
+							glm::mat4 rocketMountT =
+								glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.4f, -1.2f)) *
+								glm::scale(glm::mat4(1.0f), glm::vec3(0.3f));
+							m_rocketEntity.child_of(m_bikeEntity);
+							m_rocketEntity.set<LocalTransform>({ rocketMountT });
+							m_rocketEntity.set<EntityStatus>({ true, false });
+						}
 						int total = ++(*collectedCount);
 						m_event->QueueEvent(std::make_unique<ItemCollectedEvent>(i, total));
 						if (total >= kTotalCollectibles)
@@ -543,8 +567,20 @@ namespace engine {
 			m_render->GetTriggerSystem().SetTriggerCallbacks(jumpPickupTrigger,
 				[this]() {
 					mState->jumpEnabled = true;
-					if (m_springPickupEntity.is_valid())
+					if (m_springPickupEntity.is_valid() && m_bikeEntity.is_valid()) {
+						// Mount spring to bottom-center of bike frame, flipped upside down
+						glm::mat4 mountT =
+							glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -0.35f, 0.4f)) *
+							glm::scale(glm::mat4(1.0f), glm::vec3(0.1f / 3.0f));
+						m_springBaseMountT = mountT;
+						m_springPickupEntity.child_of(m_bikeEntity);
+						m_springPickupEntity.set<LocalTransform>({ mountT });
+						m_springMountedEntity = m_springPickupEntity; // keep ref for jump animation
+						m_springPickupEntity = {};                    // stop spinning
+					} else if (m_springPickupEntity.is_valid()) {
 						m_springPickupEntity.set<EntityStatus>({ false, false });
+						m_springPickupEntity = {};
+					}
 					m_audio->PlayOneShot("AllCollectd");
 					EngineUi::LogPrint("[Pickup] Jump ability unlocked!\n");
 					EngineUi::ShowToast("Jump unlocked! Press Space to jump.");
@@ -603,8 +639,21 @@ namespace engine {
 			m_render->GetTriggerSystem().SetTriggerCallbacks(hornPickupTrigger,
 				[this]() {
 					mState->hornEnabled = true;
-					if (m_hornPickupEntity.is_valid())
+					if (m_hornPickupEntity.is_valid() && m_bikeEntity.is_valid()) {
+						// Mount horn above right handlebar, no tilt (keep 180° X flip for model orientation)
+						m_hornBaseMountT =
+							glm::translate(glm::mat4(1.0f), glm::vec3(-0.38f, 1.75f, 1.30f)) *
+							glm::rotate(glm::mat4(1.0f), glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f)) *
+							glm::rotate(glm::mat4(1.0f), glm::radians(90.0f),  glm::vec3(1.0f, 0.0f, 0.0f)) *
+							glm::scale(glm::mat4(1.0f), glm::vec3(1.0f / 3.0f));
+						m_hornPickupEntity.child_of(m_bikeEntity);
+						m_hornPickupEntity.set<LocalTransform>({ m_hornBaseMountT });
+						m_hornMountedEntity = m_hornPickupEntity; // keep ref for squeeze animation
+						m_hornPickupEntity = {};                  // stop spinning
+					} else if (m_hornPickupEntity.is_valid()) {
 						m_hornPickupEntity.set<EntityStatus>({ false, false });
+						m_hornPickupEntity = {};
+					}
 					m_audio->PlayOneShot("AllCollectd");
 					EngineUi::LogPrint("[Pickup] Horn ability unlocked!\n");
 					EngineUi::ShowToast("Horn unlocked! Press F to honk.");
@@ -638,7 +687,7 @@ namespace engine {
 				std::string filePath  = songFiles[i].generic_string();
 				std::string label     = songFiles[i].stem().string();
 				m_audio->LoadSound(soundName, filePath);
-				m_audio->SetVolume(soundName, 0.8f);
+				m_audio->SetVolume(soundName, 0.35f);
 				m_radioSongs.push_back(std::move(soundName));
 				m_radioLabels.push_back(std::move(label));
 				printf("[Radio] Loaded song %d: %s\n", i, songFiles[i].filename().string().c_str());
@@ -693,6 +742,9 @@ namespace engine {
 						if (re.is_valid()) re.set<EntityStatus>({ false, false });
 					}
 					if (m_radioSongs.empty()) return;
+					m_audio->LoadSound("RadioOn", "Assets/Sounds/radio_on.mp3");
+					m_audio->SetVolume("RadioOn", 0.5f);
+					m_audio->PlayOneShot("RadioOn");
 					m_bgMusicPlaying = true;
 					m_currentSongIndex = 0;
 					m_audio->PlayLoop(m_radioSongs[0]);
@@ -704,6 +756,37 @@ namespace engine {
 
 			// Key binding for cycling songs
 			m_input->MapKeyboardAction("NextSong", GLFW_KEY_N);
+		}
+
+		// =========================================================
+		// Rocket — hidden at start, mounted to rear frame on first gas tank collection
+		// =========================================================
+		{
+			flecs::entity rocketAsset = m_scene->LoadModel(
+				m_render, "Assets/Models/rocket.glb",
+				engine::ModelPhysicsType::Static, 0.0f,
+				glm::mat4(1.0f));
+
+			uint32_t rocketMeshIdx = 0, rocketMatIdx = 0;
+			if (rocketAsset.is_valid()) {
+				if (rocketAsset.has<MeshComponent>())     rocketMeshIdx = rocketAsset.get<MeshComponent>().meshIndex;
+				if (rocketAsset.has<MaterialComponent>()) rocketMatIdx  = rocketAsset.get<MaterialComponent>().materialIndex;
+				m_scene->get_world().query<const MeshComponent>()
+					.each([&](flecs::entity e, const MeshComponent& mc) {
+						if (mc.meshIndex < rocketMeshIdx) return;
+						e.set<EntityStatus>({ false, false });
+						if (e.has<PhysicsBody>()) {
+							JPH::BodyID bid(e.get<PhysicsBody>().bodyID);
+							JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
+							if (bi.IsAdded(bid)) { bi.RemoveBody(bid); bi.DestroyBody(bid); }
+							e.remove<PhysicsBody>();
+						}
+					});
+
+				m_rocketEntity = m_scene->create_dynamic_entity(
+					"RocketMount", rocketMeshIdx, rocketMatIdx, glm::mat4(1.0f));
+				m_rocketEntity.set<EntityStatus>({ false, false }); // hidden until first gas tank
+			}
 		}
 	}
 
@@ -749,8 +832,59 @@ namespace engine {
 
 		if (mState->hornEnabled && m_input && m_audio && m_input->IsActionPressed("Horn")) {
 			m_audio->LoadSound("Horn", "Assets/Sounds/bicycle_horn.mp3");
-			m_audio->SetVolume("Horn", 0.2f);
+			m_audio->SetVolume("Horn", 0.7f);
 			m_audio->PlayOneShot("Horn");
+			m_hornAnimTimer = 0.0f; // trigger squeeze animation
+		}
+
+		// Spring squeeze animation on jump (Space)
+		if (mState->jumpEnabled && m_input && m_input->IsActionPressed("Jump"))
+			m_springAnimTimer = 0.0f;
+
+		// Horn squeeze animation: scale up then back to original
+		if (m_hornAnimTimer >= 0.0f && m_hornMountedEntity.is_valid()) {
+			m_hornAnimTimer += dt;
+			constexpr float kGrowTime   = 0.12f;
+			constexpr float kShrinkTime = 0.18f;
+			constexpr float kPeakScale  = 1.6f;
+			float sf = 1.0f;
+			if (m_hornAnimTimer < kGrowTime) {
+				sf = 1.0f + (kPeakScale - 1.0f) * (m_hornAnimTimer / kGrowTime);
+			} else if (m_hornAnimTimer < kGrowTime + kShrinkTime) {
+				float t = (m_hornAnimTimer - kGrowTime) / kShrinkTime;
+				sf = kPeakScale - (kPeakScale - 1.0f) * t;
+			} else {
+				sf = 1.0f;
+				m_hornAnimTimer = -1.0f;
+			}
+			m_hornMountedEntity.set<LocalTransform>({ m_hornBaseMountT * glm::scale(glm::mat4(1.0f), glm::vec3(sf)) });
+		}
+
+		// Spring animation: elongate downward (Y-only scale, top anchored)
+		if (m_springAnimTimer >= 0.0f && m_springMountedEntity.is_valid()) {
+			m_springAnimTimer += dt;
+			constexpr float kGrowTime   = 0.10f;
+			constexpr float kShrinkTime = 0.20f;
+			constexpr float kPeakScale  = 2.0f;
+			float sf = 1.0f;
+			if (m_springAnimTimer < kGrowTime) {
+				sf = 1.0f + (kPeakScale - 1.0f) * (m_springAnimTimer / kGrowTime);
+			} else if (m_springAnimTimer < kGrowTime + kShrinkTime) {
+				float t = (m_springAnimTimer - kGrowTime) / kShrinkTime;
+				sf = kPeakScale - (kPeakScale - 1.0f) * t;
+			} else {
+				sf = 1.0f;
+				m_springAnimTimer = -1.0f;
+			}
+			// Fixed-top, extend downward:
+			//   center_y = mountY - (sf-1)*renderedHalf  → top stays constant, bottom drops
+			constexpr float kSBaseScale       = 0.1f / 3.0f;
+			constexpr float kSpringRenderHalf = 0.25f; // must exceed upward Y-scale extension to net -Y
+			float centerY = -0.35f - (sf - 1.0f) * kSpringRenderHalf;
+			glm::mat4 animT =
+				glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, centerY, 0.4f)) *
+				glm::scale(glm::mat4(1.0f), glm::vec3(kSBaseScale, kSBaseScale * sf, kSBaseScale));
+			m_springMountedEntity.set<LocalTransform>({ animT });
 		}
 
 		if (m_input && m_input->IsActionPressed("DEPLOY")) {
