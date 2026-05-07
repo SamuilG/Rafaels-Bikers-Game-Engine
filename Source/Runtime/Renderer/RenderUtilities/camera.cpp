@@ -24,7 +24,7 @@
 #include "../../UserState/UserState.hpp" // 请根据你的实际目录层级确认路径
 namespace lut = labut2;
 
-float extremeSpeedThreshold = 35.0f;
+float extremeSpeedThreshold = 36.0f;
 
 // Removed callbacks, now fully handled by engine::InputSystem
 void update_user_state(engine::UserState& aState, float aElapsedTime, engine::InputSystem* inputSys)

@@ -215,9 +215,9 @@ namespace engine
         }
 
         // 2. 推力与阻力参数设定 (导演控制台)
-        float targetMaxForce = 4000.0f + (speed * 20.0f); // 速度越快，能达到的极速上限越高
+        float targetMaxForce = 3000.0f + (speed * 20.0f); // 速度越快，能达到的极速上限越高
         float pedalBurstForce = 800.0f; // 【关键参数】每点击一次鼠标，产生的爆发推力
-        float forceDecayRate = 2500.0f;  // 【关键参数】推力流失速度（决定了玩家需要点多快才能维持速度）
+        float forceDecayRate = 500.0f;  // 【关键参数】推力流失速度（决定了玩家需要点多快才能维持速度）
 
         // 计算坡度惩罚（保持你原来的逻辑：上坡更费力）
         float slopePenalty = 1.0f;

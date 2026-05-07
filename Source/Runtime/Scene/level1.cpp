@@ -453,24 +453,32 @@ namespace engine {
 
 				m_audio->PlayOneShot("Collect");
 
-
-				if (collected % 5 == 0 && bikeBodyID_raw != JPH::BodyID::cInvalidBodyID) {
+				// 1. 保留特定里程碑（每收集 5 个）的特殊音效/延迟逻辑
+				if (collected % 5 == 0) {
 					m_allCollectSoundDelay = 0.6f;
+				}
+
+				// 2. 将减重逻辑移出 % 5 判断，使其每次收集必定触发
+				if (bikeBodyID_raw != JPH::BodyID::cInvalidBodyID) {
 
 					constexpr float kInitialMass = 90.0f;
-					constexpr float kMassStep    = 15.0f;
-					float newMass = kInitialMass - (collected / 5) * kMassStep;
-					if (newMass > 0.0f) {
-						JPH::BodyID bid(bikeBodyID_raw);
-						JPH::BodyLockWrite lock(m_physics->GetJoltSystem()->GetBodyLockInterface(), bid);
-						if (lock.Succeeded()) {
-							lock.GetBody().GetMotionProperties()->SetInverseMass(1.0f / newMass);
-							printf("[Collect] Bike mass -> %.1f kg (%d/%d)\n",
-								newMass, collected, mState->totalCollectibles);
-						}
+					constexpr float kMassDropPerItem = 8.0f; // 每次收集减去 3.0kg (相当于原来的 15/5)
+					constexpr float kMinMass = 45.0f;        // 【关键保护】单车不能无限变轻，设置一个 15kg 的保底重量
+
+					// 线性计算新重量，并限制不低于保底重量
+					float newMass = kInitialMass - (collected * kMassDropPerItem);
+					newMass = std::max(newMass, kMinMass);
+
+					// 更新 Jolt 物理引擎
+					JPH::BodyID bid(bikeBodyID_raw);
+					JPH::BodyLockWrite lock(m_physics->GetJoltSystem()->GetBodyLockInterface(), bid);
+					if (lock.Succeeded()) {
+						lock.GetBody().GetMotionProperties()->SetInverseMass(1.0f / newMass);
+						printf("[Collect] Bike mass -> %.1f kg (%d/%d)\n",
+							newMass, collected, mState->totalCollectibles);
 					}
 				}
-			});
+				});
 
 			// === 事件订阅：全部收集完毕 ===
 			m_event->Subscribe(EventType::AllItemsCollected, [this](Event& /*e*/) {
@@ -539,6 +547,7 @@ namespace engine {
 							mState->bikeLeanAngle = 0.0f;
 							mState->bikeSteerAngle = 0.0f;
 							mState->thirdPersonMode = true;
+							mState->bikeSpeed = 0.0f;
 							printf("[Gameplay] Bike stopped and respawned in place!\n");
 						}
 						else {
