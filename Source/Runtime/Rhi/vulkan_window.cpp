@@ -16,6 +16,7 @@
 #include "error.hpp"
 #include "to_string.hpp"
 #include "context_helpers.hxx"
+#include <stb_image.h>
 namespace lut = labut2;
 
 namespace
@@ -110,7 +111,7 @@ namespace labut2
 	}
 
 	// make_vulkan_window()
-	VulkanWindow make_vulkan_window(bool aVisible)
+	VulkanWindow make_vulkan_window(bool aVisible, bool aFullscreen)
 	{
 		VulkanWindow ret;
 
@@ -198,17 +199,44 @@ namespace labut2
 		// disable OpenGL context
         glfwWindowHint( GLFW_CLIENT_API, GLFW_NO_API );
 		glfwWindowHint(GLFW_VISIBLE, aVisible ? GLFW_TRUE : GLFW_FALSE);
-        // create glfw window
-        ret.window = glfwCreateWindow( 1280, 720, "Rafael’s  Bikers", nullptr, nullptr );
-        if( !ret.window )
-        {
-            // get glfw error and throw
-            char const* errMsg = nullptr;
-            glfwGetError( &errMsg );
-            throw lut::Error( "Unable to create GLFW window\n"
-                "Last error = {}", errMsg
-            );
-        }
+		// 选择 monitor 和 分辨率：如果需要全屏，使用主显示器和其当前 video mode
+		GLFWmonitor* monitor = nullptr;
+		int width = 1280;
+		int height = 720;
+		if (aFullscreen) {
+			monitor = glfwGetPrimaryMonitor();
+			if (monitor) {
+				const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+				if (mode) {
+					width = mode->width;
+					height = mode->height;
+				}
+			}
+		}
+
+		// create glfw window (monitor == nullptr -> windowed; otherwise fullscreen on that monitor)
+		ret.window = glfwCreateWindow(width, height, "Rafael’s  Bikers", monitor, nullptr);
+		if (!ret.window)
+		{
+			// get glfw error and throw
+			char const* errMsg = nullptr;
+			glfwGetError(&errMsg);
+			throw lut::Error("Unable to create GLFW window\n"
+				"Last error = {}", errMsg
+			);
+		}
+
+		if (ret.window) {
+			GLFWimage icon;
+			int channels;
+			icon.pixels = stbi_load("Assets/Icons/ICON.png", &icon.width, &icon.height, &channels, 4);
+			if (icon.pixels) {
+				glfwSetWindowIcon(ret.window, 1, &icon);
+				stbi_image_free(icon.pixels);
+			}
+		}
+
+
 
         // create vulkan surface
         if( auto const res = glfwCreateWindowSurface( ret.instance, ret.window, nullptr, &ret.surface ); VK_SUCCESS != res )
@@ -290,11 +318,11 @@ namespace labut2
 		}
 
 		// Create swap chain
-		std::tie(ret.swapchain, ret.swapchainFormat, ret.swapchainExtent) = create_swapchain( ret.physicalDevice, ret.surface, ret.device, ret.window, queueFamilyIndices );
-		
+		std::tie(ret.swapchain, ret.swapchainFormat, ret.swapchainExtent) = create_swapchain(ret.physicalDevice, ret.surface, ret.device, ret.window, queueFamilyIndices);
+
 		// Get swap chain images & create associated image views
-		get_swapchain_images( ret.device, ret.swapchain, ret.swapImages );
-		create_swapchain_image_views( ret.device, ret.swapchainFormat, ret.swapImages, ret.swapViews );
+		get_swapchain_images(ret.device, ret.swapchain, ret.swapImages);
+		create_swapchain_image_views(ret.device, ret.swapchainFormat, ret.swapImages, ret.swapViews);
 
 		// Done
 		return ret;
