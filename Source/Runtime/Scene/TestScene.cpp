@@ -234,13 +234,13 @@ namespace engine {
 
 				// --- Physics-based impact thresholds (SI units: m/s) ---
 				// 15 km/h = 4.17 m/s  -> light hit
-				// 30 km/h = 8.33 m/s  -> fatal
-				constexpr float kLightHitSpeed = 8.33f;
-				constexpr float kFatalSpeed = 12.0f;
+				// 150 km/h = 41.67 m/s -> fatal
+				constexpr float kLightHitSpeed = 14.0f;  // raised: ignore more low-speed terrain contacts
+				constexpr float kFatalSpeed = 41.67f;    // 150 km/h: require a very high-speed impact to die
 				// normalAlignment: fraction of total bike speed directed into the surface
 				//   ~1.0 = head-on (perpendicular), ~0.0 = pure side-scrape (tangential)
-				constexpr float kScrapeThreshold = 0.35f; // below this -> side scrape, no damage
-				constexpr float kFrontalThreshold = 0.50f; // above this -> counts as frontal for fatal
+				constexpr float kScrapeThreshold = 0.90f;  // raised: small slopes filtered as scrapes
+				constexpr float kFrontalThreshold = 0.90f; // raised: require near-head-on collision to be fatal
 
 				float impactSpeed = col.GetRelativeSpeed(); // approach speed along normal (m/s)
 				float bikeSpeed = mState->bikeSpeed;     // horizontal speed (m/s)
