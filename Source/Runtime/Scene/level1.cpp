@@ -266,7 +266,7 @@ namespace engine {
 
 
 					m_audio->LoadSound("wasted", "Assets/Sounds/wasted.mp3");
-					m_audio->SetVolume("wasted", 0.5f);
+					m_audio->SetVolume("wasted", 1.5f);
 					m_audio->PlayOneShot("wasted");
 					mState->deathTimer = 0.0f;
 					mState->thirdPersonMode = false;
@@ -410,11 +410,39 @@ namespace engine {
 			}
 
 
-			m_audio->LoadSound("Collect",     "Assets/Sounds/Collect.mp3");
+			m_audio->LoadSound("Collect",     "Assets/Sounds/equip.mp3");
 			m_audio->SetVolume("Collect",     0.5f);
 			m_audio->LoadSound("AllCollectd", "Assets/Sounds/AllCollectd.mp3");
 			m_audio->SetVolume("AllCollectd", 0.8f);
 
+		/*	if (mState->isExtremeSpeed == true)
+			{
+				audioSystem->LoadSound("ExtremeSpeed0", "Assets/Sounds/deepBass.mp3");
+				audioSystem->LoadSound("ExtremeSpeed1", "Assets/Sounds/breath.mp3");
+
+				audioSystem->SetVolume("ExtremeSpeed0", 2.5f);
+				audioSystem->SetVolume("ExtremeSpeed1", 2.5f);
+				audioSystem->SetPitch("ExtremeSpeed0", 1.0f);
+				audioSystem->SetPitch("ExtremeSpeed1", 1.0f);
+
+				audioSystem->PlayLoop("ExtremeSpeed0");
+				audioSystem->PlayOneShot("ExtremeSpeed1");
+			}*/
+			m_audio->LoadSound("ExtremeSpeed0", "Assets/Sounds/deepBass.mp3");
+			m_audio->LoadSound("ExtremeSpeed1", "Assets/Sounds/breath.mp3");
+
+
+			if (mState->isExtremeSpeed)
+			{
+				
+				m_audio->SetVolume("ExtremeSpeed0", 2.5f);
+				m_audio->SetVolume("ExtremeSpeed1", 2.5f);
+				m_audio->SetPitch("ExtremeSpeed0", 1.0f);
+				m_audio->SetPitch("ExtremeSpeed1", 1.0f);
+
+				m_audio->PlayLoop("ExtremeSpeed0");
+				m_audio->PlayOneShot("ExtremeSpeed1");
+			}
 
 			m_event->Subscribe(EventType::ItemCollected, [this, bikeBodyID_raw](Event& e) {
 				auto& col = static_cast<ItemCollectedEvent&>(e);

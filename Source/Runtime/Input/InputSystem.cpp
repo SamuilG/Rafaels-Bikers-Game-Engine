@@ -114,8 +114,11 @@ namespace engine {
         // --- Camera & View ---
         MapKeyboardAction("CameraThirdPersonToggle", GLFW_KEY_T);
         MapGamepadButtonAction("CameraThirdPersonToggle", GLFW_GAMEPAD_BUTTON_Y);
-        MapMouseButtonAction("CaptureMouse", GLFW_MOUSE_BUTTON_RIGHT);
+
+        MapMouseButtonAction("CaptureMouse", GLFW_MOUSE_BUTTON_MIDDLE);
         
+        MapMouseButtonAction("pedal0" , GLFW_MOUSE_BUTTON_LEFT);
+        MapMouseButtonAction("pedal1" , GLFW_MOUSE_BUTTON_RIGHT);
 
         // --- Game Systems & Effects ---
         MapKeyboardAction("DEPLOY", GLFW_KEY_R);
@@ -148,7 +151,7 @@ namespace engine {
 		MapKeyboardAction("ToggleEngineUi", GLFW_KEY_F1);// F1键：切换引擎UI显示//f1： switch engine UI
 
         // --- Application Control ---
-        MapKeyboardAction("Quit", GLFW_KEY_ESCAPE);
+        MapKeyboardAction("Quit", GLFW_KEY_F4);
         MapGamepadButtonAction("Quit", GLFW_GAMEPAD_BUTTON_BACK);
     }
 

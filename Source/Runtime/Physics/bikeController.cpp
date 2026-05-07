@@ -189,56 +189,65 @@ namespace engine
         float lateralGripStiffness = 5000.0f; 
         bi.AddForce(id, rightDirJPH * (-lateralSpeed * lateralGripStiffness));
 
+        // =========================================================
+        // 【新增玩法】：左右交替狂点鼠标 (Pedal Mashing Mechanic)
+        // =========================================================
         static float s_engineForce = 0.0f;
-        float targetMaxForce = 3000.0f + (speed * 30.0f);
+        // 记录上一次踩的是哪个踏板 (-1: 没踩, 0: 左踏板, 1: 右踏板)
+        // (注: 如果游戏里有多辆单车，建议把这个变量移到 BicycleState 结构体里)
+        static int s_lastPedal = -1;
 
-        if (inputThrottle > 0.1f) {
-            float speedRatio = glm::clamp(speed / maxSpeed, 0.0f, 1.0f);
-            float inverseSpeed = 1.0f - speedRatio;
-            float curveFactor = inverseSpeed * inverseSpeed * inverseSpeed * inverseSpeed * inverseSpeed;
+        bool justPedaled = false; // 这一帧是否成功踩下了踏板
 
-            static float currentBoost = 0.0f;
-            float boostRampUpSpeed = 2.0f;
-            float boostRampDownSpeed = 3.0f;
-
-            if (m_inputSystem->IsActionHeld("Fast")) {
-                currentBoost += boostRampUpSpeed * dt;
-                if (currentBoost > 3.0f) currentBoost = 3.0f;
+        // 1. 捕捉鼠标点击 (注意：必须使用 IsActionPressed，确保点一下只触发一帧)
+        if (m_inputSystem->IsActionPressed("pedal0")) {
+            // 必须交替踩！如果上一次也是踩的左边，就无效（防止玩家只狂点鼠标左键）
+            if (s_lastPedal != 0) {
+                s_lastPedal = 0;
+                justPedaled = true;
             }
-            else {
-                currentBoost -= boostRampDownSpeed * dt;
-                if (currentBoost < 0.0f) currentBoost = 0.0f;
-            }
-
-            float basicAccelRate = 100.0f + (150.0f * currentBoost);
-            float burstAccelRate = (4000.0f + 1500.0f * currentBoost) * curveFactor;
-            float currentAccelRate = basicAccelRate + burstAccelRate;
-
-            // slopePenalty
-            float slopePenalty = 1.0f;
-            if (currentPitch > 0.2f) { 
-                slopePenalty = std::max(0.0f, 1.0f - (currentPitch - 0.2f) * 2.5f);
-            }
-            currentAccelRate *= slopePenalty;
-
-            s_engineForce += currentAccelRate * dt;
-            if (s_engineForce > targetMaxForce) s_engineForce = targetMaxForce;
         }
-        else if (inputThrottle < -0.1f) {
-            s_engineForce -= 10000.0f * dt;
-            if (s_engineForce < -2500.0f) s_engineForce = -2500.0f;
+        if (m_inputSystem->IsActionPressed("pedal1")) {
+            if (s_lastPedal != 1) {
+                s_lastPedal = 1;
+                justPedaled = true;
+            }
+        }
+
+        // 2. 推力与阻力参数设定 (导演控制台)
+        float targetMaxForce = 4000.0f + (speed * 20.0f); // 速度越快，能达到的极速上限越高
+        float pedalBurstForce = 800.0f; // 【关键参数】每点击一次鼠标，产生的爆发推力
+        float forceDecayRate = 2500.0f;  // 【关键参数】推力流失速度（决定了玩家需要点多快才能维持速度）
+
+        // 计算坡度惩罚（保持你原来的逻辑：上坡更费力）
+        float slopePenalty = 1.0f;
+        if (currentPitch > 0.2f) {
+            slopePenalty = std::max(0.0f, 1.0f - (currentPitch - 0.2f) * 2.5f);
+        }
+
+        // 3. 处理力的注入与衰减
+        if (justPedaled) {
+            // 点击成功：瞬间注入爆发力
+            s_engineForce += pedalBurstForce * slopePenalty;
+            if (s_engineForce > targetMaxForce) {
+                s_engineForce = targetMaxForce; // 封顶限制
+            }
         }
         else {
+            // 没有点击：力量随着时间流失
             if (s_engineForce > 0.0f) {
-                s_engineForce -= 100.0f * dt;
+                s_engineForce -= forceDecayRate * dt;
                 if (s_engineForce < 0.0f) s_engineForce = 0.0f;
-            }
-            else if (s_engineForce < 0.0f) {
-                s_engineForce += 3000.0f * dt;
-                if (s_engineForce > 0.0f) s_engineForce = 0.0f;
             }
         }
 
+        // 4. 刹车逻辑 (保留 S 键刹车)
+        if (m_inputSystem->IsActionHeld("MoveBackward")) {
+            s_engineForce -= 10000.0f * dt; // 强力刹车
+            if (s_engineForce < -500.0f) s_engineForce = -500.0f; // 允许缓慢倒车
+        }
+
+        // 5. 将最终的推力施加给物理引擎
         if (std::abs(s_engineForce) > 10.0f) {
             bi.AddForce(id, moveDirJPH * s_engineForce);
         }

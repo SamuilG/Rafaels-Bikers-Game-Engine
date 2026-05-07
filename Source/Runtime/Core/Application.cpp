@@ -74,6 +74,10 @@ namespace engine {
             audioSystem->SetPitch("BikeChain", 1.0f);
             audioSystem->PlayLoop("BikeChain");
             audioSystem->LoadSound("Chain", "Assets/Sounds/BikeChain.mp3");
+           
+
+         
+
         }
 
         // 注册全局事件监听 (比如碰撞)
