@@ -529,12 +529,35 @@ namespace engine {
 
 						if (linVelSq < stopThresholdSq && angVelSq < stopThresholdSq) {
 
-							JPH::RVec3 currentPos = bi.GetPosition(id);
+							JPH::RVec3 currentPos = bi.GetPosition(id );
 							currentPos.SetY(currentPos.GetY() + 1.0f);
 
 							JPH::Quat currentRot = bi.GetRotation(id);
 							JPH::Vec3 fwd = currentRot.RotateAxisZ();
+							// ====================================================
+					// 【新增】：计算向后的偏移量 (Backward Offset)
+					// ====================================================
+					// 1. 将前向向量投影到水平面 (XZ平面)，防止单车往地下或天上偏移
+							JPH::Vec3 flatFwd(fwd.GetX(), 0.0f, fwd.GetZ());
+							if (flatFwd.LengthSq() > 0.0001f) {
+								flatFwd = flatFwd.Normalized();
+							}
+							else {
+								// 兜底：如果单车是绝对垂直于地面的，给一个默认朝向
+								flatFwd = JPH::Vec3(0.0f, 0.0f, -1.0f);
+							}
+
+							// 2. 设置向后偏移的距离 
+							float backwardOffset = 0.3f;
+
+							// 3. 应用偏移：X 和 Z 减去前向向量，Y 依然向上抬高 1 米
+							currentPos.SetX(currentPos.GetX() - flatFwd.GetX() * backwardOffset);
+							currentPos.SetZ(currentPos.GetZ() - flatFwd.GetZ() * backwardOffset);
+							currentPos.SetY(currentPos.GetY() + 1.0f);
+							// ====================================================
+
 							float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
+							// 保持你原本的旋转修正
 							JPH::Quat uprightRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), currentYaw + JPH::JPH_PI);
 
 							bi.SetPositionAndRotation(id, currentPos, uprightRot, JPH::EActivation::Activate);
@@ -548,6 +571,8 @@ namespace engine {
 							mState->bikeSteerAngle = 0.0f;
 							mState->thirdPersonMode = true;
 							mState->bikeSpeed = 0.0f;
+							mState->engineForce = 0.0f;
+							mState->lastPedal = -1;
 							printf("[Gameplay] Bike stopped and respawned in place!\n");
 						}
 						else {

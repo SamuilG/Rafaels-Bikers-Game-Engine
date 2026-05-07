@@ -100,6 +100,8 @@ namespace engine {
 		float deathTimer = 0.0f;
 		float bikeSpeed = 0.0f;
 		float bikeSteerAngle = 0.0f;
+		float engineForce = 0.0f;
+		int lastPedal = -1;       // 如果你用了狂点鼠标的逻辑，把这个也加进来
 		//================player================================
 
 

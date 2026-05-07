@@ -36,7 +36,7 @@ namespace engine
     }
 
     void BikeController::Update(float dt) {
-        if (!m_bicycle || !m_inputSystem || !m_joltPhysics || !m_state || !m_state->thirdPersonMode) return;
+        if (!m_bicycle || !m_inputSystem || !m_joltPhysics || !m_state || !m_state->thirdPersonMode || !m_state->isAlive) return;
 
         JPH::BodyInterface& bi = m_joltPhysics->GetBodyInterface();
         JPH::BodyID id = m_bicycle->chassisID;
@@ -192,27 +192,25 @@ namespace engine
         // =========================================================
         // 【新增玩法】：左右交替狂点鼠标 (Pedal Mashing Mechanic)
         // =========================================================
-        static float s_engineForce = 0.0f;
-        // 记录上一次踩的是哪个踏板 (-1: 没踩, 0: 左踏板, 1: 右踏板)
-        // (注: 如果游戏里有多辆单车，建议把这个变量移到 BicycleState 结构体里)
-        static int s_lastPedal = -1;
+        //static float s_engineForce = 0.0f;
+        //// 记录上一次踩的是哪个踏板 (-1: 没踩, 0: 左踏板, 1: 右踏板)
+        //// (注: 如果游戏里有多辆单车，建议把这个变量移到 BicycleState 结构体里)
+        //static int s_lastPedal = -1;
+        bool justPedaled = false;
 
-        bool justPedaled = false; // 这一帧是否成功踩下了踏板
-
-        // 1. 捕捉鼠标点击 (注意：必须使用 IsActionPressed，确保点一下只触发一帧)
         if (m_inputSystem->IsActionPressed("pedal0")) {
-            // 必须交替踩！如果上一次也是踩的左边，就无效（防止玩家只狂点鼠标左键）
-            if (s_lastPedal != 0) {
-                s_lastPedal = 0;
+            if (m_state->lastPedal != 0) {
+                m_state->lastPedal = 0;
                 justPedaled = true;
             }
         }
         if (m_inputSystem->IsActionPressed("pedal1")) {
-            if (s_lastPedal != 1) {
-                s_lastPedal = 1;
+            if (m_state->lastPedal != 1) {
+                m_state->lastPedal = 1;
                 justPedaled = true;
             }
         }
+       
 
         // 2. 推力与阻力参数设定 (导演控制台)
         float targetMaxForce = 3000.0f + (speed * 20.0f); // 速度越快，能达到的极速上限越高
@@ -227,29 +225,26 @@ namespace engine
 
         // 3. 处理力的注入与衰减
         if (justPedaled) {
-            // 点击成功：瞬间注入爆发力
-            s_engineForce += pedalBurstForce * slopePenalty;
-            if (s_engineForce > targetMaxForce) {
-                s_engineForce = targetMaxForce; // 封顶限制
+            m_state->engineForce += pedalBurstForce * slopePenalty;
+            if (m_state->engineForce > targetMaxForce) {
+                m_state->engineForce = targetMaxForce;
             }
         }
         else {
-            // 没有点击：力量随着时间流失
-            if (s_engineForce > 0.0f) {
-                s_engineForce -= forceDecayRate * dt;
-                if (s_engineForce < 0.0f) s_engineForce = 0.0f;
+            if (m_state->engineForce > 0.0f) {
+                m_state->engineForce -= forceDecayRate * dt;
+                if (m_state->engineForce < 0.0f) m_state->engineForce = 0.0f;
             }
         }
 
-        // 4. 刹车逻辑 (保留 S 键刹车)
         if (m_inputSystem->IsActionHeld("MoveBackward")) {
-            s_engineForce -= 10000.0f * dt; // 强力刹车
-            if (s_engineForce < -500.0f) s_engineForce = -500.0f; // 允许缓慢倒车
+            m_state->engineForce -= 10000.0f * dt;
+            if (m_state->engineForce < -2500.0f) m_state->engineForce = -2500.0f;
         }
 
-        // 5. 将最终的推力施加给物理引擎
-        if (std::abs(s_engineForce) > 10.0f) {
-            bi.AddForce(id, moveDirJPH * s_engineForce);
+        if (std::abs(m_state->engineForce) > 10.0f) {
+            // 【核心】：这里也要改成 m_state->engineForce
+            bi.AddForce(id, moveDirJPH * m_state->engineForce);
         }
 
         if (speed > 0.1f) {
