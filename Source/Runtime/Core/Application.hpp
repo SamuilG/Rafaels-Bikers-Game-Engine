@@ -3,7 +3,7 @@
 #include <memory>
 #include <chrono>
 #include "System.h"
-#include "../Scene/GameScene.hpp" // ��������ͷ�ļ�
+#include "../Scene/GameScene.hpp"
 
 #include "../UserState/UserState.hpp"
 
@@ -19,6 +19,10 @@ namespace engine {
 
     class Application {
     public:
+        using ProgressCallback = std::function<void(float, std::string_view)>;
+        explicit Application(ProgressCallback progress = {});
+        void ShowMainWindow();
+
         Application();
         ~Application();
         void Run();
@@ -32,6 +36,8 @@ namespace engine {
 
 
     private:
+        void ReportProgress(float progress, std::string_view stage) const;
+
         float CalcDeltaTime() {
             auto now = std::chrono::steady_clock::now();
             float dt = std::chrono::duration<float>(now - mLastTime).count();
@@ -41,6 +47,8 @@ namespace engine {
 
         std::vector<std::unique_ptr<System>> Systems;
         bool Running = true;
+
+        ProgressCallback mProgressCallback;
 
         std::chrono::steady_clock::time_point mLastTime
             = std::chrono::steady_clock::now();

@@ -23,6 +23,8 @@
 #include <cstring>
 #include <memory>
 #include <chrono>
+#include <functional>
+#include <string_view>
 #define GLFW_INCLUDE_NONE
 
 #include <GLFW/glfw3.h>
@@ -58,7 +60,7 @@ namespace lut = labut2;
 #include "RenderUtilities/rendering.hpp"
 
 #include "../Input/InputSystem.hpp"
-#include <chrono> // 确保顶部包含了这个
+
 
 // ================= UI System =================
 #include "../UI/ui.hpp"
@@ -98,6 +100,7 @@ namespace engine {
     {
  
     public:
+        using InitProgressCallback = std::function<void(float, std::string_view)>;
 
 		//==============camera follow =======================
 		// name of the entity to follow in the scene
@@ -110,14 +113,32 @@ namespace engine {
             : mAppRunning(appRunning), mSceneManager(sceneManager) {
         }
 
+        void SetInitProgressCallback(InitProgressCallback callback) {
+            mInitProgressCallback = std::move(callback);
+        }
+
     private:
         bool& mAppRunning;
         SceneManager* mSceneManager;
         engine::AnimationSystem* mAnimationSystem = nullptr;
         engine::AudioSystem* mAudioSystem = nullptr;
+        InitProgressCallback mInitProgressCallback;
 
         lut::VulkanWindow  mWindow;
         lut::Allocator     mAllocator;
+
+        void ReportInitProgress(float progress, std::string_view stage)
+        {
+            if (!mInitProgressCallback) {
+                return;
+            }
+
+            if (mWindow.window) {
+                glfwPollEvents();
+            }
+
+            mInitProgressCallback(progress, stage);
+        }
 
     public:
 
@@ -128,6 +149,14 @@ namespace engine {
             return nullptr;
         }
        
+        void ShowMainWindow() const {
+            if (!mWindow.window) {
+                return;
+            }
+
+            glfwShowWindow(mWindow.window);
+            glfwFocusWindow(mWindow.window);
+        }
 
         //==============UI System========= Draw the main menu UI
         void DrawMainMenuUI() {
@@ -242,10 +271,11 @@ namespace engine {
 
         void Init() override
         {
+            ReportInitProgress(0.02f, "Creating render window...");
             // ==========================================
             // 1. 核心设备与内存池初始化
             // ==========================================
-            mWindow = lut::make_vulkan_window();
+			mWindow = lut::make_vulkan_window(false);//不立即显示窗口，等加载完毕再显示// Create a Vulkan window when  it  loading is complete
             glfwSetWindowUserPointer(mWindow.window, mState);
             mState->camera2world = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 2.0f, 10.0f));
 
@@ -253,7 +283,7 @@ namespace engine {
             mCmdPool = lut::create_command_pool(mWindow, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
             mDescPool = lut::create_descriptor_pool(mWindow);
             mParticleDescPool = lut::create_descriptor_pool(mWindow);
-
+            ReportInitProgress(0.14f, "Allocating render memory...");
             // ==========================================
             // 2. 基础布局与管线布局初始化
             // ==========================================
@@ -262,7 +292,7 @@ namespace engine {
             mPostLayout = create_post_proc_descriptor_layout(mWindow);
             mPipeLayout = create_triangle_pipeline_layout(mWindow, mSceneLayout.handle, mObjectLayout.handle);
             mPostPipeLayout = create_post_proc_pipeline_layout(mWindow, mPostLayout.handle);
-
+            ReportInitProgress(0.24f, "Creating descriptor layouts...");
             // ==========================================
             // 3. 采样器初始化 (必须在绑定描述符之前！)
             // ==========================================
@@ -270,7 +300,7 @@ namespace engine {
             mDebugSampler = create_debug_sampler(mWindow);
             mPostSampler = create_post_proc_sampler(mWindow);
             mShadowSampler = create_shadow_sampler(mWindow);
-
+            ReportInitProgress(0.32f, "Creating samplers...");
             // ==========================================
             // 4. 默认占位贴图初始化
             // ==========================================
@@ -287,7 +317,7 @@ namespace engine {
                 mDefaultNormalTex = lut::load_image_texture2d_from_memory(normalBlue, 1, 1, mWindow, mCmdPool.handle, mAllocator, VK_FORMAT_R8G8B8A8_UNORM);
                 mDefaultNormalView = lut::create_image_view_texture2d(mWindow, mDefaultNormalTex.image, VK_FORMAT_R8G8B8A8_UNORM);
             }
-
+            ReportInitProgress(0.40f, "Preparing default textures...");
             // ==========================================
             // 5. 核心渲染目标与天空盒初始化
             // ==========================================
@@ -312,7 +342,7 @@ namespace engine {
 
             // 【关键】：这里调用 InitSkybox，依赖了刚才创建的 mAllocator, mCmdPool 和 mDefaultSampler
             InitSkybox();
-
+            ReportInitProgress(0.48f, "Setting up scene buffers...");
             // ==========================================
             // 6. 主场景描述符集绑定 (UBO + Shadow + Skybox)
             // ==========================================
@@ -329,7 +359,7 @@ namespace engine {
 
                 vkUpdateDescriptorSets(mWindow.device, 3, w, 0, nullptr);
             }
-
+            ReportInitProgress(0.56f, "Binding scene descriptors...");
             // ==========================================
             // 7. 同步对象与管线初始化
             // ==========================================
@@ -355,7 +385,7 @@ namespace engine {
             // Post Processing Pipelines
             mVisResolvePipe = create_vis_resolve_pipeline(mWindow, mPostPipeLayout.handle, mPostLayout.handle);
             mPostProcPipe = create_post_proc_pipeline(mWindow, mPostPipeLayout.handle, mPostLayout.handle);
-
+            ReportInitProgress(0.70f, "Compiling render pipelines...");
             // ==========================================
      // 8. 骨骼蒙皮与后处理缓冲区初始化
      // ==========================================
@@ -397,7 +427,7 @@ namespace engine {
             mSsaoDescLayout = create_ssao_descriptor_layout(mWindow);
             mSsaoPipeLayout = create_ssao_pipeline_layout(mWindow, mSsaoDescLayout.handle);
             mSsaoPipe = create_ssao_pipeline(mWindow, mSsaoPipeLayout.handle);
-
+            ReportInitProgress(0.82f, "Creating offscreen render targets...");
             // ==========================================
             // 后处理管线初始化
             // ==========================================
@@ -446,7 +476,7 @@ namespace engine {
                     mSceneUBO.buffer
                 ));
             }
-            
+            ReportInitProgress(0.90f, "Preparing post-processing passes...");
     
             // ==========================================
             // 9. UI 与调试初始化
@@ -481,7 +511,7 @@ namespace engine {
 
             ImGuiIO& io = ImGui::GetIO();
             io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-
+            ReportInitProgress(0.96f, "Starting editor UI...");
             // ==========================================
             // 10. 粒子初始化与缩略图系统
             // ==========================================
@@ -534,6 +564,7 @@ namespace engine {
                     }
                 }
             }
+            ReportInitProgress(1.0f, "Renderer ready");
         }
         // 辅助函数：构建模糊阶段的描述符集
         VkDescriptorSet BuildBlurDesc(VkDescriptorSetLayout layout, VkImageView inputView) {

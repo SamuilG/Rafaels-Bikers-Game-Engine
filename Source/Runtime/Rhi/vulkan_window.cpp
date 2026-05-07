@@ -110,7 +110,7 @@ namespace labut2
 	}
 
 	// make_vulkan_window()
-	VulkanWindow make_vulkan_window()
+	VulkanWindow make_vulkan_window(bool aVisible)
 	{
 		VulkanWindow ret;
 
@@ -197,7 +197,7 @@ namespace labut2
 		//done TODO: get VkSurfaceKHR from the window
 		// disable OpenGL context
         glfwWindowHint( GLFW_CLIENT_API, GLFW_NO_API );
-
+		glfwWindowHint(GLFW_VISIBLE, aVisible ? GLFW_TRUE : GLFW_FALSE);
         // create glfw window
         ret.window = glfwCreateWindow( 1280, 720, "Rafael’s  Bikers", nullptr, nullptr );
         if( !ret.window )

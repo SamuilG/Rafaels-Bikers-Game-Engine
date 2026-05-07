@@ -43,7 +43,7 @@ namespace labut2
 			VkExtent2D swapchainExtent;
 	};
 
-	VulkanWindow make_vulkan_window();
+	VulkanWindow make_vulkan_window(bool aVisible = true);
 
 
 	struct SwapChanges
