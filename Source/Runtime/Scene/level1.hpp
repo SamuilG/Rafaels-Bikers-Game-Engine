@@ -1,7 +1,10 @@
 #pragma once
 #include "GameScene.hpp"
 #include "../Physics/bikeController.hpp"
+#include <flecs.h>
 #include <memory>
+#include <string>
+#include <vector>
 
 namespace engine {
 
@@ -28,6 +31,17 @@ namespace engine {
 
         // sound delay — matches TestScene pattern
         float m_allCollectSoundDelay = -1.0f;
+
+        bool m_bgMusicPlaying = false;          // radio pickup: track whether BGM loop is active
+        int  m_currentSongIndex = 0;            // radio: index of the currently playing song
+        std::vector<std::string> m_radioSongs;  // radio: sound names loaded from RadioMusic/
+        std::vector<std::string> m_radioLabels; // radio: display names (filename stems)
+
+        // Spinning pickup entities
+        flecs::entity m_springPickupEntity;
+        flecs::entity m_hornPickupEntity;
+        std::vector<flecs::entity> m_gasPickupEntities;
+        std::vector<flecs::entity> m_radioPickupEntities;
     };
 
 } // namespace engine

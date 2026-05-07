@@ -11,6 +11,9 @@
 #include "../AudioSystem/AudioSystem.hpp"
 #include "../UI/EngineUi.hpp"
 #include <Jolt/Physics/Body/BodyLock.h>
+#include <format>
+#include <filesystem>
+#include <algorithm>
 
 namespace engine {
 
@@ -54,6 +57,8 @@ namespace engine {
 		// 3. ��ʼ������������
 		m_bikeController = std::make_unique<BikeController>(m_physics->GetJoltSystem(), m_input, mState);
 		m_audio->LoadSound("Jump", "Assets/Sounds/jump_effect.mp3");
+		m_audio->LoadSound("SpringJump", "Assets/Sounds/spring.mp3");
+		m_audio->SetVolume("SpringJump", 0.6f);
 		m_bikeController->SetAudioSystem(m_audio);
 		flecs::entity bikeEntity = m_scene->find_entity("Bike_0");
 		if (bikeEntity.is_valid()) {
@@ -345,43 +350,46 @@ namespace engine {
 			};
 			constexpr int kTotalCollectibles = 15;
 
-
-			flecs::entity collectEntities[kTotalCollectibles] = {};
-			collectEntities[0] = m_scene->LoadModel(
+			// Load GLB once to register mesh/material assets, then hide all created entities
+			flecs::entity gasAsset = m_scene->LoadModel(
 				m_render, "Assets/Models/gas_tank.glb",
-				engine::ModelPhysicsType::Dynamic, 0.5f,
+				engine::ModelPhysicsType::Static, 0.0f,
 				glm::translate(glm::mat4(1.0f), kCollectPos[0]));
 
 			uint32_t collectMeshIdx = 0;
 			uint32_t collectMatIdx  = 0;
-			if (collectEntities[0].is_valid()) {
-				if (collectEntities[0].has<MeshComponent>())
-					collectMeshIdx = collectEntities[0].get<MeshComponent>().meshIndex;
-				if (collectEntities[0].has<MaterialComponent>())
-					collectMatIdx = collectEntities[0].get<MaterialComponent>().materialIndex;
-				if (collectEntities[0].has<PhysicsBody>()) {
-					JPH::BodyID bid(collectEntities[0].get<PhysicsBody>().bodyID);
-					JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
-					bi.SetGravityFactor(bid, 0.0f);
-					JPH::BodyLockWrite lock(m_physics->GetJoltSystem()->GetBodyLockInterface(), bid);
-					if (lock.Succeeded()) lock.GetBody().SetIsSensor(true);
-				}
+			if (gasAsset.is_valid()) {
+				if (gasAsset.has<MeshComponent>())     collectMeshIdx = gasAsset.get<MeshComponent>().meshIndex;
+				if (gasAsset.has<MaterialComponent>()) collectMatIdx  = gasAsset.get<MaterialComponent>().materialIndex;
+				m_scene->get_world().query<const MeshComponent>()
+					.each([&](flecs::entity e, const MeshComponent& mc) {
+						if (mc.meshIndex < collectMeshIdx) return;
+						e.set<EntityStatus>({ false, false });
+						if (e.has<PhysicsBody>()) {
+							JPH::BodyID bid(e.get<PhysicsBody>().bodyID);
+							JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
+							if (bi.IsAdded(bid)) { bi.RemoveBody(bid); bi.DestroyBody(bid); }
+							e.remove<PhysicsBody>();
+						}
+					});
 			}
 
+			// Tilt applied once; spinning rotates around local (tilted) Y for wobble effect
+			const glm::mat4 kTankTilt = glm::rotate(glm::mat4(1.0f), glm::radians(35.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 
-			for (int i = 1; i < kTotalCollectibles; ++i) {
-				std::string eName = "gas_tank_" + std::to_string(i);
-				collectEntities[i] = m_scene->create_dynamic_entity(
-					eName.c_str(), collectMeshIdx, collectMatIdx,
-					glm::translate(glm::mat4(1.0f), kCollectPos[i]));
-				collectEntities[i].set<EntityStatus>({ true, false });
+			// Create 15 physics-free visual entities, each with tilt
+			m_gasPickupEntities.resize(kTotalCollectibles);
+			for (int i = 0; i < kTotalCollectibles; ++i) {
+				std::string eName = "gas_tank_pickup_" + std::to_string(i);
+				glm::mat4 t = glm::translate(glm::mat4(1.0f), kCollectPos[i]) * kTankTilt;
+				m_gasPickupEntities[i] = m_scene->create_dynamic_entity(
+					eName.c_str(), collectMeshIdx, collectMatIdx, t);
+				m_gasPickupEntities[i].set<EntityStatus>({ true, false });
 			}
-
 
 			auto collectedCount = std::make_shared<int>(0);
 
 			for (int i = 0; i < kTotalCollectibles; ++i) {
-				flecs::entity ce = collectEntities[i];
 				size_t tid = m_render->GetTriggerSystem().AddSphereTrigger(
 					kCollectPos[i],
 					/*radius=*/2.5f,
@@ -391,15 +399,9 @@ namespace engine {
 					/*oneShot=*/true
 				);
 				m_render->GetTriggerSystem().SetTriggerCallbacks(tid,
-					[this, ce, i, collectedCount, kTotalCollectibles]() mutable {
-						if (ce.is_valid()) {
-							ce.set<EntityStatus>({ false, false });
-							if (ce.has<PhysicsBody>()) {
-								JPH::BodyID bid(ce.get<PhysicsBody>().bodyID);
-								JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
-								if (bi.IsAdded(bid)) { bi.RemoveBody(bid); bi.DestroyBody(bid); }
-							}
-						}
+					[this, i, collectedCount, kTotalCollectibles]() mutable {
+						if (i < static_cast<int>(m_gasPickupEntities.size()))
+							m_gasPickupEntities[i].set<EntityStatus>({ false, false });
 						int total = ++(*collectedCount);
 						m_event->QueueEvent(std::make_unique<ItemCollectedEvent>(i, total));
 						if (total >= kTotalCollectibles)
@@ -491,6 +493,218 @@ namespace engine {
 		// =========================================================
 
 		m_input->MapKeyboardAction("Horn", GLFW_KEY_F);
+
+		// =========================================================
+		// Pickup: Jump unlock — model: spring.glb
+		// Placed to the right of the bike spawn point
+		// =========================================================
+		{
+			constexpr glm::vec3 kSpringPickupPos = glm::vec3(34.0f, 1.0f, 22.0f);
+			const glm::mat4 kSpringTransform =
+				glm::translate(glm::mat4(1.0f), kSpringPickupPos) *
+				glm::rotate(glm::mat4(1.0f), glm::radians(35.0f), glm::vec3(1.0f, 0.0f, 0.0f)) *
+				glm::scale(glm::mat4(1.0f), glm::vec3(0.1f / 3.0f));
+
+			// Load GLB to register mesh/material assets with the renderer
+			flecs::entity springAsset = m_scene->LoadModel(
+				m_render, "Assets/Models/spring.glb",
+				engine::ModelPhysicsType::Static, 0.0f, kSpringTransform);
+
+			// Get base mesh/mat indices from the first entity, then hide & strip physics
+			// from ALL entities this load created (one per GLB mesh node)
+			uint32_t springMeshIdx = 0, springMatIdx = 0;
+			if (springAsset.is_valid()) {
+				if (springAsset.has<MeshComponent>())     springMeshIdx = springAsset.get<MeshComponent>().meshIndex;
+				if (springAsset.has<MaterialComponent>()) springMatIdx  = springAsset.get<MaterialComponent>().materialIndex;
+				m_scene->get_world().query<const MeshComponent>()
+					.each([&](flecs::entity e, const MeshComponent& mc) {
+						if (mc.meshIndex < springMeshIdx) return;
+						e.set<EntityStatus>({ false, false });
+						if (e.has<PhysicsBody>()) {
+							JPH::BodyID bid(e.get<PhysicsBody>().bodyID);
+							JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
+							if (bi.IsAdded(bid)) { bi.RemoveBody(bid); bi.DestroyBody(bid); }
+							e.remove<PhysicsBody>();
+						}
+					});
+			}
+			// Create a single physics-free visual entity (physicsBodyID = ~0u → no body)
+			m_springPickupEntity = m_scene->create_dynamic_entity(
+				"SpringPickup", springMeshIdx, springMatIdx, kSpringTransform);
+
+			size_t jumpPickupTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
+				kSpringPickupPos,
+				/*radius=*/2.5f,
+				/*particleIndex=*/static_cast<size_t>(-1),
+				/*color=*/glm::vec3(0.2f, 0.8f, 1.0f),
+				/*isVisible=*/false,
+				/*oneShot=*/true
+			);
+			m_render->GetTriggerSystem().SetTriggerCallbacks(jumpPickupTrigger,
+				[this]() {
+					mState->jumpEnabled = true;
+					if (m_springPickupEntity.is_valid())
+						m_springPickupEntity.set<EntityStatus>({ false, false });
+					m_audio->PlayOneShot("AllCollectd");
+					EngineUi::LogPrint("[Pickup] Jump ability unlocked!\n");
+					EngineUi::ShowToast("Jump unlocked! Press Space to jump.");
+				},
+				nullptr
+			);
+		}
+
+		// =========================================================
+		// Pickup: Horn unlock — model: air_horn.glb
+		// Placed to the left of the bike spawn point
+		// =========================================================
+		{
+			constexpr glm::vec3 kHornPickupPos = glm::vec3(26.0f, 1.0f, 22.0f);
+			const glm::mat4 kHornTransform =
+				glm::translate(glm::mat4(1.0f), kHornPickupPos) *
+				glm::rotate(glm::mat4(1.0f), glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f)) *  // correct upside-down orientation
+				glm::rotate(glm::mat4(1.0f), glm::radians(30.0f),  glm::vec3(1.0f, 0.0f, 0.0f)) *  // cosmetic tilt
+				glm::scale(glm::mat4(1.0f), glm::vec3(1.0f / 3.0f));
+
+			// Load GLB to register mesh/material assets with the renderer
+			flecs::entity hornAsset = m_scene->LoadModel(
+				m_render, "Assets/Models/air_horn.glb",
+				engine::ModelPhysicsType::Static, 0.0f, kHornTransform);
+
+			// Get base mesh/mat indices from the first entity, then hide & strip physics
+			// from ALL entities this load created (one per GLB mesh node)
+			uint32_t hornMeshIdx = 0, hornMatIdx = 0;
+			if (hornAsset.is_valid()) {
+				if (hornAsset.has<MeshComponent>())     hornMeshIdx = hornAsset.get<MeshComponent>().meshIndex;
+				if (hornAsset.has<MaterialComponent>()) hornMatIdx  = hornAsset.get<MaterialComponent>().materialIndex;
+				m_scene->get_world().query<const MeshComponent>()
+					.each([&](flecs::entity e, const MeshComponent& mc) {
+						if (mc.meshIndex < hornMeshIdx) return;
+						e.set<EntityStatus>({ false, false });
+						if (e.has<PhysicsBody>()) {
+							JPH::BodyID bid(e.get<PhysicsBody>().bodyID);
+							JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
+							if (bi.IsAdded(bid)) { bi.RemoveBody(bid); bi.DestroyBody(bid); }
+							e.remove<PhysicsBody>();
+						}
+					});
+			}
+			// Create a single physics-free visual entity (physicsBodyID = ~0u → no body)
+			m_hornPickupEntity = m_scene->create_dynamic_entity(
+				"HornPickup", hornMeshIdx, hornMatIdx, kHornTransform);
+
+			size_t hornPickupTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
+				kHornPickupPos,
+				/*radius=*/2.5f,
+				/*particleIndex=*/static_cast<size_t>(-1),
+				/*color=*/glm::vec3(1.0f, 0.9f, 0.1f),
+				/*isVisible=*/false,
+				/*oneShot=*/true
+			);
+			m_render->GetTriggerSystem().SetTriggerCallbacks(hornPickupTrigger,
+				[this]() {
+					mState->hornEnabled = true;
+					if (m_hornPickupEntity.is_valid())
+						m_hornPickupEntity.set<EntityStatus>({ false, false });
+					m_audio->PlayOneShot("AllCollectd");
+					EngineUi::LogPrint("[Pickup] Horn ability unlocked!\n");
+					EngineUi::ShowToast("Horn unlocked! Press F to honk.");
+				},
+				nullptr
+			);
+		}
+
+		// =========================================================
+		// Pickup: Radio — touch the Radio trigger once to unlock background music.
+		// All .mp3 files in Assets/Sounds/RadioMusic/ are loaded automatically.
+		// Songs can then be cycled in order with the N key.
+		// Radio entities: Radio_Radio_0_98 / Radio_Radio_Grid_0_99 / Radio_Radio_Screen_0_100
+		// =========================================================
+		{
+			// --- Scan RadioMusic/ and load every .mp3 found (sorted by filename) ---
+			namespace fs = std::filesystem;
+			const fs::path radioDir = "Assets/Sounds/RadioMusic";
+			std::vector<fs::path> songFiles;
+			if (fs::exists(radioDir) && fs::is_directory(radioDir)) {
+				for (const auto& entry : fs::directory_iterator(radioDir)) {
+					const auto& p = entry.path();
+					if (p.extension() == ".mp3" || p.extension() == ".MP3")
+						songFiles.push_back(p);
+				}
+				std::sort(songFiles.begin(), songFiles.end());
+			}
+
+			for (int i = 0; i < static_cast<int>(songFiles.size()); ++i) {
+				std::string soundName = std::format("RadioSong{}", i);
+				std::string filePath  = songFiles[i].generic_string();
+				std::string label     = songFiles[i].stem().string();
+				m_audio->LoadSound(soundName, filePath);
+				m_audio->SetVolume(soundName, 0.8f);
+				m_radioSongs.push_back(std::move(soundName));
+				m_radioLabels.push_back(std::move(label));
+				printf("[Radio] Loaded song %d: %s\n", i, songFiles[i].filename().string().c_str());
+			}
+
+			if (m_radioSongs.empty()) {
+				printf("[Radio] WARNING: No .mp3 files found in %s\n", radioDir.string().c_str());
+			}
+
+			// Locate the radio in the scene, remove its physics bodies, and build the trigger
+			static const char* kRadioEntityNames[] = {
+				"Radio_Radio_0_98", "Radio_Radio_Grid_0_99", "Radio_Radio_Screen_0_100"
+			};
+
+			glm::vec3 radioPos = glm::vec3(0.0f);
+			bool radioFound = false;
+			for (const char* rName : kRadioEntityNames) {
+				flecs::entity re = m_scene->find_entity(rName);
+				if (!re.is_valid()) continue;
+				// Use the first found entity's position for the trigger
+				if (!radioFound && re.has<LocalTransform>()) {
+					radioPos = glm::vec3(re.get<LocalTransform>().matrix[3]);
+					radioFound = true;
+				}
+				// Remove collision body — radio is display-only
+				if (re.has<PhysicsBody>()) {
+					JPH::BodyID bid(re.get<PhysicsBody>().bodyID);
+					JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
+					if (bi.IsAdded(bid)) { bi.RemoveBody(bid); bi.DestroyBody(bid); }
+					re.remove<PhysicsBody>();
+				}
+				m_radioPickupEntities.push_back(re);
+			}
+			printf("[Level1] Radio entity %s, world pos (%.2f, %.2f, %.2f)\n",
+				radioFound ? "FOUND" : "NOT FOUND",
+				radioPos.x, radioPos.y, radioPos.z);
+
+			// oneShot=true: fires once on first contact, then permanently disabled
+			size_t radioTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
+				radioPos,
+				/*radius=*/2.5f,
+				/*particleIndex=*/static_cast<size_t>(-1),
+				/*color=*/glm::vec3(0.0f, 1.0f, 0.5f),
+				/*isVisible=*/true,
+				/*oneShot=*/true
+			);
+			m_render->GetTriggerSystem().SetTriggerCallbacks(radioTrigger,
+				[this]() {
+					// Hide all radio mesh entities
+					for (const char* rName : kRadioEntityNames) {
+						flecs::entity re = m_scene->find_entity(rName);
+						if (re.is_valid()) re.set<EntityStatus>({ false, false });
+					}
+					if (m_radioSongs.empty()) return;
+					m_bgMusicPlaying = true;
+					m_currentSongIndex = 0;
+					m_audio->PlayLoop(m_radioSongs[0]);
+					EngineUi::LogPrint("[Radio] Picked up! Now playing: {}\n", m_radioLabels[0]);
+					EngineUi::ShowToast(std::format("Radio! Now playing: {}. Press N to switch.", m_radioLabels[0]));
+				},
+				nullptr
+			);
+
+			// Key binding for cycling songs
+			m_input->MapKeyboardAction("NextSong", GLFW_KEY_N);
+		}
 	}
 
 	void level::Update(float dt) {
@@ -502,7 +716,38 @@ namespace engine {
 			}
 		}
 
-		if (m_input && m_audio && m_input->IsActionPressed("Horn")) {
+		// Spin pickup items around world Y axis through their own position
+		{
+			constexpr float kSpinSpeed = 3.0f; // radians per second
+			const glm::mat4 kWorldYRot = glm::rotate(glm::mat4(1.0f), kSpinSpeed * dt, glm::vec3(0.0f, 1.0f, 0.0f));
+			auto spinPickup = [&](flecs::entity e) {
+				if (!e.is_valid()) return;
+				if (e.has<EntityStatus>() && !e.get<EntityStatus>().should_render) return;
+				auto* lt = &e.get_mut<LocalTransform>();
+				// Rotate around world Y through the object's own position:
+				// T(p) * R * T(-p) * M
+				glm::vec3 pos(lt->matrix[3]);
+				glm::mat4 T    = glm::translate(glm::mat4(1.0f),  pos);
+				glm::mat4 Tinv = glm::translate(glm::mat4(1.0f), -pos);
+				lt->matrix = T * kWorldYRot * Tinv * lt->matrix;
+				e.modified<LocalTransform>();
+			};
+			spinPickup(m_springPickupEntity);
+			spinPickup(m_hornPickupEntity);
+			for (auto& ge : m_gasPickupEntities) spinPickup(ge);
+			for (auto& re : m_radioPickupEntities) spinPickup(re);
+		}
+
+		// Radio: press N to play the next song in RadioMusic/ (only after radio is picked up)
+		if (m_bgMusicPlaying && !m_radioSongs.empty() && m_input && m_input->IsActionPressed("NextSong")) {
+			m_audio->Stop(m_radioSongs[m_currentSongIndex]);
+			m_currentSongIndex = (m_currentSongIndex + 1) % static_cast<int>(m_radioSongs.size());
+			m_audio->PlayLoop(m_radioSongs[m_currentSongIndex]);
+			EngineUi::LogPrint("[Radio] Switched to: {}\n", m_radioLabels[m_currentSongIndex]);
+			EngineUi::ShowToast(std::format("Now playing: {}", m_radioLabels[m_currentSongIndex]));
+		}
+
+		if (mState->hornEnabled && m_input && m_audio && m_input->IsActionPressed("Horn")) {
 			m_audio->LoadSound("Horn", "Assets/Sounds/bicycle_horn.mp3");
 			m_audio->SetVolume("Horn", 0.2f);
 			m_audio->PlayOneShot("Horn");

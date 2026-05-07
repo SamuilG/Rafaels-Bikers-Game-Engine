@@ -96,6 +96,10 @@ namespace engine {
 		glm::vec3 followTargetPos = glm::vec3(2.f);
 		bool thirdPersonMode = true;
 		bool isAlive = true;
+
+		// Pickups — unlocked by collecting special items
+		bool jumpEnabled = false;  // unlocked by jump pickup
+		bool hornEnabled = false;  // unlocked by horn pickup
 		float deathFactor = 0.0f;
 		float deathTimer = 0.0f;
 		float bikeSpeed = 0.0f;

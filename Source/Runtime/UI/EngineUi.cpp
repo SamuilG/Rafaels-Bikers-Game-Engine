@@ -1711,6 +1711,21 @@ namespace engine {
 
 		glm::vec3 cameraPos = glm::vec3(state.camera2world[3]);
 		ImGui::Text("Camera Pos: %.2f, %.2f, %.2f", cameraPos.x, cameraPos.y, cameraPos.z);
+		ImGui::SameLine();
+		if (ImGui::SmallButton("Copy##cam")) {
+			char buf[128];
+			snprintf(buf, sizeof(buf), "glm::vec3(%.2ff, %.2ff, %.2ff)", cameraPos.x, cameraPos.y, cameraPos.z);
+			ImGui::SetClipboardText(buf);
+		}
+
+		const glm::vec3& bikePos = state.followTargetPos;
+		ImGui::Text("Bike Pos:   %.2f, %.2f, %.2f", bikePos.x, bikePos.y, bikePos.z);
+		ImGui::SameLine();
+		if (ImGui::SmallButton("Copy##bike")) {
+			char buf[128];
+			snprintf(buf, sizeof(buf), "glm::vec3(%.2ff, %.2ff, %.2ff)", bikePos.x, bikePos.y, bikePos.z);
+			ImGui::SetClipboardText(buf);
+		}
 
 		if (state.thirdPersonMode) {
 			//第三人称相机参数// Third-person camera parameters

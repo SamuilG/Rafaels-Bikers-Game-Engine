@@ -60,13 +60,12 @@ namespace engine {
         ReportProgress(0.74f, "Loading startup audio...");
         // audio system test
         if (audioSystem) {
-            //background music
-            //audioSystem->LoadSound("BackgroundTestMusic", "Assets/Sounds/BackgroundTestMusic.mp3");
-            audioSystem->LoadSound("BackgroundTestMusic", "Assets/Sounds/Looping_radio_mix.mp3");
+            // Background music is now started by the Radio pickup in level1.
+            // audioSystem->LoadSound("BackgroundTestMusic", "Assets/Sounds/Looping_radio_mix.mp3");
+            // audioSystem->SetVolume("BackgroundTestMusic", 0.1f);
+            // audioSystem->SetPitch("BackgroundTestMusic", 1.0f);
+            // audioSystem->PlayLoop("BackgroundTestMusic");
 
-            audioSystem->SetVolume("BackgroundTestMusic", 0.1f);
-            audioSystem->SetPitch("BackgroundTestMusic", 1.0f);
-            audioSystem->PlayLoop("BackgroundTestMusic");
             //bike chain sound effect
             audioSystem->LoadSound("BikeChain", "Assets/Sounds/BikeChain.mp3");
             audioSystem->SetVolume("BikeChain", 0.2f);
