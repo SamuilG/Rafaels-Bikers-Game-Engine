@@ -1,11 +1,12 @@
 #include <print>
 #include <stdexcept>
 #include "Source/Runtime/Core/Application.hpp"
-#include "Source/Runtime/Core/StartupSplash.hpp"
+#include "Source/Runtime/LoadEngineSplash/StartupSplash.hpp"
 
 int main() try
 {
     engine::StartupSplash splash;
+    splash.SetVideoPath(L"Assets/Splash/video3.mp4");
     splash.Show();
 
     engine::Application app([&splash](float progress, std::string_view stage)

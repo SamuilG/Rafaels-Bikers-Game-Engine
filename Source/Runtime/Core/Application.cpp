@@ -66,7 +66,7 @@ namespace engine {
 
             audioSystem->SetVolume("BackgroundTestMusic", 0.1f);
             audioSystem->SetPitch("BackgroundTestMusic", 1.0f);
-            audioSystem->PlayLoop("BackgroundTestMusic");
+            //audioSystem->PlayLoop("BackgroundTestMusic");
             //bike chain sound effect
             audioSystem->LoadSound("BikeChain", "Assets/Sounds/BikeChain.mp3");
             audioSystem->SetVolume("BikeChain", 0.2f);
@@ -109,6 +109,7 @@ namespace engine {
     void Application::Run() {
         mLastTime = std::chrono::steady_clock::now();
         constexpr float kMaxDt = 0.05f;
+        StartStartupAudio();
 
         while (Running) {
             float dt = std::min(CalcDeltaTime(), kMaxDt);
@@ -144,5 +145,16 @@ namespace engine {
         if (renderSystem) {
             renderSystem->ShowMainWindow();
         }
+    }
+
+
+    void Application::StartStartupAudio() {
+        if (!audioSystem || mStartupAudioStarted) {
+            return;
+        }
+
+        audioSystem->PlayLoop("BackgroundTestMusic");
+        audioSystem->PlayLoop("BikeChain");
+        mStartupAudioStarted = true;
     }
 }

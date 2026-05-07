@@ -195,9 +195,13 @@ namespace labut2
 
 		//done TODO: create GLFW window
 		//done TODO: get VkSurfaceKHR from the window
+		glfwDefaultWindowHints();
 		// disable OpenGL context
         glfwWindowHint( GLFW_CLIENT_API, GLFW_NO_API );
 		glfwWindowHint(GLFW_VISIBLE, aVisible ? GLFW_TRUE : GLFW_FALSE);
+		glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+		glfwWindowHint(GLFW_DECORATED, GLFW_TRUE);
+		glfwWindowHint(GLFW_FLOATING, GLFW_FALSE);
         // create glfw window
         ret.window = glfwCreateWindow( 1280, 720, "Rafael’s  Bikers", nullptr, nullptr );
         if( !ret.window )

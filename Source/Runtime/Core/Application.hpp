@@ -6,6 +6,8 @@
 #include "../Scene/GameScene.hpp"
 
 #include "../UserState/UserState.hpp"
+#include <functional>
+#include <string_view>
 
 namespace engine {
     class BikeController;
@@ -37,6 +39,7 @@ namespace engine {
 
     private:
         void ReportProgress(float progress, std::string_view stage) const;
+        void StartStartupAudio();
 
         float CalcDeltaTime() {
             auto now = std::chrono::steady_clock::now();
@@ -65,6 +68,7 @@ namespace engine {
         std::unique_ptr<GameScene> m_currentScene;
 
         AudioSystem* audioSystem = nullptr;
+        bool mStartupAudioStarted = false;
     };
 
 } // namespace engine
