@@ -27,7 +27,7 @@ namespace engine {
         float outerCutOff = 17.5f; // 外锥角 (度数)，光线开始变暗直到消失的边界
     };
 
-    const uint32_t MAX_LIGHTS = 16;
+    const uint32_t MAX_LIGHTS = 64;
 
     // 对齐 Shader 的结构体 (必须 16 字节对齐)
     // 依然是 64 字节 (4个vec4)，完美适配 Vulkan

@@ -48,7 +48,7 @@ namespace engine {
 
 		// 2. �������г�	
 		glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 10.0f, 30.0f));
-		glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(0.0f, 0.0f, -8.0f));
+		glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(2,4,-157));
 		glm::mat4 bikeAnchorWorld = glm::mat4(0.0f); // sentinel: [3][3]==0 means anchor not found
 
 		m_render->load_animated_model("Assets/Models/character.glb", tbpos);
@@ -341,14 +341,14 @@ namespace engine {
 				else if (bikeEntity.has<PhysicsBody>())  bikeBodyID_raw = bikeEntity.get<PhysicsBody>().bodyID;
 			}
 
-
-			static const glm::vec3 kCollectPos[15] = {
-				{  5.0f, 1.0f,  15.0f }, { 20.0f, 1.0f,  20.0f }, { 45.0f, 1.0f,  18.0f },
-				{ 58.0f, 1.0f,  10.0f }, {  0.0f, 1.0f,   5.0f }, { 15.0f, 1.0f,   2.0f },
-				{ 35.0f, 1.0f,  -2.0f }, { 55.0f, 1.0f,   0.0f }, { 62.0f, 1.0f,  14.0f },
-				{ -5.0f, 1.0f,  -2.0f }, { 10.0f, 1.0f, -15.0f }, { 38.0f, 1.0f, -18.0f },
-				{ 58.0f, 1.0f, -12.0f }, {  0.0f, 1.0f, -22.0f }, { 30.0f, 1.0f, -28.0f },
+			//280，47，513
+			//-175，-28，8
+			static const glm::vec3 kCollectPos[5] = {
+				{  60.0f, 21.0f,  70.0f }, { 270.0f, 66.0f,  311.0f }, { 107.0f, -43.0f,  282.0f },
+				{ 280.0f, 47.0f,  513.0f }, {  -175.0f, -28.0f, 8.0f }, //{ 15.0f, 1.0f,   2.0f },
+				
 			};
+			
 			constexpr int kTotalCollectibles = 15;
 
 			// Load GLB once to register mesh/material assets, then hide all created entities
@@ -379,6 +379,7 @@ namespace engine {
 			const glm::mat4 kTankTilt = glm::rotate(glm::mat4(1.0f), glm::radians(35.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 
 			// Create 15 physics-free visual entities, each with tilt
+		// Create 15 physics-free visual entities, each with tilt
 			m_gasPickupEntities.resize(kTotalCollectibles);
 			for (int i = 0; i < kTotalCollectibles; ++i) {
 				std::string eName = "gas_tank_pickup_" + std::to_string(i);
@@ -386,6 +387,30 @@ namespace engine {
 				m_gasPickupEntities[i] = m_scene->create_dynamic_entity(
 					eName.c_str(), collectMeshIdx, collectMatIdx, t);
 				m_gasPickupEntities[i].set<EntityStatus>({ true, false });
+
+				// =======================================================
+				// 【新增】：为每个收集物挂载一个点光源
+				// =======================================================
+				std::string lightName = "gas_light_" + std::to_string(i);
+
+				// 因为光源是收集物的子实体，所以这里的 Transform 是“局部偏移”
+				// 使用单位矩阵，意味着光源就在收集物的正中心
+				glm::mat4 localLightOffset = glm::mat4(1.0f);
+
+				flecs::entity pickupLight = m_scene->create_light_entity(
+					lightName.c_str(),
+					engine::LightType::Point,
+					glm::vec3(1.1f, 0.8f, 0.5f), // 颜色：科技感青蓝色 (你可以按喜好调成金黄色 1.0, 0.8, 0.2)
+					10.5f,                        // 光照强度：不需要太亮，起点缀作用
+					localLightOffset,            // 位置偏移：模型正中心
+					5.0f,                        // 影响半径：5 米范围，避免性能浪费
+					glm::vec3(0, -1, 0),         // 点光源方向随意
+					0.0f, 0.0f,                  // 聚光灯锥角随意
+					m_gasPickupEntities[i]       // 【核心】绑定为该收集物的子实体！
+				);
+
+				// (可选) 如果你觉得这个光反光太抢眼，也可以像单车灯一样关掉高光
+				pickupLight.get_mut<engine::LightComponent>().specularMultiplier = 0.0f;
 			}
 
 			auto collectedCount = std::make_shared<int>(0);
@@ -399,26 +424,49 @@ namespace engine {
 					/*isVisible=*/false,
 					/*oneShot=*/true
 				);
+				// ... 前面的代码保持不变 ...
 				m_render->GetTriggerSystem().SetTriggerCallbacks(tid,
 					[this, i, collectedCount, kTotalCollectibles]() mutable {
 						if (i < static_cast<int>(m_gasPickupEntities.size()) && m_gasPickupEntities[i].is_valid()) {
+
+							// 关闭绑定的子光源
+							m_gasPickupEntities[i].children([&](flecs::entity child) {
+								if (child.has<engine::LightComponent>()) {
+									child.set<EntityStatus>({ false, false });
+								}
+								});
+
 							if (m_bikeEntity.is_valid()) {
-								// Mount gas tank onto bike frame — 3-col × 5-row grid, no tilt
-								float col = static_cast<float>(i % 3) - 1.0f; // -1, 0, +1
-								float row = static_cast<float>(i / 3);         // 0..4
-								glm::vec3 mountPos(col * 0.12f, 0.15f + row * 0.18f, 0.25f);
+								// =========================================================
+								// 【核心修复】：获取它实际是第几个被收集到的（从 0 开始）
+								// =========================================================
+								int currentOrderIndex = *collectedCount;
+
+								// 基础位置
+								float startZ = -0.7f;
+								// 每个收集物之间的间距
+								float spacingZ = 0.15f;
+
+								// 【修复】：使用 currentOrderIndex 而不是 i 来计算 Z 轴偏移
+								glm::vec3 mountPos(-0.2f, 0.5f, startZ - (currentOrderIndex * spacingZ));
+
+								// 生成 Transform
 								glm::mat4 mountT =
 									glm::translate(glm::mat4(1.0f), mountPos) *
-									glm::scale(glm::mat4(1.0f), glm::vec3(0.25f));
+									glm::scale(glm::mat4(1.0f), glm::vec3(0.45f));
+
 								m_gasPickupEntities[i].child_of(m_bikeEntity);
 								m_gasPickupEntities[i].set<LocalTransform>({ mountT });
-							} else {
+							}
+							else {
 								m_gasPickupEntities[i].set<EntityStatus>({ false, false });
 							}
 							m_gasPickupEntities[i] = {}; // stop spinning
 						}
-						// First gas tank: mount rocket to rear of bike frame
-						if (i == 0 && m_rocketEntity.is_valid() && m_bikeEntity.is_valid()) {
+
+						// 挂载火箭的逻辑保持不变，但触发条件可以更严谨一点：
+						// 第一个被收集的物品 (currentOrderIndex == 0) 时触发火箭
+						if (*collectedCount == 0 && m_rocketEntity.is_valid() && m_bikeEntity.is_valid()) {
 							glm::mat4 rocketMountT =
 								glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.4f, -1.2f)) *
 								glm::scale(glm::mat4(1.0f), glm::vec3(0.3f));
@@ -426,10 +474,13 @@ namespace engine {
 							m_rocketEntity.set<LocalTransform>({ rocketMountT });
 							m_rocketEntity.set<EntityStatus>({ true, false });
 						}
+
+						// 更新总收集数并发送事件
 						int total = ++(*collectedCount);
 						m_event->QueueEvent(std::make_unique<ItemCollectedEvent>(i, total));
-						if (total >= kTotalCollectibles)
+						if (total >= kTotalCollectibles) {
 							m_event->QueueEvent(std::make_unique<AllItemsCollectedEvent>());
+						}
 					},
 					nullptr
 				);
@@ -522,8 +573,10 @@ namespace engine {
 		// Pickup: Jump unlock — model: spring.glb
 		// Placed to the right of the bike spawn point
 		// =========================================================
-		{
-			constexpr glm::vec3 kSpringPickupPos = glm::vec3(34.0f, 1.0f, 22.0f);
+		{//-127,25 -72
+			
+			
+			constexpr glm::vec3 kSpringPickupPos = glm::vec3(413.0f, 56.0f, 458.0f);
 			const glm::mat4 kSpringTransform =
 				glm::translate(glm::mat4(1.0f), kSpringPickupPos) *
 				glm::rotate(glm::mat4(1.0f), glm::radians(35.0f), glm::vec3(1.0f, 0.0f, 0.0f)) *
@@ -594,7 +647,7 @@ namespace engine {
 		// Placed to the left of the bike spawn point
 		// =========================================================
 		{
-			constexpr glm::vec3 kHornPickupPos = glm::vec3(26.0f, 1.0f, 22.0f);
+			constexpr glm::vec3 kHornPickupPos = glm::vec3(-127.0f, 25.0f, -72.0f);
 			const glm::mat4 kHornTransform =
 				glm::translate(glm::mat4(1.0f), kHornPickupPos) *
 				glm::rotate(glm::mat4(1.0f), glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f)) *  // correct upside-down orientation
@@ -762,31 +815,31 @@ namespace engine {
 		// Rocket — hidden at start, mounted to rear frame on first gas tank collection
 		// =========================================================
 		{
-			flecs::entity rocketAsset = m_scene->LoadModel(
-				m_render, "Assets/Models/rocket.glb",
-				engine::ModelPhysicsType::Static, 0.0f,
-				glm::mat4(1.0f));
+			//flecs::entity rocketAsset = m_scene->LoadModel(
+			//	m_render, "Assets/Models/rocket.glb",
+			//	engine::ModelPhysicsType::Static, 0.0f,
+			//	glm::mat4(1.0f));
 
-			uint32_t rocketMeshIdx = 0, rocketMatIdx = 0;
-			if (rocketAsset.is_valid()) {
-				if (rocketAsset.has<MeshComponent>())     rocketMeshIdx = rocketAsset.get<MeshComponent>().meshIndex;
-				if (rocketAsset.has<MaterialComponent>()) rocketMatIdx  = rocketAsset.get<MaterialComponent>().materialIndex;
-				m_scene->get_world().query<const MeshComponent>()
-					.each([&](flecs::entity e, const MeshComponent& mc) {
-						if (mc.meshIndex < rocketMeshIdx) return;
-						e.set<EntityStatus>({ false, false });
-						if (e.has<PhysicsBody>()) {
-							JPH::BodyID bid(e.get<PhysicsBody>().bodyID);
-							JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
-							if (bi.IsAdded(bid)) { bi.RemoveBody(bid); bi.DestroyBody(bid); }
-							e.remove<PhysicsBody>();
-						}
-					});
+			//uint32_t rocketMeshIdx = 0, rocketMatIdx = 0;
+			//if (rocketAsset.is_valid()) {
+			//	if (rocketAsset.has<MeshComponent>())     rocketMeshIdx = rocketAsset.get<MeshComponent>().meshIndex;
+			//	if (rocketAsset.has<MaterialComponent>()) rocketMatIdx  = rocketAsset.get<MaterialComponent>().materialIndex;
+			//	m_scene->get_world().query<const MeshComponent>()
+			//		.each([&](flecs::entity e, const MeshComponent& mc) {
+			//			if (mc.meshIndex < rocketMeshIdx) return;
+			//			e.set<EntityStatus>({ false, false });
+			//			if (e.has<PhysicsBody>()) {
+			//				JPH::BodyID bid(e.get<PhysicsBody>().bodyID);
+			//				JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
+			//				if (bi.IsAdded(bid)) { bi.RemoveBody(bid); bi.DestroyBody(bid); }
+			//				e.remove<PhysicsBody>();
+			//			}
+			//		});
 
-				m_rocketEntity = m_scene->create_dynamic_entity(
-					"RocketMount", rocketMeshIdx, rocketMatIdx, glm::mat4(1.0f));
-				m_rocketEntity.set<EntityStatus>({ false, false }); // hidden until first gas tank
-			}
+			//	m_rocketEntity = m_scene->create_dynamic_entity(
+			//		"RocketMount", rocketMeshIdx, rocketMatIdx, glm::mat4(1.0f));
+			//	m_rocketEntity.set<EntityStatus>({ false, false }); // hidden until first gas tank
+			//}
 		}
 	}
 
@@ -820,7 +873,8 @@ namespace engine {
 			for (auto& ge : m_gasPickupEntities) spinPickup(ge);
 			for (auto& re : m_radioPickupEntities) spinPickup(re);
 		}
-
+		m_audio->LoadSound("NextSong", "Assets/Sounds/Button.mp3");
+		m_audio->SetVolume("NextSong", 0.7f);
 		// Radio: press N to play the next song in RadioMusic/ (only after radio is picked up)
 		if (m_bgMusicPlaying && !m_radioSongs.empty() && m_input && m_input->IsActionPressed("NextSong")) {
 			m_audio->Stop(m_radioSongs[m_currentSongIndex]);
@@ -828,6 +882,7 @@ namespace engine {
 			m_audio->PlayLoop(m_radioSongs[m_currentSongIndex]);
 			EngineUi::LogPrint("[Radio] Switched to: {}\n", m_radioLabels[m_currentSongIndex]);
 			EngineUi::ShowToast(std::format("Now playing: {}", m_radioLabels[m_currentSongIndex]));
+			m_audio->PlayOneShot("NextSong");
 		}
 
 		if (mState->hornEnabled && m_input && m_audio && m_input->IsActionPressed("Horn")) {

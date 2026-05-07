@@ -521,7 +521,7 @@ namespace engine {
             .each([&](const WorldTransform& wt, const LightComponent& lc, const EntityStatus& status) {
             if (!status.should_render) return;
 
-            if (outLights.size() >= 16) return;
+            if (outLights.size() >= 64) return;
 
             GpuLight gpuLight{};
             gpuLight.position = glm::vec4(glm::vec3(wt.matrix[3]), static_cast<float>(lc.type));

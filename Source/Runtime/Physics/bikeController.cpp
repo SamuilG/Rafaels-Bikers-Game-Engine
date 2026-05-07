@@ -235,7 +235,7 @@ namespace engine
 
         if (m_inputSystem->IsActionHeld("MoveBackward")) {
             m_state->engineForce -= 10000.0f * dt;
-            if (m_state->engineForce < -2500.0f) m_state->engineForce = -2500.0f;
+            if (m_state->engineForce < -500.0f) m_state->engineForce = -500.0f;
         }
 
         if (std::abs(m_state->engineForce) > 10.0f) {
