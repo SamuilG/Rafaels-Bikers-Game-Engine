@@ -67,8 +67,7 @@ void main() {
     mat3 TBN = mat3(tangent, bitangent, normal);
 
     float occlusion = 0.0;
-    int kernelSize = 32; // 32 根已经能得到极高的画质了，64 有点费性能
-
+    int kernelSize = 64; 
     for(int i = 0; i < kernelSize; ++i) {
         float fi = float(i) + 0.5;
         float cosTheta = 1.0 - (fi / float(kernelSize)); 

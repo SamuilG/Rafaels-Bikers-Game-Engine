@@ -42,9 +42,10 @@ namespace engine {
         // Spinning pickup entities
         flecs::entity m_springPickupEntity;
         flecs::entity m_hornPickupEntity;
+        flecs::entity m_radioPickupEntity;
         std::vector<flecs::entity> m_gasPickupEntities;
         std::vector<flecs::entity> m_radioPickupEntities;
-
+        bool m_radioCollected;
         // Mounted horn — kept after collection for squeeze animation
         flecs::entity m_hornMountedEntity;
         glm::mat4     m_hornBaseMountT  = glm::mat4(1.0f);
