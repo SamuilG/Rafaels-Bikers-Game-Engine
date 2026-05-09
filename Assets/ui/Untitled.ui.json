@@ -1,0 +1,190 @@
+{
+    "version": 1,
+    "screenName": "Untitled UI",
+    "canvasReferenceResolution": {
+        "x": 1920.0,
+        "y": 1080.0
+    },
+    "rootElement": {
+        "id": 1,
+        "name": "Canvas",
+        "type": "Canvas",
+        "visible": true,
+        "enabled": true,
+        "interactable": false,
+        "zOrder": 0,
+        "transform": {
+            "position": {
+                "x": 0.0,
+                "y": 0.0
+            },
+            "size": {
+                "x": 1920.0,
+                "y": 1080.0
+            },
+            "anchorMin": {
+                "x": 0.0,
+                "y": 0.0
+            },
+            "anchorMax": {
+                "x": 0.0,
+                "y": 0.0
+            },
+            "pivot": {
+                "x": 0.0,
+                "y": 0.0
+            },
+            "rotation": 0.0,
+            "scale": {
+                "x": 1.0,
+                "y": 1.0
+            }
+        },
+        "style": {
+            "backgroundColor": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 0.0
+            },
+            "tintColor": {
+                "x": 1.0,
+                "y": 1.0,
+                "z": 1.0,
+                "w": 1.0
+            },
+            "textColor": {
+                "x": 1.0,
+                "y": 1.0,
+                "z": 1.0,
+                "w": 1.0
+            },
+            "texturePath": "",
+            "fontPath": "",
+            "fontSize": 16.0,
+            "opacity": 1.0,
+            "padding": {
+                "left": 0.0,
+                "top": 0.0,
+                "right": 0.0,
+                "bottom": 0.0
+            },
+            "margin": {
+                "left": 0.0,
+                "top": 0.0,
+                "right": 0.0,
+                "bottom": 0.0
+            },
+            "borderColor": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 0.0
+            },
+            "borderWidth": 0.0,
+            "borderRadius": 0.0
+        },
+        "widgetData": {},
+        "events": {
+            "onClick": "",
+            "onHover": "",
+            "onPressed": "",
+            "onReleased": "",
+            "onValueChanged": ""
+        },
+        "children": [
+            {
+                "id": 2,
+                "name": "Image_001",
+                "type": "Image",
+                "visible": true,
+                "enabled": true,
+                "interactable": true,
+                "zOrder": 0,
+                "transform": {
+                    "position": {
+                        "x": 480.0,
+                        "y": 80.0
+                    },
+                    "size": {
+                        "x": 810.0,
+                        "y": 770.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "pivot": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "rotation": 0.0,
+                    "scale": {
+                        "x": 1.0,
+                        "y": 1.0
+                    }
+                },
+                "style": {
+                    "backgroundColor": {
+                        "x": 0.18000000715255737,
+                        "y": 0.20000000298023224,
+                        "z": 0.25999999046325684,
+                        "w": 1.0
+                    },
+                    "tintColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "textColor": {
+                        "x": 0.949999988079071,
+                        "y": 0.949999988079071,
+                        "z": 0.9800000190734863,
+                        "w": 1.0
+                    },
+                    "texturePath": "Assets/textures/textures/fire.png",
+                    "fontPath": "",
+                    "fontSize": 16.0,
+                    "opacity": 1.0,
+                    "padding": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "margin": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "borderColor": {
+                        "x": 0.3499999940395355,
+                        "y": 0.4000000059604645,
+                        "z": 0.5199999809265137,
+                        "w": 1.0
+                    },
+                    "borderWidth": 1.0,
+                    "borderRadius": 8.0
+                },
+                "widgetData": {
+                    "imagePath": "Assets/textures/textures/fire.png",
+                    "preserveAspectRatio": true
+                },
+                "events": {
+                    "onClick": "",
+                    "onHover": "",
+                    "onPressed": "",
+                    "onReleased": "",
+                    "onValueChanged": ""
+                },
+                "children": []
+            }
+        ]
+    }
+}

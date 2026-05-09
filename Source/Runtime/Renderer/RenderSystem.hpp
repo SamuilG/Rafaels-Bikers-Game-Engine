@@ -25,6 +25,7 @@
 #include <chrono>
 #include <functional>
 #include <string_view>
+#include <array>
 #define GLFW_INCLUDE_NONE
 
 #include <GLFW/glfw3.h>
@@ -77,6 +78,8 @@ namespace lut = labut2;
 #include <filesystem>
 #include <algorithm>
 #include <flecs.h>
+#include "../UI/RenderSystemUiEditor.hpp"
+#include "../UI/VisualUIEditor/RuntimeUiController.hpp"
 // ================= debug =================
 #include "../Debug/DebugRenderer.hpp"
 #include "../Trigger/trigger.hpp"
@@ -158,7 +161,12 @@ namespace engine {
             glfwFocusWindow(mWindow.window);
         }
 
-        //==============UI System========= Draw the main menu UI
+        //==============UI System=========
+        RuntimeUiController* GetRuntimeUiController() const {
+            return mRuntimeUiController.get();
+        }
+        //Draw the main menu UI
+      
         void DrawMainMenuUI() {
             // 游戏未开始// Game not started
             if (!mState->isGameStarted) {
@@ -170,6 +178,36 @@ namespace engine {
         //==========UI System（particle）======================
         // 存储 ImGui 专用的贴图描述符// Store ImGui-specific texture descriptors
         std::unordered_map<std::string, VkDescriptorSet> particleImGuiTextureDict;
+
+        bool HasRuntimeUiScreen() const;
+        bool ShouldRenderRuntimeUi() const;
+        bool ShouldRenderRuntimeUiDebugPreview() const;
+        bool BuildRuntimeUiRenderContext(UIRenderContext& outContext, ImVec2& outCanvasMin, ImVec2& outCanvasMax) const;
+        void RefreshRuntimeUiDataContext(float dt);
+        void UpdateRuntimeUi(float dt);
+        void ForwardRuntimeUiMouseInput();
+        void RenderRuntimeUi();
+
+        struct RuntimeUiDebugRect {
+            const UIScreen* screen = nullptr;
+            const UIElement* element = nullptr;
+            UIRect rect{};
+            bool interactive = false;
+        };
+
+        bool ShouldShowRuntimeUiDebugPanel() const;
+        bool ShouldDrawRuntimeUiDebugOverlay() const;
+        static std::string FormatUiValueForDebug(const UIValue* value);
+        static bool IsRuntimeUiElementInteractive(const UIElement& element);
+
+        void CollectRuntimeUiDebugRects(
+            const UIScreen& screen,
+            const UIElement& element,
+            const UIRect& parentRect,
+            std::vector<RuntimeUiDebugRect>& outRects) const;
+        void DrawRuntimeUiDebugOverlay();
+        bool HandleRuntimeUiDebugSelection();
+        void DrawRuntimeUiDebugPanel();
 
         // 获取 ImGui 专用的渲染句柄
         // Get the rendering handle for ImGui-specific textures
@@ -512,6 +550,29 @@ namespace engine {
             ImGuiIO& io = ImGui::GetIO();
             io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
             ReportInitProgress(0.96f, "Starting editor UI...");
+
+            // Game UI Editor
+            render_system_ui_editor::Configure(
+                [this](const std::string& assetPath) -> void* {
+                    return reinterpret_cast<void*>(GetContentBrowserThumbnail(assetPath));
+                },
+                [this](const std::filesystem::path& path) {
+                    if (!mRuntimeUiController || !mRuntimeUiController->ReloadWidget(path)) {
+                        EngineUi::LogPrint("[RuntimeUI] File changed but screen is not currently loaded: {}\n", path.generic_string());
+                    }
+                });
+
+            if (mState) {
+                mRuntimeUiController = std::make_unique<RuntimeUiController>(mAppRunning, *mState);
+                mRuntimeUiController->Initialize([this](const std::string& assetPath) -> void* {
+                    return reinterpret_cast<void*>(GetContentBrowserThumbnail(assetPath));
+                    });
+                mRuntimeUiManager = mRuntimeUiController->GetManager();
+                mRuntimeUiRenderer = mRuntimeUiController->GetRendererShared();
+            }
+            else {
+                EngineUi::LogPrint("[RuntimeUI] Skipped RuntimeUiController init because UserState is null\n");
+            }
             // ==========================================
             // 10. 粒子初始化与缩略图系统
             // ==========================================
@@ -771,10 +832,21 @@ namespace engine {
 
                 if (mState->isGamePause)
                 {
+                    if (mRuntimeUiController) {
+                        mRuntimeUiController->RemoveWidgetFromViewPort("Assets/ui/SettingsMenu.ui.json");
+                        mRuntimeUiController->AddWidgetToViewPort("Assets/ui/PauseMenu.ui.json");
+                    }
                     engine::EngineUi::LogPrintf("Test: Game pause triggered via 'H' key.\n");
                 }
                 else
                 {
+                    if (mRuntimeUiController) {
+                        mRuntimeUiController->RemoveWidgetFromViewPort("Assets/ui/SettingsMenu.ui.json");
+                        mRuntimeUiController->RemoveWidgetFromViewPort("Assets/ui/PauseMenu.ui.json");
+                        if (mRuntimeUiController->IsWidgetLoaded("Assets/ui/HUD.ui.json")) {
+                            mRuntimeUiController->AddWidgetToViewPort("Assets/ui/HUD.ui.json");
+                        }
+                    }
                     engine::EngineUi::LogPrintf("Test: Back to Game/Menu.\n");
                 }
             }
@@ -809,6 +881,9 @@ namespace engine {
             {
                 EngineUi::DrawMainMenuBar(this, mSceneManager, *mState, mAppRunning);
             }
+
+            const bool runtimeUiViewportActive = ShouldRenderRuntimeUi();
+
             //start gmae menu
            // 如果游戏还没开始，只画主菜单
             if (!mState->isGameStarted) {
@@ -905,6 +980,14 @@ namespace engine {
 				//game HUD============================
                 GameUi::DrawHud(this, *mState, EngineUi::GetSceneViewportPos(), EngineUi::GetSceneViewportSize());
 
+
+                // Runtime UI
+                ForwardRuntimeUiMouseInput();
+                UpdateRuntimeUi(dt);
+                RenderRuntimeUi();
+                DrawRuntimeUiDebugOverlay();
+
+
                 glm::mat4 viewProj = gizmoProj * view;
                 glm::vec3 cameraPos = glm::vec3(glm::inverse(view)[3]); // 提取逆 view 矩阵第 4 列作为位置
 
@@ -931,13 +1014,29 @@ namespace engine {
 				//debug UI
                 if (mState->showEngineUi && mState->showDebugPanel) {
                     EngineUi::DrawDebugPanel(*mState);
+                    DrawRuntimeUiDebugPanel();
                 }
 				//audio UI
                 if (mState->showEngineUi && mState->showAudioPanel) {
                     EngineUi::DrawAudioPanel(*mState, mAudioSystem);
                 }
 
-                if (mState->showEngineUi && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && isMouseInViewport && !ImGuizmo::IsOver())
+                // Game UI Editor
+                render_system_ui_editor::Draw(*mState);
+
+                // mouse capture
+                const bool runtimeUiDebugSelectionConsumed =
+                    mState->showEngineUi &&
+                    !render_system_ui_editor::WantsMouseCapture() &&
+                    isMouseInViewport &&
+                    HandleRuntimeUiDebugSelection();
+
+                if (mState->showEngineUi &&
+                    !render_system_ui_editor::WantsMouseCapture() &&
+                    !runtimeUiDebugSelectionConsumed &&
+                    ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+                    isMouseInViewport &&
+                    !ImGuizmo::IsOver())
                 {
                     flecs::entity hitEntity = MousePicker::PickEntity(
                         localMouseX, localMouseY,  // 传局部鼠标坐标
@@ -2570,6 +2669,21 @@ void InitSkybox()
         //===========================UI System================================
         // UI System 保存当前选中的实体 ID saved selected entity ID for UI system
         flecs::entity_t mSelectedEntityId = 0;
+        UIManager* mRuntimeUiManager = nullptr;
+        // RenderSystem ?????? UI ?????????? RuntimeUiController?
+        std::shared_ptr<ImGuiPreviewRenderer> mRuntimeUiRenderer;
+        std::unique_ptr<RuntimeUiController> mRuntimeUiController;
+        float mRuntimeUiLapTimeSeconds = 0.0f;
+        float mRuntimeUiTravelDistanceMeters = 0.0f;
+        UIElementId mRuntimeUiDebugSelectedElementId = 0;
+        std::string mRuntimeUiDebugSelectedScreenName;
+        bool mRuntimeUiDebugEnablePicking = false;
+        bool mRuntimeUiDebugShowLivePreview = false;
+        bool mRuntimeUiDebugShowStack = false;
+        bool mRuntimeUiDebugShowBounds = false;
+        bool mRuntimeUiDebugShowHitRects = false;
+        bool mRuntimeUiDebugShowBindingValues = true;
+        bool mRuntimeUiDebugShowAnimationDebug = false;
         //===========================UI System================================
 
         // 最终 3D 画面相纸
@@ -2753,5 +2867,5 @@ void InitSkybox()
     
     };
 
-
+#include "../UI/RenderSystemRuntimeUi.inl"
 } // namespace engine

@@ -30,8 +30,16 @@ float extremeSpeedThreshold = 36.0f;
 void update_user_state(engine::UserState& aState, float aElapsedTime, engine::InputSystem* inputSys)
 {
 	auto& cam = aState.camera2world;
-
-	if (inputSys->IsActionPressed("CaptureMouse") && aState.isAlive)
+	//当前是否允许视口接管鼠标
+	//只有在 UI 没显示，或者鼠标正停在场景视口上时，才允许视口捕获鼠标
+	const bool canCaptureMouseForViewport = !aState.showEngineUi || aState.isSceneViewportHovered;
+	if (!canCaptureMouseForViewport && inputSys->IsMouseCaptured())
+	{
+		aState.previousMouseState = false;
+		inputSys->SetMouseCaptured(false);
+	}
+	
+	if (canCaptureMouseForViewport && inputSys->IsActionPressed("CaptureMouse"))
 	{
 		aState.previousMouseState = !aState.previousMouseState;
 		inputSys->SetMouseCaptured(aState.previousMouseState);

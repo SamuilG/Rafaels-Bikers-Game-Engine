@@ -17,6 +17,15 @@ struct BikeTuning
 	float gravityFactor = 100.0f;
 };
 namespace engine {
+	// 游戏流程状态
+	enum class GameFlowState
+	{
+		MainMenu,
+		Playing,
+		Paused,
+		Settings,
+		GameOver
+	};
 	struct UserState
 	{
 		float mouseX = 0.f;
@@ -51,6 +60,8 @@ namespace engine {
 
 		bool isGamePause = false;//game Pause toggle
 
+		GameFlowState gameFlowState = GameFlowState::MainMenu;//current game flow state
+
 		//UI 窗口的显示开关
 		bool showControlPanel = true;
 		bool showContentBrowser = true;
@@ -61,6 +72,8 @@ namespace engine {
 		bool showCameraPanel = true;
 		bool showDebugPanel = true;
 		bool showAudioPanel = true;
+		bool showGameUiEditor = false;
+		bool showRuntimeUi = true;
 
 		bool debugSelectionBounds = false;
 		bool debugCollisionShapes = true;

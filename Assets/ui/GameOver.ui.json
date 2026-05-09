@@ -1,0 +1,505 @@
+{
+    "version": 1,
+    "screenName": "GameOver",
+    "themePath": "Assets/ui/BicycleSim_DarkTheme.ui.theme.json",
+    "screenSettings": {
+        "visible": false,
+        "blocksInput": true,
+        "renderOrder": 4,
+        "pauseGameWhenOpen": true,
+        "allowInputPassthrough": false,
+        "enterAnimation": "GameOver_FadeIn",
+        "exitAnimation": "GameOver_FadeOut",
+        "hideAfterExit": true,
+        "blockInputDuringTransition": true
+    },
+    "canvasReferenceResolution": {
+        "x": 1920.0,
+        "y": 1080.0
+    },
+    "bindings": [
+        {
+            "targetElementId": 5,
+            "targetProperty": "Text.text",
+            "sourceKey": "race.bestLapTime",
+            "formatString": "{}",
+            "invert": false,
+            "updateMode": "EveryFrame"
+        },
+        {
+            "targetElementId": 7,
+            "targetProperty": "Text.text",
+            "sourceKey": "race.lapTime",
+            "formatString": "{}",
+            "invert": false,
+            "updateMode": "EveryFrame"
+        }
+    ],
+    "animations": [
+        {
+            "name": "GameOver_FadeIn",
+            "duration": 1.2,
+            "loopCount": 1,
+            "playOnShow": true,
+            "trackCount": 6,
+            "tracks": [
+                {
+                    "targetElementId": 2,
+                    "property": "Opacity",
+                    "keyframes": [
+                        { "time": 0.0, "value": { "type": "Float", "value": 0.0 }, "easing": "EaseOut" },
+                        { "time": 0.5, "value": { "type": "Float", "value": 1.0 }, "easing": "EaseOut" }
+                    ]
+                },
+                {
+                    "targetElementId": 3,
+                    "property": "Opacity",
+                    "keyframes": [
+                        { "time": 0.0, "value": { "type": "Float", "value": 0.0 }, "easing": "EaseOut" },
+                        { "time": 0.2, "value": { "type": "Float", "value": 0.0 }, "easing": "EaseOut" },
+                        { "time": 0.8, "value": { "type": "Float", "value": 1.0 }, "easing": "EaseOut" }
+                    ]
+                },
+                {
+                    "targetElementId": 3,
+                    "property": "Scale",
+                    "keyframes": [
+                        { "time": 0.0, "value": { "type": "Vec2", "value": { "x": 1.5, "y": 1.5 } }, "easing": "EaseOutStrong" },
+                        { "time": 0.2, "value": { "type": "Vec2", "value": { "x": 1.5, "y": 1.5 } }, "easing": "EaseOutStrong" },
+                        { "time": 0.8, "value": { "type": "Vec2", "value": { "x": 1.0, "y": 1.0 } }, "easing": "EaseOutStrong" }
+                    ]
+                },
+                {
+                    "targetElementId": 5,
+                    "property": "Opacity",
+                    "keyframes": [
+                        { "time": 0.0, "value": { "type": "Float", "value": 0.0 }, "easing": "EaseOut" },
+                        { "time": 0.5, "value": { "type": "Float", "value": 0.0 }, "easing": "EaseOut" },
+                        { "time": 0.9, "value": { "type": "Float", "value": 1.0 }, "easing": "EaseOut" }
+                    ]
+                },
+                {
+                    "targetElementId": 8,
+                    "property": "Opacity",
+                    "keyframes": [
+                        { "time": 0.0, "value": { "type": "Float", "value": 0.0 }, "easing": "EaseOut" },
+                        { "time": 0.7, "value": { "type": "Float", "value": 0.0 }, "easing": "EaseOut" },
+                        { "time": 1.1, "value": { "type": "Float", "value": 1.0 }, "easing": "EaseOut" }
+                    ]
+                },
+                {
+                    "targetElementId": 9,
+                    "property": "Opacity",
+                    "keyframes": [
+                        { "time": 0.0, "value": { "type": "Float", "value": 0.0 }, "easing": "EaseOut" },
+                        { "time": 0.8, "value": { "type": "Float", "value": 0.0 }, "easing": "EaseOut" },
+                        { "time": 1.2, "value": { "type": "Float", "value": 1.0 }, "easing": "EaseOut" }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "GameOver_FadeOut",
+            "duration": 0.35,
+            "loopCount": 1,
+            "playOnShow": false,
+            "trackCount": 1,
+            "tracks": [
+                {
+                    "targetElementId": 2,
+                    "property": "Opacity",
+                    "keyframes": [
+                        { "time": 0.0, "value": { "type": "Float", "value": 1.0 }, "easing": "EaseIn" },
+                        { "time": 0.35, "value": { "type": "Float", "value": 0.0 }, "easing": "EaseIn" }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "GameOver_TitlePulse",
+            "duration": 2.0,
+            "loopCount": 0,
+            "playOnShow": true,
+            "trackCount": 1,
+            "tracks": [
+                {
+                    "targetElementId": 3,
+                    "property": "TextColor",
+                    "keyframes": [
+                        { "time": 0.0, "value": { "type": "Color", "value": { "x": 1.0, "y": 0.30, "z": 0.25, "w": 1.0 } }, "easing": "EaseInOut" },
+                        { "time": 1.0, "value": { "type": "Color", "value": { "x": 1.0, "y": 0.55, "z": 0.20, "w": 1.0 } }, "easing": "EaseInOut" },
+                        { "time": 2.0, "value": { "type": "Color", "value": { "x": 1.0, "y": 0.30, "z": 0.25, "w": 1.0 } }, "easing": "EaseInOut" }
+                    ]
+                }
+            ]
+        }
+    ],
+    "rootElement": {
+        "id": 1,
+        "name": "Canvas",
+        "type": "Canvas",
+        "visible": true,
+        "enabled": true,
+        "interactable": false,
+        "zOrder": 0,
+        "transform": {
+            "position": { "x": 0.0, "y": 0.0 },
+            "size": { "x": 1920.0, "y": 1080.0 },
+            "anchorMin": { "x": 0.0, "y": 0.0 },
+            "anchorMax": { "x": 0.0, "y": 0.0 },
+            "pivot": { "x": 0.0, "y": 0.0 },
+            "rotation": 0.0,
+            "scale": { "x": 1.0, "y": 1.0 }
+        },
+        "style": {
+            "backgroundColor": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0 },
+            "tintColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+            "textColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+            "texturePath": "",
+            "fontPath": "Assets/Fonts/simhei.ttf",
+            "fontSize": 16.0,
+            "opacity": 1.0,
+            "padding": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+            "margin": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+            "borderColor": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0 },
+            "borderWidth": 0.0,
+            "borderRadius": 0.0
+        },
+        "widgetData": {},
+        "events": { "onClick": "", "onHover": "", "onPressed": "", "onReleased": "", "onValueChanged": "" },
+        "children": [
+            {
+                "id": 2,
+                "name": "GameOverOverlay",
+                "type": "Panel",
+                "visible": true,
+                "enabled": true,
+                "interactable": false,
+                "zOrder": 0,
+                "transform": {
+                    "position": { "x": 0.0, "y": 0.0 },
+                    "size": { "x": 2070.0, "y": 1180.0 },
+                    "anchorMin": { "x": 0.0, "y": 0.0 },
+                    "anchorMax": { "x": 0.0, "y": 0.0 },
+                    "pivot": { "x": 0.0, "y": 0.0 },
+                    "rotation": 0.0,
+                    "scale": { "x": 1.0, "y": 1.0 }
+                },
+                "style": {
+                    "presetName": "TransparentPanel",
+                    "overrides": {},
+                    "backgroundColor": { "x": 0.02, "y": 0.02, "z": 0.04, "w": 0.88 },
+                    "tintColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+                    "textColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+                    "texturePath": "",
+                    "fontPath": "",
+                    "fontSize": 16.0,
+                    "opacity": 1.0,
+                    "padding": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+                    "margin": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+                    "borderColor": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0 },
+                    "borderWidth": 0.0,
+                    "borderRadius": 0.0
+                },
+                "widgetData": {},
+                "events": { "onClick": "", "onHover": "", "onPressed": "", "onReleased": "", "onValueChanged": "" },
+                "children": []
+            },
+            {
+                "id": 3,
+                "name": "GameOverTitle",
+                "type": "Text",
+                "visible": true,
+                "enabled": true,
+                "interactable": false,
+                "zOrder": 10,
+                "transform": {
+                    "position": { "x": 960.0, "y": 240.0 },
+                    "size": { "x": 700.0, "y": 120.0 },
+                    "anchorMin": { "x": 0.0, "y": 0.0 },
+                    "anchorMax": { "x": 0.0, "y": 0.0 },
+                    "pivot": { "x": 0.5, "y": 0.5 },
+                    "rotation": 0.0,
+                    "scale": { "x": 1.0, "y": 1.0 }
+                },
+                "style": {
+                    "presetName": "WarningText",
+                    "overrides": {},
+                    "backgroundColor": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0 },
+                    "tintColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+                    "textColor": { "x": 1.0, "y": 0.30, "z": 0.25, "w": 1.0 },
+                    "texturePath": "",
+                    "fontPath": "Assets/Fonts/Dengb.ttf",
+                    "fontSize": 80.0,
+                    "opacity": 1.0,
+                    "padding": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+                    "margin": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+                    "borderColor": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0 },
+                    "borderWidth": 0.0,
+                    "borderRadius": 0.0
+                },
+                "widgetData": {
+                    "text": "GAME OVER",
+                    "alignment": "Center",
+                    "wrapText": false
+                },
+                "events": { "onClick": "", "onHover": "", "onPressed": "", "onReleased": "", "onValueChanged": "" },
+                "children": []
+            },
+            {
+                "id": 4,
+                "name": "BestLapLabel",
+                "type": "Text",
+                "visible": true,
+                "enabled": true,
+                "interactable": false,
+                "zOrder": 11,
+                "transform": {
+                    "position": { "x": 960.0, "y": 400.0 },
+                    "size": { "x": 400.0, "y": 40.0 },
+                    "anchorMin": { "x": 0.0, "y": 0.0 },
+                    "anchorMax": { "x": 0.0, "y": 0.0 },
+                    "pivot": { "x": 0.5, "y": 0.5 },
+                    "rotation": 0.0,
+                    "scale": { "x": 1.0, "y": 1.0 }
+                },
+                "style": {
+                    "presetName": "HudText",
+                    "overrides": {},
+                    "backgroundColor": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0 },
+                    "tintColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+                    "textColor": { "x": 0.70, "y": 0.72, "z": 0.78, "w": 1.0 },
+                    "texturePath": "",
+                    "fontPath": "Assets/Fonts/simhei.ttf",
+                    "fontSize": 22.0,
+                    "opacity": 1.0,
+                    "padding": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+                    "margin": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+                    "borderColor": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0 },
+                    "borderWidth": 0.0,
+                    "borderRadius": 0.0
+                },
+                "widgetData": {
+                    "text": "BEST LAP TIME",
+                    "alignment": "Center",
+                    "wrapText": false
+                },
+                "events": { "onClick": "", "onHover": "", "onPressed": "", "onReleased": "", "onValueChanged": "" },
+                "children": []
+            },
+            {
+                "id": 5,
+                "name": "BestLapTimeValue",
+                "type": "Text",
+                "visible": true,
+                "enabled": true,
+                "interactable": false,
+                "zOrder": 12,
+                "transform": {
+                    "position": { "x": 960.0, "y": 450.0 },
+                    "size": { "x": 400.0, "y": 56.0 },
+                    "anchorMin": { "x": 0.0, "y": 0.0 },
+                    "anchorMax": { "x": 0.0, "y": 0.0 },
+                    "pivot": { "x": 0.5, "y": 0.5 },
+                    "rotation": 0.0,
+                    "scale": { "x": 1.0, "y": 1.0 }
+                },
+                "style": {
+                    "presetName": "HudText",
+                    "overrides": {},
+                    "backgroundColor": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0 },
+                    "tintColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+                    "textColor": { "x": 1.0, "y": 0.82, "z": 0.28, "w": 1.0 },
+                    "texturePath": "",
+                    "fontPath": "Assets/Fonts/Dengb.ttf",
+                    "fontSize": 42.0,
+                    "opacity": 1.0,
+                    "padding": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+                    "margin": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+                    "borderColor": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0 },
+                    "borderWidth": 0.0,
+                    "borderRadius": 0.0
+                },
+                "widgetData": {
+                    "text": "00:00.000",
+                    "alignment": "Center",
+                    "wrapText": false
+                },
+                "events": { "onClick": "", "onHover": "", "onPressed": "", "onReleased": "", "onValueChanged": "" },
+                "children": []
+            },
+            {
+                "id": 6,
+                "name": "LastLapLabel",
+                "type": "Text",
+                "visible": true,
+                "enabled": true,
+                "interactable": false,
+                "zOrder": 13,
+                "transform": {
+                    "position": { "x": 960.0, "y": 530.0 },
+                    "size": { "x": 400.0, "y": 36.0 },
+                    "anchorMin": { "x": 0.0, "y": 0.0 },
+                    "anchorMax": { "x": 0.0, "y": 0.0 },
+                    "pivot": { "x": 0.5, "y": 0.5 },
+                    "rotation": 0.0,
+                    "scale": { "x": 1.0, "y": 1.0 }
+                },
+                "style": {
+                    "presetName": "HudText",
+                    "overrides": {},
+                    "backgroundColor": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0 },
+                    "tintColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+                    "textColor": { "x": 0.55, "y": 0.57, "z": 0.63, "w": 1.0 },
+                    "texturePath": "",
+                    "fontPath": "Assets/Fonts/simhei.ttf",
+                    "fontSize": 18.0,
+                    "opacity": 1.0,
+                    "padding": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+                    "margin": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+                    "borderColor": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0 },
+                    "borderWidth": 0.0,
+                    "borderRadius": 0.0
+                },
+                "widgetData": {
+                    "text": "LAST LAP",
+                    "alignment": "Center",
+                    "wrapText": false
+                },
+                "events": { "onClick": "", "onHover": "", "onPressed": "", "onReleased": "", "onValueChanged": "" },
+                "children": []
+            },
+            {
+                "id": 7,
+                "name": "LastLapTimeValue",
+                "type": "Text",
+                "visible": true,
+                "enabled": true,
+                "interactable": false,
+                "zOrder": 14,
+                "transform": {
+                    "position": { "x": 960.0, "y": 570.0 },
+                    "size": { "x": 400.0, "y": 42.0 },
+                    "anchorMin": { "x": 0.0, "y": 0.0 },
+                    "anchorMax": { "x": 0.0, "y": 0.0 },
+                    "pivot": { "x": 0.5, "y": 0.5 },
+                    "rotation": 0.0,
+                    "scale": { "x": 1.0, "y": 1.0 }
+                },
+                "style": {
+                    "presetName": "HudText",
+                    "overrides": {},
+                    "backgroundColor": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0 },
+                    "tintColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+                    "textColor": { "x": 0.85, "y": 0.87, "z": 0.92, "w": 1.0 },
+                    "texturePath": "",
+                    "fontPath": "Assets/Fonts/Dengb.ttf",
+                    "fontSize": 30.0,
+                    "opacity": 1.0,
+                    "padding": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+                    "margin": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+                    "borderColor": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0 },
+                    "borderWidth": 0.0,
+                    "borderRadius": 0.0
+                },
+                "widgetData": {
+                    "text": "00:00.000",
+                    "alignment": "Center",
+                    "wrapText": false
+                },
+                "events": { "onClick": "", "onHover": "", "onPressed": "", "onReleased": "", "onValueChanged": "" },
+                "children": []
+            },
+            {
+                "id": 8,
+                "name": "RestartButton",
+                "type": "Button",
+                "visible": true,
+                "enabled": true,
+                "interactable": true,
+                "zOrder": 20,
+                "transform": {
+                    "position": { "x": 960.0, "y": 700.0 },
+                    "size": { "x": 360.0, "y": 76.0 },
+                    "anchorMin": { "x": 0.0, "y": 0.0 },
+                    "anchorMax": { "x": 0.0, "y": 0.0 },
+                    "pivot": { "x": 0.5, "y": 0.5 },
+                    "rotation": 0.0,
+                    "scale": { "x": 1.0, "y": 1.0 }
+                },
+                "style": {
+                    "presetName": "PrimaryButton",
+                    "overrides": {},
+                    "backgroundColor": { "x": 0.18, "y": 0.22, "z": 0.32, "w": 0.98 },
+                    "tintColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+                    "textColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+                    "texturePath": "",
+                    "fontPath": "Assets/Fonts/simhei.ttf",
+                    "fontSize": 28.0,
+                    "opacity": 1.0,
+                    "padding": { "left": 16.0, "top": 12.0, "right": 16.0, "bottom": 12.0 },
+                    "margin": { "left": 0.0, "top": 10.0, "right": 0.0, "bottom": 10.0 },
+                    "borderColor": { "x": 0.66, "y": 0.76, "z": 0.98, "w": 0.95 },
+                    "borderWidth": 2.0,
+                    "borderRadius": 12.0
+                },
+                "widgetData": {
+                    "label": "Restart",
+                    "pressed": false,
+                    "usePresetTransitionStyle": true,
+                    "normalColor": { "x": 0.18, "y": 0.22, "z": 0.32, "w": 0.98 },
+                    "hoverColor": { "x": 0.28, "y": 0.34, "z": 0.48, "w": 1.0 },
+                    "pressedColor": { "x": 0.13, "y": 0.16, "z": 0.24, "w": 1.0 },
+                    "disabledColor": { "x": 0.24, "y": 0.24, "z": 0.28, "w": 0.80 }
+                },
+                "events": { "onClick": "RestartGame", "onHover": "", "onPressed": "", "onReleased": "", "onValueChanged": "" },
+                "children": []
+            },
+            {
+                "id": 9,
+                "name": "MainMenuButton",
+                "type": "Button",
+                "visible": true,
+                "enabled": true,
+                "interactable": true,
+                "zOrder": 21,
+                "transform": {
+                    "position": { "x": 960.0, "y": 800.0 },
+                    "size": { "x": 360.0, "y": 76.0 },
+                    "anchorMin": { "x": 0.0, "y": 0.0 },
+                    "anchorMax": { "x": 0.0, "y": 0.0 },
+                    "pivot": { "x": 0.5, "y": 0.5 },
+                    "rotation": 0.0,
+                    "scale": { "x": 1.0, "y": 1.0 }
+                },
+                "style": {
+                    "presetName": "DangerButton",
+                    "overrides": {},
+                    "backgroundColor": { "x": 0.22, "y": 0.10, "z": 0.10, "w": 0.98 },
+                    "tintColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+                    "textColor": { "x": 1.0, "y": 0.93, "z": 0.93, "w": 1.0 },
+                    "texturePath": "",
+                    "fontPath": "Assets/Fonts/simhei.ttf",
+                    "fontSize": 28.0,
+                    "opacity": 1.0,
+                    "padding": { "left": 16.0, "top": 12.0, "right": 16.0, "bottom": 12.0 },
+                    "margin": { "left": 0.0, "top": 10.0, "right": 0.0, "bottom": 10.0 },
+                    "borderColor": { "x": 0.95, "y": 0.42, "z": 0.42, "w": 0.95 },
+                    "borderWidth": 2.0,
+                    "borderRadius": 12.0
+                },
+                "widgetData": {
+                    "label": "Main Menu",
+                    "pressed": false,
+                    "usePresetTransitionStyle": true,
+                    "normalColor": { "x": 0.22, "y": 0.10, "z": 0.10, "w": 0.98 },
+                    "hoverColor": { "x": 0.30, "y": 0.14, "z": 0.14, "w": 1.0 },
+                    "pressedColor": { "x": 0.14, "y": 0.08, "z": 0.08, "w": 1.0 },
+                    "disabledColor": { "x": 0.24, "y": 0.24, "z": 0.28, "w": 0.80 }
+                },
+                "events": { "onClick": "BackToMainMenu", "onHover": "", "onPressed": "", "onReleased": "", "onValueChanged": "" },
+                "children": []
+            }
+        ]
+    }
+}

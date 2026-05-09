@@ -1,0 +1,284 @@
+{
+    "version": 1,
+    "themeName": "BicycleSim Dark Theme",
+    "colors": {
+        "BrandBlue": { "x": 0.24, "y": 0.31, "z": 0.55, "w": 1.0 },
+        "BrandBlueHover": { "x": 0.32, "y": 0.40, "z": 0.66, "w": 1.0 },
+        "BrandBluePressed": { "x": 0.18, "y": 0.24, "z": 0.42, "w": 1.0 },
+        "Danger": { "x": 0.45, "y": 0.14, "z": 0.16, "w": 1.0 },
+        "Warning": { "x": 1.0, "y": 0.34, "z": 0.24, "w": 1.0 },
+        "HudText": { "x": 0.98, "y": 0.95, "z": 0.82, "w": 1.0 },
+        "PanelDark": { "x": 0.10, "y": 0.12, "z": 0.18, "w": 0.92 },
+        "PanelTransparent": { "x": 0.02, "y": 0.04, "z": 0.08, "w": 0.56 }
+    },
+    "fonts": {
+        "Default": "Assets/Fonts/simhei.ttf",
+        "Hud": "Assets/Fonts/simhei.ttf"
+    },
+    "presets": [
+        {
+            "name": "PrimaryButton",
+            "style": {
+                "presetName": "",
+                "overrides": {
+                    "backgroundColor": true,
+                    "tintColor": true,
+                    "textColor": true,
+                    "texturePath": true,
+                    "fontPath": true,
+                    "fontSize": true,
+                    "opacity": true,
+                    "padding": true,
+                    "margin": true,
+                    "borderColor": true,
+                    "borderWidth": true,
+                    "borderRadius": true
+                },
+                "backgroundColor": { "x": 0.18, "y": 0.22, "z": 0.32, "w": 0.98 },
+                "tintColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+                "textColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+                "texturePath": "",
+                "fontPath": "Assets/Fonts/simhei.ttf",
+                "fontSize": 28.0,
+                "opacity": 1.0,
+                "padding": { "left": 16.0, "top": 12.0, "right": 16.0, "bottom": 12.0 },
+                "margin": { "left": 0.0, "top": 8.0, "right": 0.0, "bottom": 8.0 },
+                "borderColor": { "x": 0.66, "y": 0.76, "z": 0.98, "w": 0.95 },
+                "borderWidth": 2.0,
+                "borderRadius": 12.0
+            },
+            "buttonStyle": {
+                "enabled": true,
+                "transitionMode": "Animation",
+                "normalColor": { "x": 0.18, "y": 0.22, "z": 0.32, "w": 0.98 },
+                "hoverColor": { "x": 0.28, "y": 0.34, "z": 0.48, "w": 1.0 },
+                "pressedColor": { "x": 0.13, "y": 0.16, "z": 0.24, "w": 1.0 },
+                "disabledColor": { "x": 0.24, "y": 0.24, "z": 0.28, "w": 0.80 },
+                "normalScale": 1.0,
+                "hoverScale": 1.04,
+                "pressedScale": 0.97,
+                "transitionDuration": 0.12
+            }
+        },
+        {
+            "name": "SecondaryButton",
+            "style": {
+                "presetName": "",
+                "overrides": {
+                    "backgroundColor": true,
+                    "tintColor": true,
+                    "textColor": true,
+                    "texturePath": true,
+                    "fontPath": true,
+                    "fontSize": true,
+                    "opacity": true,
+                    "padding": true,
+                    "margin": true,
+                    "borderColor": true,
+                    "borderWidth": true,
+                    "borderRadius": true
+                },
+                "backgroundColor": { "x": 0.12, "y": 0.16, "z": 0.24, "w": 0.98 },
+                "tintColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+                "textColor": { "x": 0.97, "y": 0.98, "z": 1.0, "w": 1.0 },
+                "texturePath": "",
+                "fontPath": "Assets/Fonts/simhei.ttf",
+                "fontSize": 28.0,
+                "opacity": 1.0,
+                "padding": { "left": 16.0, "top": 12.0, "right": 16.0, "bottom": 12.0 },
+                "margin": { "left": 0.0, "top": 8.0, "right": 0.0, "bottom": 8.0 },
+                "borderColor": { "x": 0.58, "y": 0.64, "z": 0.82, "w": 0.88 },
+                "borderWidth": 1.5,
+                "borderRadius": 12.0
+            },
+            "buttonStyle": {
+                "enabled": true,
+                "transitionMode": "Animation",
+                "normalColor": { "x": 0.12, "y": 0.16, "z": 0.24, "w": 0.98 },
+                "hoverColor": { "x": 0.18, "y": 0.22, "z": 0.32, "w": 1.0 },
+                "pressedColor": { "x": 0.10, "y": 0.13, "z": 0.18, "w": 1.0 },
+                "disabledColor": { "x": 0.24, "y": 0.24, "z": 0.28, "w": 0.80 },
+                "normalScale": 1.0,
+                "hoverScale": 1.03,
+                "pressedScale": 0.98,
+                "transitionDuration": 0.12
+            }
+        },
+        {
+            "name": "DangerButton",
+            "style": {
+                "presetName": "",
+                "overrides": {
+                    "backgroundColor": true,
+                    "tintColor": true,
+                    "textColor": true,
+                    "texturePath": true,
+                    "fontPath": true,
+                    "fontSize": true,
+                    "opacity": true,
+                    "padding": true,
+                    "margin": true,
+                    "borderColor": true,
+                    "borderWidth": true,
+                    "borderRadius": true
+                },
+                "backgroundColor": { "x": 0.22, "y": 0.10, "z": 0.10, "w": 0.98 },
+                "tintColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+                "textColor": { "x": 1.0, "y": 0.93, "z": 0.93, "w": 1.0 },
+                "texturePath": "",
+                "fontPath": "Assets/Fonts/simhei.ttf",
+                "fontSize": 28.0,
+                "opacity": 1.0,
+                "padding": { "left": 16.0, "top": 12.0, "right": 16.0, "bottom": 12.0 },
+                "margin": { "left": 0.0, "top": 8.0, "right": 0.0, "bottom": 8.0 },
+                "borderColor": { "x": 0.95, "y": 0.42, "z": 0.42, "w": 0.95 },
+                "borderWidth": 2.0,
+                "borderRadius": 12.0
+            },
+            "buttonStyle": {
+                "enabled": true,
+                "transitionMode": "Animation",
+                "normalColor": { "x": 0.22, "y": 0.10, "z": 0.10, "w": 0.98 },
+                "hoverColor": { "x": 0.30, "y": 0.14, "z": 0.14, "w": 1.0 },
+                "pressedColor": { "x": 0.14, "y": 0.08, "z": 0.08, "w": 1.0 },
+                "disabledColor": { "x": 0.24, "y": 0.24, "z": 0.28, "w": 0.80 },
+                "normalScale": 1.0,
+                "hoverScale": 1.03,
+                "pressedScale": 0.98,
+                "transitionDuration": 0.12
+            }
+        },
+        {
+            "name": "HudText",
+            "style": {
+                "presetName": "",
+                "overrides": {
+                    "backgroundColor": true,
+                    "tintColor": true,
+                    "textColor": true,
+                    "texturePath": true,
+                    "fontPath": true,
+                    "fontSize": true,
+                    "opacity": true,
+                    "padding": true,
+                    "margin": true,
+                    "borderColor": true,
+                    "borderWidth": true,
+                    "borderRadius": true
+                },
+                "backgroundColor": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0 },
+                "tintColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+                "textColor": { "x": 0.98, "y": 0.95, "z": 0.82, "w": 1.0 },
+                "texturePath": "",
+                "fontPath": "Assets/Fonts/simhei.ttf",
+                "fontSize": 30.0,
+                "opacity": 1.0,
+                "padding": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+                "margin": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+                "borderColor": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0 },
+                "borderWidth": 0.0,
+                "borderRadius": 0.0
+            },
+            "buttonStyle": { "enabled": false }
+        },
+        {
+            "name": "HudPanel",
+            "style": {
+                "presetName": "",
+                "overrides": {
+                    "backgroundColor": true,
+                    "tintColor": true,
+                    "textColor": true,
+                    "texturePath": true,
+                    "fontPath": true,
+                    "fontSize": true,
+                    "opacity": true,
+                    "padding": true,
+                    "margin": true,
+                    "borderColor": true,
+                    "borderWidth": true,
+                    "borderRadius": true
+                },
+                "backgroundColor": { "x": 0.08, "y": 0.10, "z": 0.15, "w": 0.88 },
+                "tintColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+                "textColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+                "texturePath": "",
+                "fontPath": "Assets/Fonts/simhei.ttf",
+                "fontSize": 18.0,
+                "opacity": 1.0,
+                "padding": { "left": 8.0, "top": 8.0, "right": 8.0, "bottom": 8.0 },
+                "margin": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+                "borderColor": { "x": 0.58, "y": 0.64, "z": 0.82, "w": 0.90 },
+                "borderWidth": 1.5,
+                "borderRadius": 10.0
+            },
+            "buttonStyle": { "enabled": false }
+        },
+        {
+            "name": "WarningText",
+            "style": {
+                "presetName": "",
+                "overrides": {
+                    "backgroundColor": true,
+                    "tintColor": true,
+                    "textColor": true,
+                    "texturePath": true,
+                    "fontPath": true,
+                    "fontSize": true,
+                    "opacity": true,
+                    "padding": true,
+                    "margin": true,
+                    "borderColor": true,
+                    "borderWidth": true,
+                    "borderRadius": true
+                },
+                "backgroundColor": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0 },
+                "tintColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+                "textColor": { "x": 1.0, "y": 0.32, "z": 0.24, "w": 1.0 },
+                "texturePath": "",
+                "fontPath": "Assets/Fonts/simhei.ttf",
+                "fontSize": 26.0,
+                "opacity": 1.0,
+                "padding": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+                "margin": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+                "borderColor": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0 },
+                "borderWidth": 0.0,
+                "borderRadius": 0.0
+            },
+            "buttonStyle": { "enabled": false }
+        },
+        {
+            "name": "TransparentPanel",
+            "style": {
+                "presetName": "",
+                "overrides": {
+                    "backgroundColor": true,
+                    "tintColor": true,
+                    "textColor": true,
+                    "texturePath": true,
+                    "fontPath": true,
+                    "fontSize": true,
+                    "opacity": true,
+                    "padding": true,
+                    "margin": true,
+                    "borderColor": true,
+                    "borderWidth": true,
+                    "borderRadius": true
+                },
+                "backgroundColor": { "x": 0.02, "y": 0.04, "z": 0.08, "w": 0.56 },
+                "tintColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+                "textColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+                "texturePath": "",
+                "fontPath": "Assets/Fonts/simhei.ttf",
+                "fontSize": 16.0,
+                "opacity": 1.0,
+                "padding": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+                "margin": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+                "borderColor": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0 },
+                "borderWidth": 0.0,
+                "borderRadius": 0.0
+            },
+            "buttonStyle": { "enabled": false }
+        }
+    ]
+}

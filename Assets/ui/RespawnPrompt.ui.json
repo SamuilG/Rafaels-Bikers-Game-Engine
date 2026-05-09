@@ -1,0 +1,449 @@
+{
+    "version": 1,
+    "screenName": "RespawnPrompt",
+    "themePath": "Assets/ui/BicycleSim_DarkTheme.ui.theme.json",
+    "screenSettings": {
+        "visible": false,
+        "blocksInput": false,
+        "renderOrder": 3,
+        "pauseGameWhenOpen": false,
+        "allowInputPassthrough": true,
+        "enterAnimation": "RespawnPrompt_FadeIn",
+        "exitAnimation": "RespawnPrompt_FadeOut",
+        "hideAfterExit": true,
+        "blockInputDuringTransition": false
+    },
+    "canvasReferenceResolution": {
+        "x": 1920.0,
+        "y": 1080.0
+    },
+    "bindings": [],
+    "animations": [
+        {
+            "name": "RespawnPrompt_FadeIn",
+            "duration": 0.8500000238418579,
+            "loopCount": 1,
+            "playOnShow": true,
+            "trackCount": 2,
+            "tracks": [
+                {
+                    "targetElementId": 2,
+                    "property": "Opacity",
+                    "keyframes": [
+                        {
+                            "time": 0.0,
+                            "value": {
+                                "type": "Float",
+                                "value": 0.0
+                            },
+                            "easing": "EaseOut"
+                        },
+                        {
+                            "time": 0.512315034866333,
+                            "value": {
+                                "type": "Float",
+                                "value": 1.0
+                            },
+                            "easing": "EaseOut"
+                        }
+                    ]
+                },
+                {
+                    "targetElementId": 3,
+                    "property": "Opacity",
+                    "keyframes": [
+                        {
+                            "time": 0.1680459827184677,
+                            "value": {
+                                "type": "Float",
+                                "value": 0.0
+                            },
+                            "easing": "Linear"
+                        },
+                        {
+                            "time": 0.8399999737739563,
+                            "value": {
+                                "type": "Float",
+                                "value": 1.0
+                            },
+                            "easing": "Linear"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "RespawnPrompt_FadeOut",
+            "duration": 0.18000000715255737,
+            "loopCount": 1,
+            "playOnShow": false,
+            "trackCount": 2,
+            "tracks": [
+                {
+                    "targetElementId": 2,
+                    "property": "Opacity",
+                    "keyframes": [
+                        {
+                            "time": 0.0,
+                            "value": {
+                                "type": "Float",
+                                "value": 1.0
+                            },
+                            "easing": "EaseIn"
+                        },
+                        {
+                            "time": 0.18000000715255737,
+                            "value": {
+                                "type": "Float",
+                                "value": 0.0
+                            },
+                            "easing": "EaseIn"
+                        }
+                    ]
+                },
+                {
+                    "targetElementId": 3,
+                    "property": "Opacity",
+                    "keyframes": [
+                        {
+                            "time": 0.0,
+                            "value": {
+                                "type": "Float",
+                                "value": 1.0
+                            },
+                            "easing": "EaseIn"
+                        },
+                        {
+                            "time": 0.18000000715255737,
+                            "value": {
+                                "type": "Float",
+                                "value": 0.0
+                            },
+                            "easing": "EaseIn"
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "rootElement": {
+        "id": 1,
+        "name": "Canvas",
+        "type": "Canvas",
+        "visible": true,
+        "enabled": true,
+        "interactable": false,
+        "runtimeMutable": true,
+        "zOrder": 0,
+        "transform": {
+            "position": {
+                "x": 0.0,
+                "y": 0.0
+            },
+            "size": {
+                "x": 1920.0,
+                "y": 1080.0
+            },
+            "anchorMin": {
+                "x": 0.0,
+                "y": 0.0
+            },
+            "anchorMax": {
+                "x": 0.0,
+                "y": 0.0
+            },
+            "pivot": {
+                "x": 0.0,
+                "y": 0.0
+            },
+            "rotation": 0.0,
+            "scale": {
+                "x": 1.0,
+                "y": 1.0
+            }
+        },
+        "style": {
+            "presetName": "",
+            "overrides": {
+                "backgroundColor": true,
+                "tintColor": true,
+                "textColor": true,
+                "texturePath": true,
+                "fontPath": true,
+                "fontSize": true,
+                "opacity": true,
+                "padding": true,
+                "margin": true,
+                "borderColor": true,
+                "borderWidth": true,
+                "borderRadius": true
+            },
+            "backgroundColor": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 0.0
+            },
+            "tintColor": {
+                "x": 1.0,
+                "y": 1.0,
+                "z": 1.0,
+                "w": 1.0
+            },
+            "textColor": {
+                "x": 1.0,
+                "y": 1.0,
+                "z": 1.0,
+                "w": 1.0
+            },
+            "texturePath": "",
+            "fontPath": "Assets/Fonts/simhei.ttf",
+            "fontSize": 16.0,
+            "opacity": 1.0,
+            "padding": {
+                "left": 0.0,
+                "top": 0.0,
+                "right": 0.0,
+                "bottom": 0.0
+            },
+            "margin": {
+                "left": 0.0,
+                "top": 0.0,
+                "right": 0.0,
+                "bottom": 0.0
+            },
+            "borderColor": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 0.0
+            },
+            "borderWidth": 0.0,
+            "borderRadius": 0.0
+        },
+        "widgetData": {},
+        "events": {
+            "onClick": "",
+            "onHover": "",
+            "onPressed": "",
+            "onReleased": "",
+            "onValueChanged": ""
+        },
+        "children": [
+            {
+                "id": 2,
+                "name": "RespawnPanel",
+                "type": "Panel",
+                "visible": false,
+                "enabled": false,
+                "interactable": false,
+                "runtimeMutable": true,
+                "zOrder": 10,
+                "transform": {
+                    "position": {
+                        "x": 960.0,
+                        "y": 215.0
+                    },
+                    "size": {
+                        "x": 340.0,
+                        "y": 86.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.0
+                    },
+                    "rotation": -1.7999999523162842,
+                    "scale": {
+                        "x": 1.0,
+                        "y": 1.0
+                    }
+                },
+                "style": {
+                    "presetName": "",
+                    "overrides": {
+                        "backgroundColor": false,
+                        "tintColor": false,
+                        "textColor": false,
+                        "texturePath": false,
+                        "fontPath": false,
+                        "fontSize": false,
+                        "opacity": false,
+                        "padding": true,
+                        "margin": true,
+                        "borderColor": false,
+                        "borderWidth": false,
+                        "borderRadius": false
+                    },
+                    "backgroundColor": {
+                        "x": 0.029999999329447746,
+                        "y": 0.029999999329447746,
+                        "z": 0.029999999329447746,
+                        "w": 0.8199999928474426
+                    },
+                    "tintColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "textColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "texturePath": "",
+                    "fontPath": "",
+                    "fontSize": 4.0,
+                    "opacity": 1.0,
+                    "padding": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "margin": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "borderColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 0.14000000059604645
+                    },
+                    "borderWidth": 1.0,
+                    "borderRadius": 0.0
+                },
+                "widgetData": {},
+                "events": {
+                    "onClick": "",
+                    "onHover": "",
+                    "onPressed": "",
+                    "onReleased": "",
+                    "onValueChanged": ""
+                },
+                "children": []
+            },
+            {
+                "id": 3,
+                "name": "RespawnText",
+                "type": "Text",
+                "visible": true,
+                "enabled": true,
+                "interactable": false,
+                "runtimeMutable": true,
+                "zOrder": 11,
+                "transform": {
+                    "position": {
+                        "x": 942.0,
+                        "y": 550.0
+                    },
+                    "size": {
+                        "x": 720.0,
+                        "y": 80.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "rotation": 0.0,
+                    "scale": {
+                        "x": 1.0,
+                        "y": 1.0
+                    }
+                },
+                "style": {
+                    "presetName": "BodyText",
+                    "overrides": {
+                        "backgroundColor": true,
+                        "tintColor": true,
+                        "textColor": true,
+                        "texturePath": true,
+                        "fontPath": true,
+                        "fontSize": true,
+                        "opacity": true,
+                        "padding": true,
+                        "margin": true,
+                        "borderColor": true,
+                        "borderWidth": true,
+                        "borderRadius": true
+                    },
+                    "backgroundColor": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0,
+                        "w": 0.0
+                    },
+                    "tintColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "textColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "texturePath": "",
+                    "fontPath": "Assets/Fonts/Dengb.ttf",
+                    "fontSize": 70.19999694824219,
+                    "opacity": 1.0,
+                    "padding": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "margin": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "borderColor": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0,
+                        "w": 0.0
+                    },
+                    "borderWidth": 0.0,
+                    "borderRadius": 0.0
+                },
+                "widgetData": {
+                    "text": "Press \"R\" To Respawn",
+                    "alignment": "Center",
+                    "wrapText": true
+                },
+                "events": {
+                    "onClick": "",
+                    "onHover": "",
+                    "onPressed": "",
+                    "onReleased": "",
+                    "onValueChanged": ""
+                },
+                "children": []
+            }
+        ]
+    }
+}
