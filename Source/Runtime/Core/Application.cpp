@@ -8,6 +8,7 @@
 #include "../Scene/TestScene.hpp" // 引入你的测试关卡
 #include "../Scene/Level1.hpp" 
 #include "../AudioSystem/AudioSystem.hpp"
+#include "../UI/VisualUIEditor/RuntimeUiController.hpp"
 
 namespace engine {
 
@@ -57,6 +58,18 @@ namespace engine {
             physicsSystem->SetInputSystem(inputSystem);
         }
 
+		// UI 系统初始化
+        ReportProgress(0.7f, "Loading startup audio...");
+        RuntimeUiController* runtimeUiController = renderSystem ? renderSystem->GetRuntimeUiController() : nullptr;
+        if (runtimeUiController) {
+            runtimeUiController->PreloadWidget("Assets/ui/MainMenu.ui.json");
+            runtimeUiController->PreloadWidget("Assets/ui/HUD.ui.json");
+            runtimeUiController->PreloadWidget("Assets/ui/PauseMenu.ui.json");
+            runtimeUiController->PreloadWidget("Assets/ui/SettingsMenu.ui.json");
+            runtimeUiController->AddWidgetToViewPort("Assets/ui/MainMenu.ui.json");
+        }
+
+		//audio system 初始化
         ReportProgress(0.74f, "Loading startup audio...");
         // audio system test
         if (audioSystem) {

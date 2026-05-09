@@ -1,0 +1,555 @@
+{
+    "version": 1,
+    "screenName": "HUD",
+    "canvasReferenceResolution": {
+        "x": 1920.0,
+        "y": 1080.0
+    },
+    "rootElement": {
+        "id": 1,
+        "name": "Canvas",
+        "type": "Canvas",
+        "visible": true,
+        "enabled": true,
+        "interactable": false,
+        "zOrder": 0,
+        "transform": {
+            "position": {
+                "x": 0.0,
+                "y": 0.0
+            },
+            "size": {
+                "x": 1920.0,
+                "y": 1080.0
+            },
+            "anchorMin": {
+                "x": 0.0,
+                "y": 0.0
+            },
+            "anchorMax": {
+                "x": 0.0,
+                "y": 0.0
+            },
+            "pivot": {
+                "x": 0.0,
+                "y": 0.0
+            },
+            "rotation": 0.0,
+            "scale": {
+                "x": 1.0,
+                "y": 1.0
+            }
+        },
+        "style": {
+            "backgroundColor": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 0.0
+            },
+            "tintColor": {
+                "x": 1.0,
+                "y": 1.0,
+                "z": 1.0,
+                "w": 1.0
+            },
+            "textColor": {
+                "x": 1.0,
+                "y": 1.0,
+                "z": 1.0,
+                "w": 1.0
+            },
+            "texturePath": "",
+            "fontPath": "Assets/Fonts/simhei.ttf",
+            "fontSize": 16.0,
+            "opacity": 1.0,
+            "padding": {
+                "left": 0.0,
+                "top": 0.0,
+                "right": 0.0,
+                "bottom": 0.0
+            },
+            "margin": {
+                "left": 0.0,
+                "top": 0.0,
+                "right": 0.0,
+                "bottom": 0.0
+            },
+            "borderColor": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 0.0
+            },
+            "borderWidth": 0.0,
+            "borderRadius": 0.0
+        },
+        "widgetData": {},
+        "events": {
+            "onClick": "",
+            "onHover": "",
+            "onPressed": "",
+            "onReleased": "",
+            "onValueChanged": ""
+        },
+        "children": [
+            {
+                "id": 2,
+                "name": "SpeedText",
+                "type": "Text",
+                "visible": true,
+                "enabled": true,
+                "interactable": false,
+                "zOrder": 10,
+                "transform": {
+                    "position": {
+                        "x": 240.0,
+                        "y": 900.0
+                    },
+                    "size": {
+                        "x": 320.0,
+                        "y": 90.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "rotation": 0.0,
+                    "scale": {
+                        "x": 1.0,
+                        "y": 1.0
+                    }
+                },
+                "style": {
+                    "backgroundColor": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0,
+                        "w": 0.0
+                    },
+                    "tintColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "textColor": {
+                        "x": 1.0,
+                        "y": 0.949999988079071,
+                        "z": 0.7799999713897705,
+                        "w": 1.0
+                    },
+                    "texturePath": "",
+                    "fontPath": "Assets/Fonts/simhei.ttf",
+                    "fontSize": 44.0,
+                    "opacity": 1.0,
+                    "padding": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "margin": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "borderColor": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0,
+                        "w": 0.0
+                    },
+                    "borderWidth": 0.0,
+                    "borderRadius": 0.0
+                },
+                "widgetData": {
+                    "text": "Speed 000 km/h",
+                    "alignment": "Left",
+                    "wrapText": true
+                },
+                "events": {
+                    "onClick": "",
+                    "onHover": "",
+                    "onPressed": "",
+                    "onReleased": "",
+                    "onValueChanged": ""
+                },
+                "children": []
+            },
+            {
+                "id": 3,
+                "name": "LapTimeText",
+                "type": "Text",
+                "visible": true,
+                "enabled": true,
+                "interactable": false,
+                "zOrder": 11,
+                "transform": {
+                    "position": {
+                        "x": 250.0,
+                        "y": 970.0
+                    },
+                    "size": {
+                        "x": 360.0,
+                        "y": 48.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "rotation": 0.0,
+                    "scale": {
+                        "x": 1.0,
+                        "y": 1.0
+                    }
+                },
+                "style": {
+                    "backgroundColor": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0,
+                        "w": 0.0
+                    },
+                    "tintColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "textColor": {
+                        "x": 0.8600000143051147,
+                        "y": 0.8999999761581421,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "texturePath": "",
+                    "fontPath": "Assets/Fonts/simhei.ttf",
+                    "fontSize": 26.0,
+                    "opacity": 1.0,
+                    "padding": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "margin": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "borderColor": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0,
+                        "w": 0.0
+                    },
+                    "borderWidth": 0.0,
+                    "borderRadius": 0.0
+                },
+                "widgetData": {
+                    "text": "Lap 00:00.000",
+                    "alignment": "Left",
+                    "wrapText": true
+                },
+                "events": {
+                    "onClick": "",
+                    "onHover": "",
+                    "onPressed": "",
+                    "onReleased": "",
+                    "onValueChanged": ""
+                },
+                "children": []
+            },
+            {
+                "id": 4,
+                "name": "GearIndicatorText",
+                "type": "Text",
+                "visible": true,
+                "enabled": true,
+                "interactable": false,
+                "zOrder": 12,
+                "transform": {
+                    "position": {
+                        "x": 1660.0,
+                        "y": 900.0
+                    },
+                    "size": {
+                        "x": 180.0,
+                        "y": 90.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "rotation": 0.0,
+                    "scale": {
+                        "x": 1.0,
+                        "y": 1.0
+                    }
+                },
+                "style": {
+                    "backgroundColor": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0,
+                        "w": 0.0
+                    },
+                    "tintColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "textColor": {
+                        "x": 1.0,
+                        "y": 0.5,
+                        "z": 0.30000001192092896,
+                        "w": 1.0
+                    },
+                    "texturePath": "",
+                    "fontPath": "Assets/Fonts/simhei.ttf",
+                    "fontSize": 42.0,
+                    "opacity": 1.0,
+                    "padding": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "margin": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "borderColor": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0,
+                        "w": 0.0
+                    },
+                    "borderWidth": 0.0,
+                    "borderRadius": 0.0
+                },
+                "widgetData": {
+                    "text": "Gear N",
+                    "alignment": "Left",
+                    "wrapText": true
+                },
+                "events": {
+                    "onClick": "",
+                    "onHover": "",
+                    "onPressed": "",
+                    "onReleased": "",
+                    "onValueChanged": ""
+                },
+                "children": []
+            },
+            {
+                "id": 5,
+                "name": "EnergyBarPlaceholder",
+                "type": "Panel",
+                "visible": true,
+                "enabled": true,
+                "interactable": false,
+                "zOrder": 20,
+                "transform": {
+                    "position": {
+                        "x": 220.0,
+                        "y": 120.0
+                    },
+                    "size": {
+                        "x": 420.0,
+                        "y": 42.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "pivot": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "rotation": 0.0,
+                    "scale": {
+                        "x": 1.0,
+                        "y": 1.0
+                    }
+                },
+                "style": {
+                    "backgroundColor": {
+                        "x": 0.11999999731779099,
+                        "y": 0.1599999964237213,
+                        "z": 0.11999999731779099,
+                        "w": 0.9200000166893005
+                    },
+                    "tintColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "textColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "texturePath": "",
+                    "fontPath": "",
+                    "fontSize": 16.0,
+                    "opacity": 1.0,
+                    "padding": {
+                        "left": 8.0,
+                        "top": 8.0,
+                        "right": 8.0,
+                        "bottom": 8.0
+                    },
+                    "margin": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "borderColor": {
+                        "x": 0.3199999928474426,
+                        "y": 0.8999999761581421,
+                        "z": 0.36000001430511475,
+                        "w": 1.0
+                    },
+                    "borderWidth": 2.0,
+                    "borderRadius": 6.0
+                },
+                "widgetData": {},
+                "events": {
+                    "onClick": "",
+                    "onHover": "",
+                    "onPressed": "",
+                    "onReleased": "",
+                    "onValueChanged": ""
+                },
+                "children": []
+            },
+            {
+                "id": 6,
+                "name": "MiniMapPlaceholder",
+                "type": "Panel",
+                "visible": true,
+                "enabled": true,
+                "interactable": false,
+                "zOrder": 21,
+                "transform": {
+                    "position": {
+                        "x": 1330.0,
+                        "y": 80.0
+                    },
+                    "size": {
+                        "x": 510.0,
+                        "y": 490.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "pivot": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "rotation": 0.0,
+                    "scale": {
+                        "x": 1.0,
+                        "y": 1.0
+                    }
+                },
+                "style": {
+                    "backgroundColor": {
+                        "x": 0.07999999821186066,
+                        "y": 0.07999999821186066,
+                        "z": 0.11999999731779099,
+                        "w": 0.8799999952316284
+                    },
+                    "tintColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "textColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "texturePath": "",
+                    "fontPath": "",
+                    "fontSize": 16.0,
+                    "opacity": 1.0,
+                    "padding": {
+                        "left": 10.0,
+                        "top": 10.0,
+                        "right": 10.0,
+                        "bottom": 10.0
+                    },
+                    "margin": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "borderColor": {
+                        "x": 0.699999988079071,
+                        "y": 0.699999988079071,
+                        "z": 0.800000011920929,
+                        "w": 1.0
+                    },
+                    "borderWidth": 1.0,
+                    "borderRadius": 10.0
+                },
+                "widgetData": {},
+                "events": {
+                    "onClick": "",
+                    "onHover": "",
+                    "onPressed": "",
+                    "onReleased": "",
+                    "onValueChanged": ""
+                },
+                "children": []
+            }
+        ]
+    }
+}

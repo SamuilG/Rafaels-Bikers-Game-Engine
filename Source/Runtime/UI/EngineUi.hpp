@@ -60,6 +60,7 @@ namespace engine {
         static ImVec2 GetSceneViewportPos();//获取视口在 UI 中的实时位置//Get the real-time position of the viewport in the UI
         
 		//绘制 3D 渲染画面、图标、Gizmo 坐标轴//Draw the 3D rendered scene, icons, and Gizmo axes
+        static ImDrawList* GetSceneViewportDrawList();
         static void DrawSceneViewport(VkDescriptorSet sceneTexId, RenderSystem* renderSys, SceneManager* sceneManager, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, UserState& state);
 
 

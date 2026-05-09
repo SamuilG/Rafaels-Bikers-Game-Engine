@@ -34,6 +34,8 @@
 #include "../Renderer/RenderUtilities/light.hpp"
 
 #include "../AudioSystem/AudioSystem.hpp"
+#include "VisualUIEditor/UIEditorWindow.hpp"
+
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
@@ -645,11 +647,16 @@ namespace engine {
 	// ========== Scene Viewport 场景视口==========
 	static ImVec2 s_SceneViewportSize = ImVec2(1280.0f, 720.0f); // 默认尺寸
 	static ImVec2 s_SceneViewportPos = ImVec2(0.0f, 0.0f);//默认位置
+	static ImDrawList* s_SceneViewportDrawList = nullptr;
 	ImVec2 EngineUi::GetSceneViewportSize() {
 		return s_SceneViewportSize;
 	}
 	ImVec2 EngineUi::GetSceneViewportPos() {
 		return s_SceneViewportPos;
+	}
+
+	ImDrawList* EngineUi::GetSceneViewportDrawList() {
+		return s_SceneViewportDrawList;
 	}
 
 
@@ -675,6 +682,7 @@ namespace engine {
 		}
 
 		ImGui::Begin(viewportWindowName, nullptr, viewportFlags);
+		s_SceneViewportDrawList = ImGui::GetWindowDrawList();
 
 		// 1. 获取视口绝大坐标和尺寸// Get the absolute position and size of the viewport
 		ImVec2 vMin = ImGui::GetWindowContentRegionMin();
@@ -1982,7 +1990,11 @@ namespace engine {
 						selected_id = 0;
 					}
 					// 键盘快捷键删除 (Delete 键)
-					if (selectedEntity.is_alive() && ImGui::IsKeyPressed(ImGuiKey_Delete) && !ImGui::GetIO().WantTextInput) {
+					if (selectedEntity.is_alive() &&
+						ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+						!UIEditorWindow::WantsKeyboardCapture() &&
+						ImGui::IsKeyPressed(ImGuiKey_Delete) &&
+						!ImGui::GetIO().WantTextInput) {
 						selectedEntity.destruct();
 						selected_id = 0;
 					}
@@ -2085,6 +2097,7 @@ namespace engine {
 
 			if (ImGui::BeginMenu(_SL("View"))) {
 				ImGui::MenuItem("Engine UI", "F1", &state.showEngineUi);
+				
 				ImGui::Separator();
 				ImGui::MenuItem(_SL("Control Panel"), NULL, &state.showControlPanel);
 				ImGui::MenuItem(_SL("Content Browser"), NULL, &state.showContentBrowser);
@@ -2094,12 +2107,21 @@ namespace engine {
 				ImGui::MenuItem(_SL("Light Panel"), NULL, &state.showLightPanel);
 				ImGui::MenuItem(_SL("Camera Panel"), NULL, &state.showCameraPanel);
 				ImGui::MenuItem("Audio Panel", NULL, &state.showAudioPanel);
+				ImGui::MenuItem("Debug Panel", NULL, &state.showDebugPanel);
+				ImGui::MenuItem("Runtime UI", NULL, &state.showRuntimeUi);
+				ImGui::EndMenu();
+			}
+
+			//UI editor menu UI 编辑器菜单
+			if (ImGui::BeginMenu("Window")) {
+				// Game UI Editor 可视化编辑器窗口
+				ImGui::MenuItem("Game UI Editor", NULL, &state.showGameUiEditor);
 				ImGui::EndMenu();
 			}
 
 			if (ImGui::BeginMenu(_SL("Help"))) {
 				if (ImGui::MenuItem(_SL("About Engine"))) {
-					LogPrint("6666 Engine Name!!!!!!!!!!!!!!!!!!!!!\n");
+					LogPrint("Steer engine number one !!!\n");
 				}
 				ImGui::EndMenu();
 			}
