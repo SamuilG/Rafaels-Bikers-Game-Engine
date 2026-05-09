@@ -250,7 +250,7 @@ void update_scene_uniforms(glsl::SceneUniform& aSceneUniforms, std::uint32_t aFr
 	aSceneUniforms.projCam = aSceneUniforms.projection * aSceneUniforms.camera;
 	aSceneUniforms.cameraPos = glm::vec4(aState.camera2world[3]);
 
-	aSceneUniforms.lightPos = glm::vec4(-50.0f, 100.0f, -30.0f, 0.0f);
+	aSceneUniforms.lightPos = glm::vec4(50.0f, 100.0f, -30.0f, 0.0f);
 	aSceneUniforms.lightColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
 	aSceneUniforms.renderMode = std::uint32_t(aState.renderMode);
 	// ==============================================================
