@@ -196,9 +196,13 @@ namespace labut2
 
 		//done TODO: create GLFW window
 		//done TODO: get VkSurfaceKHR from the window
+		glfwDefaultWindowHints();
 		// disable OpenGL context
         glfwWindowHint( GLFW_CLIENT_API, GLFW_NO_API );
 		glfwWindowHint(GLFW_VISIBLE, aVisible ? GLFW_TRUE : GLFW_FALSE);
+		glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+		glfwWindowHint(GLFW_DECORATED, GLFW_TRUE);
+		glfwWindowHint(GLFW_FLOATING, GLFW_FALSE);
 		// 选择 monitor 和 分辨率：如果需要全屏，使用主显示器和其当前 video mode
 		GLFWmonitor* monitor = nullptr;
 		int width = 1280;

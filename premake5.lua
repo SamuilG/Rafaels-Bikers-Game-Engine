@@ -229,10 +229,11 @@ workspace "EngineWorkspace"
 
         filter "system:windows"
             defines { "VK_USE_PLATFORM_WIN32_KHR" }
+            links { "opengl32" }
             
         filter "system:linux"
             defines { "VK_USE_PLATFORM_XLIB_KHR" }
-            links { "vulkan", "X11", "pthread" }
+            links { "vulkan", "X11", "Xrandr", "Xi", "Xcursor", "Xinerama", "pthread", "GL" }
         filter "*"
 
     -- ==========================================
