@@ -16,6 +16,9 @@
 #include <algorithm>
 
 namespace engine {
+	namespace {
+		constexpr const char* kRespawnPromptUiPath = "Assets/ui/RespawnPrompt.ui.json";
+	}
 
 	level::level() = default;
 	level::~level() = default;
@@ -28,6 +31,13 @@ namespace engine {
 		mState = state;
 		m_anima = anima;
 		m_audio = audio;
+		m_respawnPromptVisible = false;
+
+		if (m_render) {
+			if (RuntimeUiController* runtimeUi = m_render->GetRuntimeUiController()) {
+				runtimeUi->RemoveWidgetFromViewPort(kRespawnPromptUiPath);
+			}
+		}
 
 		// 1. ���ص����뾲̬ģ��
 		// load the terrain and static models
@@ -851,6 +861,19 @@ namespace engine {
 	}
 
 	void level::Update(float dt) {
+		if (m_render && mState) {
+			if (RuntimeUiController* runtimeUi = m_render->GetRuntimeUiController()) {
+				if (!mState->isAlive) {
+					if (!m_respawnPromptVisible) {
+						m_respawnPromptVisible = runtimeUi->AddWidgetToViewPort(kRespawnPromptUiPath);
+					}
+				}
+				else if (m_respawnPromptVisible) {
+					runtimeUi->RemoveWidgetFromViewPort(kRespawnPromptUiPath);
+					m_respawnPromptVisible = false;
+				}
+			}
+		}
 		// 延迟音效（与 TestScene 风格一致）
 		if (m_allCollectSoundDelay >= 0.0f) {
 			m_allCollectSoundDelay -= dt;
@@ -1016,6 +1039,12 @@ namespace engine {
 							mState->bikeSpeed = 0.0f;
 							mState->engineForce = 0.0f;
 							mState->lastPedal = -1;
+
+							if (RuntimeUiController* runtimeUi = m_render ? m_render->GetRuntimeUiController() : nullptr) {
+								runtimeUi->RemoveWidgetFromViewPort(kRespawnPromptUiPath);
+							}
+							m_respawnPromptVisible = false;
+
 							printf("[Gameplay] Bike stopped and respawned in place!\n");
 						}
 						else {
@@ -1041,7 +1070,15 @@ namespace engine {
 	}
 
 	void level::Shutdown() {
-		// ������ض��Ĺؿ���Դ��������������
+
+		if (m_render) {
+			if (RuntimeUiController* runtimeUi = m_render->GetRuntimeUiController()) {
+				runtimeUi->RemoveWidgetFromViewPort(kRespawnPromptUiPath);
+			}
+		}
+		m_respawnPromptVisible = false;
+
+		
 		m_bikeController.reset();
 	}
 

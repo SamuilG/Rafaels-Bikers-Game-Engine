@@ -4019,7 +4019,8 @@ namespace engine {
             ImGui::PopID();
         }
 
-        void BuildDockLayout(ImGuiID dockspaceId) {
+        void BuildDockLayout(ImGuiID dockspaceId) //布局
+        {
             ImGui::DockBuilderRemoveNode(dockspaceId);
             ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
             ImGui::DockBuilderSetNodeSize(dockspaceId, ImGui::GetContentRegionAvail());
@@ -4028,13 +4029,13 @@ namespace engine {
             ImGuiID leftId = ImGui::DockBuilderSplitNode(centerId, ImGuiDir_Left, 0.22f, nullptr, &centerId);
             ImGuiID rightId = ImGui::DockBuilderSplitNode(centerId, ImGuiDir_Right, 0.24f, nullptr, &centerId);
             ImGuiID bottomId = ImGui::DockBuilderSplitNode(centerId, ImGuiDir_Down, 0.25f, nullptr, &centerId);
-            ImGuiID animationId = ImGui::DockBuilderSplitNode(rightId, ImGuiDir_Down, 0.45f, nullptr, &rightId);
+            ImGuiID HierarchyId = ImGui::DockBuilderSplitNode(leftId, ImGuiDir_Down, 0.45f, nullptr, &leftId);
 
             ImGui::DockBuilderDockWindow("UI Components###GameUIEditorComponents", leftId);
             ImGui::DockBuilderDockWindow("UI Canvas###GameUIEditorCanvas", centerId);
-            ImGui::DockBuilderDockWindow("UI Hierarchy###GameUIEditorHierarchy", bottomId);
+            ImGui::DockBuilderDockWindow("UI Hierarchy###GameUIEditorHierarchy", HierarchyId);
             ImGui::DockBuilderDockWindow("UI Inspector###GameUIEditorInspector", rightId);
-            ImGui::DockBuilderDockWindow("UI Animation###GameUIEditorAnimation", animationId);
+            ImGui::DockBuilderDockWindow("UI Animation###GameUIEditorAnimation", bottomId);
             ImGui::DockBuilderFinish(dockspaceId);
         }
 
@@ -4756,7 +4757,7 @@ namespace engine {
         session.wantsKeyboardCapture = false;
 
         //ImGuiWindowFlags rootFlags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDocking;
-		ImGuiWindowFlags rootFlags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoMove;//窗户模式固定，禁止用户调整位置大小，保持界面布局稳定。
+		ImGuiWindowFlags rootFlags = ImGuiWindowFlags_NoCollapse ;//窗户模式
         ImGui::SetNextWindowSize(ImVec2(1420.0f, 900.0f), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowPos(ImVec2(120.0f, 80.0f), ImGuiCond_FirstUseEver);
 

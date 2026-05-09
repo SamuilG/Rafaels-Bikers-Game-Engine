@@ -58,6 +58,8 @@ namespace engine {
 
         // Rocket — hidden at start, mounted to rear frame on first gas tank collection
         flecs::entity m_rocketEntity;
+
+		bool m_respawnPromptVisible = false;//死亡后重生提示UI显示状态
     };
 
 } // namespace engine
