@@ -355,13 +355,15 @@ namespace engine {
 			flecs::entity gasAsset = m_scene->LoadModel(
 				m_render, "Assets/Models/gas_tank.glb",
 				engine::ModelPhysicsType::Static, 0.0f,
-				glm::translate(glm::mat4(1.0f), kCollectPos[0]));
-
+				glm::translate(glm::mat4(1.0f), kCollectPos[0]), engine::RenderLayer::Emissive);
+			
 			uint32_t collectMeshIdx = 0;
 			uint32_t collectMatIdx  = 0;
 			if (gasAsset.is_valid()) {
+
 				if (gasAsset.has<MeshComponent>())     collectMeshIdx = gasAsset.get<MeshComponent>().meshIndex;
 				if (gasAsset.has<MaterialComponent>()) collectMatIdx  = gasAsset.get<MaterialComponent>().materialIndex;
+
 				m_scene->get_world().query<const MeshComponent>()
 					.each([&](flecs::entity e, const MeshComponent& mc) {
 						if (mc.meshIndex < collectMeshIdx) return;
@@ -372,7 +374,9 @@ namespace engine {
 							if (bi.IsAdded(bid)) { bi.RemoveBody(bid); bi.DestroyBody(bid); }
 							e.remove<PhysicsBody>();
 						}
+
 					});
+
 			}
 
 			// Tilt applied once; spinning rotates around local (tilted) Y for wobble effect
@@ -387,6 +391,7 @@ namespace engine {
 				m_gasPickupEntities[i] = m_scene->create_dynamic_entity(
 					eName.c_str(), collectMeshIdx, collectMatIdx, t);
 				m_gasPickupEntities[i].set<EntityStatus>({ true, false });
+				m_gasPickupEntities[i].set<engine::LayerComponent>({ engine::RenderLayer::Emissive });
 
 				// =======================================================
 				// 【新增】：为每个收集物挂载一个点光源
@@ -507,6 +512,8 @@ namespace engine {
 			}*/
 			m_audio->LoadSound("ExtremeSpeed0", "Assets/Sounds/deepBass.mp3");
 			m_audio->LoadSound("ExtremeSpeed1", "Assets/Sounds/breath.mp3");
+			
+			
 
 
 			if (mState->isExtremeSpeed)
@@ -721,95 +728,95 @@ namespace engine {
 		// Songs can then be cycled in order with the N key.
 		// Radio entities: Radio_Radio_0_98 / Radio_Radio_Grid_0_99 / Radio_Radio_Screen_0_100
 		// =========================================================
-		{
-			// --- Scan RadioMusic/ and load every .mp3 found (sorted by filename) ---
-			namespace fs = std::filesystem;
-			const fs::path radioDir = "Assets/Sounds/RadioMusic";
-			std::vector<fs::path> songFiles;
-			if (fs::exists(radioDir) && fs::is_directory(radioDir)) {
-				for (const auto& entry : fs::directory_iterator(radioDir)) {
-					const auto& p = entry.path();
-					if (p.extension() == ".mp3" || p.extension() == ".MP3")
-						songFiles.push_back(p);
-				}
-				std::sort(songFiles.begin(), songFiles.end());
-			}
+		//{
+		//	// --- Scan RadioMusic/ and load every .mp3 found (sorted by filename) ---
+		//	namespace fs = std::filesystem;
+		//	const fs::path radioDir = "Assets/Sounds/RadioMusic";
+		//	std::vector<fs::path> songFiles;
+		//	if (fs::exists(radioDir) && fs::is_directory(radioDir)) {
+		//		for (const auto& entry : fs::directory_iterator(radioDir)) {
+		//			const auto& p = entry.path();
+		//			if (p.extension() == ".mp3" || p.extension() == ".MP3")
+		//				songFiles.push_back(p);
+		//		}
+		//		std::sort(songFiles.begin(), songFiles.end());
+		//	}
 
-			for (int i = 0; i < static_cast<int>(songFiles.size()); ++i) {
-				std::string soundName = std::format("RadioSong{}", i);
-				std::string filePath  = songFiles[i].generic_string();
-				std::string label     = songFiles[i].stem().string();
-				m_audio->LoadSound(soundName, filePath);
-				m_audio->SetVolume(soundName, 0.35f);
-				m_radioSongs.push_back(std::move(soundName));
-				m_radioLabels.push_back(std::move(label));
-				printf("[Radio] Loaded song %d: %s\n", i, songFiles[i].filename().string().c_str());
-			}
+		//	for (int i = 0; i < static_cast<int>(songFiles.size()); ++i) {
+		//		std::string soundName = std::format("RadioSong{}", i);
+		//		std::string filePath  = songFiles[i].generic_string();
+		//		std::string label     = songFiles[i].stem().string();
+		//		m_audio->LoadSound(soundName, filePath);
+		//		m_audio->SetVolume(soundName, 0.35f);
+		//		m_radioSongs.push_back(std::move(soundName));
+		//		m_radioLabels.push_back(std::move(label));
+		//		printf("[Radio] Loaded song %d: %s\n", i, songFiles[i].filename().string().c_str());
+		//	}
 
-			if (m_radioSongs.empty()) {
-				printf("[Radio] WARNING: No .mp3 files found in %s\n", radioDir.string().c_str());
-			}
+		//	if (m_radioSongs.empty()) {
+		//		printf("[Radio] WARNING: No .mp3 files found in %s\n", radioDir.string().c_str());
+		//	}
 
-			// Locate the radio in the scene, remove its physics bodies, and build the trigger
-			static const char* kRadioEntityNames[] = {
-				"Radio_Radio_0_98", "Radio_Radio_Grid_0_99", "Radio_Radio_Screen_0_100"
-			};
+		//	// Locate the radio in the scene, remove its physics bodies, and build the trigger
+		//	static const char* kRadioEntityNames[] = {
+		//		"Radio_Radio_0_98", "Radio_Radio_Grid_0_99", "Radio_Radio_Screen_0_100"
+		//	};
 
-			glm::vec3 radioPos = glm::vec3(0.0f);
-			bool radioFound = false;
-			for (const char* rName : kRadioEntityNames) {
-				flecs::entity re = m_scene->find_entity(rName);
-				if (!re.is_valid()) continue;
-				// Use the first found entity's position for the trigger
-				if (!radioFound && re.has<LocalTransform>()) {
-					radioPos = glm::vec3(re.get<LocalTransform>().matrix[3]);
-					radioFound = true;
-				}
-				// Remove collision body — radio is display-only
-				if (re.has<PhysicsBody>()) {
-					JPH::BodyID bid(re.get<PhysicsBody>().bodyID);
-					JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
-					if (bi.IsAdded(bid)) { bi.RemoveBody(bid); bi.DestroyBody(bid); }
-					re.remove<PhysicsBody>();
-				}
-				m_radioPickupEntities.push_back(re);
-			}
-			printf("[Level1] Radio entity %s, world pos (%.2f, %.2f, %.2f)\n",
-				radioFound ? "FOUND" : "NOT FOUND",
-				radioPos.x, radioPos.y, radioPos.z);
+		//	glm::vec3 radioPos = glm::vec3(0.0f);
+		//	bool radioFound = false;
+		//	for (const char* rName : kRadioEntityNames) {
+		//		flecs::entity re = m_scene->find_entity(rName);
+		//		if (!re.is_valid()) continue;
+		//		// Use the first found entity's position for the trigger
+		//		if (!radioFound && re.has<LocalTransform>()) {
+		//			radioPos = glm::vec3(re.get<LocalTransform>().matrix[3]);
+		//			radioFound = true;
+		//		}
+		//		// Remove collision body — radio is display-only
+		//		if (re.has<PhysicsBody>()) {
+		//			JPH::BodyID bid(re.get<PhysicsBody>().bodyID);
+		//			JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
+		//			if (bi.IsAdded(bid)) { bi.RemoveBody(bid); bi.DestroyBody(bid); }
+		//			re.remove<PhysicsBody>();
+		//		}
+		//		m_radioPickupEntities.push_back(re);
+		//	}
+		//	printf("[Level1] Radio entity %s, world pos (%.2f, %.2f, %.2f)\n",
+		//		radioFound ? "FOUND" : "NOT FOUND",
+		//		radioPos.x, radioPos.y, radioPos.z);
 
-			// oneShot=true: fires once on first contact, then permanently disabled
-			size_t radioTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
-				radioPos,
-				/*radius=*/2.5f,
-				/*particleIndex=*/static_cast<size_t>(-1),
-				/*color=*/glm::vec3(0.0f, 1.0f, 0.5f),
-				/*isVisible=*/true,
-				/*oneShot=*/true
-			);
-			m_render->GetTriggerSystem().SetTriggerCallbacks(radioTrigger,
-				[this]() {
-					// Hide all radio mesh entities
-					for (const char* rName : kRadioEntityNames) {
-						flecs::entity re = m_scene->find_entity(rName);
-						if (re.is_valid()) re.set<EntityStatus>({ false, false });
-					}
-					if (m_radioSongs.empty()) return;
-					m_audio->LoadSound("RadioOn", "Assets/Sounds/radio_on.mp3");
-					m_audio->SetVolume("RadioOn", 0.5f);
-					m_audio->PlayOneShot("RadioOn");
-					m_bgMusicPlaying = true;
-					m_currentSongIndex = 0;
-					m_audio->PlayLoop(m_radioSongs[0]);
-					EngineUi::LogPrint("[Radio] Picked up! Now playing: {}\n", m_radioLabels[0]);
-					EngineUi::ShowToast(std::format("Radio! Now playing: {}. Press N to switch.", m_radioLabels[0]));
-				},
-				nullptr
-			);
+		//	// oneShot=true: fires once on first contact, then permanently disabled
+		//	size_t radioTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
+		//		radioPos,
+		//		/*radius=*/2.5f,
+		//		/*particleIndex=*/static_cast<size_t>(-1),
+		//		/*color=*/glm::vec3(0.0f, 1.0f, 0.5f),
+		//		/*isVisible=*/true,
+		//		/*oneShot=*/true
+		//	);
+		//	m_render->GetTriggerSystem().SetTriggerCallbacks(radioTrigger,
+		//		[this]() {
+		//			// Hide all radio mesh entities
+		//			for (const char* rName : kRadioEntityNames) {
+		//				flecs::entity re = m_scene->find_entity(rName);
+		//				if (re.is_valid()) re.set<EntityStatus>({ false, false });
+		//			}
+		//			if (m_radioSongs.empty()) return;
+		//			m_audio->LoadSound("RadioOn", "Assets/Sounds/radio_on.mp3");
+		//			m_audio->SetVolume("RadioOn", 0.5f);
+		//			m_audio->PlayOneShot("RadioOn");
+		//			m_bgMusicPlaying = true;
+		//			m_currentSongIndex = 0;
+		//			m_audio->PlayLoop(m_radioSongs[0]);
+		//			EngineUi::LogPrint("[Radio] Picked up! Now playing: {}\n", m_radioLabels[0]);
+		//			EngineUi::ShowToast(std::format("Radio! Now playing: {}. Press N to switch.", m_radioLabels[0]));
+		//		},
+		//		nullptr
+		//	);
 
-			// Key binding for cycling songs
-			m_input->MapKeyboardAction("NextSong", GLFW_KEY_N);
-		}
+		//	// Key binding for cycling songs
+		//	m_input->MapKeyboardAction("NextSong", GLFW_KEY_N);
+		//}
 
 		// =========================================================
 		// Rocket — hidden at start, mounted to rear frame on first gas tank collection
@@ -958,8 +965,10 @@ namespace engine {
 						float linVelSq = bi.GetLinearVelocity(id).LengthSq();
 						float angVelSq = bi.GetAngularVelocity(id).LengthSq();
 
+				
+						// 设置一个合理的速度阈值，确保单车在接近静止时才允许复活
 
-						const float stopThresholdSq = 0.25f;
+						const float stopThresholdSq = 1.95f;
 
 						if (linVelSq < stopThresholdSq && angVelSq < stopThresholdSq) {
 
