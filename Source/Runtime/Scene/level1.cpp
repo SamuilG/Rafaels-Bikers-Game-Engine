@@ -882,7 +882,7 @@ namespace engine {
 
 
 		{
-			const glm::vec3 kCheckpointPos   = glm::vec3(374.91f, 80.54f, 296.48f);
+			const glm::vec3 kCheckpointPos   = glm::vec3(374.91f, 78.54f, 296.48f);
 			const float     kCheckpointRadius = 19.80f;
 
 			size_t checkpointTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
@@ -908,7 +908,7 @@ namespace engine {
 
 		{
 			const glm::vec3 kClearCheckpointPos    = glm::vec3(402.77f, -33.045f, 278.87f);
-			const float     kClearCheckpointRadius = 1.5f;
+			const float     kClearCheckpointRadius = 5.0f;
 
 			size_t clearCheckpointTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
 				kClearCheckpointPos,
@@ -930,7 +930,7 @@ namespace engine {
 
 		{
 			const glm::vec3 kIblOffPos    = glm::vec3(407.691f, 65.906f, 280.383f);
-			const float     kIblOffRadius = 3.0f;
+			const float     kIblOffRadius = 10.0f;
 
 			size_t iblOffTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
 				kIblOffPos,
@@ -1117,14 +1117,16 @@ namespace engine {
 
 						const float stopThresholdSq = 1.95f;
 
-						if (linVelSq < stopThresholdSq && angVelSq < stopThresholdSq) {
+						// Checkpoint respawn: no speed requirement
+						// In-place respawn: wait until bike has stopped
+						if (m_hasCheckpoint || (linVelSq < stopThresholdSq && angVelSq < stopThresholdSq)) {
 
 							JPH::RVec3 respawnPos;
 							JPH::Quat  uprightRot;
 
 							if (m_hasCheckpoint) {
 
-								respawnPos = JPH::RVec3(m_checkpointPos.x, m_checkpointPos.y + 1.0f, m_checkpointPos.z);
+								respawnPos = JPH::RVec3(m_checkpointPos.x, m_checkpointPos.y - 0.5f, m_checkpointPos.z);
 								uprightRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), m_checkpointYaw);
 								printf("[Gameplay] Bike respawned at checkpoint (%.2f, %.2f, %.2f)\n",
 									m_checkpointPos.x, m_checkpointPos.y, m_checkpointPos.z);
@@ -1132,7 +1134,6 @@ namespace engine {
 							else {
 
 								JPH::RVec3 currentPos = bi.GetPosition(id);
-								currentPos.SetY(currentPos.GetY() + 1.0f);
 
 								JPH::Quat currentRot = bi.GetRotation(id);
 								JPH::Vec3 fwd = currentRot.RotateAxisZ();
