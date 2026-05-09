@@ -179,7 +179,7 @@ namespace engine {
     };
 
     // 进度条元素 —— 显示 [minValue, maxValue] 范围内的当前进度。
-    class UIProgressBar final : public UIElement {
+    class UIProgressBar : public UIElement {
     public:
         explicit UIProgressBar(std::string elementName = "ProgressBar");
 
@@ -189,6 +189,27 @@ namespace engine {
         float value = 0.65f;           // 当前值
         bool showPercentage = true;    // 是否在条上叠加百分比文字
         glm::vec4 fillColor = glm::vec4(0.35f, 0.72f, 0.96f, 1.0f); // 填充颜色
+
+
+    protected:
+        UIProgressBar(UIElementType elementType, std::string elementName);
+    };
+
+    class UIRadialProgressBar final : public UIProgressBar {
+    public:
+        explicit UIRadialProgressBar(std::string elementName = "RadialProgressBar");
+
+    public:
+        float startAngleDegrees = 135.0f;
+        float sweepAngleDegrees = 270.0f;
+        float outerRadiusRatio = 1.0f;
+        float innerRadiusRatio = 0.72f;
+        bool clockwise = true;
+        bool tintBackgroundImage = false;
+        bool tintFillImage = false;
+        glm::vec4 backgroundFillColor = glm::vec4(0.18f, 0.22f, 0.30f, 1.0f);
+        std::string backgroundImagePath;
+        std::string fillImagePath;
     };
 
     // 输入框元素 —— 支持文本输入的可交互控件。

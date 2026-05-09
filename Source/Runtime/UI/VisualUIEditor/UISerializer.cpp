@@ -443,6 +443,23 @@ namespace engine {
                 widgetData["offColor"] = SerializeVec4(toggle->offColor);
                 widgetData["knobColor"] = SerializeVec4(toggle->knobColor);
             }
+            else if (const auto* radialProgressBar = dynamic_cast<const UIRadialProgressBar*>(&element)) {
+                widgetData["minValue"] = radialProgressBar->minValue;
+                widgetData["maxValue"] = radialProgressBar->maxValue;
+                widgetData["value"] = radialProgressBar->value;
+                widgetData["showPercentage"] = radialProgressBar->showPercentage;
+                widgetData["fillColor"] = SerializeVec4(radialProgressBar->fillColor);
+                widgetData["startAngleDegrees"] = radialProgressBar->startAngleDegrees;
+                widgetData["sweepAngleDegrees"] = radialProgressBar->sweepAngleDegrees;
+                widgetData["outerRadiusRatio"] = radialProgressBar->outerRadiusRatio;
+                widgetData["innerRadiusRatio"] = radialProgressBar->innerRadiusRatio;
+                widgetData["clockwise"] = radialProgressBar->clockwise;
+                widgetData["tintBackgroundImage"] = radialProgressBar->tintBackgroundImage;
+                widgetData["tintFillImage"] = radialProgressBar->tintFillImage;
+                widgetData["backgroundFillColor"] = SerializeVec4(radialProgressBar->backgroundFillColor);
+                widgetData["backgroundImagePath"] = radialProgressBar->backgroundImagePath;
+                widgetData["fillImagePath"] = radialProgressBar->fillImagePath;
+            }
             else if (const auto* progressBar = dynamic_cast<const UIProgressBar*>(&element)) {
                 widgetData["minValue"] = progressBar->minValue;
                 widgetData["maxValue"] = progressBar->maxValue;
@@ -476,6 +493,8 @@ namespace engine {
                 return std::make_unique<UIToggle>(name);
             case UIElementType::ProgressBar:
                 return std::make_unique<UIProgressBar>(name);
+            case UIElementType::RadialProgressBar:
+                return std::make_unique<UIRadialProgressBar>(name);
             case UIElementType::InputField:
                 return std::make_unique<UIInputField>(name);
             default:
@@ -493,6 +512,7 @@ namespace engine {
                 UIElementType::Slider,
                 UIElementType::Toggle,
                 UIElementType::ProgressBar,
+                UIElementType::RadialProgressBar,
                 UIElementType::ScrollView,
                 UIElementType::InputField,
                 UIElementType::HorizontalLayout,
@@ -574,6 +594,23 @@ namespace engine {
                 toggle->onColor = DeserializeVec4(widgetData.value("onColor", Json::object()), toggle->onColor);
                 toggle->offColor = DeserializeVec4(widgetData.value("offColor", Json::object()), toggle->offColor);
                 toggle->knobColor = DeserializeVec4(widgetData.value("knobColor", Json::object()), toggle->knobColor);
+            }
+            else if (auto* radialProgressBar = dynamic_cast<UIRadialProgressBar*>(&element)) {
+                radialProgressBar->minValue = widgetData.value("minValue", radialProgressBar->minValue);
+                radialProgressBar->maxValue = widgetData.value("maxValue", radialProgressBar->maxValue);
+                radialProgressBar->value = widgetData.value("value", radialProgressBar->value);
+                radialProgressBar->showPercentage = widgetData.value("showPercentage", radialProgressBar->showPercentage);
+                radialProgressBar->fillColor = DeserializeVec4(widgetData.value("fillColor", Json::object()), radialProgressBar->fillColor);
+                radialProgressBar->startAngleDegrees = widgetData.value("startAngleDegrees", radialProgressBar->startAngleDegrees);
+                radialProgressBar->sweepAngleDegrees = widgetData.value("sweepAngleDegrees", radialProgressBar->sweepAngleDegrees);
+                radialProgressBar->outerRadiusRatio = widgetData.value("outerRadiusRatio", radialProgressBar->outerRadiusRatio);
+                radialProgressBar->innerRadiusRatio = widgetData.value("innerRadiusRatio", radialProgressBar->innerRadiusRatio);
+                radialProgressBar->clockwise = widgetData.value("clockwise", radialProgressBar->clockwise);
+                radialProgressBar->tintBackgroundImage = widgetData.value("tintBackgroundImage", radialProgressBar->tintBackgroundImage);
+                radialProgressBar->tintFillImage = widgetData.value("tintFillImage", radialProgressBar->tintFillImage);
+                radialProgressBar->backgroundFillColor = DeserializeVec4(widgetData.value("backgroundFillColor", Json::object()), radialProgressBar->backgroundFillColor);
+                radialProgressBar->backgroundImagePath = widgetData.value("backgroundImagePath", radialProgressBar->backgroundImagePath);
+                radialProgressBar->fillImagePath = widgetData.value("fillImagePath", radialProgressBar->fillImagePath);
             }
             else if (auto* progressBar = dynamic_cast<UIProgressBar*>(&element)) {
                 progressBar->minValue = widgetData.value("minValue", progressBar->minValue);

@@ -22,9 +22,27 @@
             "targetElementId": 2,
             "targetProperty": "Text.text",
             "sourceKey": "bike.speedKmh",
-            "formatString": "{0:.0f} km/h",
+            "formatString": "{0:.0f}",
             "invert": false,
             "updateMode": "EveryFrame"
+        },
+        {
+            "targetElementId": 151,
+            "targetProperty": "ProgressBar.value",
+            "sourceKey": "bike.speedKmh",
+            "formatString": "",
+            "invert": false,
+            "updateMode": "EveryFrame",
+            "min": 0.0,
+            "max": 120.0
+        },
+        {
+            "targetElementId": 3,
+            "targetProperty": "Text.text",
+            "sourceKey": "bike.gear",
+            "formatString": "Gear {0}",
+            "invert": false,
+            "updateMode": "OnChange"
         },
         {
             "targetElementId": 4,
@@ -247,12 +265,12 @@
                 "zOrder": 10,
                 "transform": {
                     "position": {
-                        "x": 180.0,
-                        "y": 900.0
+                        "x": 81.0,
+                        "y": 870.0
                     },
                     "size": {
                         "x": 320.0,
-                        "y": 90.0
+                        "y": 120.0
                     },
                     "anchorMin": {
                         "x": 0.0,
@@ -308,7 +326,7 @@
                     },
                     "texturePath": "",
                     "fontPath": "Assets/Fonts/simhei.ttf",
-                    "fontSize": 48.0,
+                    "fontSize": 109.0,
                     "opacity": 1.0,
                     "padding": {
                         "left": 0.0,
@@ -332,8 +350,8 @@
                     "borderRadius": 0.0
                 },
                 "widgetData": {
-                    "text": "0 km/h",
-                    "alignment": "Left",
+                    "text": "0",
+                    "alignment": "Center",
                     "wrapText": false
                 },
                 "events": {
@@ -455,122 +473,6 @@
                 "children": []
             },
             {
-                "id": 5,
-                "name": "EnergyBar",
-                "type": "ProgressBar",
-                "visible": true,
-                "enabled": true,
-                "interactable": false,
-                "runtimeMutable": true,
-                "zOrder": 20,
-                "transform": {
-                    "position": {
-                        "x": 180.0,
-                        "y": 110.0
-                    },
-                    "size": {
-                        "x": 420.0,
-                        "y": 36.0
-                    },
-                    "anchorMin": {
-                        "x": 0.0,
-                        "y": 0.0
-                    },
-                    "anchorMax": {
-                        "x": 0.0,
-                        "y": 0.0
-                    },
-                    "pivot": {
-                        "x": 0.0,
-                        "y": 0.0
-                    },
-                    "rotation": 0.0,
-                    "scale": {
-                        "x": 1.0,
-                        "y": 1.0
-                    }
-                },
-                "style": {
-                    "presetName": "",
-                    "overrides": {
-                        "backgroundColor": true,
-                        "tintColor": true,
-                        "textColor": true,
-                        "texturePath": true,
-                        "fontPath": true,
-                        "fontSize": true,
-                        "opacity": true,
-                        "padding": true,
-                        "margin": true,
-                        "borderColor": true,
-                        "borderWidth": true,
-                        "borderRadius": true
-                    },
-                    "backgroundColor": {
-                        "x": 0.11999999731779099,
-                        "y": 0.1599999964237213,
-                        "z": 0.11999999731779099,
-                        "w": 0.9200000166893005
-                    },
-                    "tintColor": {
-                        "x": 1.0,
-                        "y": 1.0,
-                        "z": 1.0,
-                        "w": 1.0
-                    },
-                    "textColor": {
-                        "x": 1.0,
-                        "y": 1.0,
-                        "z": 1.0,
-                        "w": 1.0
-                    },
-                    "texturePath": "",
-                    "fontPath": "",
-                    "fontSize": 16.0,
-                    "opacity": 1.0,
-                    "padding": {
-                        "left": 4.0,
-                        "top": 4.0,
-                        "right": 4.0,
-                        "bottom": 4.0
-                    },
-                    "margin": {
-                        "left": 0.0,
-                        "top": 0.0,
-                        "right": 0.0,
-                        "bottom": 0.0
-                    },
-                    "borderColor": {
-                        "x": 0.3199999928474426,
-                        "y": 0.8999999761581421,
-                        "z": 0.36000001430511475,
-                        "w": 1.0
-                    },
-                    "borderWidth": 2.0,
-                    "borderRadius": 6.0
-                },
-                "widgetData": {
-                    "minValue": 0.0,
-                    "maxValue": 1.0,
-                    "value": 0.6499999761581421,
-                    "showPercentage": false,
-                    "fillColor": {
-                        "x": 0.3199999928474426,
-                        "y": 0.8999999761581421,
-                        "z": 0.36000001430511475,
-                        "w": 1.0
-                    }
-                },
-                "events": {
-                    "onClick": "",
-                    "onHover": "",
-                    "onPressed": "",
-                    "onReleased": "",
-                    "onValueChanged": ""
-                },
-                "children": []
-            },
-            {
                 "id": 6,
                 "name": "DistanceText",
                 "type": "Text",
@@ -581,8 +483,8 @@
                 "zOrder": 13,
                 "transform": {
                     "position": {
-                        "x": 180.0,
-                        "y": 965.0
+                        "x": 210.0,
+                        "y": 930.0
                     },
                     "size": {
                         "x": 300.0,
@@ -667,115 +569,6 @@
                 },
                 "widgetData": {
                     "text": "0 m",
-                    "alignment": "Left",
-                    "wrapText": false
-                },
-                "events": {
-                    "onClick": "",
-                    "onHover": "",
-                    "onPressed": "",
-                    "onReleased": "",
-                    "onValueChanged": ""
-                },
-                "children": []
-            },
-            {
-                "id": 8,
-                "name": "LowEnergyWarning",
-                "type": "Text",
-                "visible": false,
-                "enabled": true,
-                "interactable": false,
-                "runtimeMutable": true,
-                "zOrder": 25,
-                "transform": {
-                    "position": {
-                        "x": 620.0,
-                        "y": 115.0
-                    },
-                    "size": {
-                        "x": 280.0,
-                        "y": 40.0
-                    },
-                    "anchorMin": {
-                        "x": 0.0,
-                        "y": 0.0
-                    },
-                    "anchorMax": {
-                        "x": 0.0,
-                        "y": 0.0
-                    },
-                    "pivot": {
-                        "x": 0.0,
-                        "y": 0.0
-                    },
-                    "rotation": 0.0,
-                    "scale": {
-                        "x": 1.0,
-                        "y": 1.0
-                    }
-                },
-                "style": {
-                    "presetName": "WarningText",
-                    "overrides": {
-                        "backgroundColor": true,
-                        "tintColor": true,
-                        "textColor": true,
-                        "texturePath": true,
-                        "fontPath": true,
-                        "fontSize": true,
-                        "opacity": true,
-                        "padding": true,
-                        "margin": true,
-                        "borderColor": true,
-                        "borderWidth": true,
-                        "borderRadius": true
-                    },
-                    "backgroundColor": {
-                        "x": 0.0,
-                        "y": 0.0,
-                        "z": 0.0,
-                        "w": 0.0
-                    },
-                    "tintColor": {
-                        "x": 1.0,
-                        "y": 1.0,
-                        "z": 1.0,
-                        "w": 1.0
-                    },
-                    "textColor": {
-                        "x": 1.0,
-                        "y": 0.30000001192092896,
-                        "z": 0.2199999988079071,
-                        "w": 1.0
-                    },
-                    "texturePath": "",
-                    "fontPath": "Assets/Fonts/simhei.ttf",
-                    "fontSize": 26.0,
-                    "opacity": 1.0,
-                    "padding": {
-                        "left": 0.0,
-                        "top": 0.0,
-                        "right": 0.0,
-                        "bottom": 0.0
-                    },
-                    "margin": {
-                        "left": 0.0,
-                        "top": 0.0,
-                        "right": 0.0,
-                        "bottom": 0.0
-                    },
-                    "borderColor": {
-                        "x": 0.0,
-                        "y": 0.0,
-                        "z": 0.0,
-                        "w": 0.0
-                    },
-                    "borderWidth": 0.0,
-                    "borderRadius": 0.0
-                },
-                "widgetData": {
-                    "text": "LOW ENERGY!",
                     "alignment": "Left",
                     "wrapText": false
                 },
@@ -919,6 +712,245 @@
                 },
                 "events": {
                     "onClick": "PauseGame",
+                    "onHover": "",
+                    "onPressed": "",
+                    "onReleased": "",
+                    "onValueChanged": ""
+                },
+                "children": []
+            },
+            {
+                "id": 151,
+                "name": "RadialProgressBar_001",
+                "type": "RadialProgressBar",
+                "visible": true,
+                "enabled": true,
+                "interactable": false,
+                "runtimeMutable": true,
+                "zOrder": 0,
+                "transform": {
+                    "position": {
+                        "x": 70.0,
+                        "y": 710.0
+                    },
+                    "size": {
+                        "x": 350.0,
+                        "y": 350.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "pivot": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "rotation": 0.0,
+                    "scale": {
+                        "x": 1.0,
+                        "y": 1.0
+                    }
+                },
+                "style": {
+                    "presetName": "",
+                    "overrides": {
+                        "backgroundColor": true,
+                        "tintColor": true,
+                        "textColor": true,
+                        "texturePath": true,
+                        "fontPath": true,
+                        "fontSize": true,
+                        "opacity": true,
+                        "padding": true,
+                        "margin": true,
+                        "borderColor": true,
+                        "borderWidth": true,
+                        "borderRadius": true
+                    },
+                    "backgroundColor": {
+                        "x": 0.18000000715255737,
+                        "y": 0.2199999988079071,
+                        "z": 0.30000001192092896,
+                        "w": 1.0
+                    },
+                    "tintColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "textColor": {
+                        "x": 0.949999988079071,
+                        "y": 0.949999988079071,
+                        "z": 0.9800000190734863,
+                        "w": 1.0
+                    },
+                    "texturePath": "",
+                    "fontPath": "",
+                    "fontSize": 16.0,
+                    "opacity": 1.0,
+                    "padding": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "margin": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "borderColor": {
+                        "x": 0.01550362166017294,
+                        "y": 0.24714674055576324,
+                        "z": 0.8030887842178345,
+                        "w": 1.0
+                    },
+                    "borderWidth": 1.0,
+                    "borderRadius": 8.0
+                },
+                "widgetData": {
+                    "minValue": 0.0,
+                    "maxValue": 40.0,
+                    "value": 40.0,
+                    "showPercentage": false,
+                    "fillColor": {
+                        "x": 1.0,
+                        "y": 0.5099999904632568,
+                        "z": 0.07999999821186066,
+                        "w": 1.0
+                    },
+                    "startAngleDegrees": 135.0,
+                    "sweepAngleDegrees": 270.0,
+                    "outerRadiusRatio": 0.9200000166893005,
+                    "innerRadiusRatio": 0.6800000071525574,
+                    "clockwise": true,
+                    "tintBackgroundImage": false,
+                    "tintFillImage": true,
+                    "backgroundFillColor": {
+                        "x": 0.1411764770746231,
+                        "y": 0.1411764770746231,
+                        "z": 0.16078431904315948,
+                        "w": 0.0
+                    },
+                    "backgroundImagePath": "",
+                    "fillImagePath": "Assets/Textures/RadialBar.png"
+                },
+                "events": {
+                    "onClick": "",
+                    "onHover": "",
+                    "onPressed": "",
+                    "onReleased": "",
+                    "onValueChanged": ""
+                },
+                "children": []
+            },
+            {
+                "id": 190,
+                "name": "Image_001",
+                "type": "Image",
+                "visible": true,
+                "enabled": true,
+                "interactable": true,
+                "runtimeMutable": true,
+                "zOrder": -1,
+                "transform": {
+                    "position": {
+                        "x": 70.0,
+                        "y": 710.0
+                    },
+                    "size": {
+                        "x": 340.0,
+                        "y": 340.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "pivot": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "rotation": 0.0,
+                    "scale": {
+                        "x": 1.0,
+                        "y": 1.0
+                    }
+                },
+                "style": {
+                    "presetName": "",
+                    "overrides": {
+                        "backgroundColor": true,
+                        "tintColor": false,
+                        "textColor": false,
+                        "texturePath": true,
+                        "fontPath": true,
+                        "fontSize": true,
+                        "opacity": true,
+                        "padding": true,
+                        "margin": true,
+                        "borderColor": true,
+                        "borderWidth": false,
+                        "borderRadius": false
+                    },
+                    "backgroundColor": {
+                        "x": 0.18000000715255737,
+                        "y": 0.20000000298023224,
+                        "z": 0.25999999046325684,
+                        "w": 1.0
+                    },
+                    "tintColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "textColor": {
+                        "x": 0.949999988079071,
+                        "y": 0.949999988079071,
+                        "z": 0.9800000190734863,
+                        "w": 1.0
+                    },
+                    "texturePath": "Assets/Textures/SpeedBackground.png",
+                    "fontPath": "",
+                    "fontSize": 16.0,
+                    "opacity": 1.0,
+                    "padding": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "margin": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "borderColor": {
+                        "x": 0.3499999940395355,
+                        "y": 0.4000000059604645,
+                        "z": 0.5199999809265137,
+                        "w": 1.0
+                    },
+                    "borderWidth": 0.0,
+                    "borderRadius": 0.0
+                },
+                "widgetData": {
+                    "imagePath": "Assets/Textures/SpeedBackground.png",
+                    "preserveAspectRatio": true
+                },
+                "events": {
+                    "onClick": "",
                     "onHover": "",
                     "onPressed": "",
                     "onReleased": "",

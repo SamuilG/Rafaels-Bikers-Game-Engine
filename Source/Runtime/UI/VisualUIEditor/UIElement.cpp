@@ -40,6 +40,7 @@ namespace engine {
         case UIElementType::Slider: return "Slider";
         case UIElementType::Toggle: return "Toggle";
         case UIElementType::ProgressBar: return "ProgressBar";
+        case UIElementType::RadialProgressBar: return "RadialProgressBar";
         case UIElementType::ScrollView: return "ScrollView";
         case UIElementType::InputField: return "InputField";
         case UIElementType::HorizontalLayout: return "HorizontalLayout";
@@ -210,9 +211,19 @@ namespace engine {
     }
 
     UIProgressBar::UIProgressBar(std::string elementName)
-        : UIElement(UIElementType::ProgressBar, std::move(elementName)) {
+        : UIProgressBar(UIElementType::ProgressBar, std::move(elementName)) {
+    }
+
+    UIProgressBar::UIProgressBar(UIElementType elementType, std::string elementName)
+        : UIElement(elementType, std::move(elementName)) {
         interactable = false;
     }
+
+    UIRadialProgressBar::UIRadialProgressBar(std::string elementName)
+        : UIProgressBar(UIElementType::RadialProgressBar, std::move(elementName)) {
+        showPercentage = false;
+    }
+
 
     UIInputField::UIInputField(std::string elementName, std::string fieldText)
         : UIElement(UIElementType::InputField, std::move(elementName))

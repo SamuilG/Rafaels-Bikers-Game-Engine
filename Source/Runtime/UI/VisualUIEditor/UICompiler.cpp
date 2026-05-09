@@ -139,7 +139,7 @@ namespace engine {
             case UIBindingTargetProperty::TextText:
                 return type == UIElementType::Text || type == UIElementType::Button;
             case UIBindingTargetProperty::ProgressBarValue:
-                return type == UIElementType::ProgressBar;
+                return type == UIElementType::ProgressBar || type == UIElementType::RadialProgressBar;
             case UIBindingTargetProperty::SliderValue:
                 return type == UIElementType::Slider;
             case UIBindingTargetProperty::ImageTintColor:

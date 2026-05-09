@@ -21,6 +21,7 @@ namespace engine {
         Slider,
         Toggle,
         ProgressBar,
+        RadialProgressBar,
         ScrollView,
         InputField,
         HorizontalLayout,

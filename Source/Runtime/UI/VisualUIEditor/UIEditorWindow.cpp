@@ -70,6 +70,15 @@ namespace engine {
             int keyframeIndex = -1;
         };
 
+        // 编辑器的 Undo / Redo 历史状态。
+        // 设计要点：
+        //   * 每条历史记录就是一份完整的 UIScreen JSON 序列化字符串 ——
+        //     做法粗暴但 100% 正确，省掉为每种命令写 inverse 的成本；
+        //     UI 屏幕规模小（~50KB），栈深 64 也只有几 MB。
+        //   * 提交策略：基于 ImGui::IsAnyItemActive() 的"非活动帧"提交。
+        //     拖滑块、输入文本时活动 → 不提交；松手/失焦后下一帧检测到差异 → 一次入栈。
+        //     菜单/按钮触发的操作也走这条路径，因为点击释放后该项即变为非活动。
+        //   * 选中状态不进栈 —— 经典编辑器都是只 undo 数据；undo 后若选中元素已不存在则清空。
         struct UiEditorHistoryState {
             std::deque<std::string> undoStack;            // 旧状态：执行 Undo 时弹出
             std::deque<std::string> redoStack;            // 新状态：执行 Redo 时弹出
@@ -459,32 +468,43 @@ namespace engine {
             return assetPaths;
         }
 
-        const std::vector<std::string>& GetTextureAssetPaths() {
-            static const std::unordered_set<std::string> textureExtensions = {
-                ".png", ".jpg", ".jpeg", ".tga", ".bmp", ".gif", ".dds", ".ktx", ".ktx2", ".webp"
-            };
-            static std::vector<std::string> texturePaths = CollectAssetPaths("Assets", textureExtensions);
+        std::vector<std::string>& GetTextureAssetPathCache() {
+            static std::vector<std::string> texturePaths;
             return texturePaths;
         }
 
-        const std::vector<std::string>& GetFontAssetPaths() {
-            static const std::unordered_set<std::string> fontExtensions = {
-                ".ttf", ".otf", ".ttc", ".woff", ".woff2"
-            };
-            static std::vector<std::string> fontPaths = CollectAssetPaths(
-                std::filesystem::exists("Assets/Fonts") ? std::filesystem::path("Assets/Fonts") : std::filesystem::path("Assets"),
-                fontExtensions);
+        std::vector<std::string>& GetFontAssetPathCache() {
+            static std::vector<std::string> fontPaths;
             return fontPaths;
         }
 
-        const std::vector<std::string>& GetThemeAssetPaths() {
-            static std::vector<std::string> themePaths = [] {
-                std::vector<std::string> result;
-                const std::filesystem::path rootPath = std::filesystem::path("Assets") / "ui";
-                if (!std::filesystem::exists(rootPath)) {
-                    return result;
-                }
+        std::vector<std::string>& GetThemeAssetPathCache() {
+            static std::vector<std::string> themePaths;
+            return themePaths;
+        }
 
+        bool& AreAssetPathCachesInitialized() {
+            static bool initialized = false;
+            return initialized;
+        }
+
+        void RefreshAssetPathCaches() {
+            static const std::unordered_set<std::string> textureExtensions = {
+                ".png", ".jpg", ".jpeg", ".tga", ".bmp", ".gif", ".dds", ".ktx", ".ktx2", ".webp"
+            };
+            static const std::unordered_set<std::string> fontExtensions = {
+                ".ttf", ".otf", ".ttc", ".woff", ".woff2"
+            };
+
+            GetTextureAssetPathCache() = CollectAssetPaths("Assets", textureExtensions);
+            GetFontAssetPathCache() = CollectAssetPaths(
+                std::filesystem::exists("Assets/Fonts") ? std::filesystem::path("Assets/Fonts") : std::filesystem::path("Assets"),
+                fontExtensions);
+
+            auto& themePaths = GetThemeAssetPathCache();
+            themePaths.clear();
+            const std::filesystem::path rootPath = std::filesystem::path("Assets") / "ui";
+            if (std::filesystem::exists(rootPath)) {
                 std::error_code errorCode;
                 for (const auto& entry : std::filesystem::recursive_directory_iterator(rootPath, errorCode)) {
                     if (errorCode || !entry.is_regular_file()) {
@@ -492,15 +512,36 @@ namespace engine {
                     }
                     const std::string filename = ToLowerCopy(entry.path().filename().string());
                     if (filename.ends_with(".ui.theme.json")) {
-                        result.push_back(MakeAssetRelativePath(entry.path()));
+                        themePaths.push_back(MakeAssetRelativePath(entry.path()));
                     }
                 }
 
-                std::sort(result.begin(), result.end());
-                result.erase(std::unique(result.begin(), result.end()), result.end());
-                return result;
-            }();
-            return themePaths;
+                std::sort(themePaths.begin(), themePaths.end());
+                themePaths.erase(std::unique(themePaths.begin(), themePaths.end()), themePaths.end());
+            }
+
+            AreAssetPathCachesInitialized() = true;
+        }
+
+        void EnsureAssetPathCaches() {
+            if (!AreAssetPathCachesInitialized()) {
+                RefreshAssetPathCaches();
+            }
+        }
+
+        const std::vector<std::string>& GetTextureAssetPaths() {
+            EnsureAssetPathCaches();
+            return GetTextureAssetPathCache();
+        }
+
+        const std::vector<std::string>& GetFontAssetPaths() {
+            EnsureAssetPathCaches();
+            return GetFontAssetPathCache();
+        }
+
+        const std::vector<std::string>& GetThemeAssetPaths() {
+            EnsureAssetPathCaches();
+            return GetThemeAssetPathCache();
         }
 
         std::shared_ptr<const UITheme> LoadScreenTheme(const UIScreen& screen) {
@@ -874,6 +915,198 @@ namespace engine {
             return true;
         }
 
+        float DegreesToRadians(float degrees) {
+            return degrees * 0.01745329251994329577f;
+        }
+
+        ImVec2 RotateAroundPoint(const ImVec2& point, const ImVec2& center, float radians) {
+            const float sine = std::sin(radians);
+            const float cosine = std::cos(radians);
+            const float dx = point.x - center.x;
+            const float dy = point.y - center.y;
+            return ImVec2(
+                center.x + dx * cosine - dy * sine,
+                center.y + dx * sine + dy * cosine);
+        }
+
+        ImVec2 MakeRadialPoint(const ImVec2& center, float radius, float angleRadians) {
+            return ImVec2(
+                center.x + std::cos(angleRadians) * radius,
+                center.y + std::sin(angleRadians) * radius);
+        }
+
+        ImVec2 MakeRadialUv(const ImVec2& point, const ImVec2& min, const ImVec2& max) {
+            const float width = std::max(1.0f, max.x - min.x);
+            const float height = std::max(1.0f, max.y - min.y);
+            return ImVec2(
+                std::clamp((point.x - min.x) / width, 0.0f, 1.0f),
+                std::clamp(1.0f - ((point.y - min.y) / height), 0.0f, 1.0f));
+        }
+
+        void DrawSolidRadialArc(
+            ImDrawList* drawList,
+            const ImVec2& center,
+            float innerRadius,
+            float outerRadius,
+            float startAngle,
+            float endAngle,
+            ImU32 color) {
+            const float thickness = std::max(1.0f, outerRadius - innerRadius);
+            const float centerRadius = innerRadius + thickness * 0.5f;
+            const int segmentCount = std::clamp(
+                static_cast<int>(std::ceil(std::abs(endAngle - startAngle) * std::max(centerRadius, 1.0f) / 10.0f)),
+                12,
+                180);
+            drawList->PathClear();
+            for (int segmentIndex = 0; segmentIndex <= segmentCount; ++segmentIndex) {
+                const float t = static_cast<float>(segmentIndex) / static_cast<float>(segmentCount);
+                const float angle = startAngle + (endAngle - startAngle) * t;
+                drawList->PathLineTo(MakeRadialPoint(center, centerRadius, angle));
+            }
+            drawList->PathStroke(color, false, thickness);
+        }
+
+        bool DrawTexturedRadialArc(
+            ImDrawList* drawList,
+            const UIElement& element,
+            const ImVec2& min,
+            const ImVec2& max,
+            const std::string& texturePath,
+            float innerRadius,
+            float outerRadius,
+            float startAngle,
+            float endAngle,
+            ImU32 tintColor) {
+            const ImTextureID textureId = ResolvePreviewTexture(texturePath);
+            if (textureId == static_cast<ImTextureID>(0)) {
+                return false;
+            }
+
+            const ImVec2 center((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f);
+            const float rotationRadians = DegreesToRadians(element.transform.rotation);
+            const int segmentCount = std::clamp(
+                static_cast<int>(std::ceil(std::abs(endAngle - startAngle) * std::max(outerRadius, 1.0f) / 10.0f)),
+                12,
+                180);
+            const float step = (endAngle - startAngle) / static_cast<float>(segmentCount);
+
+            for (int segmentIndex = 0; segmentIndex < segmentCount; ++segmentIndex) {
+                const float angleA = startAngle + step * static_cast<float>(segmentIndex);
+                const float angleB = startAngle + step * static_cast<float>(segmentIndex + 1);
+
+                const ImVec2 outerA = MakeRadialPoint(center, outerRadius, angleA);
+                const ImVec2 outerB = MakeRadialPoint(center, outerRadius, angleB);
+                const ImVec2 innerA = MakeRadialPoint(center, innerRadius, angleA);
+                const ImVec2 innerB = MakeRadialPoint(center, innerRadius, angleB);
+
+                const ImVec2 uvOuterA = MakeRadialUv(outerA, min, max);
+                const ImVec2 uvOuterB = MakeRadialUv(outerB, min, max);
+                const ImVec2 uvInnerA = MakeRadialUv(innerA, min, max);
+                const ImVec2 uvInnerB = MakeRadialUv(innerB, min, max);
+
+                const ImVec2 drawOuterA = HasVisibleRotation(element) ? RotateAroundPoint(outerA, center, rotationRadians) : outerA;
+                const ImVec2 drawOuterB = HasVisibleRotation(element) ? RotateAroundPoint(outerB, center, rotationRadians) : outerB;
+                const ImVec2 drawInnerA = HasVisibleRotation(element) ? RotateAroundPoint(innerA, center, rotationRadians) : innerA;
+                const ImVec2 drawInnerB = HasVisibleRotation(element) ? RotateAroundPoint(innerB, center, rotationRadians) : innerB;
+
+                drawList->AddImageQuad(
+                    textureId,
+                    drawOuterA,
+                    drawOuterB,
+                    drawInnerB,
+                    drawInnerA,
+                    uvOuterA,
+                    uvOuterB,
+                    uvInnerB,
+                    uvInnerA,
+                    tintColor);
+            }
+
+            return true;
+        }
+
+        void DrawPreviewRadialProgressBar(
+            ImDrawList* drawList,
+            const UIElement& element,
+            const UIRadialProgressBar& radialProgressBar,
+            const ImVec2& min,
+            const ImVec2& max,
+            float fontSize,
+            ImFont* font,
+            ImU32 textColor) {
+            const float normalized = NormalizeWidgetValue(radialProgressBar.value, radialProgressBar.minValue, radialProgressBar.maxValue);
+            const ImVec2 center((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f);
+            const float maxOuterRadius = std::max(2.0f, std::min(max.x - min.x, max.y - min.y) * 0.5f - 1.0f);
+            const float outerRadius = maxOuterRadius * std::clamp(radialProgressBar.outerRadiusRatio, 0.05f, 1.0f);
+            const float innerRadius = outerRadius * std::clamp(radialProgressBar.innerRadiusRatio, 0.05f, 0.98f);
+            const float fullSweepRadians = DegreesToRadians(std::max(0.0f, radialProgressBar.sweepAngleDegrees));
+            const float startAngle = DegreesToRadians(radialProgressBar.startAngleDegrees);
+            const float direction = radialProgressBar.clockwise ? 1.0f : -1.0f;
+            const float fullEndAngle = startAngle + direction * fullSweepRadians;
+            const float fillEndAngle = startAngle + direction * fullSweepRadians * normalized;
+
+            const ImU32 backgroundTint = radialProgressBar.tintBackgroundImage
+                ? ToImGuiColor(radialProgressBar.backgroundFillColor, radialProgressBar.style.opacity)
+                : IM_COL32(255, 255, 255, static_cast<int>(std::clamp(radialProgressBar.style.opacity, 0.0f, 1.0f) * 255.0f));
+            if (!radialProgressBar.backgroundImagePath.empty()) {
+                DrawTexturedRadialArc(
+                    drawList,
+                    element,
+                    min,
+                    max,
+                    radialProgressBar.backgroundImagePath,
+                    innerRadius,
+                    outerRadius,
+                    startAngle,
+                    fullEndAngle,
+                    backgroundTint);
+            }
+            else {
+                DrawSolidRadialArc(
+                    drawList,
+                    center,
+                    innerRadius,
+                    outerRadius,
+                    startAngle,
+                    fullEndAngle,
+                    ToImGuiColor(radialProgressBar.backgroundFillColor, radialProgressBar.style.opacity));
+            }
+
+            if (normalized > 0.0f) {
+                if (!radialProgressBar.fillImagePath.empty()) {
+                    const ImU32 fillTint = radialProgressBar.tintFillImage
+                        ? ToImGuiColor(radialProgressBar.fillColor, radialProgressBar.style.opacity)
+                        : IM_COL32(255, 255, 255, static_cast<int>(std::clamp(radialProgressBar.style.opacity, 0.0f, 1.0f) * 255.0f));
+                    DrawTexturedRadialArc(
+                        drawList,
+                        element,
+                        min,
+                        max,
+                        radialProgressBar.fillImagePath,
+                        innerRadius,
+                        outerRadius,
+                        startAngle,
+                        fillEndAngle,
+                        fillTint);
+                }
+                else {
+                    DrawSolidRadialArc(
+                        drawList,
+                        center,
+                        innerRadius,
+                        outerRadius,
+                        startAngle,
+                        fillEndAngle,
+                        ToImGuiColor(radialProgressBar.fillColor, radialProgressBar.style.opacity));
+                }
+            }
+
+            if (radialProgressBar.showPercentage) {
+                const std::string percentage = std::format("{:.0f}%", normalized * 100.0f);
+                DrawPreviewText(drawList, percentage, min, max, textColor, fontSize, "Center", font, false);
+            }
+        }
+
         int CountDescendants(const UIElement& element) {
             int count = 1;
             for (const auto& child : element.GetChildren()) {
@@ -892,6 +1125,7 @@ namespace engine {
             case UIElementType::Slider: return "Slider";
             case UIElementType::Toggle: return "Toggle";
             case UIElementType::ProgressBar: return "ProgressBar";
+            case UIElementType::RadialProgressBar: return "RadialProgressBar";
             case UIElementType::ScrollView: return "ScrollView";
             case UIElementType::InputField: return "InputField";
             case UIElementType::HorizontalLayout: return "HorizontalLayout";
@@ -913,6 +1147,79 @@ namespace engine {
                 return lhs->zOrder < rhs->zOrder;
             });
             return children;
+        }
+
+        std::vector<UIElement*> GetChildrenSortedForDrawMutable(UIElement& element) {
+            std::vector<UIElement*> children;
+            children.reserve(element.GetChildren().size());
+            for (auto& child : element.GetChildren()) {
+                children.push_back(child.get());
+            }
+
+            std::stable_sort(children.begin(), children.end(), [](const UIElement* lhs, const UIElement* rhs) {
+                return lhs->zOrder < rhs->zOrder;
+            });
+            return children;
+        }
+
+        enum class LayerMoveDirection : std::uint8_t {
+            Backward = 0,
+            Forward,
+            ToBack,
+            ToFront
+        };
+
+        bool ReorderElementLayer(UIElement& element, LayerMoveDirection direction) {
+            UIElement* parent = element.GetParent();
+            if (parent == nullptr) {
+                return false;
+            }
+
+            auto orderedChildren = GetChildrenSortedForDrawMutable(*parent);
+            auto iterator = std::find(orderedChildren.begin(), orderedChildren.end(), &element);
+            if (iterator == orderedChildren.end()) {
+                return false;
+            }
+
+            const std::size_t index = static_cast<std::size_t>(std::distance(orderedChildren.begin(), iterator));
+            switch (direction) {
+            case LayerMoveDirection::Backward:
+                if (index == 0) {
+                    return false;
+                }
+                std::iter_swap(orderedChildren.begin() + static_cast<std::ptrdiff_t>(index),
+                    orderedChildren.begin() + static_cast<std::ptrdiff_t>(index - 1));
+                break;
+            case LayerMoveDirection::Forward:
+                if (index + 1 >= orderedChildren.size()) {
+                    return false;
+                }
+                std::iter_swap(orderedChildren.begin() + static_cast<std::ptrdiff_t>(index),
+                    orderedChildren.begin() + static_cast<std::ptrdiff_t>(index + 1));
+                break;
+            case LayerMoveDirection::ToBack:
+                if (index == 0) {
+                    return false;
+                }
+                std::rotate(orderedChildren.begin(),
+                    orderedChildren.begin() + static_cast<std::ptrdiff_t>(index),
+                    orderedChildren.begin() + static_cast<std::ptrdiff_t>(index + 1));
+                break;
+            case LayerMoveDirection::ToFront:
+                if (index + 1 >= orderedChildren.size()) {
+                    return false;
+                }
+                std::rotate(orderedChildren.begin() + static_cast<std::ptrdiff_t>(index),
+                    orderedChildren.begin() + static_cast<std::ptrdiff_t>(index + 1),
+                    orderedChildren.end());
+                break;
+            }
+
+            for (std::size_t childIndex = 0; childIndex < orderedChildren.size(); ++childIndex) {
+                orderedChildren[childIndex]->zOrder = static_cast<int>(childIndex);
+            }
+
+            return true;
         }
 
         UIElement* GetSelectedElement(UiEditorSession& session) {
@@ -1408,6 +1715,7 @@ namespace engine {
             case UIElementType::Slider: return glm::vec2(260.0f, 36.0f);
             case UIElementType::Toggle: return glm::vec2(140.0f, 40.0f);
             case UIElementType::ProgressBar: return glm::vec2(280.0f, 32.0f);
+            case UIElementType::RadialProgressBar: return glm::vec2(256.0f, 256.0f);
             case UIElementType::ScrollView: return glm::vec2(320.0f, 220.0f);
             case UIElementType::InputField: return glm::vec2(260.0f, 44.0f);
             case UIElementType::HorizontalLayout: return glm::vec2(360.0f, 96.0f);
@@ -1449,6 +1757,7 @@ namespace engine {
                 break;
             case UIElementType::Slider:
             case UIElementType::ProgressBar:
+            case UIElementType::RadialProgressBar:
                 element.style.backgroundColor = glm::vec4(0.18f, 0.22f, 0.30f, 1.0f);
                 break;
             case UIElementType::Toggle:
@@ -1503,6 +1812,20 @@ namespace engine {
             else if (auto* toggle = dynamic_cast<UIToggle*>(&element)) {
                 toggle->label = "Toggle";
                 toggle->isOn = true;
+            }
+            else if (auto* radialProgressBar = dynamic_cast<UIRadialProgressBar*>(&element)) {
+                radialProgressBar->minValue = 0.0f;
+                radialProgressBar->maxValue = 1.0f;
+                radialProgressBar->value = 0.65f;
+                radialProgressBar->showPercentage = false;
+                radialProgressBar->startAngleDegrees = 135.0f;
+                radialProgressBar->sweepAngleDegrees = 270.0f;
+                radialProgressBar->outerRadiusRatio = 1.0f;
+                radialProgressBar->innerRadiusRatio = 0.72f;
+                radialProgressBar->clockwise = true;
+                radialProgressBar->tintBackgroundImage = false;
+                radialProgressBar->tintFillImage = false;
+                radialProgressBar->backgroundFillColor = element.style.backgroundColor;
             }
             else if (auto* progressBar = dynamic_cast<UIProgressBar*>(&element)) {
                 progressBar->minValue = 0.0f;
@@ -2323,6 +2646,16 @@ namespace engine {
                 }
                 break;
             }
+            case UIElementType::RadialProgressBar: {
+                if (const auto* radialProgressBar = dynamic_cast<const UIRadialProgressBar*>(&element)) {
+                    DrawPreviewRadialProgressBar(drawList, element, *radialProgressBar, min, max, scaledFontSize, previewFont, textColor);
+                }
+                else {
+                    drawList->AddRectFilled(min, max, fillColor, scaledBorderRadius);
+                    DrawPreviewBorder(drawList, element, min, max, scale, borderColor);
+                }
+                break;
+            }
             case UIElementType::InputField: {
                 if (const auto* inputField = dynamic_cast<const UIInputField*>(&element)) {
                     DrawPreviewInputField(drawList, element, *inputField, min, max, scale, scaledFontSize, previewFont, textColor);
@@ -2382,6 +2715,28 @@ namespace engine {
             ImGui::Checkbox("Interactable", &element.interactable);
             ImGui::Checkbox("Runtime Mutable", &element.runtimeMutable);
             ImGui::InputInt("Z Order", &element.zOrder);
+        }
+
+        void DrawLayerInspector(UIElement& element) {
+            if (element.GetParent() == nullptr) {
+                return;
+            }
+
+            ImGui::SeparatorText("Layer");
+            if (ImGui::Button("Send To Back")) {
+                ReorderElementLayer(element, LayerMoveDirection::ToBack);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Bring To Front")) {
+                ReorderElementLayer(element, LayerMoveDirection::ToFront);
+            }
+            if (ImGui::Button("Move Backward")) {
+                ReorderElementLayer(element, LayerMoveDirection::Backward);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Move Forward")) {
+                ReorderElementLayer(element, LayerMoveDirection::Forward);
+            }
         }
 
         void DrawTransformInspector(UIElement& element) {
@@ -2497,6 +2852,7 @@ namespace engine {
             case UIElementType::Text:
                 return UIBindingTargetProperty::TextText;
             case UIElementType::ProgressBar:
+            case UIElementType::RadialProgressBar:
                 return UIBindingTargetProperty::ProgressBarValue;
             case UIElementType::Slider:
                 return UIBindingTargetProperty::SliderValue;
@@ -3420,6 +3776,32 @@ namespace engine {
             progressBar.value = std::clamp(progressBar.value, progressBar.minValue, progressBar.maxValue);
         }
 
+        void DrawRadialProgressBarInspector(UIRadialProgressBar& radialProgressBar) {
+            ImGui::SeparatorText("Radial Progress Bar");
+            DrawFloatInputAndSlider("Min Value", radialProgressBar.minValue, 0.1f, -1000.0f, 1000.0f, "%.2f");
+            DrawFloatInputAndSlider("Max Value", radialProgressBar.maxValue, 0.1f, -1000.0f, 1000.0f, "%.2f");
+            DrawFloatInputAndSlider("Value", radialProgressBar.value, 0.1f, radialProgressBar.minValue, std::max(radialProgressBar.minValue, radialProgressBar.maxValue), "%.2f");
+            ImGui::Checkbox("Show Percentage", &radialProgressBar.showPercentage);
+            DrawColorEditor("Background Fill Color", radialProgressBar.backgroundFillColor);
+            DrawColorEditor("Fill Color", radialProgressBar.fillColor);
+            DrawFloatInputAndSlider("Start Angle", radialProgressBar.startAngleDegrees, 1.0f, -360.0f, 360.0f, "%.1f deg");
+            DrawFloatInputAndSlider("Sweep Angle", radialProgressBar.sweepAngleDegrees, 1.0f, 0.0f, 360.0f, "%.1f deg");
+            DrawFloatInputAndSlider("Outer Radius Ratio", radialProgressBar.outerRadiusRatio, 0.01f, 0.05f, 1.0f, "%.2f");
+            DrawFloatInputAndSlider("Inner Radius Ratio", radialProgressBar.innerRadiusRatio, 0.01f, 0.05f, 0.98f, "%.2f");
+            ImGui::Checkbox("Clockwise", &radialProgressBar.clockwise);
+            DrawAssetPathCombo("Background Image", radialProgressBar.backgroundImagePath, GetTextureAssetPaths(), "<None>");
+            ImGui::Checkbox("Tint Background Image", &radialProgressBar.tintBackgroundImage);
+            DrawAssetPathCombo("Fill Image", radialProgressBar.fillImagePath, GetTextureAssetPaths(), "<None>");
+            ImGui::Checkbox("Tint Fill Image", &radialProgressBar.tintFillImage);
+            if (radialProgressBar.maxValue < radialProgressBar.minValue) {
+                std::swap(radialProgressBar.minValue, radialProgressBar.maxValue);
+            }
+            radialProgressBar.value = std::clamp(radialProgressBar.value, radialProgressBar.minValue, radialProgressBar.maxValue);
+            radialProgressBar.outerRadiusRatio = std::clamp(radialProgressBar.outerRadiusRatio, 0.05f, 1.0f);
+            radialProgressBar.innerRadiusRatio = std::clamp(radialProgressBar.innerRadiusRatio, 0.05f, 0.98f);
+            radialProgressBar.sweepAngleDegrees = std::clamp(radialProgressBar.sweepAngleDegrees, 0.0f, 360.0f);
+        }
+
         void DrawInputFieldInspector(UIInputField& inputField) {
             ImGui::SeparatorText("Input Field");
             ImGui::InputText("Text", &inputField.text);
@@ -3447,6 +3829,8 @@ namespace engine {
                 return std::make_unique<UIToggle>(name, "Toggle");
             case UIElementType::ProgressBar:
                 return std::make_unique<UIProgressBar>(name);
+            case UIElementType::RadialProgressBar:
+                return std::make_unique<UIRadialProgressBar>(name);
             case UIElementType::InputField:
                 return std::make_unique<UIInputField>(name);
             default:
@@ -3594,6 +3978,21 @@ namespace engine {
                 if (ImGui::MenuItem("Rename")) {
                     StartRename(session, element);
                 }
+                ImGui::Separator();
+                const bool canReorder = element.GetParent() != nullptr;
+                if (ImGui::MenuItem("Bring To Front", nullptr, false, canReorder)) {
+                    ReorderElementLayer(element, LayerMoveDirection::ToFront);
+                }
+                if (ImGui::MenuItem("Send To Back", nullptr, false, canReorder)) {
+                    ReorderElementLayer(element, LayerMoveDirection::ToBack);
+                }
+                if (ImGui::MenuItem("Move Forward", nullptr, false, canReorder)) {
+                    ReorderElementLayer(element, LayerMoveDirection::Forward);
+                }
+                if (ImGui::MenuItem("Move Backward", nullptr, false, canReorder)) {
+                    ReorderElementLayer(element, LayerMoveDirection::Backward);
+                }
+                ImGui::Separator();
                 if (ImGui::MenuItem("Copy", nullptr, false, false)) {
                     EngineUi::ShowToast("[ Copy Placeholder ]");
                 }
@@ -3611,7 +4010,7 @@ namespace engine {
             }
 
             if (opened && !element.GetChildren().empty()) {
-                for (const auto& child : element.GetChildren()) {
+                for (UIElement* child : GetChildrenSortedForDrawMutable(element)) {
                     DrawHierarchyNode(*child, session);
                 }
                 ImGui::TreePop();
@@ -3714,6 +4113,12 @@ namespace engine {
                 session.activeResizeHandle = ResizeHandle::None;
                 ResetPreviewInteraction(session);
                 EngineUi::ShowToast(session.previewMode ? "[ UI Preview Enabled ]" : "[ UI Preview Disabled ]");
+            }
+
+            ImGui::SameLine();
+            if (ImGui::Button("Refresh Assets")) {
+                RefreshAssetPathCaches();
+                EngineUi::ShowToast("[ UI Assets Refreshed ]");
             }
 
             ImGui::SameLine();
@@ -3835,7 +4240,7 @@ namespace engine {
                 UIElementType type;
             };
 
-            static const std::array<ComponentButton, 9> buttons = {{
+            static const std::array<ComponentButton, 10> buttons = {{
                 { "Panel", UIElementType::Panel },
                 { "Image", UIElementType::Image },
                 { "Text", UIElementType::Text },
@@ -3843,6 +4248,7 @@ namespace engine {
                 { "Slider", UIElementType::Slider },
                 { "Toggle", UIElementType::Toggle },
                 { "Progress Bar", UIElementType::ProgressBar },
+                { "Radial Progress Bar", UIElementType::RadialProgressBar },
                 { "Scroll View", UIElementType::ScrollView },
                 { "Input Field", UIElementType::InputField }
             }};
@@ -4235,6 +4641,7 @@ namespace engine {
                 ImGui::Text("Type: %s", ToString(selected->GetType()).data());
                 ImGui::Text("Children: %d", static_cast<int>(selected->GetChildren().size()));
                 DrawBasicInspector(*selected);
+                DrawLayerInspector(*selected);
                 DrawTransformInspector(*selected);
                 DrawStyleInspector(*session.screen, *selected);
                 DrawBindingsInspector(*session.screen, *selected);
@@ -4253,6 +4660,9 @@ namespace engine {
                 }
                 else if (auto* toggle = dynamic_cast<UIToggle*>(selected)) {
                     DrawToggleInspector(*toggle);
+                }
+                else if (auto* radialProgressBar = dynamic_cast<UIRadialProgressBar*>(selected)) {
+                    DrawRadialProgressBarInspector(*radialProgressBar);
                 }
                 else if (auto* progressBar = dynamic_cast<UIProgressBar*>(selected)) {
                     DrawProgressBarInspector(*progressBar);

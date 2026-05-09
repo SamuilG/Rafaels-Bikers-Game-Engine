@@ -259,6 +259,8 @@ namespace engine {
             return true;
         }
 
+        float NormalizeWidgetValue(float value, float minValue, float maxValue);
+
         void DrawText(
             ImDrawList* drawList,
             const std::string& text,
@@ -269,6 +271,206 @@ namespace engine {
             const std::string& alignment,
             ImFont* font,
             bool wrapText);
+
+        float DegreesToRadians(float degrees) {
+            return degrees * 0.01745329251994329577f;
+        }
+
+        ImVec2 RotateAroundPoint(const ImVec2& point, const ImVec2& center, float radians) {
+            const float sine = std::sin(radians);
+            const float cosine = std::cos(radians);
+            const float dx = point.x - center.x;
+            const float dy = point.y - center.y;
+            return ImVec2(
+                center.x + dx * cosine - dy * sine,
+                center.y + dx * sine + dy * cosine);
+        }
+
+        ImVec2 MakeRadialPoint(const ImVec2& center, float radius, float angleRadians) {
+            return ImVec2(
+                center.x + std::cos(angleRadians) * radius,
+                center.y + std::sin(angleRadians) * radius);
+        }
+
+        ImVec2 MakeRadialUv(const ImVec2& point, const ImVec2& min, const ImVec2& max) {
+            const float width = std::max(1.0f, max.x - min.x);
+            const float height = std::max(1.0f, max.y - min.y);
+            return ImVec2(
+                std::clamp((point.x - min.x) / width, 0.0f, 1.0f),
+                std::clamp(1.0f - ((point.y - min.y) / height), 0.0f, 1.0f));
+        }
+
+        void DrawSolidRadialArc(
+            ImDrawList* drawList,
+            const ImVec2& center,
+            float innerRadius,
+            float outerRadius,
+            float startAngle,
+            float endAngle,
+            ImU32 color) {
+            const float thickness = std::max(1.0f, outerRadius - innerRadius);
+            const float centerRadius = innerRadius + thickness * 0.5f;
+            const int segmentCount = std::clamp(
+                static_cast<int>(std::ceil(std::abs(endAngle - startAngle) * std::max(centerRadius, 1.0f) / 10.0f)),
+                12,
+                180);
+            drawList->PathClear();
+            for (int segmentIndex = 0; segmentIndex <= segmentCount; ++segmentIndex) {
+                const float t = static_cast<float>(segmentIndex) / static_cast<float>(segmentCount);
+                const float angle = startAngle + (endAngle - startAngle) * t;
+                drawList->PathLineTo(MakeRadialPoint(center, centerRadius, angle));
+            }
+            drawList->PathStroke(color, false, thickness);
+        }
+
+        bool DrawTexturedRadialArc(
+            ImDrawList* drawList,
+            const UIElement& element,
+            const ImVec2& min,
+            const ImVec2& max,
+            const std::string& texturePath,
+            float innerRadius,
+            float outerRadius,
+            float startAngle,
+            float endAngle,
+            ImU32 tintColor,
+            const std::function<void* (const std::string&)>& textureResolver) {
+            const ImTextureID textureId = ResolvePreviewTexture(textureResolver, texturePath);
+            if (textureId == static_cast<ImTextureID>(0)) {
+                return false;
+            }
+
+            const ImVec2 center((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f);
+            const float rotationRadians = DegreesToRadians(element.transform.rotation);
+            const int segmentCount = std::clamp(
+                static_cast<int>(std::ceil(std::abs(endAngle - startAngle) * std::max(outerRadius, 1.0f) / 10.0f)),
+                12,
+                180);
+            const float step = (endAngle - startAngle) / static_cast<float>(segmentCount);
+
+            for (int segmentIndex = 0; segmentIndex < segmentCount; ++segmentIndex) {
+                const float angleA = startAngle + step * static_cast<float>(segmentIndex);
+                const float angleB = startAngle + step * static_cast<float>(segmentIndex + 1);
+
+                const ImVec2 outerA = MakeRadialPoint(center, outerRadius, angleA);
+                const ImVec2 outerB = MakeRadialPoint(center, outerRadius, angleB);
+                const ImVec2 innerA = MakeRadialPoint(center, innerRadius, angleA);
+                const ImVec2 innerB = MakeRadialPoint(center, innerRadius, angleB);
+
+                const ImVec2 uvOuterA = MakeRadialUv(outerA, min, max);
+                const ImVec2 uvOuterB = MakeRadialUv(outerB, min, max);
+                const ImVec2 uvInnerA = MakeRadialUv(innerA, min, max);
+                const ImVec2 uvInnerB = MakeRadialUv(innerB, min, max);
+
+                const ImVec2 drawOuterA = HasVisibleRotation(element) ? RotateAroundPoint(outerA, center, rotationRadians) : outerA;
+                const ImVec2 drawOuterB = HasVisibleRotation(element) ? RotateAroundPoint(outerB, center, rotationRadians) : outerB;
+                const ImVec2 drawInnerA = HasVisibleRotation(element) ? RotateAroundPoint(innerA, center, rotationRadians) : innerA;
+                const ImVec2 drawInnerB = HasVisibleRotation(element) ? RotateAroundPoint(innerB, center, rotationRadians) : innerB;
+
+                drawList->AddImageQuad(
+                    textureId,
+                    drawOuterA,
+                    drawOuterB,
+                    drawInnerB,
+                    drawInnerA,
+                    uvOuterA,
+                    uvOuterB,
+                    uvInnerB,
+                    uvInnerA,
+                    tintColor);
+            }
+
+            return true;
+        }
+		// 绘制环形进度条
+        void DrawPreviewRadialProgressBar(
+            ImDrawList* drawList,
+            const UIElement& element,
+            const UIStyle& style,
+            const UIRadialProgressBar& radialProgressBar,
+            const ImVec2& min,
+            const ImVec2& max,
+            const UIRenderContext& context,
+            float fontSize,
+            ImFont* font,
+            ImU32 textColor,
+            const std::function<void* (const std::string&)>& textureResolver) {
+            const float effectiveOpacity = ComputeEffectiveOpacity(style, context);
+            const float normalized = NormalizeWidgetValue(radialProgressBar.value, radialProgressBar.minValue, radialProgressBar.maxValue);
+            const ImVec2 center((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f);
+            const float maxOuterRadius = std::max(2.0f, std::min(max.x - min.x, max.y - min.y) * 0.5f - 1.0f);
+            const float outerRadius = maxOuterRadius * std::clamp(radialProgressBar.outerRadiusRatio, 0.05f, 1.0f);
+            const float innerRadius = outerRadius * std::clamp(radialProgressBar.innerRadiusRatio, 0.05f, 0.98f);
+            const float fullSweepRadians = DegreesToRadians(std::max(0.0f, radialProgressBar.sweepAngleDegrees));
+            const float startAngle = DegreesToRadians(radialProgressBar.startAngleDegrees);
+            const float direction = radialProgressBar.clockwise ? 1.0f : -1.0f;
+            const float fullEndAngle = startAngle + direction * fullSweepRadians;
+            const float fillEndAngle = startAngle + direction * fullSweepRadians * normalized;
+
+            const ImU32 backgroundTint = radialProgressBar.tintBackgroundImage
+                ? ToImGuiColor(radialProgressBar.backgroundFillColor, effectiveOpacity)
+                : IM_COL32(255, 255, 255, static_cast<int>(std::clamp(effectiveOpacity, 0.0f, 1.0f) * 255.0f));
+            if (!radialProgressBar.backgroundImagePath.empty()) {
+                DrawTexturedRadialArc(
+                    drawList,
+                    element,
+                    min,
+                    max,
+                    radialProgressBar.backgroundImagePath,
+                    innerRadius,
+                    outerRadius,
+                    startAngle,
+                    fullEndAngle,
+                    backgroundTint,
+                    textureResolver);
+            }
+            else {
+                DrawSolidRadialArc(
+                    drawList,
+                    center,
+                    innerRadius,
+                    outerRadius,
+                    startAngle,
+                    fullEndAngle,
+                    ToImGuiColor(radialProgressBar.backgroundFillColor, effectiveOpacity));
+            }
+
+            if (normalized > 0.0f) {
+                if (!radialProgressBar.fillImagePath.empty()) {
+                    const ImU32 fillTint = radialProgressBar.tintFillImage
+                        ? ToImGuiColor(radialProgressBar.fillColor, effectiveOpacity)
+                        : IM_COL32(255, 255, 255, static_cast<int>(std::clamp(effectiveOpacity, 0.0f, 1.0f) * 255.0f));
+                    DrawTexturedRadialArc(
+                        drawList,
+                        element,
+                        min,
+                        max,
+                        radialProgressBar.fillImagePath,
+                        innerRadius,
+                        outerRadius,
+                        startAngle,
+                        fillEndAngle,
+                        fillTint,
+                        textureResolver);
+                }
+                else {
+                    DrawSolidRadialArc(
+                        drawList,
+                        center,
+                        innerRadius,
+                        outerRadius,
+                        startAngle,
+                        fillEndAngle,
+                        ToImGuiColor(radialProgressBar.fillColor, effectiveOpacity));
+                }
+            }
+
+            if (radialProgressBar.showPercentage) {
+                const std::string percentage = std::format("{:.0f}%", normalized * 100.0f);
+                DrawText(drawList, percentage, min, max, textColor, fontSize, "Center", font, false);
+            }
+        }
+
 
         float NormalizeWidgetValue(float value, float minValue, float maxValue) {
             const float range = maxValue - minValue;
@@ -635,6 +837,15 @@ namespace engine {
             case UIElementType::ProgressBar:
                 if (const auto* progressBar = dynamic_cast<const UIProgressBar*>(&element)) {
                     DrawPreviewProgressBar(drawList, element, resolvedStyle, *progressBar, min, max, context, scaledFontSize, previewFont, textColor);
+                }
+                else {
+                    drawList->AddRectFilled(min, max, fillColor, scaledBorderRadius);
+                    DrawPreviewBorder(drawList, element, resolvedStyle, min, max, context, borderColor);
+                }
+                break;
+            case UIElementType::RadialProgressBar:
+                if (const auto* radialProgressBar = dynamic_cast<const UIRadialProgressBar*>(&element)) {
+                    DrawPreviewRadialProgressBar(drawList, element, resolvedStyle, *radialProgressBar, min, max, context, scaledFontSize, previewFont, textColor, textureResolver);
                 }
                 else {
                     drawList->AddRectFilled(min, max, fillColor, scaledBorderRadius);
