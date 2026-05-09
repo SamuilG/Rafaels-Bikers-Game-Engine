@@ -1388,11 +1388,14 @@ namespace engine {
                     if(mState->isAlive == false ) mState->isAlive = true; 
                 }
               
+#ifndef GAME_ONLY
                 if (mInputSystem->IsActionPressed("ToggleEngineUi")) {
                     mState->showEngineUi = !mState->showEngineUi;
                     EngineUi::ShowToast(mState->showEngineUi ? "[ Engine UI Visible ]" : "[ Engine UI Hidden ]");
                 }
+#endif
                 
+#ifndef GAME_ONLY
                 // Debug Render Modes
                 if (mInputSystem->IsActionPressed("Default")) mState->renderMode = 0;
                 if (mInputSystem->IsActionPressed("DebugMipmap")) mState->renderMode = 1;
@@ -1402,11 +1405,12 @@ namespace engine {
                 if (mInputSystem->IsActionPressed("DebugOverdraw")) mState->renderMode = 4;
                 if (mInputSystem->IsActionPressed("DebugOvershading")) mState->renderMode = 5;
                 if (mInputSystem->IsActionPressed("DebugShadows")) mState->renderMode = 6;
-                
+
                 if (mInputSystem->IsActionPressed("PrintCameraPos")) {
                     auto const pos = mState->camera2world[3];
                     std::printf("Camera Pos: %.4f, %.4f, %.4f\n", pos.x, pos.y, pos.z);
                 }
+#endif
             }
             //
 

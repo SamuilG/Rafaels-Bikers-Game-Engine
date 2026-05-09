@@ -13,7 +13,7 @@ class PhysicsSystem;
 namespace JPH { class PhysicsSystem; }
 
 namespace engine {
-    struct UserState; // �������ǰ��������
+    struct GameplayState;
     // InputSystem Ӧ�û����� engine �����
     class InputSystem;
 
@@ -28,7 +28,7 @@ namespace engine {
     class BikeController {
     public:
         // ���캯����ע������ʹ�õ���ȫ�ֵ� UserState
-        BikeController(JPH::PhysicsSystem* joltPhysics, InputSystem* input, UserState* state);
+        BikeController(JPH::PhysicsSystem* joltPhysics, InputSystem* input, GameplayState* state);
         ~BikeController() = default;
 
         void Init(uint32_t chassisBodyID);
@@ -42,7 +42,7 @@ namespace engine {
     private:
         PhysicsSystem* m_physicsSystem; // Store your engine's wrapper
         InputSystem* m_inputSystem = nullptr;
-        UserState* m_state = nullptr;
+        GameplayState* m_state = nullptr;
         AudioSystem* m_audio = nullptr;
 
 

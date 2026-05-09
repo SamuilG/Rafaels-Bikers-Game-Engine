@@ -38,6 +38,8 @@ namespace engine {
         void HandleShowGameOver(const std::string& eventName);
         // 重新开始游戏：重置为 Playing 状态并显示 HUD。
         void HandleRestartGame(const std::string& eventName);
+        // 以编辑器模式启动游戏（开启引擎 UI）。
+        void HandleOpenEditor(const std::string& eventName);
         // 调试按钮事件，方便验证整条运行时点击链路。
         void HandleTestButton(const std::string& eventName);
 
