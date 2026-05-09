@@ -13,7 +13,7 @@ namespace engine {
         level();
         ~level() override;
 
-        void Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, UserState* state, AnimationSystem* anima, AudioSystem* audio) override;
+        void Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, GameplayState* state, AnimationSystem* anima, AudioSystem* audio) override;
         void Update(float dt) override;
         void Shutdown() override;
 
@@ -23,7 +23,7 @@ namespace engine {
         PhysicsSystem* m_physics = nullptr;
         InputSystem* m_input = nullptr;
         EventSystem* m_event = nullptr;
-        UserState* mState = nullptr;
+        GameplayState* mState = nullptr;
         AnimationSystem* m_anima = nullptr;
         AudioSystem* m_audio = nullptr;
 

@@ -5,16 +5,17 @@
 #include "../Physics/bikeController.hpp"
 #include "../Input/InputSystem.hpp"
 #include "../Event/EventSystem.hpp"
-#include "../UserState/UserState.hpp"
+#include "../UserState/GameplayState.hpp"
 #include "../Animation/AnimationSystem.hpp"
-#include "../Debug/DebugRenderer.hpp"
 #include "../AudioSystem/AudioSystem.hpp"
+#include <format>
 
 namespace engine {
 
 	TestScene::TestScene() = default;
 	TestScene::~TestScene() = default;
-	void TestScene::Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, UserState* state, AnimationSystem* anima, AudioSystem* audio) {
+	void TestScene::Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, GameplayState* state, AnimationSystem* anima, AudioSystem* audio) {
+		InitBase(render);
 		m_render = render;
 		m_scene = scene;
 		m_physics = physics;
@@ -305,8 +306,8 @@ namespace engine {
 			glm::vec3(50.0f, 1.0f, 20.0f), glm::vec3(2.0f, 2.0f, 2.0f), triggerParticleIndex, glm::vec3(1.0f, 0.0f, 0.0f), glm::mat4(1.0f), true, false);
 
 		m_render->GetTriggerSystem().SetTriggerCallbacks(triggerBox01,
-			[]() { engine::EngineUi::LogPrint("trigger box triggered!!\n"); },
-			[]() { engine::EngineUi::LogPrint("trigger box exited!!\n"); }
+			[]() { GameScene::Log("trigger box triggered!!\n"); },
+			[]() { GameScene::Log("trigger box exited!!\n"); }
 		);
 
 		m_scene->print_all_entities();
@@ -353,8 +354,8 @@ namespace engine {
 		m_event->Subscribe(EventType::ItemCollected, [this](Event& e) {
 			auto& col = static_cast<ItemCollectedEvent&>(e);
 			mState->collectedItems = col.GetCurrentTotal();
-			EngineUi::LogPrint("[Collection] {}/{} collected\n",
-				col.GetCurrentTotal(), mState->totalCollectibles);
+			Log(std::format("[Collection] {}/{} collected\n",
+				col.GetCurrentTotal(), mState->totalCollectibles));
 
 			m_audio->PlayOneShot("Collect");
 		});
@@ -362,8 +363,8 @@ namespace engine {
 		m_event->Subscribe(EventType::AllItemsCollected, [this](Event& e) {
 			mState->allCollected = true;
 			mState->bikeTuning.maxSpeed *= 2.0f;
-			EngineUi::LogPrint("[Collection] ALL ITEMS COLLECTED — max speed unlocked!\n");
-			EngineUi::ShowToast("All collectibles found! MAX SPEED UNLOCKED!");
+			Log("[Collection] ALL ITEMS COLLECTED — max speed unlocked!\n");
+			Toast("All collectibles found! MAX SPEED UNLOCKED!");
 			m_allCollectSoundDelay = 0.8f; 
 		});
 	}

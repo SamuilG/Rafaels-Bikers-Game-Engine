@@ -5,11 +5,9 @@
 #include "../Physics/bikeController.hpp"
 #include "../Input/InputSystem.hpp"
 #include "../Event/EventSystem.hpp"
-#include "../UserState/UserState.hpp"
+#include "../UserState/GameplayState.hpp"
 #include "../Animation/AnimationSystem.hpp"
-#include "../Debug/DebugRenderer.hpp"
 #include "../AudioSystem/AudioSystem.hpp"
-#include "../UI/EngineUi.hpp"
 #include <Jolt/Physics/Body/BodyLock.h>
 #include <format>
 #include <filesystem>
@@ -22,7 +20,8 @@ namespace engine {
 
 	level::level() = default;
 	level::~level() = default;
-	void level::Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, UserState* state, AnimationSystem* anima, AudioSystem* audio) {
+	void level::Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, GameplayState* state, AnimationSystem* anima, AudioSystem* audio) {
+		InitBase(render);
 		m_render = render;
 		m_scene = scene;
 		m_physics = physics;
@@ -33,11 +32,7 @@ namespace engine {
 		m_audio = audio;
 		m_respawnPromptVisible = false;
 
-		if (m_render) {
-			if (RuntimeUiController* runtimeUi = m_render->GetRuntimeUiController()) {
-				runtimeUi->RemoveWidgetFromViewPort(kRespawnPromptUiPath);
-			}
-		}
+		RemoveWidget(kRespawnPromptUiPath);
 
 
 		// load the terrain and static models
@@ -336,8 +331,8 @@ namespace engine {
 			glm::vec3(50.0f, 1.0f, 20.0f), glm::vec3(2.0f, 2.0f, 2.0f), triggerParticleIndex, glm::vec3(1.0f, 0.0f, 0.0f), glm::mat4(1.0f), true, false);
 
 		m_render->GetTriggerSystem().SetTriggerCallbacks(triggerBox01,
-			[]() { engine::EngineUi::LogPrint("trigger box triggered!!\n"); },
-			[]() { engine::EngineUi::LogPrint("trigger box exited!!\n"); }
+			[]() { GameScene::Log("trigger box triggered!!\n"); },
+			[]() { GameScene::Log("trigger box exited!!\n"); }
 		);
 
 		m_scene->print_all_entities();
@@ -542,8 +537,8 @@ namespace engine {
 				auto& col = static_cast<ItemCollectedEvent&>(e);
 				int collected = col.GetCurrentTotal();
 				mState->collectedItems = collected;
-				EngineUi::LogPrint("[Collection] {}/{} collected\n",
-					collected, mState->totalCollectibles);
+				Log(std::format("[Collection] {}/{} collected\n",
+					collected, mState->totalCollectibles));
 
 				m_audio->PlayOneShot("Collect");
 
@@ -577,9 +572,9 @@ namespace engine {
 			// === 事件订阅：全部收集完毕 ===
 			m_event->Subscribe(EventType::AllItemsCollected, [this](Event& /*e*/) {
 				mState->allCollected = true;
-				EngineUi::LogPrint("[Collection] ALL {} ITEMS COLLECTED!\n",
-					mState->totalCollectibles);
-				EngineUi::ShowToast("All gas tanks collected! Bike fully lightened!");
+				Log(std::format("[Collection] ALL {} ITEMS COLLECTED!\n",
+					mState->totalCollectibles));
+				Toast("All gas tanks collected! Bike fully lightened!");
 			});
 		}
 		// =========================================================
@@ -652,8 +647,8 @@ namespace engine {
 						m_springPickupEntity = {};
 					}
 					m_audio->PlayOneShot("AllCollectd");
-					EngineUi::LogPrint("[Pickup] Jump ability unlocked!\n");
-					EngineUi::ShowToast("Jump unlocked! Press Space to jump.");
+					Log("[Pickup] Jump ability unlocked!\n");
+					Toast("Jump unlocked! Press Space to jump.");
 				},
 				nullptr
 			);
@@ -725,8 +720,8 @@ namespace engine {
 						m_hornPickupEntity = {};
 					}
 					m_audio->PlayOneShot("AllCollectd");
-					EngineUi::LogPrint("[Pickup] Horn ability unlocked!\n");
-					EngineUi::ShowToast("Horn unlocked! Press F to honk.");
+					Log("[Pickup] Horn ability unlocked!\n");
+					Toast("Horn unlocked! Press F to honk.");
 				},
 				nullptr
 			);
@@ -805,8 +800,8 @@ namespace engine {
 					m_bgMusicPlaying = true;
 					m_currentSongIndex = 0;
 					m_audio->PlayLoop(m_radioSongs[0]);
-					EngineUi::LogPrint("[Radio] Picked up! Now playing: {}\n", m_radioLabels[0]);
-					EngineUi::ShowToast(std::format("Radio! Now playing: {}. Press N to switch.", m_radioLabels[0]));
+					Log(std::format("[Radio] Picked up! Now playing: {}\n", m_radioLabels[0]));
+					Toast(std::format("Radio! Now playing: {}. Press N to switch.", m_radioLabels[0]));
 
 				// Mount satellite to character's back (bike-local space)
 				if (m_satelliteEntity.is_valid() && m_bikeEntity.is_valid()) {
@@ -982,17 +977,15 @@ namespace engine {
 	}
 
 	void level::Update(float dt) {
-		if (m_render && mState) {
-			if (RuntimeUiController* runtimeUi = m_render->GetRuntimeUiController()) {
-				if (!mState->isAlive) {
-					if (!m_respawnPromptVisible) {
-						m_respawnPromptVisible = runtimeUi->AddWidgetToViewPort(kRespawnPromptUiPath);
-					}
+		if (mState) {
+			if (!mState->isAlive) {
+				if (!m_respawnPromptVisible) {
+					m_respawnPromptVisible = AddWidget(kRespawnPromptUiPath);
 				}
-				else if (m_respawnPromptVisible) {
-					runtimeUi->RemoveWidgetFromViewPort(kRespawnPromptUiPath);
-					m_respawnPromptVisible = false;
-				}
+			}
+			else if (m_respawnPromptVisible) {
+				RemoveWidget(kRespawnPromptUiPath);
+				m_respawnPromptVisible = false;
 			}
 		}
 
@@ -1030,8 +1023,8 @@ namespace engine {
 			m_audio->Stop(m_radioSongs[m_currentSongIndex]);
 			m_currentSongIndex = (m_currentSongIndex + 1) % static_cast<int>(m_radioSongs.size());
 			m_audio->PlayLoop(m_radioSongs[m_currentSongIndex]);
-			EngineUi::LogPrint("[Radio] Switched to: {}\n", m_radioLabels[m_currentSongIndex]);
-			EngineUi::ShowToast(std::format("Now playing: {}", m_radioLabels[m_currentSongIndex]));
+			Log(std::format("[Radio] Switched to: {}\n", m_radioLabels[m_currentSongIndex]));
+			Toast(std::format("Now playing: {}", m_radioLabels[m_currentSongIndex]));
 			m_audio->PlayOneShot("NextSong");
 		}
 
@@ -1175,9 +1168,7 @@ namespace engine {
 							mState->engineForce = 0.0f;
 							mState->lastPedal = -1;
 
-							if (RuntimeUiController* runtimeUi = m_render ? m_render->GetRuntimeUiController() : nullptr) {
-								runtimeUi->RemoveWidgetFromViewPort(kRespawnPromptUiPath);
-							}
+							RemoveWidget(kRespawnPromptUiPath);
 							m_respawnPromptVisible = false;
 
 							printf("[Gameplay] Bike stopped and respawned in place!\n");
@@ -1198,19 +1189,17 @@ namespace engine {
 		}
 
 		// ���Ʋ��� Debug ���� (ֻ��������ؿ�����Ҫ����Щ)
+#ifndef NDEBUG
 		m_render->mDebugRenderer.DrawBox(glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 		m_render->mDebugRenderer.DrawLine(glm::vec3(3.0f, 0.0f, 0.0f), glm::vec3(3.0f, 5.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 		m_render->mDebugRenderer.DrawSphere(glm::vec3(-4.0f, 2.0f, 0.0f), 2.0f, glm::vec3(0.0f, 0.0f, 1.0f));
 		m_render->mDebugRenderer.DrawCapsule(glm::vec3(0.0f, 2.0f, 5.0f), 1.0f, 1.5f, glm::vec3(1.0f, 1.0f, 0.0f));
+#endif
 	}
 
 	void level::Shutdown() {
 
-		if (m_render) {
-			if (RuntimeUiController* runtimeUi = m_render->GetRuntimeUiController()) {
-				runtimeUi->RemoveWidgetFromViewPort(kRespawnPromptUiPath);
-			}
-		}
+		RemoveWidget(kRespawnPromptUiPath);
 		m_respawnPromptVisible = false;
 
 		

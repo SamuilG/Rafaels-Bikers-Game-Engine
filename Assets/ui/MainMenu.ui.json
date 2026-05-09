@@ -816,6 +816,74 @@
                 "children": []
             },
             {
+                "id": 7,
+                "name": "EditorButton",
+                "type": "Button",
+                "visible": true,
+                "enabled": true,
+                "interactable": true,
+                "runtimeMutable": true,
+                "zOrder": 21,
+                "transform": {
+                    "position": {
+                        "x": 960.0,
+                        "y": 530.0
+                    },
+                    "size": {
+                        "x": 360.0,
+                        "y": 76.0
+                    },
+                    "anchorMin": { "x": 0.0, "y": 0.0 },
+                    "anchorMax": { "x": 0.0, "y": 0.0 },
+                    "pivot": { "x": 0.5, "y": 0.5 },
+                    "rotation": 0.0,
+                    "scale": { "x": 1.0, "y": 1.0 }
+                },
+                "style": {
+                    "presetName": "SecondaryButton",
+                    "overrides": {
+                        "backgroundColor": true, "tintColor": true, "textColor": true,
+                        "texturePath": true, "fontPath": true, "fontSize": true,
+                        "opacity": true, "padding": true, "margin": true,
+                        "borderColor": true, "borderWidth": true, "borderRadius": true
+                    },
+                    "backgroundColor": { "x": 0.12, "y": 0.16, "z": 0.24, "w": 0.98 },
+                    "tintColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+                    "textColor": { "x": 0.97, "y": 0.98, "z": 1.0, "w": 1.0 },
+                    "texturePath": "",
+                    "fontPath": "Assets/Fonts/simhei.ttf",
+                    "fontSize": 28.0,
+                    "opacity": 1.0,
+                    "padding": { "left": 16.0, "top": 12.0, "right": 16.0, "bottom": 12.0 },
+                    "margin": { "left": 0.0, "top": 10.0, "right": 0.0, "bottom": 10.0 },
+                    "borderColor": { "x": 0.58, "y": 0.64, "z": 0.82, "w": 0.88 },
+                    "borderWidth": 1.5,
+                    "borderRadius": 12.0
+                },
+                "widgetData": {
+                    "label": "Open Editor",
+                    "pressed": false,
+                    "usePresetTransitionStyle": true,
+                    "transitionMode": "Animation",
+                    "normalColor": { "x": 0.12, "y": 0.16, "z": 0.24, "w": 0.98 },
+                    "hoverColor": { "x": 0.18, "y": 0.22, "z": 0.32, "w": 1.0 },
+                    "pressedColor": { "x": 0.10, "y": 0.13, "z": 0.18, "w": 1.0 },
+                    "disabledColor": { "x": 0.24, "y": 0.24, "z": 0.28, "w": 0.80 },
+                    "normalScale": 1.0,
+                    "hoverScale": 1.04,
+                    "pressedScale": 0.96,
+                    "transitionDuration": 0.12
+                },
+                "events": {
+                    "onClick": "OpenEditor",
+                    "onHover": "",
+                    "onPressed": "",
+                    "onReleased": "",
+                    "onValueChanged": ""
+                },
+                "children": []
+            },
+            {
                 "id": 5,
                 "name": "SettingsButton",
                 "type": "Button",
@@ -827,7 +895,7 @@
                 "transform": {
                     "position": {
                         "x": 960.0,
-                        "y": 530.0
+                        "y": 640.0
                     },
                     "size": {
                         "x": 360.0,
@@ -965,7 +1033,7 @@
                 "transform": {
                     "position": {
                         "x": 960.0,
-                        "y": 640.0
+                        "y": 750.0
                     },
                     "size": {
                         "x": 360.0,

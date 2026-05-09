@@ -79,6 +79,10 @@ namespace engine {
             HandleRestartGame(eventName);
         });
 
+        uiManager.RegisterEventHandler("OpenEditor", [this](const std::string& eventName) {
+            HandleOpenEditor(eventName);
+        });
+
         uiManager.RegisterEventHandler("TestButton", [this](const std::string& eventName) {
             HandleTestButton(eventName);
         });
@@ -98,6 +102,28 @@ namespace engine {
 
         EngineUi::ShowToast("[ Runtime UI: Start Game ]");
         EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> Playing | MainMenu hidden | HUD visible\n", eventName);
+    }
+
+    void GameUIEventRouter::HandleOpenEditor(const std::string& eventName) {
+#ifdef GAME_ONLY
+        // Game-only build: fall back to normal start
+        HandleStartGame(eventName);
+#else
+        // OpenEditor：与 StartGame 相同流程，但额外开启引擎 UI。
+        mState.isGameStarted = true;
+        mState.isGamePause = false;
+        mState.isGameOver = false;
+        mState.gameFlowState = GameFlowState::Playing;
+        mState.showEngineUi = true;
+
+        mRuntimeUiController.RemoveWidgetFromViewPort(kMainMenuUiPath);
+        mRuntimeUiController.RemoveWidgetFromViewPort(kPauseMenuUiPath);
+        mRuntimeUiController.RemoveWidgetFromViewPort(kSettingsUiPath);
+        mRuntimeUiController.AddWidgetToViewPort(kHudUiPath);
+
+        EngineUi::ShowToast("[ Editor Mode ]");
+        EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> Playing + Editor UI\n", eventName);
+#endif
     }
 
     // PauseGame：暂停游戏并弹出 PauseMenu 覆盖层。
