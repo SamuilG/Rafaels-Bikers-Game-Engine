@@ -25,13 +25,63 @@
 namespace lut = labut2;
 
 float extremeSpeedThreshold = 35.0f;
+constexpr float kFixedGameplayFov = 85.0f;
+
+namespace engine {
+	StereoCameraFrame build_stereo_camera_frame(
+		const engine::UserState& state,
+		std::uint32_t framebufferWidth,
+		std::uint32_t framebufferHeight,
+		float ipdMeters)
+	{
+		StereoCameraFrame frame{};
+		frame.enabled = true;
+		frame.ipdMeters = ipdMeters;
+		frame.aspectRatio = framebufferHeight > 0
+			? float(framebufferWidth) / float(framebufferHeight)
+			: 1.0f;
+
+		const glm::mat4 centerWorldFromEye = state.camera.camera2world;
+		const glm::vec3 centerPos = glm::vec3(centerWorldFromEye[3]);
+		const glm::vec3 right = glm::normalize(glm::vec3(centerWorldFromEye[0]));
+		const glm::vec3 eyeOffset = right * (ipdMeters * 0.5f);
+		const float fovRadians = glm::radians(state.camera.cameraFov);
+		const glm::mat4 projection = glm::perspectiveRH_ZO(
+			fovRadians,
+			frame.aspectRatio,
+			cfg::kCameraNear,
+			cfg::kCameraFar);
+
+		auto buildEye = [&](StereoEyeIndex eye, const glm::vec3& worldPos) {
+			StereoEyeView viewData{};
+			viewData.eye = eye;
+			viewData.worldFromEye = centerWorldFromEye;
+			viewData.worldFromEye[3] = glm::vec4(worldPos, 1.0f);
+			viewData.view = glm::inverse(viewData.worldFromEye);
+			viewData.projection = projection;
+			viewData.projection[1][1] *= -1.f;
+			viewData.viewProjection = viewData.projection * viewData.view;
+			viewData.worldPosition = worldPos;
+			viewData.nearPlane = cfg::kCameraNear;
+			viewData.farPlane = cfg::kCameraFar;
+			viewData.verticalFovRadians = fovRadians;
+			return viewData;
+		};
+
+		frame.left = buildEye(StereoEyeIndex::Left, centerPos - eyeOffset);
+		frame.right = buildEye(StereoEyeIndex::Right, centerPos + eyeOffset);
+		return frame;
+	}
+}
 
 // Removed callbacks, now fully handled by engine::InputSystem
 void update_user_state(engine::UserState& aState, float aElapsedTime, engine::InputSystem* inputSys)
 {
-	auto& cam = aState.camera2world;
+	auto& camera = aState.camera;
+	auto& gameplay = aState.gameplay;
+	auto& cam = camera.camera2world;
 
-	if (inputSys->IsActionPressed("CaptureMouse") && aState.isAlive)
+	if (inputSys->IsActionPressed("CaptureMouse") && gameplay.isAlive)
 	{
 		aState.previousMouseState = !aState.previousMouseState;
 		inputSys->SetMouseCaptured(aState.previousMouseState);
@@ -54,14 +104,8 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 	// ==============================================================
 	// FOV 手动微调
 	// ==============================================================
-	float fovZoomSpeed = 70.0f; // rad per second
-	if (inputSys->IsActionHeld("ZoomIn")) {
-		aState.targetFov -= fovZoomSpeed * aElapsedTime;
-	}
-	if (inputSys->IsActionHeld("ZoomOut")) {
-		aState.targetFov += fovZoomSpeed * aElapsedTime;
-	}
-	aState.targetFov = std::clamp(aState.targetFov, 10.0f, 120.0f);
+	camera.targetFov = kFixedGameplayFov;
+	camera.cameraFov = kFixedGameplayFov;
 
 	// ==============================================================
 	// third person and first person
@@ -69,7 +113,7 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 	if (aState.thirdPersonMode)
 	{
 		// 1. 首先评估状态！防止延迟一帧
-		aState.isExtremeSpeed = (std::abs(aState.bikeSpeed) >= extremeSpeedThreshold);
+		aState.isExtremeSpeed = false;
 
 		// ==============================================================
 		// 2. 状态机：基于真实物理速度的极速视角接管 (双重插值 Dolly Zoom)
@@ -77,14 +121,13 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 		if (aState.isExtremeSpeed) {
 			// 【平滑接管】：无论目前滚轮在哪，都平滑过渡到极速视角
 			float transitionSpeed = 7.5f;
-			aState.targetDistance += (0.5f - aState.targetDistance) * transitionSpeed * aElapsedTime;
-			aState.targetFov += (120.0f - aState.targetFov) * transitionSpeed * aElapsedTime;
+			camera.targetDistance += (0.5f - camera.targetDistance) * transitionSpeed * aElapsedTime;
 		}
 		else {
 			// 【平滑释放】：刚退出极速状态时，平滑弹回到正常下限 2.0f
-			if (aState.targetDistance < 2.0f) {
+			if (camera.targetDistance < 2.0f) {
 				float recoverySpeed = 4.0f;
-				aState.targetDistance += (2.0f - aState.targetDistance) * recoverySpeed * aElapsedTime;
+				camera.targetDistance += (2.0f - camera.targetDistance) * recoverySpeed * aElapsedTime;
 			}
 
 			// 【正常滚轮调节】
@@ -92,23 +135,22 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 				float scroll = inputSys->GetScrollY();
 				if (scroll != 0.0f) {
 					float zoomSpeed = 9.0f;
-					aState.targetDistance -= scroll * zoomSpeed;
+					camera.targetDistance -= scroll * zoomSpeed;
 
 					// 【关键修复】：无条件死死钳制住！不再给它逃逸到 2.0 以下的机会
-					aState.targetDistance = std::clamp(aState.targetDistance, 2.0f, 70.0f);
+					camera.targetDistance = std::clamp(camera.targetDistance, 2.0f, 70.0f);
 				}
 			}
 
 			// 重新映射百分比。使用 std::max 防止在平滑释放期间出现负数
-			float safeDist = std::max(aState.targetDistance, 2.0f);
-			float distRatio = (safeDist - 2.0f) / (70.0f - 2.0f);
+			float safeDist = std::max(camera.targetDistance, 2.0f);
 
 			// 映射 FOV。距离 2.0(Ratio=0) 时 FOV=100，距离 70(Ratio=1) 时 FOV=20
-			aState.targetFov = 100.0f - distRatio * (100.0f - 20.0f);
+			camera.targetFov = kFixedGameplayFov;
 		}
 
 		// 确保目标 FOV 不会突破物理极值
-		aState.targetFov = std::clamp(aState.targetFov, 10.0f, 120.0f);
+		camera.targetFov = kFixedGameplayFov;
 	 
 		// ==============================================================
 		// 3. 相机输入判定与自动回正逻辑
@@ -117,29 +159,29 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 
 		if (hasCameraInput)
 		{
-			aState.cameraIdleTimer = 0.0f;
-			aState.targetYaw -= dx;
-			aState.targetPitch += dy;
+			camera.cameraIdleTimer = 0.0f;
+			camera.targetYaw -= dx;
+			camera.targetPitch += dy;
 
 			float const max_pitch = glm::radians(85.0f);
-			aState.targetPitch = glm::clamp(aState.targetPitch, -max_pitch, max_pitch);
+			camera.targetPitch = glm::clamp(camera.targetPitch, -max_pitch, max_pitch);
 		}
 		else
 		{
-			aState.cameraIdleTimer += aElapsedTime;
+			camera.cameraIdleTimer += aElapsedTime;
 		}
 
 		float autoAlignDelay = 0.5f;
 		float minAlignSpeed = 2.0f;
 
-		if ((aState.cameraIdleTimer > autoAlignDelay || aState.isExtremeSpeed) && std::abs(aState.bikeSpeed) > minAlignSpeed) {
+		if ((camera.cameraIdleTimer > autoAlignDelay || aState.isExtremeSpeed) && std::abs(aState.bikeSpeed) > minAlignSpeed) {
 
 			float fullEffectDist = 2.0f;
 			float noEffectDist = 20.0f;
-			float distanceFactor = 1.0f - glm::clamp((aState.Distance - fullEffectDist) / (noEffectDist - fullEffectDist), 0.0f, 1.0f);
+			float distanceFactor = 1.0f - glm::clamp((camera.Distance - fullEffectDist) / (noEffectDist - fullEffectDist), 0.0f, 1.0f);
 
 			if (distanceFactor > 0.001f) {
-				float diff = aState.bikeYaw - aState.targetYaw;
+				float diff = camera.bikeYaw - camera.targetYaw;
 
 				while (diff > glm::pi<float>())  diff -= 2.0f * glm::pi<float>();
 				while (diff < -glm::pi<float>()) diff += 2.0f * glm::pi<float>();
@@ -151,10 +193,10 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 
 				float alignSpeed = baseAlignSpeed * distanceFactor;
 
-				aState.targetYaw += diff * alignSpeed * aElapsedTime;
+				camera.targetYaw += diff * alignSpeed * aElapsedTime;
 
-				float defaultPitch = glm::radians(15.0f);
-				aState.targetPitch += (defaultPitch - aState.targetPitch) * alignSpeed * aElapsedTime;
+				float defaultPitch = glm::radians(10.0f);
+				camera.targetPitch += (defaultPitch - camera.targetPitch) * alignSpeed * aElapsedTime;
 			}
 		}
 
@@ -162,34 +204,34 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 		// 4. camera lerp 平滑执行
 		// ==============================================================
 		float smoothness = 6.0f;
-		aState.cameraFov += (aState.targetFov - aState.cameraFov) * smoothness * aElapsedTime;
-		aState.Yaw += (aState.targetYaw - aState.Yaw) * smoothness * aElapsedTime;
-		aState.Pitch += (aState.targetPitch - aState.Pitch) * smoothness * aElapsedTime;
-		aState.Distance += (aState.targetDistance - aState.Distance) * smoothness * aElapsedTime;
+		camera.cameraFov = kFixedGameplayFov;
+		camera.Yaw += (camera.targetYaw - camera.Yaw) * smoothness * aElapsedTime;
+		camera.Pitch += (camera.targetPitch - camera.Pitch) * smoothness * aElapsedTime;
+		camera.Distance += (camera.targetDistance - camera.Distance) * smoothness * aElapsedTime;
 
 		float rollMultiplier = 0.6f;
 		if (aState.isExtremeSpeed) {
 			// 极速状态下，镜头跟随单车压弯
-			aState.targetCameraRoll = aState.bikeLeanAngle * rollMultiplier;
+			camera.targetCameraRoll = aState.bikeLeanAngle * rollMultiplier;
 		}
 		else {
 			// 普通状态下，目标倾角归零（保持地平线水平）
-			aState.targetCameraRoll = 0.0f;
+			camera.targetCameraRoll = 0.0f;
 		}
 
 		// 【注意】：这行插值代码必须放在 if-else 外面！
 		// 这样当玩家从极速降回普通速度时，镜头会带着重量感“缓缓回正”，而不是瞬间闪回 0 度。
-		aState.cameraRoll += (aState.targetCameraRoll - aState.cameraRoll) * smoothness * aElapsedTime;
+		camera.cameraRoll += (camera.targetCameraRoll - camera.cameraRoll) * smoothness * aElapsedTime;
 
 		// 计算相机位置
 		glm::vec3 char_pos = aState.followTargetPos;
-		glm::vec3 eye_offset(0.f, 1.6f, 0.f);
+		glm::vec3 eye_offset(0.f, 1.2f, 0.f);
 		glm::vec3 target_pos = char_pos + eye_offset;
 
 		glm::vec3 offset;
-		offset.x = aState.Distance * std::cos(aState.Pitch) * std::sin(aState.Yaw);
-		offset.y = aState.Distance * std::sin(aState.Pitch);
-		offset.z = aState.Distance * std::cos(aState.Pitch) * std::cos(aState.Yaw);
+		offset.x = camera.Distance * std::cos(camera.Pitch) * std::sin(camera.Yaw);
+		offset.y = camera.Distance * std::sin(camera.Pitch);
+		offset.z = camera.Distance * std::cos(camera.Pitch) * std::cos(camera.Yaw);
 
 		glm::vec3 cam_pos = target_pos + offset;
 
@@ -198,7 +240,7 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 		glm::vec3 globalUp(0.f, 1.f, 0.f);
 
 		// 绕视线旋转 Up 向量
-		glm::mat4 rollTransform = glm::rotate(glm::mat4(1.0f), aState.cameraRoll, forwardDir);
+		glm::mat4 rollTransform = glm::rotate(glm::mat4(1.0f), camera.cameraRoll, forwardDir);
 		glm::vec3 dynamicUp = glm::vec3(rollTransform * glm::vec4(globalUp, 0.0f));
 
 		// 唯一的 lookAt 调用，传入倾斜的 dynamicUp
@@ -220,7 +262,7 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 		auto const move = aElapsedTime * cfg::kCameraBaseSpeed *
 			(inputSys->IsActionHeld("Fast") ? cfg::kCameraFastMult : 1.f) *
 			(inputSys->IsActionHeld("Slow") ? cfg::kCameraSlowMult : 1.f);
-		if (aState.isAlive)
+		if (gameplay.isAlive)
 		{
 			if (inputSys->IsActionHeld("MoveForward"))
 				cam = cam * glm::translate(glm::vec3(0.f, 0.f, -move));
@@ -242,13 +284,13 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 void update_scene_uniforms(glsl::SceneUniform& aSceneUniforms, std::uint32_t aFramebufferWidth, std::uint32_t aFramebufferHeight, const engine::UserState& aState)
 {
 	float const aspect = float(aFramebufferWidth) / float(aFramebufferHeight);
-	float const fov = glm::radians(aState.cameraFov);
+	float const fov = glm::radians(aState.camera.cameraFov);
 
 	aSceneUniforms.projection = glm::perspectiveRH_ZO(fov, aspect, cfg::kCameraNear, cfg::kCameraFar);
 	aSceneUniforms.projection[1][1] *= -1.f;
-	aSceneUniforms.camera = glm::inverse(aState.camera2world);
+	aSceneUniforms.camera = glm::inverse(aState.camera.camera2world);
 	aSceneUniforms.projCam = aSceneUniforms.projection * aSceneUniforms.camera;
-	aSceneUniforms.cameraPos = glm::vec4(aState.camera2world[3]);
+	aSceneUniforms.cameraPos = glm::vec4(aState.camera.camera2world[3]);
 
 	aSceneUniforms.lightPos = glm::vec4(-50.0f, 100.0f, -30.0f, 0.0f);
 	aSceneUniforms.lightColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);

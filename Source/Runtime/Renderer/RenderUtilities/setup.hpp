@@ -143,7 +143,9 @@ lut::DescriptorSetLayout create_object_descriptor_layout( lut::VulkanWindow cons
 lut::DescriptorSetLayout create_post_proc_descriptor_layout( lut::VulkanWindow const& );
 
 lut::ImageWithView create_depth_buffer( lut::VulkanWindow const&, lut::Allocator const& );
+lut::ImageWithView create_depth_buffer(lut::VulkanWindow const&, lut::Allocator const&, engine::StereoRenderTargetDesc const&);
 lut::ImageWithView create_offscreen_buffer( lut::VulkanWindow const&, lut::Allocator const& );
+lut::ImageWithView create_offscreen_buffer(lut::VulkanWindow const&, lut::Allocator const&, engine::StereoRenderTargetDesc const&);
 
 // 【新增】：创建用于存储世界空间/观察空间法线的 G-Buffer
 lut::ImageWithView create_normal_buffer(lut::VulkanWindow const&, lut::Allocator const&);

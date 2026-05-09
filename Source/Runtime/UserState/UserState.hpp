@@ -1,156 +1,175 @@
-
 #pragma once
+
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-//UI system for bike
 struct BikeTuning
 {
-	float maxSteerAngleDeg = 25.0f;
-	float steerSpeedDeg = 90.0f;
-	float maxLeanAngleDeg = 30.0f;
-	float leanSpeedDeg = 90.0f;
-	float wheelBase = 1.6f;
-	float driveForce = 1000.0f;
-	float brakeForce = 20.0f;
-	float maxSpeed = 120.0f;
-	float gravityFactor = 100.0f;
+    float maxSteerAngleDeg = 25.0f;
+    float steerSpeedDeg = 90.0f;
+    float maxLeanAngleDeg = 30.0f;
+    float leanSpeedDeg = 90.0f;
+    float wheelBase = 1.6f;
+    float driveForce = 1000.0f;
+    float brakeForce = 20.0f;
+    float maxSpeed = 120.0f;
+    float gravityFactor = 100.0f;
 };
+
 namespace engine {
-	struct UserState
-	{
-		float mouseX = 0.f;
-		float mouseY = 0.f;
+    struct GameplayState
+    {
+        bool isGameStarted = true;
+        bool isGameOver = false;
+        bool isGamePause = false;
 
-		float mouseLastX = 0.f;
-		float mouseLastY = 0.f;
+        bool isAlive = true;
+        int remainingLives = 3;
+        int maxLives = 3;
 
+        int collectedItems = 0;
+        int totalCollectibles = 15;
+        bool allCollected = false;
+    };
 
-		//Spherical Coordinates
-		float Yaw = 0.f;
-		float Pitch = 0.f;
-		float Distance = 0.f;
+    struct CameraState
+    {
+        float Yaw = 0.f;
+        float Pitch = glm::radians(10.0f);
+        float Distance = 6.5f;
 
-		bool previousMouseState = false; // true = right button held
-		bool wasMousing = false; // true = camera active
+        glm::mat4 camera2world = glm::identity<glm::mat4>();
 
-		glm::mat4 camera2world = glm::identity<glm::mat4>();
+        float cameraFov = 85.0f;
+        float targetFov = 85.0f;
+        float targetYaw = 0.f;
+        float targetPitch = glm::radians(10.0f);
+        float targetDistance = 6.5f;
 
-		int renderMode = 0; // 0=Default, 1=Mip, 2=Depth, 3=Deriv
+        float cameraIdleTimer = 0.0f;
+        float bikeYaw = 0.0f;
+        float cameraRoll = 0.0f;
+        float targetCameraRoll = 0.0f;
+    };
 
-		
-		//================UI System================================
-		bool showEngineUi = true;//engine UI toggle with key F1
+    struct UserState
+    {
+        UserState()
+            : Yaw(camera.Yaw)
+            , Pitch(camera.Pitch)
+            , Distance(camera.Distance)
+            , camera2world(camera.camera2world)
+            , cameraFov(camera.cameraFov)
+            , targetFov(camera.targetFov)
+            , targetYaw(camera.targetYaw)
+            , targetPitch(camera.targetPitch)
+            , targetDistance(camera.targetDistance)
+            , cameraIdleTimer(camera.cameraIdleTimer)
+            , bikeYaw(camera.bikeYaw)
+            , cameraRoll(camera.cameraRoll)
+            , targetCameraRoll(camera.targetCameraRoll)
+            , isGameStarted(gameplay.isGameStarted)
+            , isGameOver(gameplay.isGameOver)
+            , isGamePause(gameplay.isGamePause)
+            , isAlive(gameplay.isAlive)
+            , remainingLives(gameplay.remainingLives)
+            , maxLives(gameplay.maxLives)
+            , collectedItems(gameplay.collectedItems)
+            , totalCollectibles(gameplay.totalCollectibles)
+            , allCollected(gameplay.allCollected) {
+        }
 
-		bool particlesEnabled = true;//particle system toggle with key R
+        float mouseX = 0.f;
+        float mouseY = 0.f;
 
-		bool isGameStarted = true;//game start toggle
+        float mouseLastX = 0.f;
+        float mouseLastY = 0.f;
 
-		bool isGameOver = false;//game over toggle
+        bool previousMouseState = false;
+        bool wasMousing = false;
 
-		bool isGamePause = false;//game Pause toggle
+        CameraState camera{};
+        GameplayState gameplay{};
 
-		//UI 窗口的显示开关
-		bool showControlPanel = true;
-		bool showContentBrowser = true;
-		bool showSceneHierarchy = true;
-		bool showEntityInspector = true;
-		bool showConsole = true;
-		bool showLightPanel = true;
-		bool showCameraPanel = true;
-		bool showDebugPanel = true;
-		bool showAudioPanel = true;
+        // Transitional aliases: existing call sites can keep compiling while code migrates to camera/gameplay.
+        float& Yaw;
+        float& Pitch;
+        float& Distance;
+        glm::mat4& camera2world;
+        float& cameraFov;
+        float& targetFov;
+        float& targetYaw;
+        float& targetPitch;
+        float& targetDistance;
+        float& cameraIdleTimer;
+        float& bikeYaw;
+        float& cameraRoll;
+        float& targetCameraRoll;
 
-		bool debugSelectionBounds = false;
-		bool debugCollisionShapes = true;
-		bool frustumCullingEnabled = false; //frustum culling
+        bool& isGameStarted;
+        bool& isGameOver;
+        bool& isGamePause;
+        bool& isAlive;
+        int& remainingLives;
+        int& maxLives;
+        int& collectedItems;
+        int& totalCollectibles;
+        bool& allCollected;
 
-		float frustumCullingOffFps = 0.0f; //off frustum culling fps
-		float frustumCullingOnFps = 0.0f; // On frustum culling fps
-		uint32_t frustumCullingTotalCandidates = 0; // new frustum culling
-		uint32_t frustumCullingVisibleCandidates = 0; // new frustum culling
-		float frustumCullingPadding = 0.5f; // new frustum culling
+        int renderMode = 0;
 
-		bool  lodEnabled = true;    // distance-based LOD selection
-		float lodDebugDistance = -1.0f;   // -1 = inactive; positive value overrides distance for testing
+        bool showEngineUi = true;
+        bool particlesEnabled = true;
 
-		//extreme speed state
-		bool isExtremeSpeed = false;
+        bool showControlPanel = true;
+        bool showContentBrowser = true;
+        bool showSceneHierarchy = true;
+        bool showEntityInspector = true;
+        bool showConsole = true;
+        bool showLightPanel = true;
+        bool showCameraPanel = true;
+        bool showDebugPanel = true;
+        bool showAudioPanel = true;
 
-		BikeTuning bikeTuning{};
+        bool debugSelectionBounds = false;
+        bool debugCollisionShapes = true;
+        bool frustumCullingEnabled = false;
 
-		// 记录当前选中的粒子索引 (-1 表示没选中任何粒子)
-		int activeParticleIndex = -1;
+        float frustumCullingOffFps = 0.0f;
+        float frustumCullingOnFps = 0.0f;
+        uint32_t frustumCullingTotalCandidates = 0;
+        uint32_t frustumCullingVisibleCandidates = 0;
+        float frustumCullingPadding = 0.5f;
 
-		bool isSceneViewportHovered = false;
-		//================UI System================================
-		
+        bool lodEnabled = true;
+        float lodDebugDistance = -1.0f;
 
+        bool isExtremeSpeed = false;
 
+        BikeTuning bikeTuning{};
+        int activeParticleIndex = -1;
+        bool isSceneViewportHovered = false;
 
+        glm::vec3 followTargetPos = glm::vec3(2.f);
+        bool thirdPersonMode = true;
+        float deathFactor = 0.0f;
+        float deathTimer = 0.0f;
+        float bikeSpeed = 0.0f;
+        float bikeSteerAngle = 0.0f;
 
+        bool bloomEnabled = false;
+        bool iblEnabled = true;
+        bool stereoPreviewEnabled = true;
 
+        bool mosaicEnabled = false;
+        bool ssrEnabled = true;
+        bool ssaoEnabled = true;
+        float bloomExposure = 1.0f;
+        float bloomStrength = 1.2f;
+        float bloomThreshold = 1.0f;
+        int bloomKernelRadius = 7;
+        bool bloomUseACES = true;
 
-		//================player================================
-		glm::vec3 followTargetPos = glm::vec3(2.f);
-		bool thirdPersonMode = true;
-		bool isAlive = true;
-		float deathFactor = 0.0f;
-		float deathTimer = 0.0f;
-		float bikeSpeed = 0.0f;
-		float bikeSteerAngle = 0.0f;
-		//================player================================
-
-
-		int  collectedItems  = 0;
-		int  totalCollectibles = 15;
-		bool allCollected    = false;
-
-
-		bool bloomEnabled = true;
-		bool iblEnabled = true; // 默认开启 IBL
-
-
-
-		//================Graphic================================
-		bool mosaicEnabled = false; // key 5 toggle
-
-		// 【新增】：SSR 开关，默认开启
-		bool ssrEnabled = true;
-		bool ssaoEnabled = true; // 默认开启 SSAO
-		// ----- 后处理（可在 UI 实时调节） -----
-		float bloomExposure = 1.0f;      // 合成阶段曝光（传给 composite shader）
-		float bloomStrength = 1.2f;      // Bloom 强度倍数（传给 composite shader）
-		float bloomThreshold = 1.0f;     // 亮度提取阈值（preview / reserved）
-		int   bloomKernelRadius = 7;     // 模糊核半径提示（仅作为 shader 调整参考）
-		bool  bloomUseACES = true;       // 是否使用 ACES 风格色调映射（reserved）
-		//================Graphic================================
-
-
-
-
-
-
-		//================camera================================
-
-		float cameraFov = 85.0f;
-		float targetFov = 85.0f; // 【新增】用于插值的 FOV 目标值
-		// ==========================================
-		// lerp for camera free look
-		float targetYaw = 0.f;
-		float targetPitch = 0.f;
-		float targetDistance = 5.0f;
-
-		// ==========================================
-		// 【新增】：相机自动回正所需变量
-		float cameraIdleTimer = 0.0f; // 记录玩家多久没碰相机了
-		float bikeYaw = 0.0f;         // 记录单车当前的车头真实朝向
-
-		float bikeLeanAngle = 0.0f;    // 接收来自物理系统的压弯角度
-		float cameraRoll = 0.0f;       // 相机当前的 Roll 角度
-		float targetCameraRoll = 0.0f; // 相机目标的 Roll 角度
-		// ==========================================
-		//================camera================================
-
-	};
+        float bikeLeanAngle = 0.0f;
+    };
 } // namespace engine

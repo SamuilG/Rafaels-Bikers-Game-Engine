@@ -115,7 +115,8 @@ void record_commands(
 	VkPipeline skyboxPipe,
 	VkPipelineLayout skyboxPipeLayout,
 	VkDescriptorSet skyboxDescSet,
-	VkBuffer skyboxVBO
+	VkBuffer skyboxVBO,
+	bool aPresentToSwapchain
 )
 {
 	// Begin command buffer
@@ -895,6 +896,17 @@ void record_commands(
 	lut::image_barrier(aCmdBuff, aFinalSceneColor.image,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
+
+	if (!aPresentToSwapchain)
+	{
+		if (auto const res = vkEndCommandBuffer(aCmdBuff); VK_SUCCESS != res)
+		{
+			throw lut::Error("Unable to end recording command buffer\n"
+				"vkEndCommandBuffer() returned {}", lut::to_string(res)
+			);
+		}
+		return;
+	}
 
 	// 准备物理屏幕 (Swapchain) 接收 UI 渲染
 	lut::image_barrier(aCmdBuff, aSwapchainAttach.image,

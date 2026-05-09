@@ -59,7 +59,7 @@ namespace labut2::detail
 		return res;
 	}
 
-	VkInstance create_instance( std::vector<char const*> const& aEnabledLayers, std::vector<char const*> const& aEnabledExtensions, bool aEnableDebugUtils )
+	VkInstance create_instance( std::vector<char const*> const& aEnabledLayers, std::vector<char const*> const& aEnabledExtensions, bool aEnableDebugUtils, std::uint32_t aApiVersion )
 	{
 		// Prepare debug messenger info
 		VkDebugUtilsMessengerCreateInfoEXT debugInfo{};
@@ -82,7 +82,7 @@ namespace labut2::detail
 		appInfo.sType  = VK_STRUCTURE_TYPE_APPLICATION_INFO;
 		appInfo.pApplicationName    = "COMP5892M-application";
 		appInfo.applicationVersion  = 2025; // academic year of 2025/26
-		appInfo.apiVersion          = VK_MAKE_API_VERSION( 0, 1, 4, 0 ); // Version 1.4
+		appInfo.apiVersion          = aApiVersion;
 
 		// Create instance
 		VkInstanceCreateInfo instanceInfo{};

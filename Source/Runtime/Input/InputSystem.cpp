@@ -6,11 +6,11 @@
 
 namespace engine {
     // =======================================================
-    // 【新增】：用于回调函数的全局指针和旧回调存储
+    // 銆愭柊澧炪€戯細鐢ㄤ簬鍥炶皟鍑芥暟鐨勫叏灞€鎸囬拡鍜屾棫鍥炶皟瀛樺偍
     static InputSystem* g_InputSystem = nullptr;
     static GLFWscrollfun s_PrevScrollCallback = nullptr;
 
-    // GLFW 滚轮回调函数
+    // GLFW 婊氳疆鍥炶皟鍑芥暟
     static void ScrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
         // 1. The scroll wheel event is only sent to ImGui if the mouse is not captured by the game
         if (g_InputSystem && !g_InputSystem->IsMouseCaptured()) {
@@ -19,7 +19,7 @@ namespace engine {
             }
         }
 
-        // 2. 将滚轮数据传递给我们的输入系统
+        // 2. 灏嗘粴杞暟鎹紶閫掔粰鎴戜滑鐨勮緭鍏ョ郴缁?
         if (g_InputSystem) {
             g_InputSystem->AddScrollY(static_cast<float>(yoffset));
         }
@@ -135,8 +135,8 @@ namespace engine {
 
         // ==========================================
         // FOV 
-        MapKeyboardAction("ZoomIn", GLFW_KEY_9);  // 9键：放大 (FOV变小)
-        MapKeyboardAction("ZoomOut", GLFW_KEY_0); // 0键：缩小 (FOV变大)
+        MapKeyboardAction("ZoomIn", GLFW_KEY_9);  // 9閿細鏀惧ぇ (FOV鍙樺皬)
+        MapKeyboardAction("ZoomOut", GLFW_KEY_0); // 0閿細缂╁皬 (FOV鍙樺ぇ)
         // ==========================================
 
         MapKeyboardAction("BloomToggle", GLFW_KEY_B);
@@ -145,7 +145,7 @@ namespace engine {
         
         MapKeyboardAction("SSAOToggle", GLFW_KEY_P);
         
-		MapKeyboardAction("ToggleEngineUi", GLFW_KEY_F1);// F1键：切换引擎UI显示//f1： switch engine UI
+		MapKeyboardAction("ToggleEngineUi", GLFW_KEY_F1);// F1閿細鍒囨崲寮曟搸UI鏄剧ず//f1锛?switch engine UI
 
         // --- Application Control ---
         MapKeyboardAction("Quit", GLFW_KEY_ESCAPE);
@@ -156,7 +156,7 @@ namespace engine {
 
         if (!mWindow) return;
         // ==========================================
-        // 提取这一帧的滚轮数据，并清零累加器
+        // 鎻愬彇杩欎竴甯х殑婊氳疆鏁版嵁锛屽苟娓呴浂绱姞鍣?
         mScrollDeltaY = mScrollAccumulatorY;
         mScrollAccumulatorY = 0.0f;
         // ==========================================
@@ -172,6 +172,7 @@ namespace engine {
         UpdateKeyboardStates();
         UpdateGamepadStates();
         UpdateMouseStates();
+        ApplyInjectedStates();
     }
 
     void InputSystem::Shutdown() {
@@ -249,7 +250,7 @@ namespace engine {
     void InputSystem::SetWindow(GLFWwindow* window) {
         mWindow = window;
         if (mWindow) {
-            // 设置新的回调，并接管旧的回调（通常是 ImGui 注册的）
+            // 璁剧疆鏂扮殑鍥炶皟锛屽苟鎺ョ鏃х殑鍥炶皟锛堥€氬父鏄?ImGui 娉ㄥ唽鐨勶級
             s_PrevScrollCallback = glfwSetScrollCallback(mWindow, ScrollCallback);
         }
     }
@@ -294,6 +295,19 @@ namespace engine {
         mActionBindings[actionName].mouseButtons.push_back(glfwMouseButton);
     }
 
+    void InputSystem::ClearInjectedInputs() {
+        mInjectedActionValues.clear();
+        mInjectedRightStick.reset();
+    }
+
+    void InputSystem::InjectActionValue(const std::string& actionName, float value) {
+        mInjectedActionValues[actionName] = std::max(0.0f, value);
+    }
+
+    void InputSystem::InjectGamepadRightStick(glm::vec2 value) {
+        mInjectedRightStick = value;
+    }
+
     void InputSystem::UpdateMouseStates() {
         
         double nx, ny;
@@ -333,6 +347,23 @@ namespace engine {
     bool InputSystem::IsMouseCaptured() const {
         if (!mWindow) return false;
         return glfwGetInputMode(mWindow, GLFW_CURSOR) == GLFW_CURSOR_DISABLED;
+    }
+
+    void InputSystem::ApplyInjectedStates() {
+        for (auto const& [actionName, value] : mInjectedActionValues) {
+            if (value <= 0.0f) {
+                continue;
+            }
+
+            auto& binding = mActionBindings[actionName];
+            binding.isHeld = true;
+            binding.value = std::max(binding.value, value);
+        }
+
+        if (mInjectedRightStick.has_value()) {
+            mGamepadRightX = mInjectedRightStick->x;
+            mGamepadRightY = mInjectedRightStick->y;
+        }
     }
 
 } // namespace engine

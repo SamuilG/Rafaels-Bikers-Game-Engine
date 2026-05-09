@@ -11,11 +11,23 @@
 
 #include <vector>
 #include <cstdint>
+#include <string>
+#include <functional>
 
 #include "vulkan_context.hpp"
 
 namespace labut2
 {
+	struct VulkanCreateRequirements
+	{
+		std::uint32_t apiVersion = VK_MAKE_API_VERSION(0, 1, 4, 0);
+		std::vector<std::string> instanceExtensions;
+		std::vector<std::string> deviceExtensions;
+		std::function<bool(VkInstanceCreateInfo const&, VkInstance&, VkResult&)> createInstanceOverride;
+		std::function<bool(VkInstance, VkPhysicalDevice&)> selectPhysicalDeviceOverride;
+		std::function<bool(VkPhysicalDevice, VkDeviceCreateInfo const&, VkDevice&, VkResult&)> createDeviceOverride;
+	};
+
 	class VulkanWindow final : public VulkanContext
 	{
 		public:
@@ -43,7 +55,9 @@ namespace labut2
 			VkExtent2D swapchainExtent;
 	};
 
-	VulkanWindow make_vulkan_window(bool aVisible = true);
+	VulkanWindow make_vulkan_window(bool aVisible = true, VulkanCreateRequirements const& aRequirements = {});
+	void set_default_vulkan_create_requirements(VulkanCreateRequirements requirements);
+	VulkanCreateRequirements const& get_default_vulkan_create_requirements();
 
 
 	struct SwapChanges

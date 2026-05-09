@@ -20,10 +20,12 @@ namespace lut = labut2;
 
 namespace
 {
+	lut::VulkanCreateRequirements gDefaultVulkanCreateRequirements{};
+
 	// The device selection process has changed somewhat w.r.t. the one used 
 	// earlier (e.g., with VulkanContext.
-	VkPhysicalDevice select_device( VkInstance, VkSurfaceKHR );
-	float score_device( VkPhysicalDevice, VkSurfaceKHR );
+	VkPhysicalDevice select_device( VkInstance, VkSurfaceKHR, lut::VulkanCreateRequirements const& );
+	float score_device( VkPhysicalDevice, VkSurfaceKHR, lut::VulkanCreateRequirements const& );
 
 	std::optional<std::uint32_t> find_queue_family( VkPhysicalDevice, VkQueueFlags, VkSurfaceKHR = VK_NULL_HANDLE );
 
@@ -51,6 +53,16 @@ namespace
 
 namespace labut2
 {
+	void set_default_vulkan_create_requirements(VulkanCreateRequirements requirements)
+	{
+		gDefaultVulkanCreateRequirements = std::move(requirements);
+	}
+
+	VulkanCreateRequirements const& get_default_vulkan_create_requirements()
+	{
+		return gDefaultVulkanCreateRequirements;
+	}
+
 	// VulkanWindow
 	VulkanWindow::VulkanWindow() = default;
 
@@ -110,9 +122,16 @@ namespace labut2
 	}
 
 	// make_vulkan_window()
-	VulkanWindow make_vulkan_window(bool aVisible)
+	VulkanWindow make_vulkan_window(bool aVisible, VulkanCreateRequirements const& aRequirements)
 	{
 		VulkanWindow ret;
+		VulkanCreateRequirements effectiveRequirements = aRequirements;
+		if (effectiveRequirements.instanceExtensions.empty()
+			&& effectiveRequirements.deviceExtensions.empty()
+			&& effectiveRequirements.apiVersion == VulkanCreateRequirements{}.apiVersion)
+		{
+			effectiveRequirements = get_default_vulkan_create_requirements();
+		}
 
 		// Initialize Volk
 		if( auto const res = volkInitialize(); VK_SUCCESS != res )
@@ -162,6 +181,19 @@ namespace labut2
             enabledExensions.emplace_back( requiredExt[i] );
         }
 
+		for (auto const& extension : effectiveRequirements.instanceExtensions)
+		{
+			if (!supportedExtensions.count(extension))
+				throw lut::Error("XR/Vulkan: required instance extension {} not supported", extension);
+
+			bool alreadyEnabled = std::find_if(
+				enabledExensions.begin(), enabledExensions.end(),
+				[&extension](char const* existing) { return 0 == std::strcmp(existing, extension.c_str()); }) != enabledExensions.end();
+
+			if (!alreadyEnabled)
+				enabledExensions.emplace_back(extension.c_str());
+		}
+
 
 		// Validation layers support.
 #		if !defined(NDEBUG) // debug builds only
@@ -184,7 +216,47 @@ namespace labut2
 			std::print( stderr, "Enabling instance extension: {}\n", extension );
 
 		// Create Vulkan instance
-		ret.instance = detail::create_instance( enabledLayers, enabledExensions, enableDebugUtils );
+		if (effectiveRequirements.createInstanceOverride)
+		{
+			VkDebugUtilsMessengerCreateInfoEXT debugInfo{};
+
+			if (enableDebugUtils)
+			{
+				debugInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+				debugInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+				debugInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+				debugInfo.pfnUserCallback = &lut::detail::debug_util_callback;
+			}
+
+			VkApplicationInfo appInfo{};
+			appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+			appInfo.pApplicationName = "COMP5892M-application";
+			appInfo.applicationVersion = 2025;
+			appInfo.apiVersion = effectiveRequirements.apiVersion;
+
+			VkInstanceCreateInfo instanceInfo{};
+			instanceInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+			instanceInfo.enabledLayerCount = std::uint32_t(enabledLayers.size());
+			instanceInfo.ppEnabledLayerNames = enabledLayers.data();
+			instanceInfo.enabledExtensionCount = std::uint32_t(enabledExensions.size());
+			instanceInfo.ppEnabledExtensionNames = enabledExensions.data();
+			instanceInfo.pApplicationInfo = &appInfo;
+			if (enableDebugUtils)
+			{
+				instanceInfo.pNext = &debugInfo;
+			}
+
+			VkResult xrVkResult = VK_SUCCESS;
+			if (!effectiveRequirements.createInstanceOverride(instanceInfo, ret.instance, xrVkResult))
+			{
+				throw Error("Unable to create Vulkan instance through OpenXR\n"
+					"xrCreateVulkanInstanceKHR()/runtime returned {}", to_string(xrVkResult));
+			}
+		}
+		else
+		{
+			ret.instance = detail::create_instance( enabledLayers, enabledExensions, enableDebugUtils, effectiveRequirements.apiVersion );
+		}
 
 		// Load rest of the Vulkan API
 		volkLoadInstance( ret.instance );
@@ -225,7 +297,17 @@ namespace labut2
 
 
 		// Select appropriate Vulkan device
-		ret.physicalDevice = select_device( ret.instance, ret.surface );
+		if (effectiveRequirements.selectPhysicalDeviceOverride)
+		{
+			if (!effectiveRequirements.selectPhysicalDeviceOverride(ret.instance, ret.physicalDevice))
+			{
+				throw Error("OpenXR failed to provide a Vulkan physical device.");
+			}
+		}
+		else
+		{
+			ret.physicalDevice = select_device( ret.instance, ret.surface, effectiveRequirements );
+		}
 		if( VK_NULL_HANDLE == ret.physicalDevice )
 			throw Error( "No suitable physical device found!" );
 
@@ -243,6 +325,15 @@ namespace labut2
 
 		//done TODO: list necessary extensions here
 		enabledDevExensions.emplace_back( VK_KHR_SWAPCHAIN_EXTENSION_NAME );
+		for (auto const& extension : effectiveRequirements.deviceExtensions)
+		{
+			bool alreadyEnabled = std::find_if(
+				enabledDevExensions.begin(), enabledDevExensions.end(),
+				[&extension](char const* existing) { return 0 == std::strcmp(existing, extension.c_str()); }) != enabledDevExensions.end();
+
+			if (!alreadyEnabled)
+				enabledDevExensions.emplace_back(extension.c_str());
+		}
 
 		for( auto const& ext : enabledDevExensions )
 			std::print( stderr, "Enabling device extension: {}\n", ext );
@@ -278,7 +369,52 @@ namespace labut2
         }
 
 
-		ret.device = create_device( ret.physicalDevice, queueFamilyIndices, enabledDevExensions );
+		if (effectiveRequirements.createDeviceOverride)
+		{
+			float queuePriorities[1] = { 1.f };
+			std::vector<VkDeviceQueueCreateInfo> queueInfos(queueFamilyIndices.size());
+			for (std::size_t i = 0; i < queueFamilyIndices.size(); ++i)
+			{
+				auto& queueInfo = queueInfos[i];
+				queueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+				queueInfo.queueFamilyIndex = queueFamilyIndices[i];
+				queueInfo.queueCount = 1;
+				queueInfo.pQueuePriorities = queuePriorities;
+			}
+
+			VkPhysicalDeviceFeatures deviceFeatures{};
+			deviceFeatures.independentBlend = VK_TRUE;
+
+			VkPhysicalDeviceVulkan13Features vk13{};
+			vk13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+			vk13.synchronization2 = VK_TRUE;
+			vk13.dynamicRendering = VK_TRUE;
+
+			VkPhysicalDeviceVulkan14Features vk14{};
+			vk14.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES;
+			vk14.pNext = &vk13;
+			vk14.maintenance5 = VK_TRUE;
+
+			VkDeviceCreateInfo deviceInfo{};
+			deviceInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+			deviceInfo.queueCreateInfoCount = std::uint32_t(queueInfos.size());
+			deviceInfo.pQueueCreateInfos = queueInfos.data();
+			deviceInfo.enabledExtensionCount = std::uint32_t(enabledDevExensions.size());
+			deviceInfo.ppEnabledExtensionNames = enabledDevExensions.data();
+			deviceInfo.pEnabledFeatures = &deviceFeatures;
+			deviceInfo.pNext = &vk14;
+
+			VkResult xrVkResult = VK_SUCCESS;
+			if (!effectiveRequirements.createDeviceOverride(ret.physicalDevice, deviceInfo, ret.device, xrVkResult))
+			{
+				throw Error("Unable to create Vulkan device through OpenXR\n"
+					"xrCreateVulkanDeviceKHR()/runtime returned {}", to_string(xrVkResult));
+			}
+		}
+		else
+		{
+			ret.device = create_device( ret.physicalDevice, queueFamilyIndices, enabledDevExensions );
+		}
 
 		// Retrieve VkQueues
 		vkGetDeviceQueue( ret.device, ret.graphicsFamilyIndex, 0, &ret.graphicsQueue );
@@ -671,7 +807,7 @@ namespace
 
 namespace
 {
-	float score_device( VkPhysicalDevice aPhysicalDev, VkSurfaceKHR aSurface )
+	float score_device( VkPhysicalDevice aPhysicalDev, VkSurfaceKHR aSurface, lut::VulkanCreateRequirements const& aRequirements )
 	{
 		VkPhysicalDeviceProperties props;
 		vkGetPhysicalDeviceProperties( aPhysicalDev, &props );
@@ -711,6 +847,15 @@ namespace
             return -1.f;
         }
 
+		for (auto const& extension : aRequirements.deviceExtensions)
+		{
+			if (!exts.count(extension))
+			{
+				std::print( stderr, "Info: Discarding device '{}': extension {} missing\n", props.deviceName, extension );
+				return -1.f;
+			}
+		}
+
         // check present queue available
         if( !find_queue_family( aPhysicalDev, 0, aSurface ) )
         {
@@ -736,7 +881,7 @@ namespace
 		return score;
 	}
 	
-	VkPhysicalDevice select_device( VkInstance aInstance, VkSurfaceKHR aSurface )
+	VkPhysicalDevice select_device( VkInstance aInstance, VkSurfaceKHR aSurface, lut::VulkanCreateRequirements const& aRequirements )
 	{
 		std::uint32_t numDevices = 0;
 		if( auto const res = vkEnumeratePhysicalDevices( aInstance, &numDevices, nullptr ); VK_SUCCESS != res )
@@ -759,7 +904,7 @@ namespace
 
 		for( auto const device : devices )
 		{
-			auto const score = score_device( device, aSurface );
+			auto const score = score_device( device, aSurface, aRequirements );
 			if( score > bestScore )
 			{
 				bestScore = score;

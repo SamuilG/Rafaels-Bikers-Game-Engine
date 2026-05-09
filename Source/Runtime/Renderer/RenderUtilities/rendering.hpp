@@ -105,7 +105,8 @@ void record_commands(
 	VkPipeline skyboxPipe = VK_NULL_HANDLE,
 	VkPipelineLayout skyboxPipeLayout = VK_NULL_HANDLE,
 	VkDescriptorSet skyboxDescSet = VK_NULL_HANDLE,
-	VkBuffer skyboxVBO = VK_NULL_HANDLE
+	VkBuffer skyboxVBO = VK_NULL_HANDLE,
+	bool aPresentToSwapchain = true
 );
 
 

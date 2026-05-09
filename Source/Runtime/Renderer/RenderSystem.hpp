@@ -24,6 +24,7 @@
 #include <memory>
 #include <chrono>
 #include <functional>
+#include <initializer_list>
 #include <string_view>
 #define GLFW_INCLUDE_NONE
 
@@ -65,7 +66,9 @@ namespace lut = labut2;
 // ================= UI System =================
 #include "../UI/ui.hpp"
 #include "../UI/EngineUi.hpp"
-#include "../UI/GameUi.hpp"
+#include "IGameFlowRenderer.hpp"
+#include "IGameHudRenderer.hpp"
+#include "../XR/IXrSystem.hpp"
 #include <imgui.h>
 #include <backends/imgui_impl_vulkan.h>
 #include "../UI/MousePicker.hpp"
@@ -79,6 +82,7 @@ namespace lut = labut2;
 #include <flecs.h>
 // ================= debug =================
 #include "../Debug/DebugRenderer.hpp"
+#include "../Debug/RenderDebugControls.hpp"
 #include "../Trigger/trigger.hpp"
 #include "../Debug/PhysicsDebugDraw.hpp"
 #include "../Animation/AnimationSystem.hpp"
@@ -95,6 +99,23 @@ namespace glsl {
 namespace engine {
 
     class AudioSystem;
+
+    struct StereoEyeRenderTarget
+    {
+        StereoEyeIndex eye = StereoEyeIndex::Left;
+        StereoRenderTargetDesc desc{};
+        lut::ImageWithView color;
+        lut::ImageWithView depth;
+        VkDescriptorSet previewDescriptor = VK_NULL_HANDLE;
+    };
+
+    struct StereoRenderTargetResources
+    {
+        bool enabled = false;
+        StereoCameraFrame frame{};
+        StereoEyeRenderTarget left{ StereoEyeIndex::Left };
+        StereoEyeRenderTarget right{ StereoEyeIndex::Right };
+    };
 
     class RenderSystem final : public System
     {
@@ -117,15 +138,28 @@ namespace engine {
             mInitProgressCallback = std::move(callback);
         }
 
+        void SetVulkanCreateRequirements(lut::VulkanCreateRequirements requirements) {
+            mVulkanCreateRequirements = std::move(requirements);
+            lut::set_default_vulkan_create_requirements(mVulkanCreateRequirements);
+        }
+
     private:
         bool& mAppRunning;
         SceneManager* mSceneManager;
         engine::AnimationSystem* mAnimationSystem = nullptr;
         engine::AudioSystem* mAudioSystem = nullptr;
+        engine::IGameFlowRenderer* mGameFlowRenderer = nullptr;
+        engine::IGameHudRenderer* mGameHudRenderer = nullptr;
+        engine::IXrSystem* mXrSystem = nullptr;
+        bool mXrThirdPersonAnchorInitialized = false;
+        glm::vec3 mXrInitialHeadCenterPosition = glm::vec3(0.0f);
+        glm::quat mXrInitialHeadCenterOrientation = glm::identity<glm::quat>();
+        glm::quat mXrInitialHeadCenterYaw = glm::identity<glm::quat>();
         InitProgressCallback mInitProgressCallback;
 
         lut::VulkanWindow  mWindow;
         lut::Allocator     mAllocator;
+        lut::VulkanCreateRequirements mVulkanCreateRequirements;
 
         void ReportInitProgress(float progress, std::string_view stage)
         {
@@ -148,6 +182,11 @@ namespace engine {
             if (mWindow.window) return mWindow.window;
             return nullptr;
         }
+
+        lut::VulkanWindow const* GetVulkanWindow() const {
+            if (mWindow.window) return &mWindow;
+            return nullptr;
+        }
        
         void ShowMainWindow() const {
             if (!mWindow.window) {
@@ -158,12 +197,118 @@ namespace engine {
             glfwFocusWindow(mWindow.window);
         }
 
+        void SetXrSystem(engine::IXrSystem* xrSystem) {
+            mXrSystem = xrSystem;
+        }
+
+    private:
+        static glm::mat4 BuildStereoHeadCenterWorld(const StereoCameraFrame& frame) {
+            glm::mat4 headCenterWorld = frame.left.worldFromEye;
+            glm::vec3 const centerPos = 0.5f * (frame.left.worldPosition + frame.right.worldPosition);
+            headCenterWorld[3] = glm::vec4(centerPos, 1.0f);
+            return headCenterWorld;
+        }
+
+        static glm::quat ExtractYawRotation(glm::mat4 const& worldFromHead)
+        {
+            glm::vec3 forward = -glm::normalize(glm::vec3(worldFromHead[2]));
+            forward.y = 0.0f;
+            if (glm::dot(forward, forward) < 1e-6f) {
+                return glm::identity<glm::quat>();
+            }
+
+            forward = glm::normalize(forward);
+            float const yaw = std::atan2(forward.x, forward.z);
+            return glm::angleAxis(yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+        }
+
+        static glm::mat4 ComposeTransform(glm::quat const& orientation, glm::vec3 const& position)
+        {
+            glm::mat4 worldFromObject = glm::mat4_cast(glm::normalize(orientation));
+            worldFromObject[3] = glm::vec4(position, 1.0f);
+            return worldFromObject;
+        }
+
+        static StereoEyeView ComposeThirdPersonEyeView(
+            const StereoEyeView& xrEyeView,
+            const glm::mat4& xrHeadCenterWorld,
+            const glm::mat4& composedHeadCenterWorld,
+            float xrMetersToWorldUnits)
+        {
+            StereoEyeView composedEye = xrEyeView;
+            glm::mat4 eyeLocalFromHead = glm::inverse(xrHeadCenterWorld) * xrEyeView.worldFromEye;
+            eyeLocalFromHead[3] = glm::vec4(glm::vec3(eyeLocalFromHead[3]) * xrMetersToWorldUnits, 1.0f);
+            composedEye.worldFromEye = composedHeadCenterWorld * eyeLocalFromHead;
+            composedEye.view = glm::inverse(composedEye.worldFromEye);
+            composedEye.viewProjection = composedEye.projection * composedEye.view;
+            composedEye.worldPosition = glm::vec3(composedEye.worldFromEye[3]);
+            return composedEye;
+        }
+
+        StereoCameraFrame ComposeThirdPersonXrStereoFrame(
+            const StereoCameraFrame& anchorFrame,
+            const StereoCameraFrame& xrFrame)
+        {
+            constexpr float kXrMetersToWorldUnits = 8.0f;
+
+            StereoCameraFrame composedFrame = xrFrame;
+            composedFrame.enabled = true;
+            composedFrame.ipdMeters = xrFrame.ipdMeters;
+            composedFrame.aspectRatio = xrFrame.aspectRatio;
+
+            glm::mat4 const xrHeadCenterWorld = BuildStereoHeadCenterWorld(xrFrame);
+            glm::vec3 const xrHeadCenterPosition = glm::vec3(xrHeadCenterWorld[3]);
+            glm::quat const xrHeadCenterOrientation = glm::quat_cast(xrHeadCenterWorld);
+            if (!mXrThirdPersonAnchorInitialized) {
+                mXrInitialHeadCenterPosition = xrHeadCenterPosition;
+                mXrInitialHeadCenterOrientation = xrHeadCenterOrientation;
+                mXrInitialHeadCenterYaw = ExtractYawRotation(xrHeadCenterWorld);
+                mXrThirdPersonAnchorInitialized = true;
+            }
+
+            glm::mat4 const anchorHeadCenterWorld = BuildStereoHeadCenterWorld(anchorFrame);
+            glm::quat const anchorYaw = ExtractYawRotation(anchorHeadCenterWorld);
+            glm::vec3 const anchorHeadCenterPosition = glm::vec3(anchorHeadCenterWorld[3]);
+
+            glm::vec3 stageDelta = xrHeadCenterPosition - mXrInitialHeadCenterPosition;
+            glm::vec3 localStageDelta = glm::inverse(mXrInitialHeadCenterYaw) * stageDelta;
+            glm::vec3 localWorldDelta = localStageDelta * kXrMetersToWorldUnits;
+
+            glm::vec3 worldHorizontalDelta =
+                anchorYaw * glm::vec3(localWorldDelta.x, 0.0f, localWorldDelta.z);
+
+            glm::vec3 composedHeadCenterPosition = anchorHeadCenterPosition;
+            composedHeadCenterPosition.x += worldHorizontalDelta.x;
+            composedHeadCenterPosition.z += worldHorizontalDelta.z;
+            composedHeadCenterPosition.y = mState->followTargetPos.y + (xrHeadCenterPosition.y * kXrMetersToWorldUnits);
+
+            glm::quat const headRotationDelta =
+                glm::normalize(glm::inverse(mXrInitialHeadCenterOrientation) * xrHeadCenterOrientation);
+            glm::quat const anchorOrientation = glm::quat_cast(anchorHeadCenterWorld);
+            glm::mat4 const composedHeadCenterWorld = ComposeTransform(
+                glm::normalize(anchorOrientation * headRotationDelta),
+                composedHeadCenterPosition);
+
+            composedFrame.left = ComposeThirdPersonEyeView(
+                xrFrame.left,
+                xrHeadCenterWorld,
+                composedHeadCenterWorld,
+                kXrMetersToWorldUnits);
+            composedFrame.right = ComposeThirdPersonEyeView(
+                xrFrame.right,
+                xrHeadCenterWorld,
+                composedHeadCenterWorld,
+                kXrMetersToWorldUnits);
+            return composedFrame;
+        }
+
+    public:
         //==============UI System========= Draw the main menu UI
         void DrawMainMenuUI() {
             // 游戏未开始// Game not started
-            if (!mState->isGameStarted) {
+            if (!mState->gameplay.isGameStarted) {
                 // Draw the main menu UI主菜单
-                EngineUi::DrawMainMenu(this, mAppRunning, mState->isGameStarted);
+                EngineUi::DrawMainMenu(this, mAppRunning, mState->gameplay.isGameStarted);
             }
         }
 
@@ -277,7 +422,7 @@ namespace engine {
             // ==========================================
 			mWindow = lut::make_vulkan_window(false);//不立即显示窗口，等加载完毕再显示// Create a Vulkan window when  it  loading is complete
             glfwSetWindowUserPointer(mWindow.window, mState);
-            mState->camera2world = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 2.0f, 10.0f));
+            mState->camera.camera2world = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 2.0f, 10.0f));
 
             mAllocator = lut::create_allocator(mWindow);
             mCmdPool = lut::create_command_pool(mWindow, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
@@ -405,6 +550,7 @@ namespace engine {
 
             mDepthBuffer = create_depth_buffer(mWindow, mAllocator);
             mOffscreenImage = create_offscreen_buffer(mWindow, mAllocator);
+            RecreateStereoRenderTargets();
 
             // 【清理修复】：SSR 只初始化这一次！
             mNormalImage = create_normal_buffer(mWindow, mAllocator);
@@ -493,7 +639,7 @@ namespace engine {
             imageInfo.imageType = VK_IMAGE_TYPE_2D; imageInfo.format = mWindow.swapchainFormat;
             imageInfo.extent = { mWindow.swapchainExtent.width, mWindow.swapchainExtent.height, 1 };
             imageInfo.mipLevels = 1; imageInfo.arrayLayers = 1; imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-            imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL; imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+            imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL; imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
             imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE; imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
             VmaAllocationCreateInfo allocInfo{ .usage = VMA_MEMORY_USAGE_GPU_ONLY };
             VkImage rawImage; VmaAllocation rawAlloc;
@@ -706,7 +852,7 @@ namespace engine {
             // =======================================================
        // 基于时间轴（Timeline）的死亡特效计算
        // =======================================================
-            if (!mState->isAlive) {
+            if (!mState->gameplay.isAlive) {
                 // 1. 累加死亡时间
                 mState->deathTimer += deltaTime;
 
@@ -749,35 +895,7 @@ namespace engine {
                 }
             }
             //===========================UI System================================
-            // game over debug
-            if (ImGui::IsKeyPressed(ImGuiKey_G))
-            {
-                mState->isGameOver = !mState->isGameOver; // 切换死亡状态进行测试// Toggle game over state for testing
-
-                if (mState->isGameOver)
-                {
-                    engine::EngineUi::LogPrintf("Test: Game Over triggered via 'G' key.\n");
-
-                }
-                else
-                {
-                    engine::EngineUi::LogPrintf("Test: Back to Game/Menu.\n");
-                }
-            }// game over debug
-            // game pause debug
-            if (ImGui::IsKeyPressed(ImGuiKey_H))
-            {
-                mState->isGamePause = !mState->isGamePause; // 切换死亡状态进行测试// Toggle game pause state for testing
-
-                if (mState->isGamePause)
-                {
-                    engine::EngineUi::LogPrintf("Test: Game pause triggered via 'H' key.\n");
-                }
-                else
-                {
-                    engine::EngineUi::LogPrintf("Test: Back to Game/Menu.\n");
-                }
-            }
+            RenderDebugControls::HandleUiDebugHotkeys(*mState);
 
 
             // 1. Ctrl + S 保存项目
@@ -811,18 +929,7 @@ namespace engine {
             }
             //start gmae menu
            // 如果游戏还没开始，只画主菜单
-            if (!mState->isGameStarted) {
-                EngineUi::DrawMainMenu(this, mAppRunning, mState->isGameStarted);
-            }
-            else if (mState->isGameOver) {
-                // gameover UI
-                EngineUi::DrawGameOver(this, *mState, mAppRunning);
-            }
-            else if (mState->isGamePause) {
-                // gameover UI 
-                EngineUi::DrawGamePause(this, *mState, mAppRunning);
-            }
-            else
+            if (!(mGameFlowRenderer && mGameFlowRenderer->DrawBlockingUI(this, *mState, mAppRunning)))
             {
                 // Prepare data for this frame
                 glsl::SceneUniform sceneUniforms{};
@@ -903,7 +1010,9 @@ namespace engine {
                 EngineUi::DrawSceneViewport(m_sceneViewportTexId, this, mSceneManager, view, gizmoProj, mSelectedEntityId, *mState);
 				
 				//game HUD============================
-                GameUi::DrawHud(this, *mState, EngineUi::GetSceneViewportPos(), EngineUi::GetSceneViewportSize());
+                if (mGameHudRenderer) {
+                    mGameHudRenderer->DrawHud(this, *mState, EngineUi::GetSceneViewportPos(), EngineUi::GetSceneViewportSize());
+                }
 
                 glm::mat4 viewProj = gizmoProj * view;
                 glm::vec3 cameraPos = glm::vec3(glm::inverse(view)[3]); // 提取逆 view 矩阵第 4 列作为位置
@@ -1112,6 +1221,7 @@ namespace engine {
                     // 1. 重建所有与屏幕尺寸绑定的画板 (Image)
                     mDepthBuffer = create_depth_buffer(mWindow, mAllocator);
                     mOffscreenImage = create_offscreen_buffer(mWindow, mAllocator);
+                    RecreateStereoRenderTargets();
                     mVisImage = create_vis_image(mWindow, mAllocator);
                     mNormalImage = create_normal_buffer(mWindow, mAllocator);
                     mSsrOutputImage = create_offscreen_buffer(mWindow, mAllocator);
@@ -1131,7 +1241,7 @@ namespace engine {
                     imageInfo.arrayLayers = 1;
                     imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
                     imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-                    imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+                    imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
                     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
                     imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
@@ -1264,7 +1374,7 @@ namespace engine {
 
                     // 2. 设置越肩的偏移量 
                     float shoulderOffsetX = 1.0f; //left and right
-                    float shoulderOffsetY = -1.0f; // height
+                    float shoulderOffsetY = -1.3f; // height
                     float shoulderOffsetZ = 0.0f; // 调整注视点前后
 
                     // 3. 计算出最终的越肩目标点
@@ -1294,20 +1404,7 @@ namespace engine {
                     EngineUi::ShowToast(mState->showEngineUi ? "[ Engine UI Visible ]" : "[ Engine UI Hidden ]");
                 }
                 
-                // Debug Render Modes
-                if (mInputSystem->IsActionPressed("Default")) mState->renderMode = 0;
-                if (mInputSystem->IsActionPressed("DebugMipmap")) mState->renderMode = 1;
-                if (mInputSystem->IsActionPressed("DebugDepth")) mState->renderMode = 2;
-                if (mInputSystem->IsActionPressed("DebugDerivatives")) mState->renderMode = 3;
-                if (mInputSystem->IsActionPressed("DebugMosaic")) mState->mosaicEnabled = !mState->mosaicEnabled;
-                if (mInputSystem->IsActionPressed("DebugOverdraw")) mState->renderMode = 4;
-                if (mInputSystem->IsActionPressed("DebugOvershading")) mState->renderMode = 5;
-                if (mInputSystem->IsActionPressed("DebugShadows")) mState->renderMode = 6;
-                
-                if (mInputSystem->IsActionPressed("PrintCameraPos")) {
-                    auto const pos = mState->camera2world[3];
-                    std::printf("Camera Pos: %.4f, %.4f, %.4f\n", pos.x, pos.y, pos.z);
-                }
+                RenderDebugControls::HandleRenderDebugActions(*mState, *mInputSystem);
             }
             //
 
@@ -1544,7 +1641,7 @@ namespace engine {
             // 【修改这里的 5.0f】：
             // 调大 (比如 10.0f)：特效响应极其灵敏，一踩油门特效瞬间拉满。
             // 调小 (比如 2.0f) ：特效会非常缓慢地浮现，有种“逐渐进入超空间”的深邃感
-            static float smoothedSpeedFactor = 1.0f;
+            static float smoothedSpeedFactor = 0.0f;
             smoothedSpeedFactor += (targetSpeedFactor - smoothedSpeedFactor) * 5.0f * dt;
             std::vector<RenderBatch> skinnedBatches;
             if (mSceneManager && mBoneSSBO.buffer != VK_NULL_HANDLE) {
@@ -1555,10 +1652,102 @@ namespace engine {
                     static_cast<glm::mat4*>(ptr), kMaxBoneMatrices, boneCount);
                 vmaUnmapMemory(mAllocator.allocator, mBoneSSBO.allocation);
             }
+            if (mState->stereoPreviewEnabled) {
+                RecreateStereoRenderTargets();
+                StereoCameraFrame const anchorFrame = build_stereo_camera_frame(
+                    *mState,
+                    static_cast<std::uint32_t>(finalWidth),
+                    static_cast<std::uint32_t>(finalHeight));
+                engine::XrFrameState xrFrameState{};
+                if (mXrSystem && mXrSystem->TryGetFrameState(xrFrameState) && xrFrameState.hasValidViews) {
+                    mStereoRenderTargets.frame = ComposeThirdPersonXrStereoFrame(anchorFrame, xrFrameState.stereoFrame);
+                }
+                else {
+                    mXrThirdPersonAnchorInitialized = false;
+                    mStereoRenderTargets.frame = anchorFrame;
+                }
+
+                RecreateStereoSharedIntermediateImages();
+
+                auto renderStereoEye = [&](VkCommandBuffer eyeCmd, StereoEyeView const& eyeView, StereoEyeRenderTarget& eyeTarget) {
+                    UpdateCompositeDesc(
+                        mCompositeDescriptors[mFrameIndex],
+                        mOffscreenImage.view,
+                        mFinalBloomImage.view,
+                        mSsrOutputImage.view,
+                        mMosaicUBOs[mFrameIndex].buffer,
+                        mSsaoRawImage.view
+                    );
+                    UpdateSsrDesc(
+                        mSsrDescriptors[mFrameIndex],
+                        mOffscreenImage.view,
+                        eyeTarget.depth.view,
+                        mNormalImage.view,
+                        mSceneUBO.buffer
+                    );
+                    UpdateSsaoDesc(
+                        mSsaoDescriptors[mFrameIndex],
+                        eyeTarget.depth.view,
+                        mNormalImage.view,
+                        mSceneUBO.buffer
+                    );
+
+                    glsl::SceneUniform eyeUniforms = BuildStereoEyeSceneUniform(sceneUniforms, eyeView);
+                    ImageAndView eyeTargetView{ eyeTarget.color.image, eyeTarget.color.view };
+                    ImageAndView eyeDepthView{ eyeTarget.depth.image, eyeTarget.depth.view };
+
+                    RenderSceneForEye(
+                        eyeCmd,
+                        &eyeView,
+                        &eyeTarget,
+                        currentOpaque,
+                        currentAlpha,
+                        eyeTargetView,
+                        eyeDepthView,
+                        eyeUniforms,
+                        *currentDescs,
+                        finalBatches,
+                        clearColor,
+                        currentBloomStrength,
+                        smoothedSpeedFactor,
+                        eyeTargetView,
+                        shadowTarget,
+                        skinnedBatches,
+                        false
+                    );
+                };
+
+                VkCommandBuffer leftEyeCmd = lut::alloc_command_buffer(mWindow, mCmdPool.handle);
+                VkCommandBuffer rightEyeCmd = lut::alloc_command_buffer(mWindow, mCmdPool.handle);
+                std::array<engine::XrSwapchainEyeImage, 2> xrSwapchainImages{};
+                bool const hasXrSwapchainTargets = mXrSystem && mXrSystem->TryGetSwapchainImages(xrSwapchainImages);
+
+                renderStereoEye(leftEyeCmd, mStereoRenderTargets.frame.left, mStereoRenderTargets.left);
+                renderStereoEye(rightEyeCmd, mStereoRenderTargets.frame.right, mStereoRenderTargets.right);
+                RecordStereoOutputs(
+                    mCmdBuffers[mFrameIndex],
+                    colorTarget,
+                    hasXrSwapchainTargets ? &xrSwapchainImages : nullptr);
+                if (hasXrSwapchainTargets) {
+                    mXrSystem->MarkSwapchainImagesRendered();
+                }
+                mDebugRenderer.Clear();
+
+                SubmitStereoCommands(
+                    { leftEyeCmd, rightEyeCmd, mCmdBuffers[mFrameIndex] },
+                    mFrameDone[mFrameIndex].handle,
+                    mImageAvailable[mFrameIndex].handle,
+                    mRenderFinished[imageIndex].handle);
+
+                present_results(mWindow.presentQueue, mWindow.swapchain,
+                    imageIndex, mRenderFinished[imageIndex].handle,
+                    mRecreateSwapchain);
+                return;
+            }
             // =========================================================
             // Record and submit commands for this frame
             // 在 Update 函数末尾找到 record_commands 调用，修改如下：
-            record_commands(
+            RenderSceneForEye(
                 mCmdBuffers[mFrameIndex],
                 currentOpaque,
                 currentAlpha,
@@ -1860,6 +2049,8 @@ namespace engine {
 
         // Wire up the animation system so we can call register_model
         void set_animation_system(engine::AnimationSystem* anim) { mAnimationSystem = anim; }
+        void SetGameFlowRenderer(engine::IGameFlowRenderer* gameFlowRenderer) { mGameFlowRenderer = gameFlowRenderer; }
+        void SetGameHudRenderer(engine::IGameHudRenderer* gameHudRenderer) { mGameHudRenderer = gameHudRenderer; }
 
         // Load a skinned GLB and register it with the animation system.
         // Creates entities with AnimationComponent + SkinComponent.
@@ -2423,6 +2614,617 @@ void InitSkybox()
             glfwPollEvents();
         }
 
+        void RecreateStereoRenderTargets()
+        {
+            mStereoRenderTargets.enabled = mState && mState->stereoPreviewEnabled;
+            if (!mStereoRenderTargets.enabled) {
+                return;
+            }
+
+            auto const desc = StereoRenderTargetDesc{
+                mWindow.swapchainExtent.width,
+                mWindow.swapchainExtent.height,
+                mWindow.swapchainFormat,
+                cfg::kDepthFormat
+            };
+
+            bool const stereoTargetsMatch =
+                mStereoRenderTargets.left.color.image != VK_NULL_HANDLE &&
+                mStereoRenderTargets.left.depth.image != VK_NULL_HANDLE &&
+                mStereoRenderTargets.right.color.image != VK_NULL_HANDLE &&
+                mStereoRenderTargets.right.depth.image != VK_NULL_HANDLE &&
+                mStereoRenderTargets.left.desc.width == desc.width &&
+                mStereoRenderTargets.left.desc.height == desc.height &&
+                mStereoRenderTargets.left.desc.colorFormat == desc.colorFormat &&
+                mStereoRenderTargets.left.desc.depthFormat == desc.depthFormat &&
+                mStereoRenderTargets.right.desc.width == desc.width &&
+                mStereoRenderTargets.right.desc.height == desc.height &&
+                mStereoRenderTargets.right.desc.colorFormat == desc.colorFormat &&
+                mStereoRenderTargets.right.desc.depthFormat == desc.depthFormat;
+
+            if (stereoTargetsMatch) {
+                return;
+            }
+
+            mStereoRenderTargets.left.desc = desc;
+            mStereoRenderTargets.right.desc = desc;
+            mStereoRenderTargets.left.color = create_offscreen_buffer(mWindow, mAllocator, mStereoRenderTargets.left.desc);
+            mStereoRenderTargets.left.depth = create_depth_buffer(mWindow, mAllocator, mStereoRenderTargets.left.desc);
+            mStereoRenderTargets.right.color = create_offscreen_buffer(mWindow, mAllocator, mStereoRenderTargets.right.desc);
+            mStereoRenderTargets.right.depth = create_depth_buffer(mWindow, mAllocator, mStereoRenderTargets.right.desc);
+        }
+
+        void RecreateStereoSharedIntermediateImages()
+        {
+            if (mOffscreenImage.image != VK_NULL_HANDLE &&
+                mNormalImage.image != VK_NULL_HANDLE &&
+                mSsrOutputImage.image != VK_NULL_HANDLE &&
+                mCompositeOutputImage.image != VK_NULL_HANDLE &&
+                mBrightImage.image != VK_NULL_HANDLE &&
+                mBlurTempImage.image != VK_NULL_HANDLE &&
+                mFinalBloomImage.image != VK_NULL_HANDLE &&
+                mSsaoRawImage.image != VK_NULL_HANDLE) {
+                return;
+            }
+
+            mOffscreenImage = create_offscreen_buffer(mWindow, mAllocator);
+            mNormalImage = create_normal_buffer(mWindow, mAllocator);
+            mSsrOutputImage = create_offscreen_buffer(mWindow, mAllocator);
+            mCompositeOutputImage = create_offscreen_buffer(mWindow, mAllocator);
+            mBrightImage = create_offscreen_buffer(mWindow, mAllocator);
+            mBlurTempImage = create_offscreen_buffer(mWindow, mAllocator);
+            mFinalBloomImage = create_offscreen_buffer(mWindow, mAllocator);
+            mSsaoRawImage = create_ssao_raw_buffer(mWindow, mAllocator);
+
+            UpdatePostDescImage(mPostDescriptors, mOffscreenImage.view);
+            UpdatePostDescImage(mVisDescriptors, mVisImage.view);
+            UpdatePostDescImage(mBlurHorizDescriptors, mBrightImage.view);
+            UpdatePostDescImage(mBlurVertDescriptors, mBlurTempImage.view);
+            UpdatePostDescImage(mSpeedPostDescriptors, mCompositeOutputImage.view);
+
+            for (size_t i = 0; i < mCmdBuffers.size(); ++i) {
+                UpdateCompositeDesc(
+                    mCompositeDescriptors[i],
+                    mOffscreenImage.view,
+                    mFinalBloomImage.view,
+                    mSsrOutputImage.view,
+                    mMosaicUBOs[i].buffer,
+                    mSsaoRawImage.view
+                );
+            }
+        }
+
+        glsl::SceneUniform BuildStereoEyeSceneUniform(
+            glsl::SceneUniform const& aBaseSceneUniform,
+            StereoEyeView const& aEyeView) const
+        {
+            glsl::SceneUniform eyeUniforms = aBaseSceneUniform;
+            eyeUniforms.camera = aEyeView.view;
+            eyeUniforms.projection = aEyeView.projection;
+            eyeUniforms.projCam = aEyeView.viewProjection;
+            eyeUniforms.cameraPos = glm::vec4(aEyeView.worldPosition, 1.0f);
+            return eyeUniforms;
+        }
+
+        void SubmitStereoCommands(
+            std::initializer_list<VkCommandBuffer> aCommandBuffers,
+            VkFence aFence,
+            VkSemaphore aWaitSemaphore,
+            VkSemaphore aSignalSemaphore)
+        {
+            std::vector<VkCommandBufferSubmitInfo> submitInfos;
+            submitInfos.reserve(aCommandBuffers.size());
+            for (VkCommandBuffer cmdBuffer : aCommandBuffers) {
+                VkCommandBufferSubmitInfo cmdInfo{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO };
+                cmdInfo.commandBuffer = cmdBuffer;
+                submitInfos.push_back(cmdInfo);
+            }
+
+            VkSemaphoreSubmitInfo waitInfo{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
+            waitInfo.semaphore = aWaitSemaphore;
+            waitInfo.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+
+            VkSemaphoreSubmitInfo signalInfo{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
+            signalInfo.semaphore = aSignalSemaphore;
+            signalInfo.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+
+            VkSubmitInfo2 submitInfo{ VK_STRUCTURE_TYPE_SUBMIT_INFO_2 };
+            submitInfo.waitSemaphoreInfoCount = 1;
+            submitInfo.pWaitSemaphoreInfos = &waitInfo;
+            submitInfo.commandBufferInfoCount = static_cast<uint32_t>(submitInfos.size());
+            submitInfo.pCommandBufferInfos = submitInfos.data();
+            submitInfo.signalSemaphoreInfoCount = 1;
+            submitInfo.pSignalSemaphoreInfos = &signalInfo;
+
+            if (auto const res = vkQueueSubmit2(mWindow.graphicsQueue, 1, &submitInfo, aFence); VK_SUCCESS != res) {
+                throw lut::Error("Unable to submit stereo command buffers to queue\n"
+                    "vkQueueSubmit2() returned {}", lut::to_string(res));
+            }
+        }
+
+        void RecordStereoOutputs(
+            VkCommandBuffer aCmdBuffer,
+            ImageAndView const& aSwapchainTarget,
+            std::array<engine::XrSwapchainEyeImage, 2> const* aXrSwapchainImages = nullptr)
+        {
+            VkCommandBufferBeginInfo beginInfo{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+            beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            if (auto const res = vkBeginCommandBuffer(aCmdBuffer, &beginInfo); VK_SUCCESS != res) {
+                throw lut::Error("Unable to begin stereo preview command buffer\n"
+                    "vkBeginCommandBuffer() returned {}", lut::to_string(res));
+            }
+
+            VkImageSubresourceRange colorRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+
+            auto transition_to_transfer_src = [&](VkImage image) {
+                lut::image_barrier(
+                    aCmdBuffer,
+                    image,
+                    VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                    VK_ACCESS_2_SHADER_READ_BIT,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                    VK_ACCESS_2_TRANSFER_READ_BIT,
+                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                    colorRange
+                );
+            };
+
+            transition_to_transfer_src(mStereoRenderTargets.left.color.image);
+            transition_to_transfer_src(mStereoRenderTargets.right.color.image);
+
+            if (aXrSwapchainImages) {
+                auto blit_eye_to_xr = [&](StereoEyeRenderTarget const& sourceEye, engine::XrSwapchainEyeImage const& xrEyeImage) {
+                    if (xrEyeImage.image == VK_NULL_HANDLE || xrEyeImage.width == 0 || xrEyeImage.height == 0) {
+                        return;
+                    }
+
+                    lut::image_barrier(
+                        aCmdBuffer,
+                        xrEyeImage.image,
+                        VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                        VK_ACCESS_2_NONE,
+                        VK_IMAGE_LAYOUT_UNDEFINED,
+                        VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                        VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        colorRange
+                    );
+
+                    VkImageBlit xrBlit{};
+                    xrBlit.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+                    xrBlit.srcOffsets[1] = {
+                        static_cast<int32_t>(sourceEye.desc.width),
+                        static_cast<int32_t>(sourceEye.desc.height),
+                        1
+                    };
+                    xrBlit.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+                    xrBlit.dstOffsets[1] = {
+                        static_cast<int32_t>(xrEyeImage.width),
+                        static_cast<int32_t>(xrEyeImage.height),
+                        1
+                    };
+
+                    vkCmdBlitImage(
+                        aCmdBuffer,
+                        sourceEye.color.image,
+                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        xrEyeImage.image,
+                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        1,
+                        &xrBlit,
+                        VK_FILTER_LINEAR
+                    );
+
+                    lut::image_barrier(
+                        aCmdBuffer,
+                        xrEyeImage.image,
+                        VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                        VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                        colorRange
+                    );
+                };
+
+                blit_eye_to_xr(mStereoRenderTargets.left, (*aXrSwapchainImages)[0]);
+                blit_eye_to_xr(mStereoRenderTargets.right, (*aXrSwapchainImages)[1]);
+            }
+
+            lut::image_barrier(
+                aCmdBuffer,
+                mFinalSceneImg.image,
+                VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                VK_ACCESS_2_NONE,
+                VK_IMAGE_LAYOUT_UNDEFINED,
+                VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                colorRange
+            );
+
+            VkOffset3D leftSrcMax{
+                static_cast<int32_t>(mStereoRenderTargets.left.desc.width),
+                static_cast<int32_t>(mStereoRenderTargets.left.desc.height),
+                1
+            };
+            VkOffset3D rightSrcMax{
+                static_cast<int32_t>(mStereoRenderTargets.right.desc.width),
+                static_cast<int32_t>(mStereoRenderTargets.right.desc.height),
+                1
+            };
+
+            VkImageBlit leftBlit{};
+            leftBlit.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+            leftBlit.srcOffsets[1] = leftSrcMax;
+            leftBlit.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+            leftBlit.dstOffsets[0] = { 0, 0, 0 };
+            leftBlit.dstOffsets[1] = {
+                static_cast<int32_t>(mWindow.swapchainExtent.width / 2),
+                static_cast<int32_t>(mWindow.swapchainExtent.height),
+                1
+            };
+
+            VkImageBlit rightBlit = leftBlit;
+            rightBlit.srcOffsets[1] = rightSrcMax;
+            rightBlit.dstOffsets[0] = {
+                static_cast<int32_t>(mWindow.swapchainExtent.width / 2),
+                0,
+                0
+            };
+            rightBlit.dstOffsets[1] = {
+                static_cast<int32_t>(mWindow.swapchainExtent.width),
+                static_cast<int32_t>(mWindow.swapchainExtent.height),
+                1
+            };
+
+            vkCmdBlitImage(
+                aCmdBuffer,
+                mStereoRenderTargets.left.color.image,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                mFinalSceneImg.image,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                1,
+                &leftBlit,
+                VK_FILTER_LINEAR
+            );
+
+            vkCmdBlitImage(
+                aCmdBuffer,
+                mStereoRenderTargets.right.color.image,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                mFinalSceneImg.image,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                1,
+                &rightBlit,
+                VK_FILTER_LINEAR
+            );
+
+            lut::image_barrier(
+                aCmdBuffer,
+                mFinalSceneImg.image,
+                VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                VK_ACCESS_2_SHADER_READ_BIT,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                colorRange
+            );
+
+            lut::image_barrier(
+                aCmdBuffer,
+                aSwapchainTarget.image,
+                VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                VK_ACCESS_2_NONE,
+                VK_IMAGE_LAYOUT_UNDEFINED,
+                VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                colorRange
+            );
+
+            VkRenderingAttachmentInfo uiColorAttach{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+            uiColorAttach.imageView = aSwapchainTarget.view;
+            uiColorAttach.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            uiColorAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            uiColorAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            uiColorAttach.clearValue.color = { 0.12f, 0.12f, 0.12f, 1.0f };
+
+            VkRenderingInfo uiRenderInfo{ VK_STRUCTURE_TYPE_RENDERING_INFO };
+            uiRenderInfo.renderArea.offset = { 0, 0 };
+            uiRenderInfo.renderArea.extent = mWindow.swapchainExtent;
+            uiRenderInfo.layerCount = 1;
+            uiRenderInfo.colorAttachmentCount = 1;
+            uiRenderInfo.pColorAttachments = &uiColorAttach;
+
+            vkCmdBeginRendering(aCmdBuffer, &uiRenderInfo);
+            extern ImGuiRenderer imguiRenderer;
+            imguiRenderer.Render(aCmdBuffer);
+            vkCmdEndRendering(aCmdBuffer);
+
+            lut::image_barrier(
+                aCmdBuffer,
+                aSwapchainTarget.image,
+                VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
+                VK_ACCESS_2_NONE,
+                VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                colorRange
+            );
+
+            if (auto const res = vkEndCommandBuffer(aCmdBuffer); VK_SUCCESS != res) {
+                throw lut::Error("Unable to end stereo preview command buffer\n"
+                    "vkEndCommandBuffer() returned {}", lut::to_string(res));
+            }
+        }
+
+        void RenderSceneForEye(
+            VkCommandBuffer aCmdBuffer,
+            StereoEyeView const* aEyeView,
+            StereoEyeRenderTarget const* aEyeTarget,
+            VkPipeline aCurrentOpaque,
+            VkPipeline aCurrentAlpha,
+            ImageAndView const& aColorTarget,
+            ImageAndView const& aDepthTarget,
+            glsl::SceneUniform const& aSceneUniforms,
+            std::vector<VkDescriptorSet> const& aCurrentDescs,
+            std::vector<RenderBatch> const& aFinalBatches,
+            VkClearColorValue aClearColor,
+            float aCurrentBloomStrength,
+            float aSmoothedSpeedFactor,
+            ImageAndView const& aFinalSceneTarget,
+            ImageAndView const& aShadowTarget,
+            std::vector<RenderBatch> const& aSkinnedBatches,
+            bool aPresentToSwapchain)
+        {
+            VkExtent2D renderExtent = mWindow.swapchainExtent;
+            if (aEyeTarget) {
+                renderExtent.width = aEyeTarget->desc.width;
+                renderExtent.height = aEyeTarget->desc.height;
+            }
+
+            glsl::SceneUniform eyeUniforms = aSceneUniforms;
+            if (aEyeView) {
+                eyeUniforms = BuildStereoEyeSceneUniform(aSceneUniforms, *aEyeView);
+            }
+
+            record_commands(
+                aCmdBuffer,
+                aCurrentOpaque,
+                aCurrentAlpha,
+                aColorTarget,
+                aDepthTarget,
+                renderExtent,
+                mSceneUBO.buffer,
+                eyeUniforms,
+                mPipeLayout.handle,
+                mSceneDescriptors,
+                mMeshPositions,
+                mMeshTexCoords,
+                mMeshNormals,
+                mMeshIndices,
+                mModel.meshes,
+                mModel.materials,
+                aCurrentDescs,
+                aFinalBatches,
+                mBlurPipe.handle,
+                mBlurPipeLayout.handle,
+                mCompositePipe.handle,
+                mCompPipeLayout.handle,
+                mBlurHorizDescriptors[mFrameIndex],
+                mBlurVertDescriptors[mFrameIndex],
+                mCompositeDescriptors[mFrameIndex],
+                ImageAndView{ mOffscreenImage.image, mOffscreenImage.view },
+                ImageAndView{ mBrightImage.image, mBrightImage.view },
+                ImageAndView{ mNormalImage.image, mNormalImage.view },
+                ImageAndView{ mSsrOutputImage.image, mSsrOutputImage.view },
+                mSsrPipe.handle,
+                mSsrPipeLayout.handle,
+                mSsrDescriptors[mFrameIndex],
+                ImageAndView{ mSsaoRawImage.image, mSsaoRawImage.view },
+                mSsaoPipe.handle,
+                mSsaoPipeLayout.handle,
+                mSsaoDescriptors[mFrameIndex],
+                mState->ssaoEnabled,
+                mState->ssrEnabled,
+                ImageAndView{ mBlurTempImage.image, mBlurTempImage.view },
+                ImageAndView{ mFinalBloomImage.image, mFinalBloomImage.view },
+                ImageAndView{ mCompositeOutputImage.image, mCompositeOutputImage.view },
+                aClearColor,
+                aCurrentBloomStrength,
+                mSpeedPostPipe.handle,
+                mSpeedPostPipeLayout.handle,
+                mSpeedPostDescriptors[mFrameIndex],
+                aSmoothedSpeedFactor,
+                mState->isAlive,
+                mState->deathFactor,
+                aFinalSceneTarget,
+                mPostProcPipe.handle,
+                mPostDescriptors[mFrameIndex],
+                mPostPipeLayout.handle,
+                mShadowPipe.handle,
+                aShadowTarget,
+                mShadowCascadeViews,
+                mState->particlesEnabled&& mState->renderMode == 0,
+                mParticlePipe.handle,
+                allParticles,
+                mDebugLinePipe.handle,
+                mDebugRenderer,
+                mSkinnedPipe.handle,
+                mSkinnedAlphaPipe.handle,
+                mSkinnedPipeLayout.handle,
+                mBoneDescriptorSet,
+                &mMeshJointIndices,
+                &mMeshJointWeights,
+                &aSkinnedBatches,
+                mShadowSkinnedPipe.handle,
+                mSkyboxPipe.handle,
+                mSkyboxPipeLayout.handle,
+                mSkyboxDescSet,
+                mSkyboxVBO.buffer,
+                aPresentToSwapchain
+            );
+        }
+
+        void RenderSceneForEye(
+            VkCommandBuffer aCmdBuff,
+            VkPipeline aGraphicsPipe,
+            VkPipeline aAlphaPipe,
+            ImageAndView const& aSwapchainAttach,
+            ImageAndView const& aDepthAttach,
+            VkExtent2D const& aImageExtent,
+            VkBuffer aSceneUBO,
+            glsl::SceneUniform const& aSceneUniform,
+            VkPipelineLayout aGraphicsLayout,
+            VkDescriptorSet aSceneDescriptors,
+            std::vector<lut::Buffer> const& aMeshPositions,
+            std::vector<lut::Buffer> const& aMeshTexCoords,
+            std::vector<lut::Buffer> const& aMeshNormals,
+            std::vector<lut::Buffer> const& aMeshIndices,
+            std::vector<EngineMesh> const& aMeshInfos,
+            std::vector<EngineMaterial> const& aMaterials,
+            std::vector<VkDescriptorSet> const& aMaterialDescriptors,
+            std::vector<RenderBatch> const& aBatches,
+            VkPipeline aBlurPipe,
+            VkPipelineLayout aBlurLayout,
+            VkPipeline aCompositePipe,
+            VkPipelineLayout aCompositeLayout,
+            VkDescriptorSet aBlurHorizDS,
+            VkDescriptorSet aBlurVertDS,
+            VkDescriptorSet aCompositeDS,
+            ImageAndView const& aOffscreenColor,
+            ImageAndView const& aBrightColor,
+            ImageAndView const& aNormalImage,
+            ImageAndView const& aSsrOutput,
+            VkPipeline aSsrPipe,
+            VkPipelineLayout aSsrLayout,
+            VkDescriptorSet aSsrDS,
+            ImageAndView const& aSsaoRawOutput,
+            VkPipeline aSsaoPipe,
+            VkPipelineLayout aSsaoLayout,
+            VkDescriptorSet aSsaoDS,
+            bool aSsaoEnabled,
+            bool aSsrEnabled,
+            ImageAndView const& aBlurTemp,
+            ImageAndView const& aFinalBloom,
+            ImageAndView const& aCompositeOutput,
+            VkClearColorValue aClearColor,
+            float aBloomStrength,
+            VkPipeline aSpeedPipe,
+            VkPipelineLayout aSpeedLayout,
+            VkDescriptorSet aSpeedDesc,
+            float aSpeedFactor,
+            bool isAlive,
+            float deathFactor,
+            ImageAndView const& aFinalSceneColor,
+            VkPipeline aPostProcPipe,
+            VkDescriptorSet aPostProcDescriptors,
+            VkPipelineLayout aPostProcLayout,
+            VkPipeline aShadowPipe,
+            ImageAndView const& aShadowMap,
+            std::vector<VkImageView> const& aShadowCascadeViews,
+            bool particlesEnabled,
+            VkPipeline particlePipe,
+            const std::vector<std::unique_ptr<ParticleSystem>>& allParticles,
+            VkPipeline aDebugLinePipe,
+            engine::DebugRenderer& aDebugRenderer,
+            VkPipeline aSkinnedPipe = VK_NULL_HANDLE,
+            VkPipeline aSkinnedAlphaPipe = VK_NULL_HANDLE,
+            VkPipelineLayout aSkinnedPipeLayout = VK_NULL_HANDLE,
+            VkDescriptorSet aBoneDescriptorSet = VK_NULL_HANDLE,
+            const std::unordered_map<uint32_t, lut::Buffer>* aMeshJoints = nullptr,
+            const std::unordered_map<uint32_t, lut::Buffer>* aMeshWeights = nullptr,
+            const std::vector<RenderBatch>* aSkinnedBatches = nullptr,
+            VkPipeline aSkinnedShadowPipe = VK_NULL_HANDLE,
+            VkPipeline skyboxPipe = VK_NULL_HANDLE,
+            VkPipelineLayout skyboxPipeLayout = VK_NULL_HANDLE,
+            VkDescriptorSet skyboxDescSet = VK_NULL_HANDLE,
+            VkBuffer skyboxVBO = VK_NULL_HANDLE,
+            bool aPresentToSwapchain = true)
+        {
+            record_commands(
+                aCmdBuff,
+                aGraphicsPipe,
+                aAlphaPipe,
+                aSwapchainAttach,
+                aDepthAttach,
+                aImageExtent,
+                aSceneUBO,
+                aSceneUniform,
+                aGraphicsLayout,
+                aSceneDescriptors,
+                aMeshPositions,
+                aMeshTexCoords,
+                aMeshNormals,
+                aMeshIndices,
+                aMeshInfos,
+                aMaterials,
+                aMaterialDescriptors,
+                aBatches,
+                aBlurPipe,
+                aBlurLayout,
+                aCompositePipe,
+                aCompositeLayout,
+                aBlurHorizDS,
+                aBlurVertDS,
+                aCompositeDS,
+                aOffscreenColor,
+                aBrightColor,
+                aNormalImage,
+                aSsrOutput,
+                aSsrPipe,
+                aSsrLayout,
+                aSsrDS,
+                aSsaoRawOutput,
+                aSsaoPipe,
+                aSsaoLayout,
+                aSsaoDS,
+                aSsaoEnabled,
+                aSsrEnabled,
+                aBlurTemp,
+                aFinalBloom,
+                aCompositeOutput,
+                aClearColor,
+                aBloomStrength,
+                aSpeedPipe,
+                aSpeedLayout,
+                aSpeedDesc,
+                aSpeedFactor,
+                isAlive,
+                deathFactor,
+                aFinalSceneColor,
+                aPostProcPipe,
+                aPostProcDescriptors,
+                aPostProcLayout,
+                aShadowPipe,
+                aShadowMap,
+                aShadowCascadeViews,
+                particlesEnabled,
+                particlePipe,
+                allParticles,
+                aDebugLinePipe,
+                aDebugRenderer,
+                aSkinnedPipe,
+                aSkinnedAlphaPipe,
+                aSkinnedPipeLayout,
+                aBoneDescriptorSet,
+                aMeshJoints,
+                aMeshWeights,
+                aSkinnedBatches,
+                aSkinnedShadowPipe,
+                skyboxPipe,
+                skyboxPipeLayout,
+                skyboxDescSet,
+                skyboxVBO,
+                aPresentToSwapchain
+            );
+        }
+
         VkDescriptorSet BuildPostDesc(VkImageView imageView, VkBuffer mosaicBuf)
         {
             VkDescriptorSet ds = lut::alloc_desc_set(
@@ -2559,6 +3361,7 @@ void InitSkybox()
         lut::ImageWithView mOffscreenImage;
         lut::ImageWithView mVisImage;
         lut::ImageWithView mShadowMap;
+        StereoRenderTargetResources mStereoRenderTargets;
         std::vector<VkImageView> mShadowCascadeViews;
 
         // Particles

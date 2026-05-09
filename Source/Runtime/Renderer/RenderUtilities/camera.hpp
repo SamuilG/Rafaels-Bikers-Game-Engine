@@ -5,6 +5,7 @@
 #	define GLFW_INCLUDE_NONE
 #endif
 #include <GLFW/glfw3.h>
+#include <array>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include "../../Rhi/angle.hpp"
@@ -34,6 +35,53 @@ namespace engine {
 
 
 namespace engine { class InputSystem; }
+
+namespace engine {
+	enum class StereoEyeIndex : std::uint32_t {
+		Left = 0,
+		Right = 1
+	};
+
+	struct StereoEyeView
+	{
+		StereoEyeIndex eye = StereoEyeIndex::Left;
+		glm::mat4 worldFromEye = glm::identity<glm::mat4>();
+		glm::mat4 view = glm::identity<glm::mat4>();
+		glm::mat4 projection = glm::identity<glm::mat4>();
+		glm::mat4 viewProjection = glm::identity<glm::mat4>();
+		glm::vec3 worldPosition = glm::vec3(0.0f);
+		float nearPlane = cfg::kCameraNear;
+		float farPlane = cfg::kCameraFar;
+		float verticalFovRadians = glm::radians(85.0f);
+	};
+
+	struct StereoCameraFrame
+	{
+		bool enabled = false;
+		float ipdMeters = 0.064f;
+		float aspectRatio = 1.0f;
+		StereoEyeView left{};
+		StereoEyeView right{};
+
+		std::array<StereoEyeView, 2> AsArray() const {
+			return { left, right };
+		}
+	};
+
+	struct StereoRenderTargetDesc
+	{
+		std::uint32_t width = 0;
+		std::uint32_t height = 0;
+		VkFormat colorFormat = VK_FORMAT_UNDEFINED;
+		VkFormat depthFormat = VK_FORMAT_UNDEFINED;
+	};
+
+	StereoCameraFrame build_stereo_camera_frame(
+		const engine::UserState& state,
+		std::uint32_t framebufferWidth,
+		std::uint32_t framebufferHeight,
+		float ipdMeters = 0.064f);
+}
 
 void update_user_state(engine::UserState& aState, float aElapsedTime, engine::InputSystem* inputSys);
 

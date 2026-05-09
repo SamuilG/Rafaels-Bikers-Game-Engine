@@ -18,11 +18,20 @@ namespace engine {
     class EventSystem;
     class AnimationSystem;
     class AudioSystem;
+    class IGameFlowRenderer;
+    class IGameHudRenderer;
+    class IXrSystem;
+
+    enum class LaunchMode
+    {
+        Desktop,
+        XR
+    };
 
     class Application {
     public:
         using ProgressCallback = std::function<void(float, std::string_view)>;
-        explicit Application(ProgressCallback progress = {});
+        explicit Application(ProgressCallback progress = {}, LaunchMode mode = LaunchMode::Desktop);
         void ShowMainWindow();
 
         Application();
@@ -38,6 +47,14 @@ namespace engine {
 
 
     private:
+        void CreateEngineSystems();
+        void ConfigureRenderProgressBridge();
+        void InitializeDesktopMode();
+        void InitializeXrMode();
+        void ConnectEngineServices();
+        void InitializeAudio();
+        void SubscribeGameplayEvents();
+        void LoadInitialScene();
         void ReportProgress(float progress, std::string_view stage) const;
         void StartStartupAudio();
 
@@ -50,6 +67,7 @@ namespace engine {
 
         std::vector<std::unique_ptr<System>> Systems;
         bool Running = true;
+        LaunchMode mLaunchMode = LaunchMode::Desktop;
 
         ProgressCallback mProgressCallback;
 
@@ -66,9 +84,13 @@ namespace engine {
         UserState mState;
         AnimationSystem* animationSystem = nullptr;
         std::unique_ptr<GameScene> m_currentScene;
+        std::unique_ptr<IGameFlowRenderer> mGameFlowRenderer;
+        std::unique_ptr<IGameHudRenderer> mGameHudRenderer;
+        std::unique_ptr<IXrSystem> mXrSystem;
 
         AudioSystem* audioSystem = nullptr;
         bool mStartupAudioStarted = false;
+        bool mXrViewValidationLogged = false;
     };
 
 } // namespace engine

@@ -23,7 +23,8 @@ namespace labut2
 		VkInstance create_instance(
 			std::vector<char const*> const& aEnabledLayers = {}, 
 			std::vector<char const*> const& aEnabledInstanceExtensions = {} ,
-			bool aEnableDebugUtils = false
+			bool aEnableDebugUtils = false,
+			std::uint32_t aApiVersion = VK_MAKE_API_VERSION( 0, 1, 4, 0 )
 		);
 
 		VkDebugUtilsMessengerEXT create_debug_messenger( VkInstance );
