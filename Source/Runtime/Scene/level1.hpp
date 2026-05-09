@@ -60,6 +60,11 @@ namespace engine {
         flecs::entity m_rocketEntity;
 
 		bool m_respawnPromptVisible = false;//死亡后重生提示UI显示状态
+
+		// Checkpoint respawn — set when bike enters a checkpoint trigger
+		bool      m_hasCheckpoint   = false;
+		glm::vec3 m_checkpointPos   = glm::vec3(0.0f);
+		float     m_checkpointYaw   = 0.0f;
     };
 
 } // namespace engine

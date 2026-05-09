@@ -858,6 +858,101 @@ namespace engine {
 			//	m_rocketEntity.set<EntityStatus>({ false, false }); // hidden until first gas tank
 			//}
 		}
+
+
+		{
+			const glm::vec3 kCheckpointPos   = glm::vec3(374.91f, 80.54f, 296.48f);
+			const float     kCheckpointRadius = 19.80f;
+
+			size_t checkpointTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
+				kCheckpointPos,
+				kCheckpointRadius,
+				/*particleIndex=*/static_cast<size_t>(-1),
+				/*color=*/glm::vec3(0.0f, 1.0f, 0.0f),
+				/*isVisible=*/false,
+				/*oneShot=*/false
+			);
+			m_render->GetTriggerSystem().SetTriggerCallbacks(checkpointTrigger,
+				[this, kCheckpointPos]() {
+					m_checkpointPos = kCheckpointPos;
+					m_checkpointYaw = 0.0f;
+					m_hasCheckpoint = true;
+					printf("[Checkpoint] Respawn point updated to (%.2f, %.2f, %.2f)\n",
+						kCheckpointPos.x, kCheckpointPos.y, kCheckpointPos.z);
+				},
+				[]() {}
+			);
+		}
+
+
+		{
+			const glm::vec3 kClearCheckpointPos    = glm::vec3(402.77f, -33.045f, 278.87f);
+			const float     kClearCheckpointRadius = 1.5f;
+
+			size_t clearCheckpointTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
+				kClearCheckpointPos,
+				kClearCheckpointRadius,
+				/*particleIndex=*/static_cast<size_t>(-1),
+				/*color=*/glm::vec3(1.0f, 1.0f, 0.0f),
+				/*isVisible=*/false,
+				/*oneShot=*/false
+			);
+			m_render->GetTriggerSystem().SetTriggerCallbacks(clearCheckpointTrigger,
+				[this]() {
+					m_hasCheckpoint = false;
+					printf("[Checkpoint] Respawn reset to in-place\n");
+				},
+				[]() {}
+			);
+		}
+
+
+		{
+			const glm::vec3 kIblOffPos    = glm::vec3(407.691f, 65.906f, 280.383f);
+			const float     kIblOffRadius = 3.0f;
+
+			size_t iblOffTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
+				kIblOffPos,
+				kIblOffRadius,
+				/*particleIndex=*/static_cast<size_t>(-1),
+				/*color=*/glm::vec3(1.0f, 0.5f, 0.0f),
+				/*isVisible=*/false,
+				/*oneShot=*/false
+			);
+			m_render->GetTriggerSystem().SetTriggerCallbacks(iblOffTrigger,
+				[this]() {
+					if (mState) {
+						mState->iblEnabled = false;
+						printf("[Trigger] IBL disabled\n");
+					}
+				},
+				[]() {}
+			);
+		}
+
+
+		{
+			const glm::vec3 kIblOnPos    = glm::vec3(-178.163f, 9.492f, -77.001f);
+			const float     kIblOnRadius = 4.97f;
+
+			size_t iblOnTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
+				kIblOnPos,
+				kIblOnRadius,
+				/*particleIndex=*/static_cast<size_t>(-1),
+				/*color=*/glm::vec3(0.0f, 0.5f, 1.0f),
+				/*isVisible=*/false,
+				/*oneShot=*/false
+			);
+			m_render->GetTriggerSystem().SetTriggerCallbacks(iblOnTrigger,
+				[this]() {
+					if (mState) {
+						mState->iblEnabled = true;
+						printf("[Trigger] IBL enabled\n");
+					}
+				},
+				[]() {}
+			);
+		}
 	}
 
 	void level::Update(float dt) {
@@ -874,7 +969,7 @@ namespace engine {
 				}
 			}
 		}
-		// 延迟音效（与 TestScene 风格一致）
+
 		if (m_allCollectSoundDelay >= 0.0f) {
 			m_allCollectSoundDelay -= dt;
 			if (m_allCollectSoundDelay < 0.0f) {
@@ -995,38 +1090,42 @@ namespace engine {
 
 						if (linVelSq < stopThresholdSq && angVelSq < stopThresholdSq) {
 
-							JPH::RVec3 currentPos = bi.GetPosition(id );
-							currentPos.SetY(currentPos.GetY() + 1.0f);
+							JPH::RVec3 respawnPos;
+							JPH::Quat  uprightRot;
 
-							JPH::Quat currentRot = bi.GetRotation(id);
-							JPH::Vec3 fwd = currentRot.RotateAxisZ();
-							// ====================================================
-					// 【新增】：计算向后的偏移量 (Backward Offset)
-					// ====================================================
-					// 1. 将前向向量投影到水平面 (XZ平面)，防止单车往地下或天上偏移
-							JPH::Vec3 flatFwd(fwd.GetX(), 0.0f, fwd.GetZ());
-							if (flatFwd.LengthSq() > 0.0001f) {
-								flatFwd = flatFwd.Normalized();
+							if (m_hasCheckpoint) {
+								// 使用检查点位置重生
+								respawnPos = JPH::RVec3(m_checkpointPos.x, m_checkpointPos.y + 1.0f, m_checkpointPos.z);
+								uprightRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), m_checkpointYaw);
+								printf("[Gameplay] Bike respawned at checkpoint (%.2f, %.2f, %.2f)\n",
+									m_checkpointPos.x, m_checkpointPos.y, m_checkpointPos.z);
 							}
 							else {
-								// 兜底：如果单车是绝对垂直于地面的，给一个默认朝向
-								flatFwd = JPH::Vec3(0.0f, 0.0f, -1.0f);
+								// 原有逻辑：在当前倒地位置重生
+								JPH::RVec3 currentPos = bi.GetPosition(id);
+								currentPos.SetY(currentPos.GetY() + 1.0f);
+
+								JPH::Quat currentRot = bi.GetRotation(id);
+								JPH::Vec3 fwd = currentRot.RotateAxisZ();
+								JPH::Vec3 flatFwd(fwd.GetX(), 0.0f, fwd.GetZ());
+								if (flatFwd.LengthSq() > 0.0001f) {
+									flatFwd = flatFwd.Normalized();
+								}
+								else {
+									flatFwd = JPH::Vec3(0.0f, 0.0f, -1.0f);
+								}
+
+								float backwardOffset = 0.3f;
+								currentPos.SetX(currentPos.GetX() - flatFwd.GetX() * backwardOffset);
+								currentPos.SetZ(currentPos.GetZ() - flatFwd.GetZ() * backwardOffset);
+								currentPos.SetY(currentPos.GetY() + 1.0f);
+
+								float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
+								uprightRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), currentYaw + JPH::JPH_PI);
+								respawnPos = currentPos;
 							}
 
-							// 2. 设置向后偏移的距离 
-							float backwardOffset = 0.3f;
-
-							// 3. 应用偏移：X 和 Z 减去前向向量，Y 依然向上抬高 1 米
-							currentPos.SetX(currentPos.GetX() - flatFwd.GetX() * backwardOffset);
-							currentPos.SetZ(currentPos.GetZ() - flatFwd.GetZ() * backwardOffset);
-							currentPos.SetY(currentPos.GetY() + 1.0f);
-							// ====================================================
-
-							float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
-							// 保持你原本的旋转修正
-							JPH::Quat uprightRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), currentYaw + JPH::JPH_PI);
-
-							bi.SetPositionAndRotation(id, currentPos, uprightRot, JPH::EActivation::Activate);
+							bi.SetPositionAndRotation(id, respawnPos, uprightRot, JPH::EActivation::Activate);
 							bi.SetLinearVelocity(id, JPH::Vec3::sZero());
 							bi.SetAngularVelocity(id, JPH::Vec3::sZero());
 
