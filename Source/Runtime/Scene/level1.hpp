@@ -59,7 +59,10 @@ namespace engine {
         // Rocket — hidden at start, mounted to rear frame on first gas tank collection
         flecs::entity m_rocketEntity;
 
-		bool m_respawnPromptVisible = false;//死亡后重生提示UI显示状态
+		bool m_respawnPromptVisible = false;
+
+		// Satellite — mounted to character's back after radio pickup
+		flecs::entity m_satelliteEntity;
 
 		// Checkpoint respawn — set when bike enters a checkpoint trigger
 		bool      m_hasCheckpoint   = false;
