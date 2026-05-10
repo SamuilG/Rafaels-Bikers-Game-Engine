@@ -19,7 +19,7 @@ namespace engine {
         // =========================================================
         cascadeSplits[0] = 15.0f;                // 第 0 级：0 ~ 15 米 (超高清)
         cascadeSplits[1] = 80.0f;                // 第 1 级：15 ~ 80 米 (中距)
-        cascadeSplits[2] = std::min(farP, 1000.0f); // 第 2 级：80 ~ 远景 (兜底)
+        cascadeSplits[2] = std::min(farP, 2000.0f); // 第 2 级：80 ~ 远景 (兜底)
 
         // 立刻存入 data 准备传给 Shader
         data.cascadeSplits = glm::vec4(cascadeSplits[0], cascadeSplits[1], cascadeSplits[2], 0);
