@@ -60,6 +60,7 @@ namespace engine {
         flecs::entity m_rocketEntity;
 
 		bool m_respawnPromptVisible = false;
+        float m_respawnStillnessTime = 0.0f;
 
 		// Satellite — mounted to character's back after radio pickup
 		flecs::entity m_satelliteEntity;
