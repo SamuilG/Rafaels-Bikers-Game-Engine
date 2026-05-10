@@ -12,6 +12,7 @@
 #include <format>
 #include <filesystem>
 #include <algorithm>
+#include <unordered_set>
 
 namespace engine {
 	namespace {
@@ -41,23 +42,43 @@ namespace engine {
 		//
 		//m_scene->LoadModel(m_render, "Assets/Models/forest.glb", engine::ModelPhysicsType::Static, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
 
-		glm::mat4 bridgeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(100.0f, 0.0f, 60.0f));
-		glm::mat4 CplaneSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(120.0f, 0.0f, 250.0f));
-		glm::mat4 darkRoomSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(60.0f, 0.0f, 200.0f));
-
-		//m_scene->LoadModel(m_render, "Assets/Models/testBridge.glb", engine::ModelPhysicsType::Static, 0.0f, bridgeSpawnPos);
 		//m_scene->LoadModel(m_render, "Assets/Models/testCurvePlane.glb", engine::ModelPhysicsType::Static, 0.0f, CplaneSpawnPos);
 		////m_scene->LoadModel(m_render, "Assets/Models/sponza.glb", engine::ModelPhysicsType::Static, 0.0f, CplaneSpawnPos);
 
 		//m_scene->LoadModel(m_render, "Assets/Models/darkRoom.glb", engine::ModelPhysicsType::Static, 0.0f, darkRoomSpawnPos);
 
+		// rocket stand and rocket at (225.92, 99.24, -291.96)
+		// Collect ALL mesh entities created by this load (before/after diff),
+		// so every part animates together on launch regardless of mesh index order.
+		{
+			// Snapshot entity IDs already in the world before loading
+			std::unordered_set<uint64_t> existingIds;
+			m_scene->get_world().query<const MeshComponent>()
+				.each([&](flecs::entity e, const MeshComponent&) {
+					existingIds.insert(e.id());
+				});
 
+			m_scene->LoadModel(
+				m_render, "Assets/Models/rocket2.glb",
+				engine::ModelPhysicsType::Static, 0.0f,
+				glm::translate(glm::mat4(1.0f), m_rocket2Center));
+
+			// Collect only entities that appeared after the load
+			m_scene->get_world().query<const MeshComponent>()
+				.each([&](flecs::entity e, const MeshComponent&) {
+					if (existingIds.find(e.id()) == existingIds.end())
+						m_rocket2Entities.push_back(e);
+				});
+		}
+
+		//TODO:change
 		glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 10.0f, 30.0f));
-		glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(2,4,-157));
+		glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(2,4,-157));\
+		glm::mat4 FinalPos = glm::translate(glm::mat4(1.0f), glm::vec3(218.83, 91.0f, -197.74f));
 		glm::mat4 bikeAnchorWorld = glm::mat4(0.0f); // sentinel: [3][3]==0 means anchor not found
 
-		m_render->load_animated_model("Assets/Models/character.glb", tbpos);
-		flecs::entity playerBike = m_scene->LoadModel(m_render, "Assets/Models/tbikeWithAnchor.glb", engine::ModelPhysicsType::CustomC, 90.0f, tbpos);
+		m_render->load_animated_model("Assets/Models/character.glb", FinalPos);
+		flecs::entity playerBike = m_scene->LoadModel(m_render, "Assets/Models/tbikeWithAnchor.glb", engine::ModelPhysicsType::CustomC, 90.0f, FinalPos);
 
 		// 3. ��ʼ������������
 		m_bikeController = std::make_unique<BikeController>(m_physics->GetJoltSystem(), m_input, mState);
@@ -201,7 +222,7 @@ namespace engine {
 				// Apply binding + IK to ALL skinned character entities (character has 2 mesh parts).
 				// Also add a dummy AnimationComponent (animIndex=-1) so AnimationSystem's query
 				// picks them up even though this character has no animation clips.
-// 1. ��ʽ��ȡ��������
+				// 1. ��ʽ��ȡ��������
 				flecs::world& world = m_scene->get_world();
 
 				// 2. �����ӳ��޸Ķ���
@@ -577,7 +598,7 @@ namespace engine {
 				Toast("All gas tanks collected! Bike fully lightened!");
 			});
 		}
-		// =========================================================
+		// ========================================================= 
 
 		m_input->MapKeyboardAction("Horn", GLFW_KEY_F);
 
@@ -794,14 +815,14 @@ namespace engine {
 					for (auto& re : m_radioPickupEntities)
 						if (re.is_valid()) re.set<EntityStatus>({ false, false });
 					if (m_radioSongs.empty()) return;
+					// Step 1: play pickup jingle immediately
 					m_audio->LoadSound("RadioOn", "Assets/Sounds/radio_on.mp3");
 					m_audio->SetVolume("RadioOn", 0.5f);
 					m_audio->PlayOneShot("RadioOn");
-					m_bgMusicPlaying = true;
-					m_currentSongIndex = 0;
-					m_audio->PlayLoop(m_radioSongs[0]);
-					Log(std::format("[Radio] Picked up! Now playing: {}\n", m_radioLabels[0]));
-					Toast(std::format("Radio! Now playing: {}. Press N to switch.", m_radioLabels[0]));
+					// Step 2 & 3 handled by timers in Update:
+					//   0.5s → boardcast.mp3
+					//   boardcast duration → bg music loop starts
+					m_radioBroadcastDelay = 0.5f;
 
 				// Mount satellite to character's back (bike-local space)
 				if (m_satelliteEntity.is_valid() && m_bikeEntity.is_valid()) {
@@ -818,6 +839,66 @@ namespace engine {
 
 			// N key cycles songs
 			m_input->MapKeyboardAction("NextSong", GLFW_KEY_N);
+		}
+
+		// =========================================================
+		// Newspaper pickup — near radio; shows UFO.png for 5 s on trigger
+		// =========================================================
+		{
+			constexpr glm::vec3 kNewsPickupPos = glm::vec3(-142.0f, 2.0f, -100.13f); // 收音机右边
+			const glm::mat4 kNewsTransform =
+				glm::translate(glm::mat4(1.0f), kNewsPickupPos) *
+				glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f)) *
+				glm::scale(glm::mat4(1.0f), glm::vec3(1.5f));
+
+			// Load GLB to register mesh/material assets, then hide all created nodes
+			flecs::entity newsAsset = m_scene->LoadModel(
+				m_render, "Assets/Models/newspapaer.glb",
+				engine::ModelPhysicsType::Static, 0.0f, kNewsTransform);
+
+			uint32_t newsMeshIdx = 0, newsMatIdx = 0;
+			if (newsAsset.is_valid()) {
+				if (newsAsset.has<MeshComponent>())     newsMeshIdx = newsAsset.get<MeshComponent>().meshIndex;
+				if (newsAsset.has<MaterialComponent>()) newsMatIdx  = newsAsset.get<MaterialComponent>().materialIndex;
+				m_scene->get_world().query<const MeshComponent>()
+					.each([&](flecs::entity e, const MeshComponent& mc) {
+						if (mc.meshIndex < newsMeshIdx) return;
+						e.set<EntityStatus>({ false, false });
+						if (e.has<PhysicsBody>()) {
+							JPH::BodyID bid(e.get<PhysicsBody>().bodyID);
+							JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
+							if (bi.IsAdded(bid)) { bi.RemoveBody(bid); bi.DestroyBody(bid); }
+							e.remove<PhysicsBody>();
+						}
+					});
+			}
+			// Single physics-free visual entity for the spinning pickup
+			m_newspaperEntity = m_scene->create_dynamic_entity(
+				"NewspaperPickup", newsMeshIdx, newsMatIdx, kNewsTransform);
+
+			size_t newsTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
+				kNewsPickupPos,
+				/*radius=*/2.5f,
+				/*particleIndex=*/static_cast<size_t>(-1),
+				/*color=*/glm::vec3(1.0f, 1.0f, 0.5f),
+				/*isVisible=*/false,
+				/*oneShot=*/true
+			);
+			m_render->GetTriggerSystem().SetTriggerCallbacks(newsTrigger,
+				[this]() {
+					// Play flip sound
+					m_audio->LoadSound("Flip", "Assets/Sounds/flip.mp3");
+					m_audio->PlayOneShot("Flip");
+					// Hide newspaper model
+					if (m_newspaperEntity.is_valid())
+						m_newspaperEntity.set<EntityStatus>({ false, false });
+					// Show UFO fullscreen image; timer will dismiss it after 5s
+					AddWidget("Assets/ui/UFONews.ui.json");
+					m_ufoDisplayTimer = 5.0f;
+					Log("[Newspaper] UFO news! Showing for 5s.\n");
+				},
+				nullptr
+			);
 		}
 
 		// =========================================================
@@ -974,6 +1055,85 @@ namespace engine {
 				[]() {}
 			);
 		}
+
+		// =========================================================
+		// Rocket launch trigger at (232.94, 86.11, -222.40)
+		// No separate pickup model — avoids GLTF node name collision with rocket2.
+		// Trigger is invisible; when entered, rocket2 spins and ascends.
+		// =========================================================
+		{
+			constexpr glm::vec3 kRocketTriggerPos = glm::vec3(226.0f, 87.0f, -25.0f);
+
+			size_t rocketLaunchTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
+				kRocketTriggerPos,
+				/*radius=*/5.0f,
+				/*particleIndex=*/static_cast<size_t>(-1),
+				/*color=*/glm::vec3(1.0f, 0.4f, 0.0f),
+				/*isVisible=*/false,
+				/*oneShot=*/true
+			);
+			m_render->GetTriggerSystem().SetTriggerCallbacks(rocketLaunchTrigger,
+				[this]() {
+					if (!m_rocket2Entities.empty()) {
+						m_rocket2Launching   = true;
+						m_rocket2LaunchTimer = 0.0f;
+						// Show flame particles when launch begins
+						if (m_rocketFlameParticleIndex != static_cast<size_t>(-1)) {
+							auto& particles = m_render->GetParticles();
+							if (m_rocketFlameParticleIndex < particles.size())
+								particles[m_rocketFlameParticleIndex]->config.isVisible = true;
+						}
+						printf("[Trigger] Rocket2 launch initiated! (%zu parts)\n", m_rocket2Entities.size());
+					}
+					// Hide bike and character
+					if (m_bikeEntity.is_valid())
+						m_bikeEntity.set<EntityStatus>({ false, false });
+					m_scene->get_world().query<SkinComponent>()
+						.each([](flecs::entity e, SkinComponent&) {
+							e.set<EntityStatus>({ false, false });
+						});
+					// Switch to rocket-follow camera
+					m_rocketCameraActive = true;
+					if (mState) mState->thirdPersonMode = false;
+
+					// 停止所有正在播放的声音
+					if (m_bgMusicPlaying && !m_radioSongs.empty())
+						m_audio->Stop(m_radioSongs[m_currentSongIndex]);
+					m_audio->Stop("Broadcast");
+					m_bgMusicPlaying = false;
+					m_radioBgMusicDelay   = -1.0f;
+					m_radioBroadcastDelay = -1.0f;
+					m_audio->LoadSound("RocketLaunch", "Assets/Sounds/rocket_launch.mp3");
+					m_audio->PlayOneShot("RocketLaunch");
+					Log("[Trigger] Rocket launched!\n");
+					Toast("Rocket launched!");
+				},
+				nullptr
+			);
+
+			// Rocket flame particles — hidden until launch, emitting downward (-Y)
+			m_render->AddParticleGroup(250000); 
+			auto& flameParticles = m_render->GetParticles();
+			m_rocketFlameParticleIndex = flameParticles.size() - 1;
+			auto& flameCfg = flameParticles[m_rocketFlameParticleIndex]->config;
+			flameCfg.isVisible    = true;
+			flameCfg.emitterPos   = m_rocket2Center + glm::vec3(0.0f, 23.0f, 0.0f);
+			flameCfg.emitDir      = glm::vec3(0.0f, -1.0f, 0.0f); // 向下喷射
+			flameCfg.gravity      = glm::vec3(0.0f, -4.0f, 0.0f); // 重力向下，加速尾焰
+			flameCfg.speedMin     = 8.0f;
+			flameCfg.speedMax     = 18.0f;
+			flameCfg.lifeMin      = 0.3f;
+			flameCfg.lifeMax      = 0.7f;
+			flameCfg.sizeMin      = 10.0f;
+			flameCfg.sizeMax      = 25.0f;
+			flameCfg.coneSpread   = 0.5f;
+			flameCfg.startColor   = glm::vec4(1.0f, 0.85f, 0.2f, 1.0f); // 亮黄色
+			flameCfg.endColor     = glm::vec4(0.9f, 0.5f, 0.0f, 0.0f); // 红色渐隐
+			flameCfg.startSizeScale = 1.0f;
+			flameCfg.endSizeScale   = 0.0f;
+			flameCfg.sphereRadius = 50.0f;  
+			flameParticles[m_rocketFlameParticleIndex]->setEmitterShape(EmitterShape::Disk);
+		}
 	}
 
 	void level::Update(float dt) {
@@ -1028,6 +1188,37 @@ namespace engine {
 			m_allCollectSoundDelay -= dt;
 			if (m_allCollectSoundDelay < 0.0f) {
 				m_audio->PlayOneShot("AllCollectd");
+			}
+		}
+
+		// Stage 1: 0.5s after radio pickup → play boardcast.mp3
+		if (m_radioBroadcastDelay >= 0.0f) {
+			m_radioBroadcastDelay -= dt;
+			if (m_radioBroadcastDelay < 0.0f) {
+				m_audio->LoadSound("Broadcast", "Assets/Sounds/boardcast.mp3");
+				m_audio->PlayOneShot("Broadcast");
+				// Adjust kBroadcastDuration to match boardcast.mp3 actual length (seconds)
+				constexpr float kBroadcastDuration = 10.0f;
+				m_radioBgMusicDelay = kBroadcastDuration;
+			}
+		}
+
+		// UFO image: dismiss after 5 s
+		if (m_ufoDisplayTimer >= 0.0f) {
+			m_ufoDisplayTimer -= dt;
+			if (m_ufoDisplayTimer < 0.0f)
+				RemoveWidget("Assets/ui/UFONews.ui.json");
+		}
+
+		// Stage 2: after boardcast finishes → enable bg music + N-key switching
+		if (m_radioBgMusicDelay >= 0.0f) {
+			m_radioBgMusicDelay -= dt;
+			if (m_radioBgMusicDelay < 0.0f && !m_radioSongs.empty()) {
+				m_bgMusicPlaying   = true;
+				m_currentSongIndex = 0;
+				m_audio->PlayLoop(m_radioSongs[0]);
+				Log(std::format("[Radio] Now playing: {}\n", m_radioLabels[0]));
+				Toast(std::format("Radio! Now playing: {}. Press N to switch.", m_radioLabels[0]));
 			}
 		}
 
@@ -1120,6 +1311,25 @@ namespace engine {
 			m_springMountedEntity.set<LocalTransform>({ animT });
 		}
 
+		// Rocket camera
+		if (m_rocketCameraActive && mState) {
+			constexpr float kFixedCamDuration = 10.0f;
+			glm::vec3 lookTarget = glm::vec3(m_rocket2Center.x, m_rocket2Center.y + 200.0f, m_rocket2Center.z);
+			glm::vec3 camPos;
+			glm::vec3 up;
+			if (m_rocket2LaunchTimer < kFixedCamDuration) {
+				// 前 10 秒：固定机位看向火箭中心 y+200
+				camPos = glm::vec3(527.35f, 98.08f, 205.77f);
+				up     = glm::vec3(0.0f, 1.0f, 0.0f);
+			} else {
+				// 10 秒后：跟随火箭尾部俯视
+				camPos = m_rocket2Center + glm::vec3(0.0f, -5.0f, 0.0f);
+				lookTarget = camPos + glm::vec3(0.0f, -1.0f, 0.0f);
+				up     = glm::vec3(0.0f, 0.0f, -1.0f);
+			}
+			mState->camera2world = glm::inverse(glm::lookAt(camPos, lookTarget, up));
+		}
+
 		// Satellite spin — rotate around Y axis while mounted
 		if (m_satelliteEntity.is_valid() && m_satelliteEntity.has<EntityStatus>()
 			&& m_satelliteEntity.get<EntityStatus>().should_render) {
@@ -1129,6 +1339,52 @@ namespace engine {
 			const glm::mat4 rot = glm::rotate(glm::mat4(1.0f), kSatSpinSpeed * dt, glm::vec3(0.0f, 1.0f, 0.0f));
 			lt->matrix = glm::translate(glm::mat4(1.0f), pos) * rot * glm::translate(glm::mat4(1.0f), -pos) * lt->matrix;
 			m_satelliteEntity.modified<LocalTransform>();
+		}
+
+		// Rocket2 launch animation: ALL parts spin around shared pivot + ascend upward
+		if (m_rocket2Launching && !m_rocket2Entities.empty()) {
+			m_rocket2LaunchTimer += dt;
+			constexpr float kSpinSpeed   = 4.0f;   // radians/sec
+			constexpr float kAscentSpeed = 50.0f;   // units/sec at full thrust
+			constexpr float kRampTime    = 2.5f;   // ramp-up duration in seconds
+			constexpr float kHideAfter   = 60.0f;  // hide after this many seconds
+
+			float ramp   = glm::min(m_rocket2LaunchTimer / kRampTime, 1.0f);
+			float ascent = kAscentSpeed * ramp * dt;
+
+			// Shared pivot: the rocket's current centre (moves up each frame)
+			m_rocket2Center.y += ascent;
+			glm::mat4 T    = glm::translate(glm::mat4(1.0f),  m_rocket2Center);
+			glm::mat4 Tinv = glm::translate(glm::mat4(1.0f), -m_rocket2Center);
+			glm::mat4 rot  = glm::rotate(glm::mat4(1.0f), kSpinSpeed * dt, glm::vec3(0.0f, 1.0f, 0.0f));
+			glm::mat4 up   = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, ascent, 0.0f));
+			glm::mat4 step = up * T * rot * Tinv; // rotate-around-pivot then ascend
+
+			// Update flame emitter position to follow the rocket's tail
+			if (m_rocketFlameParticleIndex != static_cast<size_t>(-1)) {
+				auto& particles = m_render->GetParticles();
+				if (m_rocketFlameParticleIndex < particles.size())
+					particles[m_rocketFlameParticleIndex]->config.emitterPos =
+						m_rocket2Center + glm::vec3(0.0f, 23.0f, 0.0f);
+			}
+
+			bool hide = (m_rocket2LaunchTimer > kHideAfter);
+			for (auto& e : m_rocket2Entities) {
+				if (!e.is_valid()) continue;
+				if (hide) {
+					e.set<EntityStatus>({ false, false });
+					// Hide flame particles too
+					if (m_rocketFlameParticleIndex != static_cast<size_t>(-1)) {
+						auto& particles = m_render->GetParticles();
+						if (m_rocketFlameParticleIndex < particles.size())
+							particles[m_rocketFlameParticleIndex]->config.isVisible = false;
+					}
+				} else {
+					auto* lt = &e.get_mut<LocalTransform>();
+					lt->matrix = step * lt->matrix;
+					e.modified<LocalTransform>();
+				}
+			}
 		}
 
 		if (m_input && m_input->IsActionPressed("DEPLOY")) {
