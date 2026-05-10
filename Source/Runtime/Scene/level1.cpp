@@ -1137,8 +1137,43 @@ namespace engine {
 	}
 
 	void level::Update(float dt) {
+
+		const float respawnStillnessDelay = 0.25f;
+		bool canRespawnNow = false;
+
+		if (mState && !mState->isAlive) {
+			flecs::entity bikeEntity = m_scene ? m_scene->find_entity("Bike_0") : flecs::entity();
+			if (bikeEntity.is_valid()) {
+				uint32_t bikeBodyID = JPH::BodyID::cInvalidBodyID;
+				if (bikeEntity.has<PhysicsBody>()) bikeBodyID = bikeEntity.get<PhysicsBody>().bodyID;
+				else if (bikeEntity.has<CompoundParent>()) bikeBodyID = bikeEntity.get<CompoundParent>().bodyID;
+
+				if (bikeBodyID != JPH::BodyID::cInvalidBodyID && m_physics) {
+					JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
+					JPH::BodyID id(bikeBodyID);
+
+					if (!bi.IsActive(id)) {
+						m_respawnStillnessTime += dt;
+						canRespawnNow = m_respawnStillnessTime >= respawnStillnessDelay;
+					}
+					else {
+						m_respawnStillnessTime = 0.0f;
+					}
+				}
+				else {
+					m_respawnStillnessTime = 0.0f;
+				}
+			}
+			else {
+				m_respawnStillnessTime = 0.0f;
+			}
+		}
+		else {
+			m_respawnStillnessTime = 0.0f;
+		}
+
 		if (mState) {
-			if (!mState->isAlive) {
+			if (!mState->isAlive && canRespawnNow) {
 				if (!m_respawnPromptVisible) {
 					m_respawnPromptVisible = AddWidget(kRespawnPromptUiPath);
 				}
@@ -1375,64 +1410,67 @@ namespace engine {
 
 						// Checkpoint respawn: no speed requirement
 						// In-place respawn: wait until bike has stopped
-						if (m_hasCheckpoint || (linVelSq < stopThresholdSq && angVelSq < stopThresholdSq)) {
+						//if (m_hasCheckpoint || (linVelSq < stopThresholdSq && angVelSq < stopThresholdSq)) {
+						if (!bi.IsActive(id)) {
+							if (m_respawnStillnessTime >= respawnStillnessDelay) {
+								JPH::RVec3 respawnPos;
+								JPH::Quat  uprightRot;
 
-							JPH::RVec3 respawnPos;
-							JPH::Quat  uprightRot;
+								if (m_hasCheckpoint) {
 
-							if (m_hasCheckpoint) {
-
-								respawnPos = JPH::RVec3(m_checkpointPos.x, m_checkpointPos.y - 0.5f, m_checkpointPos.z);
-								uprightRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), m_checkpointYaw);
-								printf("[Gameplay] Bike respawned at checkpoint (%.2f, %.2f, %.2f)\n",
-									m_checkpointPos.x, m_checkpointPos.y, m_checkpointPos.z);
-							}
-							else {
-
-								JPH::RVec3 currentPos = bi.GetPosition(id);
-
-								JPH::Quat currentRot = bi.GetRotation(id);
-								JPH::Vec3 fwd = currentRot.RotateAxisZ();
-								JPH::Vec3 flatFwd(fwd.GetX(), 0.0f, fwd.GetZ());
-								if (flatFwd.LengthSq() > 0.0001f) {
-									flatFwd = flatFwd.Normalized();
+									respawnPos = JPH::RVec3(m_checkpointPos.x, m_checkpointPos.y - 2.5f, m_checkpointPos.z);
+									uprightRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), m_checkpointYaw);
+									printf("[Gameplay] Bike respawned at checkpoint (%.2f, %.2f, %.2f)\n",
+										m_checkpointPos.x, m_checkpointPos.y, m_checkpointPos.z);
 								}
 								else {
-									flatFwd = JPH::Vec3(0.0f, 0.0f, -1.0f);
+
+									JPH::RVec3 currentPos = bi.GetPosition(id);
+
+									JPH::Quat currentRot = bi.GetRotation(id);
+									JPH::Vec3 fwd = currentRot.RotateAxisZ();
+									JPH::Vec3 flatFwd(fwd.GetX(), 0.0f, fwd.GetZ());
+									if (flatFwd.LengthSq() > 0.0001f) {
+										flatFwd = flatFwd.Normalized();
+									}
+									else {
+										flatFwd = JPH::Vec3(0.0f, 0.0f, -1.0f);
+									}
+
+									float backwardOffset = 0.3f;
+									currentPos.SetX(currentPos.GetX() - flatFwd.GetX() * backwardOffset);
+									currentPos.SetZ(currentPos.GetZ() - flatFwd.GetZ() * backwardOffset);
+									currentPos.SetY(currentPos.GetY() + 1.0f);
+
+									float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
+									uprightRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), currentYaw + JPH::JPH_PI);
+									respawnPos = currentPos;
 								}
 
-								float backwardOffset = 0.3f;
-								currentPos.SetX(currentPos.GetX() - flatFwd.GetX() * backwardOffset);
-								currentPos.SetZ(currentPos.GetZ() - flatFwd.GetZ() * backwardOffset);
-								currentPos.SetY(currentPos.GetY() + 1.0f);
+								bi.SetPositionAndRotation(id, respawnPos, uprightRot, JPH::EActivation::Activate);
+								bi.SetLinearVelocity(id, JPH::Vec3::sZero());
+								bi.SetAngularVelocity(id, JPH::Vec3::sZero());
 
-								float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
-								uprightRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), currentYaw + JPH::JPH_PI);
-								respawnPos = currentPos;
+								mState->isAlive = true;
+								mState->deathTimer = 0.0f;
+								mState->isGameOver = false;
+								mState->bikeLeanAngle = 0.0f;
+								mState->bikeSteerAngle = 0.0f;
+								mState->thirdPersonMode = true;
+								mState->bikeSpeed = 0.0f;
+								mState->engineForce = 0.0f;
+								mState->lastPedal = -1;
+								m_respawnStillnessTime = 0.0f;
+								RemoveWidget(kRespawnPromptUiPath);
+								m_respawnPromptVisible = false;
+
+								printf("[Gameplay] Bike stopped and respawned in place!\n");
 							}
-
-							bi.SetPositionAndRotation(id, respawnPos, uprightRot, JPH::EActivation::Activate);
-							bi.SetLinearVelocity(id, JPH::Vec3::sZero());
-							bi.SetAngularVelocity(id, JPH::Vec3::sZero());
-
-							mState->isAlive = true;
-							mState->deathTimer = 0.0f;
-							mState->isGameOver = false;
-							mState->bikeLeanAngle = 0.0f;
-							mState->bikeSteerAngle = 0.0f;
-							mState->thirdPersonMode = true;
-							mState->bikeSpeed = 0.0f;
-							mState->engineForce = 0.0f;
-							mState->lastPedal = -1;
-
-							RemoveWidget(kRespawnPromptUiPath);
-							m_respawnPromptVisible = false;
-
-							printf("[Gameplay] Bike stopped and respawned in place!\n");
-						}
-						else {
-							// === 单车还在滚动，拒绝复活，可以考虑在这里触发个 UI 提示音 ===
-							// printf("[Gameplay] Cannot respawn yet, bike is still tumbling...\n");
+							else {
+								m_respawnStillnessTime = 0.0f;
+								// === 单车还在滚动，拒绝复活，可以考虑在这里触发个 UI 提示音 ===
+								// printf("[Gameplay] Cannot respawn yet, bike is still tumbling...\n");
+							}
 						}
 						// -----------------------------------------------------
 					}
@@ -1458,7 +1496,7 @@ namespace engine {
 
 		RemoveWidget(kRespawnPromptUiPath);
 		m_respawnPromptVisible = false;
-
+		m_respawnStillnessTime = 0.0f;
 		
 		m_bikeController.reset();
 	}
