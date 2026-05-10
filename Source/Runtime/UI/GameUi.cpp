@@ -226,7 +226,7 @@ namespace engine {
             // 以后你要改风格，优先改这里。
             // ==========================================
 
-            style.enabled = true;
+            style.enabled = false;
             style.backgroundTexturePath = "Assets/Textures/UiSpeed.png"; // 速度表背景图，直接替换成你自己的 PNG。
             style.useBackgroundImage = true; // false 时会用纯色面板占位，方便调布局。
 
