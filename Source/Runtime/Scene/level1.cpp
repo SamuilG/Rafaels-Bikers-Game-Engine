@@ -5,11 +5,9 @@
 #include "../Physics/bikeController.hpp"
 #include "../Input/InputSystem.hpp"
 #include "../Event/EventSystem.hpp"
-#include "../UserState/UserState.hpp"
+#include "../UserState/GameplayState.hpp"
 #include "../Animation/AnimationSystem.hpp"
-#include "../Debug/DebugRenderer.hpp"
 #include "../AudioSystem/AudioSystem.hpp"
-#include "../UI/EngineUi.hpp"
 #include <Jolt/Physics/Body/BodyLock.h>
 #include <format>
 #include <filesystem>
@@ -22,7 +20,8 @@ namespace engine {
 
 	level::level() = default;
 	level::~level() = default;
-	void level::Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, UserState* state, AnimationSystem* anima, AudioSystem* audio) {
+	void level::Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, GameplayState* state, AnimationSystem* anima, AudioSystem* audio) {
+		InitBase(render);
 		m_render = render;
 		m_scene = scene;
 		m_physics = physics;
@@ -33,13 +32,9 @@ namespace engine {
 		m_audio = audio;
 		m_respawnPromptVisible = false;
 
-		if (m_render) {
-			if (RuntimeUiController* runtimeUi = m_render->GetRuntimeUiController()) {
-				runtimeUi->RemoveWidgetFromViewPort(kRespawnPromptUiPath);
-			}
-		}
+		RemoveWidget(kRespawnPromptUiPath);
 
-		// 1. ���ص����뾲̬ģ��
+
 		// load the terrain and static models
 		//m_scene->LoadModel(m_render, "Assets/Models/TScene.glb", engine::ModelPhysicsType::Static, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
 		m_scene->LoadModel(m_render, "Assets/Models/Level.glb", engine::ModelPhysicsType::Static, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
@@ -56,7 +51,7 @@ namespace engine {
 
 		//m_scene->LoadModel(m_render, "Assets/Models/darkRoom.glb", engine::ModelPhysicsType::Static, 0.0f, darkRoomSpawnPos);
 
-		// 2. �������г�	
+
 		glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 10.0f, 30.0f));
 		glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(2,4,-157));
 		glm::mat4 bikeAnchorWorld = glm::mat4(0.0f); // sentinel: [3][3]==0 means anchor not found
@@ -336,8 +331,8 @@ namespace engine {
 			glm::vec3(50.0f, 1.0f, 20.0f), glm::vec3(2.0f, 2.0f, 2.0f), triggerParticleIndex, glm::vec3(1.0f, 0.0f, 0.0f), glm::mat4(1.0f), true, false);
 
 		m_render->GetTriggerSystem().SetTriggerCallbacks(triggerBox01,
-			[]() { engine::EngineUi::LogPrint("trigger box triggered!!\n"); },
-			[]() { engine::EngineUi::LogPrint("trigger box exited!!\n"); }
+			[]() { GameScene::Log("trigger box triggered!!\n"); },
+			[]() { GameScene::Log("trigger box exited!!\n"); }
 		);
 
 		m_scene->print_all_entities();
@@ -542,8 +537,8 @@ namespace engine {
 				auto& col = static_cast<ItemCollectedEvent&>(e);
 				int collected = col.GetCurrentTotal();
 				mState->collectedItems = collected;
-				EngineUi::LogPrint("[Collection] {}/{} collected\n",
-					collected, mState->totalCollectibles);
+				Log(std::format("[Collection] {}/{} collected\n",
+					collected, mState->totalCollectibles));
 
 				m_audio->PlayOneShot("Collect");
 
@@ -577,9 +572,9 @@ namespace engine {
 			// === 事件订阅：全部收集完毕 ===
 			m_event->Subscribe(EventType::AllItemsCollected, [this](Event& /*e*/) {
 				mState->allCollected = true;
-				EngineUi::LogPrint("[Collection] ALL {} ITEMS COLLECTED!\n",
-					mState->totalCollectibles);
-				EngineUi::ShowToast("All gas tanks collected! Bike fully lightened!");
+				Log(std::format("[Collection] ALL {} ITEMS COLLECTED!\n",
+					mState->totalCollectibles));
+				Toast("All gas tanks collected! Bike fully lightened!");
 			});
 		}
 		// =========================================================
@@ -652,8 +647,8 @@ namespace engine {
 						m_springPickupEntity = {};
 					}
 					m_audio->PlayOneShot("AllCollectd");
-					EngineUi::LogPrint("[Pickup] Jump ability unlocked!\n");
-					EngineUi::ShowToast("Jump unlocked! Press Space to jump.");
+					Log("[Pickup] Jump ability unlocked!\n");
+					Toast("Jump unlocked! Press Space to jump.");
 				},
 				nullptr
 			);
@@ -725,108 +720,134 @@ namespace engine {
 						m_hornPickupEntity = {};
 					}
 					m_audio->PlayOneShot("AllCollectd");
-					EngineUi::LogPrint("[Pickup] Horn ability unlocked!\n");
-					EngineUi::ShowToast("Horn unlocked! Press F to honk.");
+					Log("[Pickup] Horn ability unlocked!\n");
+					Toast("Horn unlocked! Press F to honk.");
 				},
 				nullptr
 			);
 		}
 
 		// =========================================================
-		// Pickup: Radio — touch the Radio trigger once to unlock background music.
-		// All .mp3 files in Assets/Sounds/RadioMusic/ are loaded automatically.
-		// Songs can then be cycled in order with the N key.
-		// Radio entities: Radio_Radio_0_98 / Radio_Radio_Grid_0_99 / Radio_Radio_Screen_0_100
+		// Pickup: Radio — model placed at (-18.399, 1, -100.533).
+		// Touch the trigger once to unlock background music.
+		// All .mp3 files in Assets/Sounds/RadioMusic/ are loaded
+		// automatically. Songs cycle with the N key.
 		// =========================================================
-		//{
-		//	// --- Scan RadioMusic/ and load every .mp3 found (sorted by filename) ---
-		//	namespace fs = std::filesystem;
-		//	const fs::path radioDir = "Assets/Sounds/RadioMusic";
-		//	std::vector<fs::path> songFiles;
-		//	if (fs::exists(radioDir) && fs::is_directory(radioDir)) {
-		//		for (const auto& entry : fs::directory_iterator(radioDir)) {
-		//			const auto& p = entry.path();
-		//			if (p.extension() == ".mp3" || p.extension() == ".MP3")
-		//				songFiles.push_back(p);
-		//		}
-		//		std::sort(songFiles.begin(), songFiles.end());
-		//	}
+		{
+			namespace fs = std::filesystem;
 
-		//	for (int i = 0; i < static_cast<int>(songFiles.size()); ++i) {
-		//		std::string soundName = std::format("RadioSong{}", i);
-		//		std::string filePath  = songFiles[i].generic_string();
-		//		std::string label     = songFiles[i].stem().string();
-		//		m_audio->LoadSound(soundName, filePath);
-		//		m_audio->SetVolume(soundName, 0.35f);
-		//		m_radioSongs.push_back(std::move(soundName));
-		//		m_radioLabels.push_back(std::move(label));
-		//		printf("[Radio] Loaded song %d: %s\n", i, songFiles[i].filename().string().c_str());
-		//	}
+			const glm::vec3 kRadioPickupPos = glm::vec3(-133.11f, 1.0f, -100.13f);
+			const glm::mat4 kRadioTransform = glm::translate(glm::mat4(1.0f), kRadioPickupPos)
+				* glm::scale(glm::mat4(1.0f), glm::vec3(3.0f));
 
-		//	if (m_radioSongs.empty()) {
-		//		printf("[Radio] WARNING: No .mp3 files found in %s\n", radioDir.string().c_str());
-		//	}
+			// Load radio.glb as a static model — EntityStatus{true,true} auto-visible
+			m_radioPickupEntity = m_scene->LoadModel(
+				m_render, "Assets/Models/radio.glb",
+				engine::ModelPhysicsType::Static, 0.0f, kRadioTransform);
 
-		//	// Locate the radio in the scene, remove its physics bodies, and build the trigger
-		//	static const char* kRadioEntityNames[] = {
-		//		"Radio_Radio_0_98", "Radio_Radio_Grid_0_99", "Radio_Radio_Screen_0_100"
-		//	};
+			// Collect ALL mesh nodes of the radio (base meshIdx and above) so the
+			// entire model disappears on pickup, not just the first node.
+			if (m_radioPickupEntity.is_valid() && m_radioPickupEntity.has<MeshComponent>()) {
+				uint32_t radioBaseMesh = m_radioPickupEntity.get<MeshComponent>().meshIndex;
+				m_scene->get_world().query<const MeshComponent>()
+					.each([&](flecs::entity e, const MeshComponent& mc) {
+						if (mc.meshIndex >= radioBaseMesh)
+							m_radioPickupEntities.push_back(e);
+					});
+			}
 
-		//	glm::vec3 radioPos = glm::vec3(0.0f);
-		//	bool radioFound = false;
-		//	for (const char* rName : kRadioEntityNames) {
-		//		flecs::entity re = m_scene->find_entity(rName);
-		//		if (!re.is_valid()) continue;
-		//		// Use the first found entity's position for the trigger
-		//		if (!radioFound && re.has<LocalTransform>()) {
-		//			radioPos = glm::vec3(re.get<LocalTransform>().matrix[3]);
-		//			radioFound = true;
-		//		}
-		//		// Remove collision body — radio is display-only
-		//		if (re.has<PhysicsBody>()) {
-		//			JPH::BodyID bid(re.get<PhysicsBody>().bodyID);
-		//			JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
-		//			if (bi.IsAdded(bid)) { bi.RemoveBody(bid); bi.DestroyBody(bid); }
-		//			re.remove<PhysicsBody>();
-		//		}
-		//		m_radioPickupEntities.push_back(re);
-		//	}
-		//	printf("[Level1] Radio entity %s, world pos (%.2f, %.2f, %.2f)\n",
-		//		radioFound ? "FOUND" : "NOT FOUND",
-		//		radioPos.x, radioPos.y, radioPos.z);
+			// Scan RadioMusic/ and load every .mp3 found (sorted by filename)
+			const fs::path radioDir = "Assets/Sounds/RadioMusic";
+			std::vector<fs::path> songFiles;
+			if (fs::exists(radioDir) && fs::is_directory(radioDir)) {
+				for (const auto& entry : fs::directory_iterator(radioDir)) {
+					const auto& p = entry.path();
+					if (p.extension() == ".mp3" || p.extension() == ".MP3")
+						songFiles.push_back(p);
+				}
+				std::sort(songFiles.begin(), songFiles.end());
+			}
+			for (int i = 0; i < static_cast<int>(songFiles.size()); ++i) {
+				std::string soundName = std::format("RadioSong{}", i);
+				std::string filePath  = songFiles[i].generic_string();
+				std::string label     = songFiles[i].stem().string();
+				m_audio->LoadSound(soundName, filePath);
+				m_audio->SetVolume(soundName, 0.35f);
+				m_radioSongs.push_back(std::move(soundName));
+				m_radioLabels.push_back(std::move(label));
+				printf("[Radio] Loaded song %d: %s\n", i, songFiles[i].filename().string().c_str());
+			}
+			if (m_radioSongs.empty())
+				printf("[Radio] WARNING: No .mp3 files found in %s\n", radioDir.string().c_str());
 
-		//	// oneShot=true: fires once on first contact, then permanently disabled
-		//	size_t radioTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
-		//		radioPos,
-		//		/*radius=*/2.5f,
-		//		/*particleIndex=*/static_cast<size_t>(-1),
-		//		/*color=*/glm::vec3(0.0f, 1.0f, 0.5f),
-		//		/*isVisible=*/true,
-		//		/*oneShot=*/true
-		//	);
-		//	m_render->GetTriggerSystem().SetTriggerCallbacks(radioTrigger,
-		//		[this]() {
-		//			// Hide all radio mesh entities
-		//			for (const char* rName : kRadioEntityNames) {
-		//				flecs::entity re = m_scene->find_entity(rName);
-		//				if (re.is_valid()) re.set<EntityStatus>({ false, false });
-		//			}
-		//			if (m_radioSongs.empty()) return;
-		//			m_audio->LoadSound("RadioOn", "Assets/Sounds/radio_on.mp3");
-		//			m_audio->SetVolume("RadioOn", 0.5f);
-		//			m_audio->PlayOneShot("RadioOn");
-		//			m_bgMusicPlaying = true;
-		//			m_currentSongIndex = 0;
-		//			m_audio->PlayLoop(m_radioSongs[0]);
-		//			EngineUi::LogPrint("[Radio] Picked up! Now playing: {}\n", m_radioLabels[0]);
-		//			EngineUi::ShowToast(std::format("Radio! Now playing: {}. Press N to switch.", m_radioLabels[0]));
-		//		},
-		//		nullptr
-		//	);
+			// oneShot=true: fires once on first contact, then permanently disabled
+			size_t radioTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
+				kRadioPickupPos,
+				/*radius=*/2.5f,
+				/*particleIndex=*/static_cast<size_t>(-1),
+				/*color=*/glm::vec3(0.0f, 1.0f, 0.5f),
+				/*isVisible=*/false,
+				/*oneShot=*/true
+			);
+			m_render->GetTriggerSystem().SetTriggerCallbacks(radioTrigger,
+				[this]() {
+					for (auto& re : m_radioPickupEntities)
+						if (re.is_valid()) re.set<EntityStatus>({ false, false });
+					if (m_radioSongs.empty()) return;
+					m_audio->LoadSound("RadioOn", "Assets/Sounds/radio_on.mp3");
+					m_audio->SetVolume("RadioOn", 0.5f);
+					m_audio->PlayOneShot("RadioOn");
+					m_bgMusicPlaying = true;
+					m_currentSongIndex = 0;
+					m_audio->PlayLoop(m_radioSongs[0]);
+					Log(std::format("[Radio] Picked up! Now playing: {}\n", m_radioLabels[0]));
+					Toast(std::format("Radio! Now playing: {}. Press N to switch.", m_radioLabels[0]));
 
-		//	// Key binding for cycling songs
-		//	m_input->MapKeyboardAction("NextSong", GLFW_KEY_N);
-		//}
+				// Mount satellite to character's back (bike-local space)
+				if (m_satelliteEntity.is_valid() && m_bikeEntity.is_valid()) {
+					const glm::mat4 satMountT =
+						glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.5f, -0.3f)) *
+						glm::scale(glm::mat4(1.0f), glm::vec3(0.009f));
+					m_satelliteEntity.child_of(m_bikeEntity);
+					m_satelliteEntity.set<LocalTransform>({ satMountT });
+					m_satelliteEntity.set<EntityStatus>({ true, true });
+				}
+				},
+				nullptr
+			);
+
+			// N key cycles songs
+			m_input->MapKeyboardAction("NextSong", GLFW_KEY_N);
+		}
+
+		// =========================================================
+		// Satellite — pre-loaded hidden; mounted to character's back on radio pickup
+		// =========================================================
+		{
+			flecs::entity satAsset = m_scene->LoadModel(
+				m_render, "Assets/Models/satellite.glb",
+				engine::ModelPhysicsType::Static, 0.0f, glm::mat4(1.0f));
+
+			uint32_t satMeshIdx = 0, satMatIdx = 0;
+			if (satAsset.is_valid()) {
+				if (satAsset.has<MeshComponent>())     satMeshIdx = satAsset.get<MeshComponent>().meshIndex;
+				if (satAsset.has<MaterialComponent>()) satMatIdx  = satAsset.get<MaterialComponent>().materialIndex;
+				m_scene->get_world().query<const MeshComponent>()
+					.each([&](flecs::entity e, const MeshComponent& mc) {
+						if (mc.meshIndex < satMeshIdx) return;
+						e.set<EntityStatus>({ false, false });
+						if (e.has<PhysicsBody>()) {
+							JPH::BodyID bid(e.get<PhysicsBody>().bodyID);
+							JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
+							if (bi.IsAdded(bid)) { bi.RemoveBody(bid); bi.DestroyBody(bid); }
+							e.remove<PhysicsBody>();
+						}
+					});
+			}
+			m_satelliteEntity = m_scene->create_dynamic_entity(
+				"SatelliteMount", satMeshIdx, satMatIdx, glm::mat4(1.0f));
+			m_satelliteEntity.set<EntityStatus>({ false, false }); // hidden until radio picked up
+		}
 
 		// =========================================================
 		// Rocket — hidden at start, mounted to rear frame on first gas tank collection
@@ -858,23 +879,116 @@ namespace engine {
 			//	m_rocketEntity.set<EntityStatus>({ false, false }); // hidden until first gas tank
 			//}
 		}
+
+
+		{
+			const glm::vec3 kCheckpointPos   = glm::vec3(374.91f, 77.54f, 296.48f);
+			const float     kCheckpointRadius = 19.80f;
+
+			size_t checkpointTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
+				kCheckpointPos,
+				kCheckpointRadius,
+				/*particleIndex=*/static_cast<size_t>(-1),
+				/*color=*/glm::vec3(0.0f, 1.0f, 0.0f),
+				/*isVisible=*/false,
+				/*oneShot=*/false
+			);
+			m_render->GetTriggerSystem().SetTriggerCallbacks(checkpointTrigger,
+				[this, kCheckpointPos]() {
+					m_checkpointPos = kCheckpointPos;
+					m_checkpointYaw = 0.0f;
+					m_hasCheckpoint = true;
+					printf("[Checkpoint] Respawn point updated to (%.2f, %.2f, %.2f)\n",
+						kCheckpointPos.x, kCheckpointPos.y, kCheckpointPos.z);
+				},
+				[]() {}
+			);
+		}
+
+
+		{
+			const glm::vec3 kClearCheckpointPos    = glm::vec3(402.77f, -33.045f, 278.87f);
+			const float     kClearCheckpointRadius = 10.0f;
+
+			size_t clearCheckpointTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
+				kClearCheckpointPos,
+				kClearCheckpointRadius,
+				/*particleIndex=*/static_cast<size_t>(-1),
+				/*color=*/glm::vec3(1.0f, 1.0f, 0.0f),
+				/*isVisible=*/false,
+				/*oneShot=*/false
+			);
+			m_render->GetTriggerSystem().SetTriggerCallbacks(clearCheckpointTrigger,
+				[this]() {
+					m_hasCheckpoint = false;
+					printf("[Checkpoint] Respawn reset to in-place\n");
+				},
+				[]() {}
+			);
+		}
+
+
+		{
+			const glm::vec3 kIblOffPos    = glm::vec3(407.691f, 65.906f, 280.383f);
+			const float     kIblOffRadius = 10.0f;
+
+			size_t iblOffTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
+				kIblOffPos,
+				kIblOffRadius,
+				/*particleIndex=*/static_cast<size_t>(-1),
+				/*color=*/glm::vec3(1.0f, 0.5f, 0.0f),
+				/*isVisible=*/false,
+				/*oneShot=*/false
+			);
+			m_render->GetTriggerSystem().SetTriggerCallbacks(iblOffTrigger,
+				[this]() {
+					if (mState) {
+						mState->iblEnabled = false;
+						printf("[Trigger] IBL disabled\n");
+					}
+				},
+				[]() {}
+			);
+		}
+
+
+		{
+			const glm::vec3 kIblOnPos    = glm::vec3(-178.163f, 9.492f, -77.001f);
+			const float     kIblOnRadius = 4.97f;
+
+			size_t iblOnTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
+				kIblOnPos,
+				kIblOnRadius,
+				/*particleIndex=*/static_cast<size_t>(-1),
+				/*color=*/glm::vec3(0.0f, 0.5f, 1.0f),
+				/*isVisible=*/false,
+				/*oneShot=*/false
+			);
+			m_render->GetTriggerSystem().SetTriggerCallbacks(iblOnTrigger,
+				[this]() {
+					if (mState) {
+						mState->iblEnabled = true;
+						printf("[Trigger] IBL enabled\n");
+					}
+				},
+				[]() {}
+			);
+		}
 	}
 
 	void level::Update(float dt) {
-		if (m_render && mState) {
-			if (RuntimeUiController* runtimeUi = m_render->GetRuntimeUiController()) {
-				if (!mState->isAlive) {
-					if (!m_respawnPromptVisible) {
-						m_respawnPromptVisible = runtimeUi->AddWidgetToViewPort(kRespawnPromptUiPath);
-					}
-				}
-				else if (m_respawnPromptVisible) {
-					runtimeUi->RemoveWidgetFromViewPort(kRespawnPromptUiPath);
-					m_respawnPromptVisible = false;
+		if (mState) {
+			if (!mState->isAlive) {
+				if (!m_respawnPromptVisible) {
+					m_respawnPromptVisible = AddWidget(kRespawnPromptUiPath);
 				}
 			}
+			else if (m_respawnPromptVisible) {
+				RemoveWidget(kRespawnPromptUiPath);
+				m_respawnPromptVisible = false;
+			}
 		}
-		// 延迟音效（与 TestScene 风格一致）
+
 		if (m_allCollectSoundDelay >= 0.0f) {
 			m_allCollectSoundDelay -= dt;
 			if (m_allCollectSoundDelay < 0.0f) {
@@ -901,7 +1015,6 @@ namespace engine {
 			spinPickup(m_springPickupEntity);
 			spinPickup(m_hornPickupEntity);
 			for (auto& ge : m_gasPickupEntities) spinPickup(ge);
-			for (auto& re : m_radioPickupEntities) spinPickup(re);
 		}
 		m_audio->LoadSound("NextSong", "Assets/Sounds/Button.mp3");
 		m_audio->SetVolume("NextSong", 0.7f);
@@ -910,8 +1023,8 @@ namespace engine {
 			m_audio->Stop(m_radioSongs[m_currentSongIndex]);
 			m_currentSongIndex = (m_currentSongIndex + 1) % static_cast<int>(m_radioSongs.size());
 			m_audio->PlayLoop(m_radioSongs[m_currentSongIndex]);
-			EngineUi::LogPrint("[Radio] Switched to: {}\n", m_radioLabels[m_currentSongIndex]);
-			EngineUi::ShowToast(std::format("Now playing: {}", m_radioLabels[m_currentSongIndex]));
+			Log(std::format("[Radio] Switched to: {}\n", m_radioLabels[m_currentSongIndex]));
+			Toast(std::format("Now playing: {}", m_radioLabels[m_currentSongIndex]));
 			m_audio->PlayOneShot("NextSong");
 		}
 
@@ -972,6 +1085,17 @@ namespace engine {
 			m_springMountedEntity.set<LocalTransform>({ animT });
 		}
 
+		// Satellite spin — rotate around Y axis while mounted
+		if (m_satelliteEntity.is_valid() && m_satelliteEntity.has<EntityStatus>()
+			&& m_satelliteEntity.get<EntityStatus>().should_render) {
+			constexpr float kSatSpinSpeed = 2.0f; // radians per second
+			auto* lt = &m_satelliteEntity.get_mut<LocalTransform>();
+			const glm::vec3 pos = glm::vec3(lt->matrix[3]);
+			const glm::mat4 rot = glm::rotate(glm::mat4(1.0f), kSatSpinSpeed * dt, glm::vec3(0.0f, 1.0f, 0.0f));
+			lt->matrix = glm::translate(glm::mat4(1.0f), pos) * rot * glm::translate(glm::mat4(1.0f), -pos) * lt->matrix;
+			m_satelliteEntity.modified<LocalTransform>();
+		}
+
 		if (m_input && m_input->IsActionPressed("DEPLOY")) {
 
 			if (!mState->isAlive) {
@@ -989,44 +1113,49 @@ namespace engine {
 						float angVelSq = bi.GetAngularVelocity(id).LengthSq();
 
 				
-						// 设置一个合理的速度阈值，确保单车在接近静止时才允许复活
+
 
 						const float stopThresholdSq = 1.95f;
 
-						if (linVelSq < stopThresholdSq && angVelSq < stopThresholdSq) {
+						// Checkpoint respawn: no speed requirement
+						// In-place respawn: wait until bike has stopped
+						if (m_hasCheckpoint || (linVelSq < stopThresholdSq && angVelSq < stopThresholdSq)) {
 
-							JPH::RVec3 currentPos = bi.GetPosition(id );
-							currentPos.SetY(currentPos.GetY() + 1.0f);
+							JPH::RVec3 respawnPos;
+							JPH::Quat  uprightRot;
 
-							JPH::Quat currentRot = bi.GetRotation(id);
-							JPH::Vec3 fwd = currentRot.RotateAxisZ();
-							// ====================================================
-					// 【新增】：计算向后的偏移量 (Backward Offset)
-					// ====================================================
-					// 1. 将前向向量投影到水平面 (XZ平面)，防止单车往地下或天上偏移
-							JPH::Vec3 flatFwd(fwd.GetX(), 0.0f, fwd.GetZ());
-							if (flatFwd.LengthSq() > 0.0001f) {
-								flatFwd = flatFwd.Normalized();
+							if (m_hasCheckpoint) {
+
+								respawnPos = JPH::RVec3(m_checkpointPos.x, m_checkpointPos.y - 0.5f, m_checkpointPos.z);
+								uprightRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), m_checkpointYaw);
+								printf("[Gameplay] Bike respawned at checkpoint (%.2f, %.2f, %.2f)\n",
+									m_checkpointPos.x, m_checkpointPos.y, m_checkpointPos.z);
 							}
 							else {
-								// 兜底：如果单车是绝对垂直于地面的，给一个默认朝向
-								flatFwd = JPH::Vec3(0.0f, 0.0f, -1.0f);
+
+								JPH::RVec3 currentPos = bi.GetPosition(id);
+
+								JPH::Quat currentRot = bi.GetRotation(id);
+								JPH::Vec3 fwd = currentRot.RotateAxisZ();
+								JPH::Vec3 flatFwd(fwd.GetX(), 0.0f, fwd.GetZ());
+								if (flatFwd.LengthSq() > 0.0001f) {
+									flatFwd = flatFwd.Normalized();
+								}
+								else {
+									flatFwd = JPH::Vec3(0.0f, 0.0f, -1.0f);
+								}
+
+								float backwardOffset = 0.3f;
+								currentPos.SetX(currentPos.GetX() - flatFwd.GetX() * backwardOffset);
+								currentPos.SetZ(currentPos.GetZ() - flatFwd.GetZ() * backwardOffset);
+								currentPos.SetY(currentPos.GetY() + 1.0f);
+
+								float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
+								uprightRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), currentYaw + JPH::JPH_PI);
+								respawnPos = currentPos;
 							}
 
-							// 2. 设置向后偏移的距离 
-							float backwardOffset = 0.3f;
-
-							// 3. 应用偏移：X 和 Z 减去前向向量，Y 依然向上抬高 1 米
-							currentPos.SetX(currentPos.GetX() - flatFwd.GetX() * backwardOffset);
-							currentPos.SetZ(currentPos.GetZ() - flatFwd.GetZ() * backwardOffset);
-							currentPos.SetY(currentPos.GetY() + 1.0f);
-							// ====================================================
-
-							float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
-							// 保持你原本的旋转修正
-							JPH::Quat uprightRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), currentYaw + JPH::JPH_PI);
-
-							bi.SetPositionAndRotation(id, currentPos, uprightRot, JPH::EActivation::Activate);
+							bi.SetPositionAndRotation(id, respawnPos, uprightRot, JPH::EActivation::Activate);
 							bi.SetLinearVelocity(id, JPH::Vec3::sZero());
 							bi.SetAngularVelocity(id, JPH::Vec3::sZero());
 
@@ -1040,9 +1169,7 @@ namespace engine {
 							mState->engineForce = 0.0f;
 							mState->lastPedal = -1;
 
-							if (RuntimeUiController* runtimeUi = m_render ? m_render->GetRuntimeUiController() : nullptr) {
-								runtimeUi->RemoveWidgetFromViewPort(kRespawnPromptUiPath);
-							}
+							RemoveWidget(kRespawnPromptUiPath);
 							m_respawnPromptVisible = false;
 
 							printf("[Gameplay] Bike stopped and respawned in place!\n");
@@ -1063,19 +1190,17 @@ namespace engine {
 		}
 
 		// ���Ʋ��� Debug ���� (ֻ��������ؿ�����Ҫ����Щ)
+#ifndef NDEBUG
 		m_render->mDebugRenderer.DrawBox(glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 		m_render->mDebugRenderer.DrawLine(glm::vec3(3.0f, 0.0f, 0.0f), glm::vec3(3.0f, 5.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 		m_render->mDebugRenderer.DrawSphere(glm::vec3(-4.0f, 2.0f, 0.0f), 2.0f, glm::vec3(0.0f, 0.0f, 1.0f));
 		m_render->mDebugRenderer.DrawCapsule(glm::vec3(0.0f, 2.0f, 5.0f), 1.0f, 1.5f, glm::vec3(1.0f, 1.0f, 0.0f));
+#endif
 	}
 
 	void level::Shutdown() {
 
-		if (m_render) {
-			if (RuntimeUiController* runtimeUi = m_render->GetRuntimeUiController()) {
-				runtimeUi->RemoveWidgetFromViewPort(kRespawnPromptUiPath);
-			}
-		}
+		RemoveWidget(kRespawnPromptUiPath);
 		m_respawnPromptVisible = false;
 
 		

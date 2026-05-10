@@ -313,7 +313,7 @@ namespace engine {
             // ==========================================
             // 1. 核心设备与内存池初始化
             // ==========================================
-			mWindow = lut::make_vulkan_window(false, false);//不立即显示窗口，等加载完毕再显示// Create a Vulkan window when  it  loading is complete
+			mWindow = lut::make_vulkan_window(false,true);//不立即显示窗口，等加载完毕再显示// Create a Vulkan window when  it  loading is complete
             glfwSetWindowUserPointer(mWindow.window, mState);
             mState->camera2world = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 2.0f, 10.0f));
 
@@ -1388,11 +1388,14 @@ namespace engine {
                     if(mState->isAlive == false ) mState->isAlive = true; 
                 }
               
+#ifndef GAME_ONLY
                 if (mInputSystem->IsActionPressed("ToggleEngineUi")) {
                     mState->showEngineUi = !mState->showEngineUi;
                     EngineUi::ShowToast(mState->showEngineUi ? "[ Engine UI Visible ]" : "[ Engine UI Hidden ]");
                 }
+#endif
                 
+#ifndef GAME_ONLY
                 // Debug Render Modes
                 if (mInputSystem->IsActionPressed("Default")) mState->renderMode = 0;
                 if (mInputSystem->IsActionPressed("DebugMipmap")) mState->renderMode = 1;
@@ -1402,11 +1405,12 @@ namespace engine {
                 if (mInputSystem->IsActionPressed("DebugOverdraw")) mState->renderMode = 4;
                 if (mInputSystem->IsActionPressed("DebugOvershading")) mState->renderMode = 5;
                 if (mInputSystem->IsActionPressed("DebugShadows")) mState->renderMode = 6;
-                
+
                 if (mInputSystem->IsActionPressed("PrintCameraPos")) {
                     auto const pos = mState->camera2world[3];
                     std::printf("Camera Pos: %.4f, %.4f, %.4f\n", pos.x, pos.y, pos.z);
                 }
+#endif
             }
             //
 

@@ -1,4 +1,5 @@
 #pragma once
+#include <string>
 
 namespace engine {
 
@@ -9,21 +10,30 @@ namespace engine {
     class EventSystem;
     class AnimationSystem;
     class AudioSystem;
-    struct UserState;
+    struct GameplayState;
 
-    // ËùÓÐ¹Ø¿¨µÄ»ùÀà½Ó¿Ú
     class GameScene {
     public:
         virtual ~GameScene() = default;
 
-        // ´«ÈëÒýÇæµÄºËÐÄÏµÍ³Ö¸Õë£¬¹©¹Ø¿¨Ê¹ÓÃ
-        virtual void Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, UserState* state, AnimationSystem* anima, AudioSystem* audio) = 0;
+        virtual void Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, GameplayState* state, AnimationSystem* anima, AudioSystem* audio) = 0;
 
-        // ¹Ø¿¨Ã¿Ö¡µÄ¸üÐÂÂß¼­
         virtual void Update(float dt) = 0;
 
-        // ÍË³ö¹Ø¿¨Ê±µÄÇåÀí¹¤×÷
         virtual void Shutdown() = 0;
+
+    protected:
+        // Logging & notification â€” forwards to EngineUi without exposing it to game code
+        static void Log(const std::string& msg);
+        static void Toast(const std::string& msg);
+
+        // Runtime UI widget control â€” forwards to RuntimeUiController
+        void InitBase(RenderSystem* render);
+        bool AddWidget(const std::string& path);
+        bool RemoveWidget(const std::string& path);
+
+    private:
+        RenderSystem* m_baseRender = nullptr;
     };
 
 } // namespace engine
