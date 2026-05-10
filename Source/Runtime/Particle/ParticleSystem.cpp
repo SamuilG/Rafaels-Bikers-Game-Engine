@@ -5,6 +5,7 @@
 
 #include <glm/glm.hpp>
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <stdexcept>
@@ -33,7 +34,15 @@ Particle ParticleSystem::spawn(const glm::vec3& emitterPos)
         
         case EmitterShape::Cone: {
         p.pos = emitterPos;
-        glm::vec3 dir((rand01() * 2.f - 1.f) * config.coneSpread, 1.0f, (rand01() * 2.f - 1.f) * config.coneSpread);
+        // 使用 emitDir 作为主方向，在垂直平面上添加锥形扩散
+        glm::vec3 mainDir = glm::normalize(config.emitDir);
+        // 构造与 mainDir 垂直的两个基向量
+        glm::vec3 up = (std::abs(mainDir.y) < 0.99f) ? glm::vec3(0.f, 1.f, 0.f) : glm::vec3(1.f, 0.f, 0.f);
+        glm::vec3 right = glm::normalize(glm::cross(mainDir, up));
+        glm::vec3 fwd   = glm::normalize(glm::cross(right, mainDir));
+        glm::vec3 dir = mainDir
+            + right * ((rand01() * 2.f - 1.f) * config.coneSpread)
+            + fwd   * ((rand01() * 2.f - 1.f) * config.coneSpread);
         p.vel = glm::normalize(dir) * speed;
         break;
     }
@@ -53,6 +62,22 @@ Particle ParticleSystem::spawn(const glm::vec3& emitterPos)
         );
         // 假设盒形是下雨/雪，给一个默认向下的速度向量
         p.vel = glm::vec3(0.5f, -1.0f, 0.0f) * speed;
+        break;
+    }
+        case EmitterShape::Disk: {
+        // 在 XZ 平面以 sphereRadius 为半径的圆盘内随机生成位置
+        float angle  = rand01() * 2.0f * 3.14159265f;
+        float radius = config.sphereRadius * std::sqrt(rand01()); // sqrt 保证均匀分布
+        p.pos = emitterPos + glm::vec3(std::cos(angle) * radius, 0.0f, std::sin(angle) * radius);
+        // 速度方向使用 emitDir（支持向下喷射等）
+        glm::vec3 mainDir = glm::normalize(config.emitDir);
+        glm::vec3 up2 = (std::abs(mainDir.y) < 0.99f) ? glm::vec3(0.f, 1.f, 0.f) : glm::vec3(1.f, 0.f, 0.f);
+        glm::vec3 right2 = glm::normalize(glm::cross(mainDir, up2));
+        glm::vec3 fwd2   = glm::normalize(glm::cross(right2, mainDir));
+        glm::vec3 dir = mainDir
+            + right2 * ((rand01() * 2.f - 1.f) * config.coneSpread)
+            + fwd2   * ((rand01() * 2.f - 1.f) * config.coneSpread);
+        p.vel = glm::normalize(dir) * speed;
         break;
     }
     }

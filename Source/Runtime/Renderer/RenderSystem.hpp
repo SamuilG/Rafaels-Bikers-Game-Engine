@@ -297,6 +297,30 @@ namespace engine {
             allParticles.push_back(std::move(ps));
         }
 
+        void AddParticleGroup(uint32_t maxParticles) {
+            vkDeviceWaitIdle(mWindow.device);
+
+            auto ps = std::make_unique<ParticleSystem>();
+            ps->setEmitterShape(EmitterShape::Sphere);
+
+            if (particleTextureDict.count(cfg::ParticleTextures[0])) {
+                ps->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[0]];
+                ps->config.uiIconDescriptor  = particleImGuiTextureDict[cfg::ParticleTextures[5]];
+                ps->config.useTexture  = 1;
+                ps->config.atlasCols   = 4;
+                ps->config.atlasRows   = 4;
+                ps->config.animateAtlas = true;
+            }
+
+            ps->config.emitterPos = glm::vec3(0.0f, 5.0f, 0.0f);
+
+            std::string defaultName = "Group " + std::to_string(allParticles.size() + 1);
+            snprintf(ps->config.name, sizeof(ps->config.name), "%s", defaultName.c_str());
+
+            ps->init(mAllocator, maxParticles, ps->config.emitterPos);
+            allParticles.push_back(std::move(ps));
+        }
+
         //删除粒子组
         //delete particle group
         void RemoveParticleGroup(size_t index) {

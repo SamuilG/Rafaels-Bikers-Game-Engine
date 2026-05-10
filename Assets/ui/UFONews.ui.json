@@ -1,0 +1,114 @@
+{
+    "version": 1,
+    "screenName": "UFONews",
+    "themePath": "Assets/ui/BicycleSim_DarkTheme.ui.theme.json",
+    "screenSettings": {
+        "visible": false,
+        "blocksInput": true,
+        "renderOrder": 20,
+        "pauseGameWhenOpen": false,
+        "allowInputPassthrough": false,
+        "hideAfterExit": true,
+        "blockInputDuringTransition": false
+    },
+    "canvasReferenceResolution": {
+        "x": 1920.0,
+        "y": 1080.0
+    },
+    "bindings": [],
+    "animations": [],
+    "rootElement": {
+        "id": 1,
+        "name": "Canvas",
+        "type": "Canvas",
+        "visible": true,
+        "enabled": true,
+        "interactable": false,
+        "runtimeMutable": true,
+        "zOrder": 0,
+        "transform": {
+            "position": { "x": 0.0, "y": 0.0 },
+            "size": { "x": 1920.0, "y": 1080.0 },
+            "anchorMin": { "x": 0.0, "y": 0.0 },
+            "anchorMax": { "x": 0.0, "y": 0.0 },
+            "pivot": { "x": 0.0, "y": 0.0 },
+            "rotation": 0.0,
+            "scale": { "x": 1.0, "y": 1.0 }
+        },
+        "style": {
+            "presetName": "",
+            "overrides": {
+                "backgroundColor": true, "tintColor": true, "textColor": true,
+                "texturePath": true, "fontPath": true, "fontSize": true,
+                "opacity": true, "padding": true, "margin": true,
+                "borderColor": true, "borderWidth": true, "borderRadius": true
+            },
+            "backgroundColor": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0 },
+            "tintColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+            "textColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+            "texturePath": "",
+            "fontPath": "",
+            "fontSize": 16.0,
+            "opacity": 1.0,
+            "padding": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+            "margin": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+            "borderColor": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0 },
+            "borderWidth": 0.0,
+            "borderRadius": 0.0
+        },
+        "widgetData": {},
+        "events": {
+            "onClick": "", "onHover": "", "onPressed": "", "onReleased": "", "onValueChanged": ""
+        },
+        "children": [
+            {
+                "id": 2,
+                "name": "UFOImage",
+                "type": "Image",
+                "visible": true,
+                "enabled": true,
+                "interactable": false,
+                "runtimeMutable": true,
+                "zOrder": 10,
+                "transform": {
+                    "position": { "x": 960.0, "y": 540.0 },
+                    "size": { "x": 603.0, "y": 1080.0 },
+                    "anchorMin": { "x": 0.0, "y": 0.0 },
+                    "anchorMax": { "x": 0.0, "y": 0.0 },
+                    "pivot": { "x": 0.5, "y": 0.5 },
+                    "rotation": 0.0,
+                    "scale": { "x": 1.0, "y": 1.0 }
+                },
+                "style": {
+                    "presetName": "",
+                    "overrides": {
+                        "backgroundColor": true, "tintColor": true, "textColor": true,
+                        "texturePath": true, "fontPath": true, "fontSize": true,
+                        "opacity": true, "padding": true, "margin": true,
+                        "borderColor": true, "borderWidth": true, "borderRadius": true
+                    },
+                    "backgroundColor": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0 },
+                    "tintColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+                    "textColor": { "x": 1.0, "y": 1.0, "z": 1.0, "w": 1.0 },
+                    "texturePath": "Assets/icons/UFO.png",
+                    "fontPath": "",
+                    "fontSize": 16.0,
+                    "opacity": 1.0,
+                    "padding": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+                    "margin": { "left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0 },
+                    "borderColor": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0 },
+                    "borderWidth": 0.0,
+                    "borderRadius": 0.0
+                },
+                "widgetData": {
+                    "imagePath": "Assets/icons/UFO.png",
+                    "preserveAspectRatio": false
+                },
+                "events": {
+                    "onClick": "", "onHover": "", "onPressed": "", "onReleased": "", "onValueChanged": ""
+                },
+                "children": []
+            }
+        ]
+    }
+}

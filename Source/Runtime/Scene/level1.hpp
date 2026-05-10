@@ -34,6 +34,8 @@ namespace engine {
 
         bool m_bgMusicPlaying = false;          // radio pickup: track whether BGM loop is active
         int  m_currentSongIndex = 0;            // radio: index of the currently playing song
+        float m_radioBroadcastDelay = -1.0f;   // >0: counting down to playing boardcast.mp3
+        float m_radioBgMusicDelay   = -1.0f;   // >0: counting down to starting bg music loop
         std::vector<std::string> m_radioSongs;  // radio: sound names loaded from RadioMusic/
         std::vector<std::string> m_radioLabels; // radio: display names (filename stems)
 
@@ -58,6 +60,18 @@ namespace engine {
 
         // Rocket — hidden at start, mounted to rear frame on first gas tank collection
         flecs::entity m_rocketEntity;
+
+        // Newspaper pickup — shows UFO image for 5s on trigger
+        flecs::entity m_newspaperEntity;
+        float         m_ufoDisplayTimer = -1.0f; // counts down from 5s; -1 = inactive
+
+        // Rocket2 scene launch — triggered at (232.94, 86.11, -222.40)
+        std::vector<flecs::entity> m_rocket2Entities;  // ALL mesh parts of rocket2.glb
+        glm::vec3     m_rocket2Center      = glm::vec3(260.92f, -20.0f, 0.0f); // pivot point (spawn pos), tracks ascent during launch
+        bool          m_rocket2Launching   = false;
+        float         m_rocket2LaunchTimer = -1.0f;
+        size_t        m_rocketFlameParticleIndex = static_cast<size_t>(-1); // flame particles at rocket tail
+        bool          m_rocketCameraActive = false; // camera follows rocket tail looking down
 
 		bool m_respawnPromptVisible = false;
 
