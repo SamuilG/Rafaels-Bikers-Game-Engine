@@ -134,6 +134,7 @@ namespace engine {
         explicit UIButton(std::string elementName = "Button", std::string buttonLabel = {});
 
     public:
+        glm::vec2 backgroundImageScale = glm::vec2(1.0f);//x和y缩放
         std::string label;                          // 按钮上显示的文字
         bool pressed = false;                       // 当前帧是否处于按下状态
         bool usePresetTransitionStyle = true;       // 是否使用主题预设中的过渡样式

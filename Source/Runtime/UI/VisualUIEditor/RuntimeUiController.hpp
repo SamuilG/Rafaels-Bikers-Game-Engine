@@ -53,6 +53,7 @@ namespace engine {
 
     struct RuntimeUiButtonOptions : RuntimeUiElementOptions {
         std::optional<std::string> label;
+        std::optional<glm::vec2> backgroundImageScale;
         std::optional<glm::vec4> normalColor;
         std::optional<glm::vec4> hoverColor;
         std::optional<glm::vec4> pressedColor;
@@ -276,6 +277,9 @@ namespace engine {
                 ApplyElementOptions(*button, options);
                 if (options.label.has_value()) {
                     button->label = *options.label;
+                }
+                if (options.backgroundImageScale.has_value()) {
+                    button->backgroundImageScale = glm::max(glm::vec2(0.01f), *options.backgroundImageScale);
                 }
                 if (options.usePresetTransitionStyle.has_value()) {
                     button->usePresetTransitionStyle = *options.usePresetTransitionStyle;

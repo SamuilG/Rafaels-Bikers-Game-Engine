@@ -894,15 +894,21 @@ namespace engine {
             const ImVec2& max,
             const std::string& texturePath,
             bool useTint,
-            float scale) {
+            float scale,
+            bool drawBorder = true,
+            const ImVec2* clipMin = nullptr,
+            const ImVec2* clipMax = nullptr) {
             const ImTextureID textureId = ResolvePreviewTexture(texturePath);
             if (textureId == static_cast<ImTextureID>(0)) {
                 return false;
             }
-
             const ImU32 tintColor = useTint
                 ? ToImGuiColor(element.style.tintColor, element.style.opacity)
                 : IM_COL32(255, 255, 255, static_cast<int>(std::clamp(element.style.opacity, 0.0f, 1.0f) * 255.0f));
+
+            if (clipMin != nullptr && clipMax != nullptr) {
+                drawList->PushClipRect(*clipMin, *clipMax, true);
+            }
 
             if (HasVisibleRotation(element)) {
                 const auto quad = BuildRotatedQuad(element, min, max);
@@ -911,7 +917,13 @@ namespace engine {
             else {
                 drawList->AddImage(textureId, min, max, ImVec2(0.0f, 1.0f), ImVec2(1.0f, 0.0f), tintColor);
             }
-            DrawPreviewBorder(drawList, element, min, max, scale, ToImGuiColor(element.style.borderColor, element.style.opacity));
+
+            if (clipMin != nullptr && clipMax != nullptr) {
+                drawList->PopClipRect();
+            }
+            if (drawBorder) {
+                DrawPreviewBorder(drawList, element, min, max, scale, ToImGuiColor(element.style.borderColor, element.style.opacity));
+            }
             return true;
         }
 
@@ -941,6 +953,16 @@ namespace engine {
             return ImVec2(
                 std::clamp((point.x - min.x) / width, 0.0f, 1.0f),
                 std::clamp(1.0f - ((point.y - min.y) / height), 0.0f, 1.0f));
+        }
+
+        std::pair<ImVec2, ImVec2> ScaleRectAroundCenter(const ImVec2& min, const ImVec2& max, const glm::vec2& factor) {
+            const glm::vec2 safeFactor = glm::max(glm::vec2(0.01f), factor);
+            const ImVec2 center((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f);
+            const ImVec2 halfSize((max.x - min.x) * 0.5f * safeFactor.x, (max.y - min.y) * 0.5f * safeFactor.y);
+            return {
+                ImVec2(center.x - halfSize.x, center.y - halfSize.y),
+                ImVec2(center.x + halfSize.x, center.y + halfSize.y)
+            };
         }
 
         void DrawSolidRadialArc(
@@ -2578,8 +2600,11 @@ namespace engine {
                         static_cast<int>(std::clamp(sourceColor->a * element.style.opacity, 0.0f, 1.0f) * 255.0f)
                     );
                 }
-                const bool drewTexture = !element.style.texturePath.empty() &&
-                    DrawPreviewTexture(drawList, element, min, max, element.style.texturePath, false, scale);
+                bool drewTexture = false;
+                if (button && !element.style.texturePath.empty()) {
+                    const auto [textureMin, textureMax] = ScaleRectAroundCenter(min, max, button->backgroundImageScale);
+                    drewTexture = DrawPreviewTexture(drawList, element, textureMin, textureMax, element.style.texturePath, false, scale, false, &min, &max);
+                }
                 if (!drewTexture) {
                     if (HasVisibleRotation(element)) {
                         const auto quad = BuildRotatedQuad(element, min, max);
@@ -2589,23 +2614,7 @@ namespace engine {
                         drawList->AddRectFilled(min, max, buttonColor, scaledBorderRadius);
                     }
                 }
-                else if (buttonColor != IM_COL32(255, 255, 255, static_cast<int>(std::clamp(element.style.opacity, 0.0f, 1.0f) * 255.0f))) {
-                    if (HasVisibleRotation(element)) {
-                        const auto quad = BuildRotatedQuad(element, min, max);
-                        drawList->AddQuadFilled(quad[0], quad[1], quad[2], quad[3], IM_COL32(
-                            (buttonColor >> IM_COL32_R_SHIFT) & 0xFF,
-                            (buttonColor >> IM_COL32_G_SHIFT) & 0xFF,
-                            (buttonColor >> IM_COL32_B_SHIFT) & 0xFF,
-                            96));
-                    }
-                    else {
-                        drawList->AddRectFilled(min, max, IM_COL32(
-                            (buttonColor >> IM_COL32_R_SHIFT) & 0xFF,
-                            (buttonColor >> IM_COL32_G_SHIFT) & 0xFF,
-                            (buttonColor >> IM_COL32_B_SHIFT) & 0xFF,
-                            96), scaledBorderRadius);
-                    }
-                }
+               
                 DrawPreviewBorder(drawList, element, min, max, scale, borderColor);
                 const std::string label = button && !button->label.empty() ? button->label : std::string("Button");
                 const ImVec2 textSize = MeasurePreviewText(label, previewFont, scaledFontSize);
@@ -2794,8 +2803,15 @@ namespace engine {
 
             drawOverrideHeader("Background Color", element.style.overrides.backgroundColor);
             ImGui::BeginDisabled(!element.style.overrides.backgroundColor && !element.style.presetName.empty());
-            DrawColorEditor("##BackgroundColor", element.style.backgroundColor);
+            const bool backgroundColorChanged = DrawColorEditor("##BackgroundColor", element.style.backgroundColor);
             ImGui::EndDisabled();
+            if (backgroundColorChanged) {
+                if (auto* button = dynamic_cast<UIButton*>(&element)) {
+                    button->normalColor = element.style.backgroundColor;
+                    button->runtimeVisualColor = button->normalColor;
+                    button->runtimeVisualInitialized = false;
+                }
+            }
 
             drawOverrideHeader("Tint Color", element.style.overrides.tintColor);
             ImGui::BeginDisabled(!element.style.overrides.tintColor && !element.style.presetName.empty());
@@ -3728,10 +3744,14 @@ namespace engine {
             if (DrawFloatInputAndSlider("Pressed Scale", button.pressedScale, 0.01f, 0.5f, 2.0f, "%.2f")) {
                 button.usePresetTransitionStyle = false;
             }
+         
             if (DrawFloatInputAndSlider("Transition Duration", button.transitionDuration, 0.01f, 0.01f, 1.0f, "%.2f s")) {
                 button.usePresetTransitionStyle = false;
             }
             ImGui::EndDisabled();
+            if (DrawVec2Editor("Background Image Scale", button.backgroundImageScale)) {
+                button.backgroundImageScale = glm::max(glm::vec2(0.01f), button.backgroundImageScale);
+            }
             ImGui::InputText("onClick", &button.events.onClick);
         }
 

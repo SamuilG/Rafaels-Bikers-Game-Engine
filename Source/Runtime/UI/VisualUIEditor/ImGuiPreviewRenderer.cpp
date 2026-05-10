@@ -225,7 +225,10 @@ namespace engine {
             const UIRenderContext& context,
             const std::function<void*(const std::string&)>& resolver,
             const std::string& texturePath,
-            bool useTint) {
+            bool useTint,
+            bool drawBorder = true,
+            const ImVec2* clipMin = nullptr,
+            const ImVec2* clipMax = nullptr) {
             const ImTextureID textureId = ResolvePreviewTexture(resolver, texturePath);
             if (textureId == static_cast<ImTextureID>(0)) {
                 return false;
@@ -235,6 +238,10 @@ namespace engine {
             const ImU32 tintColor = useTint
                 ? ToImGuiColor(style.tintColor, effectiveOpacity)
                 : IM_COL32(255, 255, 255, static_cast<int>(effectiveOpacity * 255.0f));
+
+            if (clipMin != nullptr && clipMax != nullptr) {
+                drawList->PushClipRect(*clipMin, *clipMax, true);
+            }
 
             // 旋转元素使用四点图片绘制，未旋转元素走普通矩形贴图路径。
             if (HasVisibleRotation(element)) {
@@ -254,8 +261,12 @@ namespace engine {
             else {
                 drawList->AddImage(textureId, min, max, ImVec2(0.0f, 1.0f), ImVec2(1.0f, 0.0f), tintColor);
             }
-
-            DrawPreviewBorder(drawList, element, style, min, max, context, ToImGuiColor(style.borderColor, effectiveOpacity));
+            if (clipMin != nullptr && clipMax != nullptr) {
+                drawList->PopClipRect();
+            }
+            if (drawBorder) {
+                DrawPreviewBorder(drawList, element, style, min, max, context, ToImGuiColor(style.borderColor, effectiveOpacity));
+            }
             return true;
         }
 
@@ -298,6 +309,16 @@ namespace engine {
             return ImVec2(
                 std::clamp((point.x - min.x) / width, 0.0f, 1.0f),
                 std::clamp(1.0f - ((point.y - min.y) / height), 0.0f, 1.0f));
+        }
+
+        std::pair<ImVec2, ImVec2> ScaleRectAroundCenter(const ImVec2& min, const ImVec2& max, const glm::vec2& factor) {
+            const glm::vec2 safeFactor = glm::max(glm::vec2(0.01f), factor);
+            const ImVec2 center((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f);
+            const ImVec2 halfSize((max.x - min.x) * 0.5f * safeFactor.x, (max.y - min.y) * 0.5f * safeFactor.y);
+            return {
+                ImVec2(center.x - halfSize.x, center.y - halfSize.y),
+                ImVec2(center.x + halfSize.x, center.y + halfSize.y)
+            };
         }
 
         void DrawSolidRadialArc(
@@ -780,9 +801,23 @@ namespace engine {
                     }
                 }
 
-                const bool drewTexture =
-                    !resolvedStyle.texturePath.empty() &&
-                    DrawPreviewTexture(drawList, element, resolvedStyle, buttonMin, buttonMax, context, textureResolver, resolvedStyle.texturePath, false);
+                bool drewTexture = false;
+                if (button && !resolvedStyle.texturePath.empty()) {
+                    const auto [textureMin, textureMax] = ScaleRectAroundCenter(buttonMin, buttonMax, button->backgroundImageScale);
+                    drewTexture = DrawPreviewTexture(
+                        drawList,
+                        element,
+                        resolvedStyle,
+                        textureMin,
+                        textureMax,
+                        context,
+                        textureResolver,
+                        resolvedStyle.texturePath,
+                        false,
+                        false,
+                        &buttonMin,
+                        &buttonMax);
+                }
                 if (!drewTexture) {
                     if (HasVisibleRotation(element)) {
                         const auto quad = BuildRotatedQuad(element, buttonMin, buttonMax);
@@ -790,20 +825,6 @@ namespace engine {
                     }
                     else {
                         drawList->AddRectFilled(buttonMin, buttonMax, buttonColor, scaledBorderRadius);
-                    }
-                }
-                else if (buttonColor != IM_COL32(255, 255, 255, static_cast<int>(effectiveOpacity * 255.0f))) {
-                    const ImU32 overlayColor = IM_COL32(
-                        (buttonColor >> IM_COL32_R_SHIFT) & 0xFF,
-                        (buttonColor >> IM_COL32_G_SHIFT) & 0xFF,
-                        (buttonColor >> IM_COL32_B_SHIFT) & 0xFF,
-                        96);
-                    if (HasVisibleRotation(element)) {
-                        const auto quad = BuildRotatedQuad(element, buttonMin, buttonMax);
-                        drawList->AddQuadFilled(quad[0], quad[1], quad[2], quad[3], overlayColor);
-                    }
-                    else {
-                        drawList->AddRectFilled(buttonMin, buttonMax, overlayColor, scaledBorderRadius);
                     }
                 }
                 DrawPreviewBorder(drawList, element, resolvedStyle, buttonMin, buttonMax, context, borderColor);

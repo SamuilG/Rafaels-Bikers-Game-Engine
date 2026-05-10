@@ -419,6 +419,7 @@ namespace engine {
                 widgetData["pressed"] = button->pressed;
                 widgetData["usePresetTransitionStyle"] = button->usePresetTransitionStyle;
                 widgetData["transitionMode"] = ToString(button->transitionMode);
+                widgetData["backgroundImageScale"] = SerializeVec2(button->backgroundImageScale);
                 widgetData["normalColor"] = SerializeVec4(button->normalColor);
                 widgetData["hoverColor"] = SerializeVec4(button->hoverColor);
                 widgetData["pressedColor"] = SerializeVec4(button->pressedColor);
@@ -568,6 +569,19 @@ namespace engine {
                 button->usePresetTransitionStyle = widgetData.value("usePresetTransitionStyle", button->usePresetTransitionStyle);
                 const std::string transitionModeName = widgetData.value("transitionMode", std::string(ToString(button->transitionMode)));
                 TryParseUIButtonTransitionMode(transitionModeName, button->transitionMode);
+                if (const auto backgroundImageScaleIt = widgetData.find("backgroundImageScale");
+                    backgroundImageScaleIt != widgetData.end()) {
+                    if (backgroundImageScaleIt->is_number()) {
+                        const float uniformScale = std::max(0.01f, backgroundImageScaleIt->get<float>());
+                        button->backgroundImageScale = glm::vec2(uniformScale);
+                    }
+                    else {
+                        button->backgroundImageScale = glm::max(
+                            glm::vec2(0.01f),
+                            DeserializeVec2(*backgroundImageScaleIt, button->backgroundImageScale));
+                    }
+                }
+                const bool hasExplicitNormalColor = widgetData.contains("normalColor");
                 button->normalColor = DeserializeVec4(widgetData.value("normalColor", Json::object()), button->normalColor);
                 button->hoverColor = DeserializeVec4(widgetData.value("hoverColor", Json::object()), button->hoverColor);
                 button->pressedColor = DeserializeVec4(widgetData.value("pressedColor", Json::object()), button->pressedColor);
@@ -576,6 +590,9 @@ namespace engine {
                 button->hoverScale = widgetData.value("hoverScale", button->hoverScale);
                 button->pressedScale = widgetData.value("pressedScale", button->pressedScale);
                 button->transitionDuration = widgetData.value("transitionDuration", button->transitionDuration);
+                if (!hasExplicitNormalColor) {
+                    button->normalColor = element.style.backgroundColor;
+                }
                 button->runtimeVisualColor = button->normalColor;
                 button->runtimeVisualScale = button->normalScale;
                 button->runtimeVisualInitialized = false;
