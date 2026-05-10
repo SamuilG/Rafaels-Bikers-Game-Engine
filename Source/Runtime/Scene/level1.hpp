@@ -13,7 +13,7 @@ namespace engine {
         level();
         ~level() override;
 
-        void Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, UserState* state, AnimationSystem* anima, AudioSystem* audio) override;
+        void Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, GameplayState* state, AnimationSystem* anima, AudioSystem* audio) override;
         void Update(float dt) override;
         void Shutdown() override;
 
@@ -23,7 +23,7 @@ namespace engine {
         PhysicsSystem* m_physics = nullptr;
         InputSystem* m_input = nullptr;
         EventSystem* m_event = nullptr;
-        UserState* mState = nullptr;
+        GameplayState* mState = nullptr;
         AnimationSystem* m_anima = nullptr;
         AudioSystem* m_audio = nullptr;
 
@@ -59,7 +59,15 @@ namespace engine {
         // Rocket — hidden at start, mounted to rear frame on first gas tank collection
         flecs::entity m_rocketEntity;
 
-		bool m_respawnPromptVisible = false;//死亡后重生提示UI显示状态
+		bool m_respawnPromptVisible = false;
+
+		// Satellite — mounted to character's back after radio pickup
+		flecs::entity m_satelliteEntity;
+
+		// Checkpoint respawn — set when bike enters a checkpoint trigger
+		bool      m_hasCheckpoint   = false;
+		glm::vec3 m_checkpointPos   = glm::vec3(0.0f);
+		float     m_checkpointYaw   = 0.0f;
     };
 
 } // namespace engine

@@ -265,7 +265,7 @@
                 "zOrder": 10,
                 "transform": {
                     "position": {
-                        "x": 81.0,
+                        "x": 80.0,
                         "y": 870.0
                     },
                     "size": {
@@ -730,8 +730,8 @@
                 "zOrder": 0,
                 "transform": {
                     "position": {
-                        "x": 70.0,
-                        "y": 710.0
+                        "x": 60.0,
+                        "y": 720.0
                     },
                     "size": {
                         "x": 350.0,
@@ -840,114 +840,6 @@
                     },
                     "backgroundImagePath": "",
                     "fillImagePath": "Assets/Textures/RadialBar.png"
-                },
-                "events": {
-                    "onClick": "",
-                    "onHover": "",
-                    "onPressed": "",
-                    "onReleased": "",
-                    "onValueChanged": ""
-                },
-                "children": []
-            },
-            {
-                "id": 190,
-                "name": "Image_001",
-                "type": "Image",
-                "visible": true,
-                "enabled": true,
-                "interactable": true,
-                "runtimeMutable": true,
-                "zOrder": -1,
-                "transform": {
-                    "position": {
-                        "x": 70.0,
-                        "y": 710.0
-                    },
-                    "size": {
-                        "x": 340.0,
-                        "y": 340.0
-                    },
-                    "anchorMin": {
-                        "x": 0.0,
-                        "y": 0.0
-                    },
-                    "anchorMax": {
-                        "x": 0.0,
-                        "y": 0.0
-                    },
-                    "pivot": {
-                        "x": 0.0,
-                        "y": 0.0
-                    },
-                    "rotation": 0.0,
-                    "scale": {
-                        "x": 1.0,
-                        "y": 1.0
-                    }
-                },
-                "style": {
-                    "presetName": "",
-                    "overrides": {
-                        "backgroundColor": true,
-                        "tintColor": false,
-                        "textColor": false,
-                        "texturePath": true,
-                        "fontPath": true,
-                        "fontSize": true,
-                        "opacity": true,
-                        "padding": true,
-                        "margin": true,
-                        "borderColor": true,
-                        "borderWidth": false,
-                        "borderRadius": false
-                    },
-                    "backgroundColor": {
-                        "x": 0.18000000715255737,
-                        "y": 0.20000000298023224,
-                        "z": 0.25999999046325684,
-                        "w": 1.0
-                    },
-                    "tintColor": {
-                        "x": 1.0,
-                        "y": 1.0,
-                        "z": 1.0,
-                        "w": 1.0
-                    },
-                    "textColor": {
-                        "x": 0.949999988079071,
-                        "y": 0.949999988079071,
-                        "z": 0.9800000190734863,
-                        "w": 1.0
-                    },
-                    "texturePath": "Assets/Textures/SpeedBackground.png",
-                    "fontPath": "",
-                    "fontSize": 16.0,
-                    "opacity": 1.0,
-                    "padding": {
-                        "left": 0.0,
-                        "top": 0.0,
-                        "right": 0.0,
-                        "bottom": 0.0
-                    },
-                    "margin": {
-                        "left": 0.0,
-                        "top": 0.0,
-                        "right": 0.0,
-                        "bottom": 0.0
-                    },
-                    "borderColor": {
-                        "x": 0.3499999940395355,
-                        "y": 0.4000000059604645,
-                        "z": 0.5199999809265137,
-                        "w": 1.0
-                    },
-                    "borderWidth": 0.0,
-                    "borderRadius": 0.0
-                },
-                "widgetData": {
-                    "imagePath": "Assets/Textures/SpeedBackground.png",
-                    "preserveAspectRatio": true
                 },
                 "events": {
                     "onClick": "",

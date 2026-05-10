@@ -5,7 +5,7 @@
 #include <iostream>
 #include <cmath>
 #include <algorithm>
-#include "../UserState/UserState.hpp"
+#include "../UserState/GameplayState.hpp"
 
 #include "../Input/InputSystem.hpp" 
 #include <Jolt/Physics/Collision/RayCast.h>
@@ -17,7 +17,7 @@ namespace engine
 {
     float speed;
 
-    BikeController::BikeController(JPH::PhysicsSystem* joltPhysics, InputSystem* input, UserState* state)
+    BikeController::BikeController(JPH::PhysicsSystem* joltPhysics, InputSystem* input, GameplayState* state)
         : m_joltPhysics(joltPhysics), m_inputSystem(input), m_state(state)
     {
     }

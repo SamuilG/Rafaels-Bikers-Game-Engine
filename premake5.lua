@@ -4,7 +4,7 @@ workspace "EngineWorkspace"
     language "C++"
     cppdialect "C++23"
     platforms { "x64" }
-    configurations { "Debug", "Release" }
+    configurations { "Debug", "Release", "Game" }
 
     flags { "NoPCH", "MultiProcessorCompile" }
 
@@ -38,6 +38,10 @@ workspace "EngineWorkspace"
     filter "configurations:Release"
         optimize "On"
         defines { "NDEBUG=1" }
+
+    filter "configurations:Game"
+        optimize "On"
+        defines { "NDEBUG=1", "GAME_ONLY=1" }
     filter "*"
 
     -- ==========================================
