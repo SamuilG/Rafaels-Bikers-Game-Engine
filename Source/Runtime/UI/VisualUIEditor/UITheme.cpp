@@ -383,8 +383,9 @@ namespace engine {
 
     ResolvedUIButtonStyle ResolveButtonStyle(const UIElement& element, const UIButton& button, const UITheme* theme) {
         ResolvedUIButtonStyle resolved{};
+        const UIStyle resolvedElementStyle = ResolveStyle(element.style, theme);
         resolved.transitionMode = button.transitionMode;
-        resolved.normalColor = button.normalColor;
+        resolved.normalColor = resolvedElementStyle.backgroundColor;
         resolved.hoverColor = button.hoverColor;
         resolved.pressedColor = button.pressedColor;
         resolved.disabledColor = button.disabledColor;
@@ -411,6 +412,10 @@ namespace engine {
         resolved.hoverScale = preset->buttonStyle.hoverScale;
         resolved.pressedScale = preset->buttonStyle.pressedScale;
         resolved.transitionDuration = preset->buttonStyle.transitionDuration;
+
+        if (element.style.overrides.backgroundColor) {
+            resolved.normalColor = element.style.backgroundColor;
+        }
         return resolved;
     }
 
