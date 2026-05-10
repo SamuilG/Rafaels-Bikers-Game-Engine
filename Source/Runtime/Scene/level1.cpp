@@ -882,7 +882,7 @@ namespace engine {
 
 
 		{
-			const glm::vec3 kCheckpointPos   = glm::vec3(374.91f, 78.54f, 296.48f);
+			const glm::vec3 kCheckpointPos   = glm::vec3(374.91f, 77.54f, 296.48f);
 			const float     kCheckpointRadius = 19.80f;
 
 			size_t checkpointTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
@@ -908,7 +908,7 @@ namespace engine {
 
 		{
 			const glm::vec3 kClearCheckpointPos    = glm::vec3(402.77f, -33.045f, 278.87f);
-			const float     kClearCheckpointRadius = 5.0f;
+			const float     kClearCheckpointRadius = 10.0f;
 
 			size_t clearCheckpointTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
 				kClearCheckpointPos,
