@@ -1162,7 +1162,7 @@ namespace engine {
 
 								if (m_hasCheckpoint) {
 
-									respawnPos = JPH::RVec3(m_checkpointPos.x, m_checkpointPos.y - 0.5f, m_checkpointPos.z);
+									respawnPos = JPH::RVec3(m_checkpointPos.x, m_checkpointPos.y - 2.5f, m_checkpointPos.z);
 									uprightRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), m_checkpointYaw);
 									printf("[Gameplay] Bike respawned at checkpoint (%.2f, %.2f, %.2f)\n",
 										m_checkpointPos.x, m_checkpointPos.y, m_checkpointPos.z);
