@@ -103,6 +103,7 @@ namespace cfg
 #	undef SHADERDIR_
 
 	//particle textures
+	constexpr char const* RocketFlameTexture = "Assets/Textures/fire/F2.PNG";
 	constexpr char const* ParticleTextures[] = {
 	"Assets/Textures/MainMenu_Bg.png",
 	"Assets/Textures/fire.png",
@@ -110,6 +111,7 @@ namespace cfg
 	"Assets/Textures/fire5.png",
 	"Assets/Textures/ww.png",
 	"Assets/Textures/particleIcon.png",
+	RocketFlameTexture,
 	};
 
 }
