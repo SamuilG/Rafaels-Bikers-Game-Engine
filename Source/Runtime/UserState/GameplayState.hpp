@@ -68,7 +68,7 @@ namespace engine {
 		bool thirdPersonMode = true;
 		bool isAlive = true;
 
-		bool jumpEnabled = true;
+		bool jumpEnabled = false;
 		bool hornEnabled = false;
 		bool radioEnabled = false;
 		float deathFactor = 0.0f;
@@ -84,7 +84,7 @@ namespace engine {
 		int  collectedItems  = 0;
 		int  totalCollectibles = 15;
 		bool allCollected    = false;
-
+		bool radioMuted = false;
 		//================Graphics toggles (game-controlled)================================
 		bool iblEnabled = true;
 		bool bloomEnabled = true;

@@ -403,9 +403,6 @@ namespace engine {
 		glm::mat4 sunTransform = glm::mat4(1.0f); sunTransform[3] = glm::vec4(sunDir, 0.0f);
 		m_scene->create_light_entity("MainSun", engine::LightType::Directional, glm::vec3(1.2f, 0.95f, 0.8f), 2.5f, sunTransform, 0);
 
-		glm::mat4 light2SpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(20.0f, 3.0f, 30.0f));
-		flecs::entity vidl =  m_scene->create_light_entity("voidLight", engine::LightType::Point, glm::vec3(0.5f, 0.0f, 3.0f), 8, light2SpawnPos, 20.0f);
-		vidl.get_mut<engine::LightComponent>().specularMultiplier = 0.0f;
 		// 5. ���ô����� (Trigger)
 		m_render->AddParticleGroup();
 		auto& triggerParticles = m_render->GetParticles();
@@ -674,8 +671,8 @@ namespace engine {
 		{//-127,25 -72
 			
 			
-			//constexpr glm::vec3 kSpringPickupPos = glm::vec3(413.0f, 56.0f, 458.0f);
-			constexpr glm::vec3 kSpringPickupPos = glm::vec3(65.0f, 21.0f, 70.0f);//测试位置
+			constexpr glm::vec3 kSpringPickupPos = glm::vec3(413.0f, 56.0f, 458.0f);
+			//constexpr glm::vec3 kSpringPickupPos = glm::vec3(65.0f, 21.0f, 70.0f);//测试位置
 			const glm::mat4 kSpringTransform =
 				glm::translate(glm::mat4(1.0f), kSpringPickupPos) *
 				glm::rotate(glm::mat4(1.0f), glm::radians(35.0f), glm::vec3(1.0f, 0.0f, 0.0f)) *
@@ -749,8 +746,8 @@ namespace engine {
 		// Placed to the left of the bike spawn point
 		// =========================================================
 		{
-			//constexpr glm::vec3 kHornPickupPos = glm::vec3(-127.0f, 25.0f, -72.0f);
-			constexpr glm::vec3 kHornPickupPos = glm::vec3(70.0f, 21.0f, 70.0f);//测试位置
+			constexpr glm::vec3 kHornPickupPos = glm::vec3(-127.0f, 25.0f, -72.0f);
+			//constexpr glm::vec3 kHornPickupPos = glm::vec3(70.0f, 21.0f, 70.0f);//测试位置
 			const glm::mat4 kHornTransform =
 				glm::translate(glm::mat4(1.0f), kHornPickupPos) *
 				glm::rotate(glm::mat4(1.0f), glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f)) *  // correct upside-down orientation
@@ -830,7 +827,7 @@ namespace engine {
 		{
 			namespace fs = std::filesystem;
 
-			const glm::vec3 kRadioPickupPos = glm::vec3(-133.11f, 1.0f, -95.13f);
+			const glm::vec3 kRadioPickupPos = glm::vec3(-133.11f, 1.5f, -95.13f);
 			const glm::mat4 kRadioTransform = glm::translate(glm::mat4(1.0f), kRadioPickupPos)
 				* glm::scale(glm::mat4(1.0f), glm::vec3(3.0f));
 
@@ -913,13 +910,14 @@ namespace engine {
 
 			// N key cycles songs
 			m_input->MapKeyboardAction("NextSong", GLFW_KEY_N);
+			m_input->MapKeyboardAction("Mute", GLFW_KEY_M);
 		}
 
 		// =========================================================
 		// Newspaper pickup — near radio; shows UFO.png for 5 s on trigger
 		// =========================================================
 		{
-			constexpr glm::vec3 kNewsPickupPos = glm::vec3(-142.0f, 2.0f, -95.13f); // 收音机右边
+			constexpr glm::vec3 kNewsPickupPos = glm::vec3(-142.0f, 2.25f, -95.13f); // 收音机右边
 			
 			const glm::mat4 kNewsTransform =
 				glm::translate(glm::mat4(1.0f), kNewsPickupPos) *
@@ -1005,38 +1003,7 @@ namespace engine {
 			m_satelliteEntity.set<EntityStatus>({ false, false }); // hidden until radio picked up
 		}
 
-		// =========================================================
-		// Rocket — hidden at start, mounted to rear frame on first gas tank collection
-		// =========================================================
-		{
-			//flecs::entity rocketAsset = m_scene->LoadModel(
-			//	m_render, "Assets/Models/rocket.glb",
-			//	engine::ModelPhysicsType::Static, 0.0f,
-			//	glm::mat4(1.0f));
-
-			//uint32_t rocketMeshIdx = 0, rocketMatIdx = 0;
-			//if (rocketAsset.is_valid()) {
-			//	if (rocketAsset.has<MeshComponent>())     rocketMeshIdx = rocketAsset.get<MeshComponent>().meshIndex;
-			//	if (rocketAsset.has<MaterialComponent>()) rocketMatIdx  = rocketAsset.get<MaterialComponent>().materialIndex;
-			//	m_scene->get_world().query<const MeshComponent>()
-			//		.each([&](flecs::entity e, const MeshComponent& mc) {
-			//			if (mc.meshIndex < rocketMeshIdx) return;
-			//			e.set<EntityStatus>({ false, false });
-			//			if (e.has<PhysicsBody>()) {
-			//				JPH::BodyID bid(e.get<PhysicsBody>().bodyID);
-			//				JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
-			//				if (bi.IsAdded(bid)) { bi.RemoveBody(bid); bi.DestroyBody(bid); }
-			//				e.remove<PhysicsBody>();
-			//			}
-			//		});
-
-			//	m_rocketEntity = m_scene->create_dynamic_entity(
-			//		"RocketMount", rocketMeshIdx, rocketMatIdx, glm::mat4(1.0f));
-			//	m_rocketEntity.set<EntityStatus>({ false, false }); // hidden until first gas tank
-			//}
-		}
-
-
+	
 		{
 			const glm::vec3 kCheckpointPos   = glm::vec3(374.91f, 77.54f, 296.48f);
 			const float     kCheckpointRadius = 19.80f;
@@ -1217,6 +1184,8 @@ namespace engine {
 	}
 
 	void level::Update(float dt) {
+
+
 
 		const float respawnStillnessDelay = 0.25f;
 		bool canRespawnNow = false;
