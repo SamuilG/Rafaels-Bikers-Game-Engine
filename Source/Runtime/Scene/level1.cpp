@@ -757,7 +757,7 @@ namespace engine {
 		{
 			namespace fs = std::filesystem;
 
-			const glm::vec3 kRadioPickupPos = glm::vec3(-133.11f, 1.0f, -100.13f);
+			const glm::vec3 kRadioPickupPos = glm::vec3(-133.11f, 1.0f, -95.13f);
 			const glm::mat4 kRadioTransform = glm::translate(glm::mat4(1.0f), kRadioPickupPos)
 				* glm::scale(glm::mat4(1.0f), glm::vec3(3.0f));
 
@@ -827,7 +827,7 @@ namespace engine {
 				// Mount satellite to character's back (bike-local space)
 				if (m_satelliteEntity.is_valid() && m_bikeEntity.is_valid()) {
 					const glm::mat4 satMountT =
-						glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.5f, -0.3f)) *
+						glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.5f, -0.5f)) *
 						glm::scale(glm::mat4(1.0f), glm::vec3(0.009f));
 					m_satelliteEntity.child_of(m_bikeEntity);
 					m_satelliteEntity.set<LocalTransform>({ satMountT });
@@ -845,7 +845,7 @@ namespace engine {
 		// Newspaper pickup — near radio; shows UFO.png for 5 s on trigger
 		// =========================================================
 		{
-			constexpr glm::vec3 kNewsPickupPos = glm::vec3(-142.0f, 2.0f, -100.13f); // 收音机右边
+			constexpr glm::vec3 kNewsPickupPos = glm::vec3(-142.0f, 2.0f, -95.13f); // 收音机右边
 			const glm::mat4 kNewsTransform =
 				glm::translate(glm::mat4(1.0f), kNewsPickupPos) *
 				glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f)) *
