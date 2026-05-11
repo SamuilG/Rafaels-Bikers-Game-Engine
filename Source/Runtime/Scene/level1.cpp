@@ -61,7 +61,7 @@ namespace engine {
 			m_scene->LoadModel(
 				m_render, "Assets/Models/rocket2.glb",
 				engine::ModelPhysicsType::Static, 0.0f,
-				glm::translate(glm::mat4(1.0f), m_rocket2Center));
+				glm::translate(glm::mat4(1.0f), m_rocket2Center), engine::RenderLayer::Emissive);
 
 			// Collect only entities that appeared after the load
 			m_scene->get_world().query<const MeshComponent>()
@@ -72,13 +72,13 @@ namespace engine {
 		}
 
 		//TODO:change
-		glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 10.0f, 30.0f));
+		glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(-152, 3, -84));
 		glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(2,4,-157));\
 		glm::mat4 FinalPos = glm::translate(glm::mat4(1.0f), glm::vec3(218.83, 91.0f, -197.74f));
 		glm::mat4 bikeAnchorWorld = glm::mat4(0.0f); // sentinel: [3][3]==0 means anchor not found
 
 		m_render->load_animated_model("Assets/Models/character.glb", FinalPos);
-		flecs::entity playerBike = m_scene->LoadModel(m_render, "Assets/Models/tbikeWithAnchor.glb", engine::ModelPhysicsType::CustomC, 90.0f, FinalPos);
+		flecs::entity playerBike = m_scene->LoadModel(m_render, "Assets/Models/tbikeWithAnchor.glb", engine::ModelPhysicsType::CustomC, 90.0f, BikeSpawnPos);
 
 		// 3. ��ʼ������������
 		m_bikeController = std::make_unique<BikeController>(m_physics->GetJoltSystem(), m_input, mState);
@@ -1417,10 +1417,11 @@ namespace engine {
 
 							if (m_hasCheckpoint) {
 
-								respawnPos = JPH::RVec3(m_checkpointPos.x, m_checkpointPos.y - 0.5f, m_checkpointPos.z);
+								respawnPos = JPH::RVec3(m_checkpointPos.x, m_checkpointPos.y - 3.5f, m_checkpointPos.z);
 								uprightRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), m_checkpointYaw);
 								printf("[Gameplay] Bike respawned at checkpoint (%.2f, %.2f, %.2f)\n",
 									m_checkpointPos.x, m_checkpointPos.y, m_checkpointPos.z);
+								mState->iblEnabled = true;
 							}
 							else {
 
@@ -1444,6 +1445,7 @@ namespace engine {
 								float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
 								uprightRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), currentYaw + JPH::JPH_PI);
 								respawnPos = currentPos;
+								
 							}
 
 							bi.SetPositionAndRotation(id, respawnPos, uprightRot, JPH::EActivation::Activate);
@@ -1462,7 +1464,7 @@ namespace engine {
 
 							RemoveWidget(kRespawnPromptUiPath);
 							m_respawnPromptVisible = false;
-
+							
 							printf("[Gameplay] Bike stopped and respawned in place!\n");
 						}
 						else {
