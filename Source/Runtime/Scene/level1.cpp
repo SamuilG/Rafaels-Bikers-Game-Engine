@@ -1568,12 +1568,14 @@ namespace engine {
 					}
 				}
 			}
-		}
+		
 		// =========================================================
 		// ���µ�������
 		if (m_bikeController) {
 			m_bikeController->Update(dt);
 		}
+		
+		
 
 		// ���Ʋ��� Debug ���� (ֻ��������ؿ�����Ҫ����Щ)
 #ifndef NDEBUG
@@ -1583,6 +1585,7 @@ namespace engine {
 		m_render->mDebugRenderer.DrawCapsule(glm::vec3(0.0f, 2.0f, 5.0f), 1.0f, 1.5f, glm::vec3(1.0f, 1.0f, 0.0f));
 #endif
 	}
+	
 
 	void level::Shutdown() {
 
