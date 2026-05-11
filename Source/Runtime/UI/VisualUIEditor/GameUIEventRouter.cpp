@@ -1,22 +1,41 @@
 #include "GameUIEventRouter.hpp"
 
+#include <algorithm>
+#include <array>
 #include <filesystem>
+#include <format>
 
 #include "../EngineUi.hpp"
+#include "../../AudioSystem/AudioSystem.hpp"
 #include "../../UserState/UserState.hpp"
 #include "RuntimeUiController.hpp"
+#include "UIElement.hpp"
 #include "UIManager.hpp"
 
 namespace engine {
 
     namespace {
 
-        // è·¯ç”±å±‚é»˜è®¤ä½¿ç”¨çš„å‡ å¼ è¿è¡Œæ—¶ UI èµ„æºã€‚
         constexpr const char* kMainMenuUiPath = "Assets/ui/MainMenu.ui.json";
         constexpr const char* kHudUiPath = "Assets/ui/HUD.ui.json";
         constexpr const char* kPauseMenuUiPath = "Assets/ui/PauseMenu.ui.json";
-        constexpr const char* kSettingsUiPath = "Assets/ui/SettingsMenu.ui.json";
+        constexpr const char* kSettingsUiPath = "Assets/ui/Settings.ui.json";
         constexpr const char* kGameOverUiPath = "Assets/ui/GameOver.ui.json";
+
+        constexpr const char* kVolumeSliderName = "VolumeSlider";
+        constexpr const char* kShowHintsToggleName = "Toggle_001";
+        constexpr const char* kResolutionValueTextName = "ResolutionValueText";
+        constexpr const char* kDisplayModeValueTextName = "DisplayModeValueText";
+        constexpr const char* kJumpHintElementName = "JumpIcon";
+        constexpr const char* kHornHintElementName = "HornIcon";
+        constexpr const char* kRadioHintElementName = "RadioIcon";
+
+        constexpr std::array<std::pair<int, int>, 4> kSupportedResolutions{ {
+            {1280, 720},
+            {1600, 900},
+            {1920, 1080},
+            {2560, 1440}
+        } };
 
     } // namespace
 
@@ -26,9 +45,11 @@ namespace engine {
         , mAppRunning(appRunning) {
     }
 
+    void GameUIEventRouter::SetAudioSystem(AudioSystem* audioSystem) {
+        mAudioSystem = audioSystem;
+    }
+
     void GameUIEventRouter::Bind(UIManager& uiManager) {
-        // åŒä¸€åŠ¨ä½œå…è®¸ç»‘å®šå¤šä¸ªäº‹ä»¶åˆ«åï¼Œ
-        // è¿™æ · UI æ–‡ä»¶é‡Œæ—¢å¯ä»¥å†™çŸ­åï¼Œä¹Ÿå¯ä»¥å†™å¸¦èœå•å‰ç¼€çš„åå­—ã€‚
         uiManager.RegisterEventHandler("StartGame", [this](const std::string& eventName) {
             HandleStartGame(eventName);
         });
@@ -51,6 +72,27 @@ namespace engine {
         });
         uiManager.RegisterEventHandler("CloseSettings", [this](const std::string& eventName) {
             HandleCloseSettings(eventName);
+        });
+        uiManager.RegisterEventHandler("Settings.Apply", [this](const std::string& eventName) {
+            HandleApplySettings(eventName);
+        });
+        uiManager.RegisterEventHandler("Settings.Reset", [this](const std::string& eventName) {
+            HandleResetSettings(eventName);
+        });
+        uiManager.RegisterEventHandler("Settings.VolumeChanged", [this](const std::string& eventName) {
+            HandleVolumeChanged(eventName);
+        });
+        uiManager.RegisterEventHandler("Settings.ToggleChanged", [this](const std::string& eventName) {
+            HandleToggleChanged(eventName);
+        });
+        uiManager.RegisterEventHandler("Settings.ResolutionPrev", [this](const std::string& eventName) {
+            HandleResolutionPrev(eventName);
+        });
+        uiManager.RegisterEventHandler("Settings.ResolutionNext", [this](const std::string& eventName) {
+            HandleResolutionNext(eventName);
+        });
+        uiManager.RegisterEventHandler("Settings.DisplayModeToggle", [this](const std::string& eventName) {
+            HandleDisplayModeToggle(eventName);
         });
 
         uiManager.RegisterEventHandler("QuitGame", [this](const std::string& eventName) {
@@ -88,8 +130,105 @@ namespace engine {
         });
     }
 
+    void GameUIEventRouter::RefreshPendingSettingsFromGame() {
+        mSettingsState.appliedMasterVolume = mAudioSystem ? mAudioSystem->GetMasterVolume() : 1.0f;
+        mSettingsState.pendingMasterVolume = mSettingsState.appliedMasterVolume;
+        mSettingsState.appliedShowHints = mState.showHints;
+        mSettingsState.pendingShowHints = mSettingsState.appliedShowHints;
+
+        const RuntimeDisplaySettings displaySettings = mRuntimeUiController.QueryDisplaySettings();
+        mSettingsState.appliedResolutionIndex = FindResolutionIndex(displaySettings.width, displaySettings.height);
+        mSettingsState.pendingResolutionIndex = mSettingsState.appliedResolutionIndex;
+        mSettingsState.appliedFullscreen = displaySettings.fullscreen;
+        mSettingsState.pendingFullscreen = mSettingsState.appliedFullscreen;
+    }
+
+    void GameUIEventRouter::CapturePendingSettingsFromUi() {
+        UIManager* uiManager = mRuntimeUiController.GetManager();
+        if (!uiManager) {
+            return;
+        }
+
+        if (UIScreen* settingsScreen = uiManager->GetScreen("Settings")) {
+            if (UIElement* volumeElement = settingsScreen->FindByName(kVolumeSliderName)) {
+                if (auto* slider = dynamic_cast<UISlider*>(volumeElement)) {
+                    mSettingsState.pendingMasterVolume = std::clamp(slider->value, slider->minValue, slider->maxValue);
+                }
+            }
+            if (UIElement* toggleElement = settingsScreen->FindByName(kShowHintsToggleName)) {
+                if (auto* toggle = dynamic_cast<UIToggle*>(toggleElement)) {
+                    mSettingsState.pendingShowHints = toggle->isOn;
+                }
+            }
+        }
+    }
+
+    void GameUIEventRouter::SyncSettingsUi() {
+        UIManager* uiManager = mRuntimeUiController.GetManager();
+        if (!uiManager) {
+            return;
+        }
+
+        if (UIScreen* settingsScreen = uiManager->GetScreen("Settings")) {
+            if (UIElement* volumeElement = settingsScreen->FindByName(kVolumeSliderName)) {
+                if (auto* slider = dynamic_cast<UISlider*>(volumeElement)) {
+                    slider->value = std::clamp(mSettingsState.pendingMasterVolume, slider->minValue, slider->maxValue);
+                }
+            }
+            if (UIElement* toggleElement = settingsScreen->FindByName(kShowHintsToggleName)) {
+                if (auto* toggle = dynamic_cast<UIToggle*>(toggleElement)) {
+                    toggle->isOn = mSettingsState.pendingShowHints;
+                }
+            }
+        }
+
+        const RuntimeUiWidget settingsWidget = mRuntimeUiController.GetWidget(kSettingsUiPath);
+        settingsWidget.SetText(
+            kResolutionValueTextName,
+            RuntimeUiTextOptions{
+                .text = GetResolutionLabel(mSettingsState.pendingResolutionIndex)
+            });
+        settingsWidget.SetText(
+            kDisplayModeValueTextName,
+            RuntimeUiTextOptions{
+                .text = mSettingsState.pendingFullscreen ? std::string("Fullscreen") : std::string("Windowed")
+            });
+    }
+
+    void GameUIEventRouter::SyncHudHintUi() {
+        const bool showJumpHint = mState.showHints && mState.jumpEnabled;
+        const bool showHornHint = mState.showHints && mState.hornEnabled;
+        const bool showRadioHint = mState.showHints && mState.radioEnabled;
+
+        mRuntimeUiController.SetElementVisible(kHudUiPath, kJumpHintElementName, showJumpHint);
+        mRuntimeUiController.SetElementVisible(kHudUiPath, kHornHintElementName, showHornHint);
+        mRuntimeUiController.SetElementVisible(kHudUiPath, kRadioHintElementName, showRadioHint);
+    }
+
+    void GameUIEventRouter::RestoreSettingsReturnScreen() {
+        mRuntimeUiController.RemoveWidgetFromViewPort(kSettingsUiPath);
+
+        if (mSettingsState.returnTarget == SettingsReturnTarget::MainMenu) {
+            mState.isGameStarted = false;
+            mState.isGamePause = false;
+            mState.isGameOver = false;
+            mState.gameFlowState = GameFlowState::MainMenu;
+            if (!mRuntimeUiController.IsWidgetVisible(kMainMenuUiPath)) {
+                mRuntimeUiController.AddWidgetToViewPort(kMainMenuUiPath);
+            }
+            return;
+        }
+
+        mState.isGameStarted = true;
+        mState.isGamePause = true;
+        mState.isGameOver = false;
+        mState.gameFlowState = GameFlowState::Paused;
+        if (!mRuntimeUiController.IsWidgetVisible(kPauseMenuUiPath)) {
+            mRuntimeUiController.AddWidgetToViewPort(kPauseMenuUiPath);
+        }
+    }
+
     void GameUIEventRouter::HandleStartGame(const std::string& eventName) {
-        // StartGameï¼šåˆ‡åˆ°æ¸¸æˆæ€ï¼Œéšè—ä¸»èœå•ï¼Œå¹¶æŠŠ HUD æåˆ°æœ€ä¸Šå±‚ã€‚
         mState.isGameStarted = true;
         mState.isGamePause = false;
         mState.isGameOver = false;
@@ -106,10 +245,8 @@ namespace engine {
 
     void GameUIEventRouter::HandleOpenEditor(const std::string& eventName) {
 #ifdef GAME_ONLY
-        // Game-only build: fall back to normal start
         HandleStartGame(eventName);
 #else
-        // OpenEditorï¼šä¸ StartGame ç›¸åŒæµç¨‹ï¼Œä½†é¢å¤–å¼€å¯å¼•æ“ UIã€‚
         mState.isGameStarted = true;
         mState.isGamePause = false;
         mState.isGameOver = false;
@@ -125,8 +262,7 @@ namespace engine {
         EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> Playing + Editor UI\n", eventName);
 #endif
     }
-
-    // PauseGameï¼šæš‚åœæ¸¸æˆå¹¶å¼¹å‡º PauseMenu è¦†ç›–å±‚ã€‚
+    // PauseGame£ºÔİÍ£ÓÎÏ·²¢µ¯³ö PauseMenu ¸²¸Ç²ã¡£
     void GameUIEventRouter::HandlePauseGame(const std::string& eventName) {
         mState.isGameStarted = true;
         mState.isGamePause = true;
@@ -141,47 +277,160 @@ namespace engine {
     }
 
     void GameUIEventRouter::HandleOpenSettings(const std::string& eventName) {
-        // é€‰é¡¹èœå•ä½œä¸ºè¿è¡Œæ—¶å †æ ˆä¸Šçš„æ¨¡æ€å±‚æ˜¾ç¤ºåœ¨ PauseMenu ä¹‹ä¸Šã€‚
         if (!std::filesystem::exists(kSettingsUiPath)) {
             EngineUi::ShowToast("[ Runtime UI: Settings Missing ]");
             EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> missing settings screen\n", eventName);
             return;
         }
 
-        mState.isGameStarted = true;
-        mState.isGamePause = true;
-        mState.isGameOver = false;
-        mState.gameFlowState = GameFlowState::Settings;
+        RefreshPendingSettingsFromGame();
+        SyncSettingsUi();
 
-        //mRuntimeUiController.AddWidgetToViewPort(kPauseMenuUiPath);
-        //mRuntimeUiController.AddWidgetToViewPort(kSettingsUiPath);
+        if (mRuntimeUiController.IsWidgetVisible(kSettingsUiPath)) {
+            EngineUi::ShowToast("[ Runtime UI: Settings Already Open ]");
+            EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> settings screen already visible\n", eventName);
+            return;
+        }
 
-        EngineUi::ShowToast("[ Runtime UI: Settings ]");
-        EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> Settings | SettingsMenu visible\n", eventName);
+        if (!mRuntimeUiController.AddWidgetToViewPort(kSettingsUiPath)) {
+            EngineUi::ShowToast("[ Runtime UI: Settings Load Failed ]");
+            EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> failed to show settings screen '{}'\n", eventName, kSettingsUiPath);
+            return;
+        }
+
+        SyncSettingsUi();
+
+        EngineUi::ShowToast("[ Runtime UI: Settings Screen Opened ]");
+        EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> Settings | Settings screen pushed and visible\n", eventName);
     }
-
-    // CloseSettingsï¼šå…³é—­è®¾ç½®ç•Œé¢ï¼Œå›é€€åˆ°æš‚åœèœå•ã€‚
+    // CloseSettings£º¹Ø±ÕÉèÖÃ½çÃæ£¬»ØÍËµ½ÔİÍ£²Ëµ¥¡£
     void GameUIEventRouter::HandleCloseSettings(const std::string& eventName) {
-        mState.isGameStarted = true;
-        mState.isGamePause = true;
-        mState.isGameOver = false;
-        mState.gameFlowState = GameFlowState::Paused;
-
+        RefreshPendingSettingsFromGame();
         mRuntimeUiController.RemoveWidgetFromViewPort(kSettingsUiPath);
-        mRuntimeUiController.AddWidgetToViewPort(kPauseMenuUiPath);
 
         EngineUi::ShowToast("[ Runtime UI: Close Settings ]");
-        EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> Paused | SettingsMenu hidden\n", eventName);
+        EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> settings screen hidden\n", eventName);
     }
 
-    // QuitGame / ExitGameï¼šç›´æ¥å…³é—­åº”ç”¨ã€‚
+    void GameUIEventRouter::HandleApplySettings(const std::string& eventName) {
+        CapturePendingSettingsFromUi();
+
+        const auto [width, height] = kSupportedResolutions[std::clamp(
+            mSettingsState.pendingResolutionIndex,
+            0,
+            static_cast<int>(kSupportedResolutions.size()) - 1)];
+        const RuntimeDisplaySettings pendingDisplaySettings{
+            .width = width,
+            .height = height,
+            .fullscreen = mSettingsState.pendingFullscreen
+        };
+        const bool appliedDisplaySettings = mRuntimeUiController.ApplyDisplaySettings(pendingDisplaySettings);
+
+        mSettingsState.appliedMasterVolume = mSettingsState.pendingMasterVolume;
+        mSettingsState.appliedShowHints = mSettingsState.pendingShowHints;
+        if (appliedDisplaySettings) {
+            mSettingsState.appliedResolutionIndex = mSettingsState.pendingResolutionIndex;
+            mSettingsState.appliedFullscreen = mSettingsState.pendingFullscreen;
+        }
+        else {
+            mSettingsState.pendingResolutionIndex = mSettingsState.appliedResolutionIndex;
+            mSettingsState.pendingFullscreen = mSettingsState.appliedFullscreen;
+        }
+
+        mState.showHints = mSettingsState.appliedShowHints;
+        SyncHudHintUi();
+        if (mAudioSystem) {
+            mAudioSystem->SetMasterVolume(mSettingsState.appliedMasterVolume);
+        }
+
+        SyncSettingsUi();
+        EngineUi::ShowToast(appliedDisplaySettings ? "[ Settings Applied ]" : "[ Display Settings Failed ]");
+        EngineUi::LogPrint(
+            "[RuntimeUI] Routed '{}' -> apply settings | volume={:.2f} particles={} resolution={} mode={} displayApplied={}\n",
+            eventName,
+            mSettingsState.appliedMasterVolume,
+            mSettingsState.appliedShowHints ? "hints-on" : "hints-off",
+            GetResolutionLabel(mSettingsState.pendingResolutionIndex),
+            mSettingsState.pendingFullscreen ? "fullscreen" : "windowed",
+            appliedDisplaySettings ? "true" : "false");
+    }
+
+    void GameUIEventRouter::HandleResetSettings(const std::string& eventName) {
+        mSettingsState.pendingMasterVolume = 1.0f;
+        mSettingsState.pendingShowHints = true;
+        mSettingsState.pendingResolutionIndex = 0;
+        mSettingsState.pendingFullscreen = false;
+        SyncSettingsUi();
+
+        EngineUi::ShowToast("[ Settings Reset ]");
+        EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> reset pending settings\n", eventName);
+    }
+
+    void GameUIEventRouter::HandleVolumeChanged(const std::string& eventName) {
+        CapturePendingSettingsFromUi();
+        EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> pending volume {:.2f}\n", eventName, mSettingsState.pendingMasterVolume);
+    }
+
+    void GameUIEventRouter::HandleToggleChanged(const std::string& eventName) {
+        CapturePendingSettingsFromUi();
+        EngineUi::LogPrint(
+            "[RuntimeUI] Routed '{}' -> pending show hints {}\n",
+            eventName,
+            mSettingsState.pendingShowHints ? "on" : "off");
+    }
+
+    void GameUIEventRouter::HandleResolutionPrev(const std::string& eventName) {
+        const int maxIndex = static_cast<int>(kSupportedResolutions.size()) - 1;
+        mSettingsState.pendingResolutionIndex = std::clamp(mSettingsState.pendingResolutionIndex - 1, 0, maxIndex);
+        SyncSettingsUi();
+        EngineUi::LogPrint(
+            "[RuntimeUI] Routed '{}' -> pending resolution {}\n",
+            eventName,
+            GetResolutionLabel(mSettingsState.pendingResolutionIndex));
+    }
+
+    void GameUIEventRouter::HandleResolutionNext(const std::string& eventName) {
+        const int maxIndex = static_cast<int>(kSupportedResolutions.size()) - 1;
+        mSettingsState.pendingResolutionIndex = std::clamp(mSettingsState.pendingResolutionIndex + 1, 0, maxIndex);
+        SyncSettingsUi();
+        EngineUi::LogPrint(
+            "[RuntimeUI] Routed '{}' -> pending resolution {}\n",
+            eventName,
+            GetResolutionLabel(mSettingsState.pendingResolutionIndex));
+    }
+
+    void GameUIEventRouter::HandleDisplayModeToggle(const std::string& eventName) {
+        mSettingsState.pendingFullscreen = !mSettingsState.pendingFullscreen;
+        SyncSettingsUi();
+        EngineUi::LogPrint(
+            "[RuntimeUI] Routed '{}' -> pending display mode {}\n",
+            eventName,
+            mSettingsState.pendingFullscreen ? "fullscreen" : "windowed");
+    }
+
+    int GameUIEventRouter::FindResolutionIndex(int width, int height) const {
+        for (std::size_t index = 0; index < kSupportedResolutions.size(); ++index) {
+            const auto [candidateWidth, candidateHeight] = kSupportedResolutions[index];
+            if (candidateWidth == width && candidateHeight == height) {
+                return static_cast<int>(index);
+            }
+        }
+        return 0;
+    }
+
+    std::string GameUIEventRouter::GetResolutionLabel(int index) const {
+        const int clampedIndex = std::clamp(index, 0, static_cast<int>(kSupportedResolutions.size()) - 1);
+        const auto [width, height] = kSupportedResolutions[clampedIndex];
+        return std::format("{} x {}", width, height);
+    }
+    // QuitGame / ExitGame£ºÖ±½Ó¹Ø±ÕÓ¦ÓÃ¡£
     void GameUIEventRouter::HandleQuitGame(const std::string& eventName) {
         mAppRunning = false;
         EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> exit application\n", eventName);
     }
 
     void GameUIEventRouter::HandleBackToMainMenu(const std::string& eventName) {
-        // å›ä¸»èœå•æ—¶ä¿ç•™å·²åŠ è½½å±å¹•ï¼Œåªé‡ç½®å¯è§å±‚çº§ï¼Œæ–¹ä¾¿åç»­å†æ¬¡åˆ‡å› HUD / Pauseã€‚
+        // »ØÖ÷²Ëµ¥Ê±±£ÁôÒÑ¼ÓÔØÆÁÄ»£¬Ö»ÖØÖÃ¿É¼û²ã¼¶£¬·½±ãºóĞøÔÙ´ÎÇĞ»Ø HUD / Pause¡£
         mState.isGamePause = false;
         mState.isGameOver = false;
         mState.isGameStarted = false;
@@ -198,7 +447,7 @@ namespace engine {
     }
 
     void GameUIEventRouter::HandleResumeGame(const std::string& eventName) {
-        // Resumeï¼šå…³é—­è®¾ç½®å±‚å’Œæš‚åœå±‚ï¼Œå¹¶æ¢å¤ HUD çš„æ˜¾ç¤ºé¡ºåºã€‚
+        // Resume£º¹Ø±ÕÉèÖÃ²ãºÍÔİÍ£²ã£¬²¢»Ö¸´ HUD µÄÏÔÊ¾Ë³Ğò¡£
         mState.isGameStarted = true;
         mState.isGamePause = false;
         mState.isGameOver = false;
@@ -211,8 +460,7 @@ namespace engine {
         EngineUi::ShowToast("[ Runtime UI: Resume ]");
         EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> Playing | PauseMenu hidden | HUD visible\n", eventName);
     }
-
-    // ShowGameOverï¼šåˆ‡åˆ° GameOver çŠ¶æ€ï¼Œéšè—æ‰€æœ‰æ¸¸æˆä¸­ç•Œé¢å¹¶æ˜¾ç¤ºç»“ç®—å±å¹•ã€‚
+    // ShowGameOver£ºÇĞµ½ GameOver ×´Ì¬£¬Òş²ØËùÓĞÓÎÏ·ÖĞ½çÃæ²¢ÏÔÊ¾½áËãÆÁÄ»¡£
     void GameUIEventRouter::HandleShowGameOver(const std::string& eventName) {
         mState.isGameStarted = true;
         mState.isGamePause = false;
@@ -227,8 +475,7 @@ namespace engine {
         EngineUi::ShowToast("[ Runtime UI: Game Over ]");
         EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> GameOver | GameOver screen visible\n", eventName);
     }
-
-    // RestartGameï¼šé‡æ–°å¼€å§‹æ¸¸æˆï¼Œé‡ç½®ä¸º Playing çŠ¶æ€å¹¶æ¢å¤ HUDã€‚
+    // RestartGame£ºÖØĞÂ¿ªÊ¼ÓÎÏ·£¬ÖØÖÃÎª Playing ×´Ì¬²¢»Ö¸´ HUD¡£
     void GameUIEventRouter::HandleRestartGame(const std::string& eventName) {
         mState.isGameStarted = true;
         mState.isGamePause = false;
@@ -244,7 +491,7 @@ namespace engine {
         EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> Playing | Restarted\n", eventName);
     }
 
-    // TestButtonï¼šè°ƒè¯•ç”¨ï¼Œæ‰“å°æ—¥å¿—å’Œå¼¹å‡º Toastã€‚
+    // TestButton£ºµ÷ÊÔÓÃ£¬´òÓ¡ÈÕÖ¾ºÍµ¯³ö Toast¡£
     void GameUIEventRouter::HandleTestButton(const std::string& eventName)
     {
         EngineUi::ShowToast("[ Runtime UI: Test Button Clicked ]");

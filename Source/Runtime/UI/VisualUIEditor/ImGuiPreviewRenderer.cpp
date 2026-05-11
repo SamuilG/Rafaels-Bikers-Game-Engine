@@ -509,7 +509,8 @@ namespace engine {
             const UISlider& slider,
             const ImVec2& min,
             const ImVec2& max,
-            const UIRenderContext& context) {
+            const UIRenderContext& context,
+            const std::function<void*(const std::string&)>& textureResolver) {
             const float effectiveOpacity = ComputeEffectiveOpacity(style, context);
             const float normalized = NormalizeWidgetValue(slider.value, slider.minValue, slider.maxValue);
             const float radius = std::max(6.0f, (max.y - min.y) * 0.5f);
@@ -517,22 +518,61 @@ namespace engine {
             const float trackY = min.y + (max.y - min.y - trackHeight) * 0.5f;
             const float handleCenterX = min.x + (max.x - min.x) * normalized;
             const float handleCenterY = (min.y + max.y) * 0.5f;
+            const ImVec2 trackMin(min.x, trackY);
+            const ImVec2 trackMax(max.x, trackY + trackHeight);
+            const ImVec2 fillMax(handleCenterX, trackY + trackHeight);
+            const ImVec2 handleMin(handleCenterX - radius, handleCenterY - radius);
+            const ImVec2 handleMax(handleCenterX + radius, handleCenterY + radius);
 
-            drawList->AddRectFilled(
-                ImVec2(min.x, trackY),
-                ImVec2(max.x, trackY + trackHeight),
-                ToImGuiColor(style.backgroundColor, effectiveOpacity),
-                trackHeight * 0.5f);
-            drawList->AddRectFilled(
-                ImVec2(min.x, trackY),
-                ImVec2(handleCenterX, trackY + trackHeight),
-                ToImGuiColor(slider.fillColor, effectiveOpacity),
-                trackHeight * 0.5f);
-            drawList->AddCircleFilled(
-                ImVec2(handleCenterX, handleCenterY),
-                radius,
-                ToImGuiColor(slider.handleColor, effectiveOpacity),
-                24);
+            if (!DrawPreviewTexture(drawList, element, style, trackMin, trackMax, context, textureResolver, style.texturePath, false, false)) {
+                drawList->AddRectFilled(
+                    trackMin,
+                    trackMax,
+                    ToImGuiColor(style.backgroundColor, effectiveOpacity),
+                    trackHeight * 0.5f);
+            }
+            if (!slider.fillImagePath.empty()) {
+                DrawPreviewTexture(
+                    drawList,
+                    element,
+                    style,
+                    trackMin,
+                    trackMax,
+                    context,
+                    textureResolver,
+                    slider.fillImagePath,
+                    false,
+                    false,
+                    &trackMin,
+                    &fillMax);
+            }
+            else {
+                drawList->AddRectFilled(
+                    trackMin,
+                    fillMax,
+                    ToImGuiColor(slider.fillColor, effectiveOpacity),
+                    trackHeight * 0.5f);
+            }
+            if (!slider.handleImagePath.empty()) {
+                DrawPreviewTexture(
+                    drawList,
+                    element,
+                    style,
+                    handleMin,
+                    handleMax,
+                    context,
+                    textureResolver,
+                    slider.handleImagePath,
+                    false,
+                    false);
+            }
+            else {
+                drawList->AddCircleFilled(
+                    ImVec2(handleCenterX, handleCenterY),
+                    radius,
+                    ToImGuiColor(slider.handleColor, effectiveOpacity),
+                    24);
+            }
             DrawPreviewBorder(drawList, element, style, min, max, context, ToImGuiColor(style.borderColor, effectiveOpacity));
         }
 
@@ -544,6 +584,7 @@ namespace engine {
             const ImVec2& min,
             const ImVec2& max,
             const UIRenderContext& context,
+            const std::function<void*(const std::string&)>& textureResolver,
             float fontSize,
             ImFont* font,
             ImU32 textColor) {
@@ -556,17 +597,65 @@ namespace engine {
             const float knobCenterX = toggle.isOn
                 ? (switchMax.x - knobRadius - 3.0f)
                 : (switchMin.x + knobRadius + 3.0f);
+            const ImVec2 knobMin(knobCenterX - knobRadius, knobCenterY - knobRadius);
+            const ImVec2 knobMax(knobCenterX + knobRadius, knobCenterY + knobRadius);
 
-            drawList->AddRectFilled(
-                switchMin,
-                switchMax,
-                ToImGuiColor(toggle.isOn ? toggle.onColor : toggle.offColor, effectiveOpacity),
-                (switchMax.y - switchMin.y) * 0.5f);
-            drawList->AddCircleFilled(
-                ImVec2(knobCenterX, knobCenterY),
-                knobRadius,
-                ToImGuiColor(toggle.knobColor, effectiveOpacity),
-                24);
+            if (!DrawPreviewTexture(drawList, element, style, switchMin, switchMax, context, textureResolver, style.texturePath, false, false)) {
+                drawList->AddRectFilled(
+                    switchMin,
+                    switchMax,
+                    ToImGuiColor(toggle.isOn ? toggle.onColor : toggle.offColor, effectiveOpacity),
+                    (switchMax.y - switchMin.y) * 0.5f);
+            }
+            if (toggle.isOn) {
+                if (!toggle.fillImagePath.empty()) {
+                    DrawPreviewTexture(
+                        drawList,
+                        element,
+                        style,
+                        switchMin,
+                        switchMax,
+                        context,
+                        textureResolver,
+                        toggle.fillImagePath,
+                        false,
+                        false);
+                }
+                else if (!style.texturePath.empty()) {
+                    drawList->AddRectFilled(
+                        switchMin,
+                        switchMax,
+                        ToImGuiColor(toggle.onColor, effectiveOpacity),
+                        (switchMax.y - switchMin.y) * 0.5f);
+                }
+            }
+            else if (style.texturePath.empty()) {
+                drawList->AddRectFilled(
+                    switchMin,
+                    switchMax,
+                    ToImGuiColor(toggle.offColor, effectiveOpacity),
+                    (switchMax.y - switchMin.y) * 0.5f);
+            }
+            if (!toggle.handleImagePath.empty()) {
+                DrawPreviewTexture(
+                    drawList,
+                    element,
+                    style,
+                    knobMin,
+                    knobMax,
+                    context,
+                    textureResolver,
+                    toggle.handleImagePath,
+                    false,
+                    false);
+            }
+            else {
+                drawList->AddCircleFilled(
+                    ImVec2(knobCenterX, knobCenterY),
+                    knobRadius,
+                    ToImGuiColor(toggle.knobColor, effectiveOpacity),
+                    24);
+            }
             DrawPreviewBorder(drawList, element, style, min, max, context, ToImGuiColor(style.borderColor, effectiveOpacity));
 
             if (!toggle.label.empty()) {
@@ -839,7 +928,7 @@ namespace engine {
             }
             case UIElementType::Slider:
                 if (const auto* slider = dynamic_cast<const UISlider*>(&element)) {
-                    DrawPreviewSlider(drawList, element, resolvedStyle, *slider, min, max, context);
+                    DrawPreviewSlider(drawList, element, resolvedStyle, *slider, min, max, context, textureResolver);
                 }
                 else {
                     drawList->AddRectFilled(min, max, fillColor, scaledBorderRadius);
@@ -848,7 +937,7 @@ namespace engine {
                 break;
             case UIElementType::Toggle:
                 if (const auto* toggle = dynamic_cast<const UIToggle*>(&element)) {
-                    DrawPreviewToggle(drawList, element, resolvedStyle, *toggle, min, max, context, scaledFontSize, previewFont, textColor);
+                    DrawPreviewToggle(drawList, element, resolvedStyle, *toggle, min, max, context, textureResolver, scaledFontSize, previewFont, textColor);
                 }
                 else {
                     drawList->AddRectFilled(min, max, fillColor, scaledBorderRadius);

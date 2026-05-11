@@ -147,6 +147,7 @@ namespace engine {
         MapKeyboardAction("SSRToggle", GLFW_KEY_O);
         
         MapKeyboardAction("SSAOToggle", GLFW_KEY_P);
+        MapKeyboardAction("MenuBack", GLFW_KEY_ESCAPE);
         
 		MapKeyboardAction("ToggleEngineUi", GLFW_KEY_F1);// F1键：切换引擎UI显示//f1： switch engine UI
 

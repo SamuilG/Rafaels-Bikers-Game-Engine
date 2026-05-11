@@ -772,6 +772,18 @@ namespace engine {
             ImFont* font,
             bool wrapText);
 
+        bool DrawPreviewTexture(
+            ImDrawList* drawList,
+            const UIElement& element,
+            const ImVec2& min,
+            const ImVec2& max,
+            const std::string& texturePath,
+            bool useTint,
+            float scale,
+            bool drawBorder = true,
+            const ImVec2* clipMin = nullptr,
+            const ImVec2* clipMax = nullptr);
+
         void DrawPreviewSlider(
             ImDrawList* drawList,
             const UIElement& element,
@@ -785,22 +797,39 @@ namespace engine {
             const float trackY = min.y + (max.y - min.y - trackHeight) * 0.5f;
             const float handleCenterX = min.x + (max.x - min.x) * normalized;
             const float handleCenterY = (min.y + max.y) * 0.5f;
+            const ImVec2 trackMin(min.x, trackY);
+            const ImVec2 trackMax(max.x, trackY + trackHeight);
+            const ImVec2 fillMax(handleCenterX, trackY + trackHeight);
+            const ImVec2 handleMin(handleCenterX - radius, handleCenterY - radius);
+            const ImVec2 handleMax(handleCenterX + radius, handleCenterY + radius);
 
-            drawList->AddRectFilled(
-                ImVec2(min.x, trackY),
-                ImVec2(max.x, trackY + trackHeight),
-                ToImGuiColor(element.style.backgroundColor, element.style.opacity),
-                trackHeight * 0.5f);
-            drawList->AddRectFilled(
-                ImVec2(min.x, trackY),
-                ImVec2(handleCenterX, trackY + trackHeight),
-                ToImGuiColor(slider.fillColor, element.style.opacity),
-                trackHeight * 0.5f);
-            drawList->AddCircleFilled(
-                ImVec2(handleCenterX, handleCenterY),
-                radius,
-                ToImGuiColor(slider.handleColor, element.style.opacity),
-                24);
+            if (!DrawPreviewTexture(drawList, element, trackMin, trackMax, element.style.texturePath, false, scale, false)) {
+                drawList->AddRectFilled(
+                    trackMin,
+                    trackMax,
+                    ToImGuiColor(element.style.backgroundColor, element.style.opacity),
+                    trackHeight * 0.5f);
+            }
+            if (!slider.fillImagePath.empty()) {
+                DrawPreviewTexture(drawList, element, trackMin, trackMax, slider.fillImagePath, false, scale, false, &trackMin, &fillMax);
+            }
+            else {
+                drawList->AddRectFilled(
+                    trackMin,
+                    fillMax,
+                    ToImGuiColor(slider.fillColor, element.style.opacity),
+                    trackHeight * 0.5f);
+            }
+            if (!slider.handleImagePath.empty()) {
+                DrawPreviewTexture(drawList, element, handleMin, handleMax, slider.handleImagePath, false, scale, false);
+            }
+            else {
+                drawList->AddCircleFilled(
+                    ImVec2(handleCenterX, handleCenterY),
+                    radius,
+                    ToImGuiColor(slider.handleColor, element.style.opacity),
+                    24);
+            }
             DrawPreviewBorder(drawList, element, min, max, scale, ToImGuiColor(element.style.borderColor, element.style.opacity));
         }
 
@@ -822,13 +851,41 @@ namespace engine {
             const float knobCenterX = toggle.isOn
                 ? (switchMax.x - knobRadius - 3.0f)
                 : (switchMin.x + knobRadius + 3.0f);
+            const ImVec2 knobMin(knobCenterX - knobRadius, knobCenterY - knobRadius);
+            const ImVec2 knobMax(knobCenterX + knobRadius, knobCenterY + knobRadius);
 
-            drawList->AddRectFilled(
-                switchMin,
-                switchMax,
-                ToImGuiColor(toggle.isOn ? toggle.onColor : toggle.offColor, element.style.opacity),
-                (switchMax.y - switchMin.y) * 0.5f);
-            drawList->AddCircleFilled(ImVec2(knobCenterX, knobCenterY), knobRadius, ToImGuiColor(toggle.knobColor, element.style.opacity), 24);
+            if (!DrawPreviewTexture(drawList, element, switchMin, switchMax, element.style.texturePath, false, scale, false)) {
+                drawList->AddRectFilled(
+                    switchMin,
+                    switchMax,
+                    ToImGuiColor(toggle.isOn ? toggle.onColor : toggle.offColor, element.style.opacity),
+                    (switchMax.y - switchMin.y) * 0.5f);
+            }
+            if (toggle.isOn) {
+                if (!toggle.fillImagePath.empty()) {
+                    DrawPreviewTexture(drawList, element, switchMin, switchMax, toggle.fillImagePath, false, scale, false);
+                }
+                else if (!element.style.texturePath.empty()) {
+                    drawList->AddRectFilled(
+                        switchMin,
+                        switchMax,
+                        ToImGuiColor(toggle.onColor, element.style.opacity),
+                        (switchMax.y - switchMin.y) * 0.5f);
+                }
+            }
+            else if (element.style.texturePath.empty()) {
+                drawList->AddRectFilled(
+                    switchMin,
+                    switchMax,
+                    ToImGuiColor(toggle.offColor, element.style.opacity),
+                    (switchMax.y - switchMin.y) * 0.5f);
+            }
+            if (!toggle.handleImagePath.empty()) {
+                DrawPreviewTexture(drawList, element, knobMin, knobMax, toggle.handleImagePath, false, scale, false);
+            }
+            else {
+                drawList->AddCircleFilled(ImVec2(knobCenterX, knobCenterY), knobRadius, ToImGuiColor(toggle.knobColor, element.style.opacity), 24);
+            }
             DrawPreviewBorder(drawList, element, min, max, scale, ToImGuiColor(element.style.borderColor, element.style.opacity));
 
             if (!toggle.label.empty()) {
@@ -895,9 +952,9 @@ namespace engine {
             const std::string& texturePath,
             bool useTint,
             float scale,
-            bool drawBorder = true,
-            const ImVec2* clipMin = nullptr,
-            const ImVec2* clipMax = nullptr) {
+            bool drawBorder,
+            const ImVec2* clipMin,
+            const ImVec2* clipMax) {
             const ImTextureID textureId = ResolvePreviewTexture(texturePath);
             if (textureId == static_cast<ImTextureID>(0)) {
                 return false;
@@ -3763,6 +3820,8 @@ namespace engine {
             ImGui::Checkbox("Whole Numbers", &slider.wholeNumbers);
             DrawColorEditor("Fill Color", slider.fillColor);
             DrawColorEditor("Handle Color", slider.handleColor);
+            DrawAssetPathCombo("Fill Image", slider.fillImagePath, GetTextureAssetPaths(), "<None>");
+            DrawAssetPathCombo("Handle Image", slider.handleImagePath, GetTextureAssetPaths(), "<None>");
             ImGui::InputText("onValueChanged", &slider.events.onValueChanged);
             if (slider.maxValue < slider.minValue) {
                 std::swap(slider.minValue, slider.maxValue);
@@ -3780,6 +3839,8 @@ namespace engine {
             DrawColorEditor("On Color", toggle.onColor);
             DrawColorEditor("Off Color", toggle.offColor);
             DrawColorEditor("Knob Color", toggle.knobColor);
+            DrawAssetPathCombo("Fill Image", toggle.fillImagePath, GetTextureAssetPaths(), "<None>");
+            DrawAssetPathCombo("Handle Image", toggle.handleImagePath, GetTextureAssetPaths(), "<None>");
             ImGui::InputText("onValueChanged", &toggle.events.onValueChanged);
         }
 

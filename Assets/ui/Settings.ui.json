@@ -1,6 +1,6 @@
 {
     "version": 1,
-    "screenName": "Untitled UI",
+    "screenName": "Settings",
     "themePath": "Assets/ui/BicycleSim_DarkTheme.ui.theme.json",
     "screenSettings": {
         "visible": true,
@@ -232,6 +232,868 @@
                 "children": []
             },
             {
+                "id": 671,
+                "name": "ResolutionLabel",
+                "type": "Text",
+                "visible": false,
+                "enabled": true,
+                "interactable": false,
+                "runtimeMutable": true,
+                "zOrder": 0,
+                "transform": {
+                    "position": {
+                        "x": 610.0,
+                        "y": 300.0
+                    },
+                    "size": {
+                        "x": 260.0,
+                        "y": 42.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "pivot": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "rotation": 0.0,
+                    "scale": {
+                        "x": 1.0,
+                        "y": 1.0
+                    }
+                },
+                "style": {
+                    "presetName": "",
+                    "overrides": {
+                        "backgroundColor": true,
+                        "tintColor": true,
+                        "textColor": true,
+                        "texturePath": true,
+                        "fontPath": true,
+                        "fontSize": true,
+                        "opacity": true,
+                        "padding": true,
+                        "margin": true,
+                        "borderColor": true,
+                        "borderWidth": true,
+                        "borderRadius": true
+                    },
+                    "backgroundColor": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0,
+                        "w": 0.0
+                    },
+                    "tintColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "textColor": {
+                        "x": 0.12999999523162842,
+                        "y": 0.12999999523162842,
+                        "z": 0.12999999523162842,
+                        "w": 1.0
+                    },
+                    "texturePath": "",
+                    "fontPath": "Assets/Fonts/simhei.ttf",
+                    "fontSize": 30.0,
+                    "opacity": 1.0,
+                    "padding": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "margin": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "borderColor": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0,
+                        "w": 0.0
+                    },
+                    "borderWidth": 0.0,
+                    "borderRadius": 0.0
+                },
+                "widgetData": {
+                    "text": "Resolution",
+                    "alignment": "Left",
+                    "wrapText": false
+                },
+                "events": {
+                    "onClick": "",
+                    "onHover": "",
+                    "onPressed": "",
+                    "onReleased": "",
+                    "onValueChanged": ""
+                },
+                "children": []
+            },
+            {
+                "id": 672,
+                "name": "ResolutionPrevButton",
+                "type": "Button",
+                "visible": true,
+                "enabled": true,
+                "interactable": true,
+                "runtimeMutable": true,
+                "zOrder": 0,
+                "transform": {
+                    "position": {
+                        "x": 1091.0,
+                        "y": 292.0
+                    },
+                    "size": {
+                        "x": 62.0,
+                        "y": 54.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "pivot": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "rotation": 0.0,
+                    "scale": {
+                        "x": 1.0,
+                        "y": 1.0
+                    }
+                },
+                "style": {
+                    "presetName": "",
+                    "overrides": {
+                        "backgroundColor": true,
+                        "tintColor": true,
+                        "textColor": true,
+                        "texturePath": true,
+                        "fontPath": true,
+                        "fontSize": true,
+                        "opacity": true,
+                        "padding": true,
+                        "margin": true,
+                        "borderColor": true,
+                        "borderWidth": true,
+                        "borderRadius": true
+                    },
+                    "backgroundColor": {
+                        "x": 0.18000000715255737,
+                        "y": 0.20000000298023224,
+                        "z": 0.25999999046325684,
+                        "w": 0.8799999952316284
+                    },
+                    "tintColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "textColor": {
+                        "x": 0.9800000190734863,
+                        "y": 0.9800000190734863,
+                        "z": 0.9800000190734863,
+                        "w": 1.0
+                    },
+                    "texturePath": "Assets/Textures/Setting/switch_background_clean.png",
+                    "fontPath": "Assets/Fonts/simhei.ttf",
+                    "fontSize": 32.0,
+                    "opacity": 1.0,
+                    "padding": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "margin": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "borderColor": {
+                        "x": 0.30000001192092896,
+                        "y": 0.30000001192092896,
+                        "z": 0.30000001192092896,
+                        "w": 1.0
+                    },
+                    "borderWidth": 0.0,
+                    "borderRadius": 0.0
+                },
+                "widgetData": {
+                    "label": "<",
+                    "pressed": false,
+                    "usePresetTransitionStyle": false,
+                    "transitionMode": "Animation",
+                    "backgroundImageScale": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "normalColor": {
+                        "x": 0.18000000715255737,
+                        "y": 0.20000000298023224,
+                        "z": 0.25999999046325684,
+                        "w": 0.8799999952316284
+                    },
+                    "hoverColor": {
+                        "x": 0.25,
+                        "y": 0.2800000011920929,
+                        "z": 0.3499999940395355,
+                        "w": 0.949999988079071
+                    },
+                    "pressedColor": {
+                        "x": 0.11999999731779099,
+                        "y": 0.14000000059604645,
+                        "z": 0.18000000715255737,
+                        "w": 1.0
+                    },
+                    "disabledColor": {
+                        "x": 0.25,
+                        "y": 0.25,
+                        "z": 0.2800000011920929,
+                        "w": 0.800000011920929
+                    },
+                    "normalScale": 1.0,
+                    "hoverScale": 1.0199999809265137,
+                    "pressedScale": 0.9800000190734863,
+                    "transitionDuration": 0.11999999731779099
+                },
+                "events": {
+                    "onClick": "Settings.ResolutionPrev",
+                    "onHover": "",
+                    "onPressed": "",
+                    "onReleased": "",
+                    "onValueChanged": ""
+                },
+                "children": []
+            },
+            {
+                "id": 673,
+                "name": "ResolutionValueText",
+                "type": "Text",
+                "visible": true,
+                "enabled": true,
+                "interactable": false,
+                "runtimeMutable": true,
+                "zOrder": 0,
+                "transform": {
+                    "position": {
+                        "x": 1143.0,
+                        "y": 298.0
+                    },
+                    "size": {
+                        "x": 185.0,
+                        "y": 42.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "pivot": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "rotation": 0.0,
+                    "scale": {
+                        "x": 1.0,
+                        "y": 1.0
+                    }
+                },
+                "style": {
+                    "presetName": "",
+                    "overrides": {
+                        "backgroundColor": true,
+                        "tintColor": true,
+                        "textColor": true,
+                        "texturePath": true,
+                        "fontPath": true,
+                        "fontSize": true,
+                        "opacity": true,
+                        "padding": true,
+                        "margin": true,
+                        "borderColor": true,
+                        "borderWidth": true,
+                        "borderRadius": true
+                    },
+                    "backgroundColor": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0,
+                        "w": 0.0
+                    },
+                    "tintColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "textColor": {
+                        "x": 0.12999999523162842,
+                        "y": 0.12999999523162842,
+                        "z": 0.12999999523162842,
+                        "w": 1.0
+                    },
+                    "texturePath": "",
+                    "fontPath": "Assets/Fonts/simhei.ttf",
+                    "fontSize": 28.0,
+                    "opacity": 1.0,
+                    "padding": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "margin": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "borderColor": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0,
+                        "w": 0.0
+                    },
+                    "borderWidth": 0.0,
+                    "borderRadius": 0.0
+                },
+                "widgetData": {
+                    "text": "1280 x 720",
+                    "alignment": "Center",
+                    "wrapText": false
+                },
+                "events": {
+                    "onClick": "",
+                    "onHover": "",
+                    "onPressed": "",
+                    "onReleased": "",
+                    "onValueChanged": ""
+                },
+                "children": []
+            },
+            {
+                "id": 674,
+                "name": "ResolutionNextButton",
+                "type": "Button",
+                "visible": true,
+                "enabled": true,
+                "interactable": true,
+                "runtimeMutable": true,
+                "zOrder": 0,
+                "transform": {
+                    "position": {
+                        "x": 1324.0,
+                        "y": 296.0
+                    },
+                    "size": {
+                        "x": 62.0,
+                        "y": 54.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "pivot": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "rotation": 0.0,
+                    "scale": {
+                        "x": 1.0,
+                        "y": 1.0
+                    }
+                },
+                "style": {
+                    "presetName": "",
+                    "overrides": {
+                        "backgroundColor": true,
+                        "tintColor": true,
+                        "textColor": true,
+                        "texturePath": true,
+                        "fontPath": true,
+                        "fontSize": true,
+                        "opacity": true,
+                        "padding": true,
+                        "margin": true,
+                        "borderColor": true,
+                        "borderWidth": true,
+                        "borderRadius": true
+                    },
+                    "backgroundColor": {
+                        "x": 0.18000000715255737,
+                        "y": 0.20000000298023224,
+                        "z": 0.25999999046325684,
+                        "w": 0.8799999952316284
+                    },
+                    "tintColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "textColor": {
+                        "x": 0.9800000190734863,
+                        "y": 0.9800000190734863,
+                        "z": 0.9800000190734863,
+                        "w": 1.0
+                    },
+                    "texturePath": "Assets/Textures/Setting/switch_knob_clean2.png",
+                    "fontPath": "Assets/Fonts/simhei.ttf",
+                    "fontSize": 32.0,
+                    "opacity": 1.0,
+                    "padding": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "margin": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "borderColor": {
+                        "x": 0.30000001192092896,
+                        "y": 0.30000001192092896,
+                        "z": 0.30000001192092896,
+                        "w": 1.0
+                    },
+                    "borderWidth": 1.0,
+                    "borderRadius": 8.0
+                },
+                "widgetData": {
+                    "label": " >",
+                    "pressed": false,
+                    "usePresetTransitionStyle": false,
+                    "transitionMode": "Animation",
+                    "backgroundImageScale": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "normalColor": {
+                        "x": 0.18000000715255737,
+                        "y": 0.20000000298023224,
+                        "z": 0.25999999046325684,
+                        "w": 0.8799999952316284
+                    },
+                    "hoverColor": {
+                        "x": 0.25,
+                        "y": 0.2800000011920929,
+                        "z": 0.3499999940395355,
+                        "w": 0.949999988079071
+                    },
+                    "pressedColor": {
+                        "x": 0.11999999731779099,
+                        "y": 0.14000000059604645,
+                        "z": 0.18000000715255737,
+                        "w": 1.0
+                    },
+                    "disabledColor": {
+                        "x": 0.25,
+                        "y": 0.25,
+                        "z": 0.2800000011920929,
+                        "w": 0.800000011920929
+                    },
+                    "normalScale": 1.0,
+                    "hoverScale": 1.0199999809265137,
+                    "pressedScale": 0.9800000190734863,
+                    "transitionDuration": 0.11999999731779099
+                },
+                "events": {
+                    "onClick": "Settings.ResolutionNext",
+                    "onHover": "",
+                    "onPressed": "",
+                    "onReleased": "",
+                    "onValueChanged": ""
+                },
+                "children": []
+            },
+            {
+                "id": 675,
+                "name": "DisplayModeLabel",
+                "type": "Text",
+                "visible": false,
+                "enabled": true,
+                "interactable": false,
+                "runtimeMutable": true,
+                "zOrder": 0,
+                "transform": {
+                    "position": {
+                        "x": 610.0,
+                        "y": 395.0
+                    },
+                    "size": {
+                        "x": 260.0,
+                        "y": 42.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "pivot": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "rotation": 0.0,
+                    "scale": {
+                        "x": 1.0,
+                        "y": 1.0
+                    }
+                },
+                "style": {
+                    "presetName": "",
+                    "overrides": {
+                        "backgroundColor": true,
+                        "tintColor": true,
+                        "textColor": true,
+                        "texturePath": true,
+                        "fontPath": true,
+                        "fontSize": true,
+                        "opacity": true,
+                        "padding": true,
+                        "margin": true,
+                        "borderColor": true,
+                        "borderWidth": true,
+                        "borderRadius": true
+                    },
+                    "backgroundColor": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0,
+                        "w": 0.0
+                    },
+                    "tintColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "textColor": {
+                        "x": 0.12999999523162842,
+                        "y": 0.12999999523162842,
+                        "z": 0.12999999523162842,
+                        "w": 1.0
+                    },
+                    "texturePath": "",
+                    "fontPath": "Assets/Fonts/simhei.ttf",
+                    "fontSize": 30.0,
+                    "opacity": 1.0,
+                    "padding": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "margin": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "borderColor": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0,
+                        "w": 0.0
+                    },
+                    "borderWidth": 0.0,
+                    "borderRadius": 0.0
+                },
+                "widgetData": {
+                    "text": "Display Mode",
+                    "alignment": "Left",
+                    "wrapText": false
+                },
+                "events": {
+                    "onClick": "",
+                    "onHover": "",
+                    "onPressed": "",
+                    "onReleased": "",
+                    "onValueChanged": ""
+                },
+                "children": []
+            },
+            {
+                "id": 676,
+                "name": "DisplayModeButton",
+                "type": "Button",
+                "visible": true,
+                "enabled": true,
+                "interactable": true,
+                "runtimeMutable": true,
+                "zOrder": 0,
+                "transform": {
+                    "position": {
+                        "x": 1058.0,
+                        "y": 425.0
+                    },
+                    "size": {
+                        "x": 352.0,
+                        "y": 95.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "pivot": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "rotation": 0.0,
+                    "scale": {
+                        "x": 1.0,
+                        "y": 1.0
+                    }
+                },
+                "style": {
+                    "presetName": "",
+                    "overrides": {
+                        "backgroundColor": true,
+                        "tintColor": true,
+                        "textColor": true,
+                        "texturePath": true,
+                        "fontPath": true,
+                        "fontSize": true,
+                        "opacity": true,
+                        "padding": true,
+                        "margin": true,
+                        "borderColor": true,
+                        "borderWidth": true,
+                        "borderRadius": true
+                    },
+                    "backgroundColor": {
+                        "x": 0.18000000715255737,
+                        "y": 0.20000000298023224,
+                        "z": 0.25999999046325684,
+                        "w": 0.8799999952316284
+                    },
+                    "tintColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "textColor": {
+                        "x": 0.9800000190734863,
+                        "y": 0.9800000190734863,
+                        "z": 0.9800000190734863,
+                        "w": 1.0
+                    },
+                    "texturePath": "Assets/Textures/button1.png",
+                    "fontPath": "Assets/Fonts/simhei.ttf",
+                    "fontSize": 28.0,
+                    "opacity": 1.0,
+                    "padding": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "margin": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "borderColor": {
+                        "x": 0.30000001192092896,
+                        "y": 0.30000001192092896,
+                        "z": 0.30000001192092896,
+                        "w": 1.0
+                    },
+                    "borderWidth": 0.0,
+                    "borderRadius": 0.0
+                },
+                "widgetData": {
+                    "label": " ",
+                    "pressed": false,
+                    "usePresetTransitionStyle": false,
+                    "transitionMode": "Animation",
+                    "backgroundImageScale": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "normalColor": {
+                        "x": 0.18000000715255737,
+                        "y": 0.20000000298023224,
+                        "z": 0.25999999046325684,
+                        "w": 0.8799999952316284
+                    },
+                    "hoverColor": {
+                        "x": 0.25,
+                        "y": 0.2800000011920929,
+                        "z": 0.3499999940395355,
+                        "w": 0.949999988079071
+                    },
+                    "pressedColor": {
+                        "x": 0.11999999731779099,
+                        "y": 0.14000000059604645,
+                        "z": 0.18000000715255737,
+                        "w": 1.0
+                    },
+                    "disabledColor": {
+                        "x": 0.25,
+                        "y": 0.25,
+                        "z": 0.2800000011920929,
+                        "w": 0.800000011920929
+                    },
+                    "normalScale": 1.0,
+                    "hoverScale": 1.0199999809265137,
+                    "pressedScale": 0.9800000190734863,
+                    "transitionDuration": 0.11999999731779099
+                },
+                "events": {
+                    "onClick": "Settings.DisplayModeToggle",
+                    "onHover": "",
+                    "onPressed": "",
+                    "onReleased": "",
+                    "onValueChanged": ""
+                },
+                "children": []
+            },
+            {
+                "id": 677,
+                "name": "DisplayModeValueText",
+                "type": "Text",
+                "visible": true,
+                "enabled": true,
+                "interactable": false,
+                "runtimeMutable": true,
+                "zOrder": 0,
+                "transform": {
+                    "position": {
+                        "x": 1149.0,
+                        "y": 448.0
+                    },
+                    "size": {
+                        "x": 170.0,
+                        "y": 38.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "pivot": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "rotation": 0.0,
+                    "scale": {
+                        "x": 1.0,
+                        "y": 1.0
+                    }
+                },
+                "style": {
+                    "presetName": "",
+                    "overrides": {
+                        "backgroundColor": true,
+                        "tintColor": true,
+                        "textColor": true,
+                        "texturePath": true,
+                        "fontPath": true,
+                        "fontSize": true,
+                        "opacity": true,
+                        "padding": true,
+                        "margin": true,
+                        "borderColor": true,
+                        "borderWidth": true,
+                        "borderRadius": true
+                    },
+                    "backgroundColor": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0,
+                        "w": 0.0
+                    },
+                    "tintColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "textColor": {
+                        "x": 0.9800000190734863,
+                        "y": 0.9800000190734863,
+                        "z": 0.9800000190734863,
+                        "w": 1.0
+                    },
+                    "texturePath": "",
+                    "fontPath": "Assets/Fonts/simhei.ttf",
+                    "fontSize": 24.0,
+                    "opacity": 1.0,
+                    "padding": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "margin": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "borderColor": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0,
+                        "w": 0.0
+                    },
+                    "borderWidth": 0.0,
+                    "borderRadius": 0.0
+                },
+                "widgetData": {
+                    "text": "Windowed",
+                    "alignment": "Center",
+                    "wrapText": false
+                },
+                "events": {
+                    "onClick": "",
+                    "onHover": "",
+                    "onPressed": "",
+                    "onReleased": "",
+                    "onValueChanged": ""
+                },
+                "children": []
+            },
+            {
                 "id": 664,
                 "name": "Apply",
                 "type": "Button",
@@ -243,7 +1105,7 @@
                 "transform": {
                     "position": {
                         "x": 580.0,
-                        "y": 870.0
+                        "y": 900.0
                     },
                     "size": {
                         "x": 220.0,
@@ -365,7 +1227,7 @@
                     "transitionDuration": 0.11999999731779099
                 },
                 "events": {
-                    "onClick": "UI.Button.Click",
+                    "onClick": "Settings.Apply",
                     "onHover": "",
                     "onPressed": "",
                     "onReleased": "",
@@ -385,7 +1247,7 @@
                 "transform": {
                     "position": {
                         "x": 1170.0,
-                        "y": 870.0
+                        "y": 900.0
                     },
                     "size": {
                         "x": 220.0,
@@ -507,7 +1369,7 @@
                     "transitionDuration": 0.11999999731779099
                 },
                 "events": {
-                    "onClick": "UI.Button.Click",
+                    "onClick": "Settings.Reset",
                     "onHover": "",
                     "onPressed": "",
                     "onReleased": "",
@@ -527,7 +1389,7 @@
                 "transform": {
                     "position": {
                         "x": 870.0,
-                        "y": 870.0
+                        "y": 900.0
                     },
                     "size": {
                         "x": 220.0,
@@ -649,7 +1511,7 @@
                     "transitionDuration": 0.11999999731779099
                 },
                 "events": {
-                    "onClick": "UI.Button.Click",
+                    "onClick": "CloseSettings",
                     "onHover": "",
                     "onPressed": "",
                     "onReleased": "",
@@ -668,11 +1530,11 @@
                 "zOrder": 0,
                 "transform": {
                     "position": {
-                        "x": 1120.0,
-                        "y": 450.0
+                        "x": 1091.0,
+                        "y": 589.0
                     },
                     "size": {
-                        "x": 260.0,
+                        "x": 300.0,
                         "y": 36.0
                     },
                     "anchorMin": {
@@ -727,7 +1589,7 @@
                         "z": 0.9800000190734863,
                         "w": 1.0
                     },
-                    "texturePath": "Assets/Skybox/back.jpg",
+                    "texturePath": "Assets/Textures/Setting/switch_background_clean.png",
                     "fontPath": "",
                     "fontSize": 16.0,
                     "opacity": 1.0,
@@ -768,14 +1630,16 @@
                         "y": 0.9700000286102295,
                         "z": 1.0,
                         "w": 1.0
-                    }
+                    },
+                    "fillImagePath": "Assets/Textures/Setting/slider_fill_clean.png",
+                    "handleImagePath": "Assets/Textures/Setting/switch_background_clean.png"
                 },
                 "events": {
                     "onClick": "",
                     "onHover": "",
                     "onPressed": "",
                     "onReleased": "",
-                    "onValueChanged": ""
+                    "onValueChanged": "Settings.VolumeChanged"
                 },
                 "children": []
             },
@@ -791,7 +1655,7 @@
                 "transform": {
                     "position": {
                         "x": 1180.0,
-                        "y": 570.0
+                        "y": 736.0
                     },
                     "size": {
                         "x": 140.0,
@@ -849,7 +1713,7 @@
                         "z": 0.9800000190734863,
                         "w": 1.0
                     },
-                    "texturePath": "",
+                    "texturePath": "Assets/Textures/Setting/switch_background_clean.png",
                     "fontPath": "",
                     "fontSize": 16.0,
                     "opacity": 1.0,
@@ -894,14 +1758,16 @@
                         "y": 0.9700000286102295,
                         "z": 1.0,
                         "w": 1.0
-                    }
+                    },
+                    "fillImagePath": "Assets/Textures/Setting/switch_fill_clean.png",
+                    "handleImagePath": "Assets/Textures/Setting/switch_knob_clean.png"
                 },
                 "events": {
                     "onClick": "",
                     "onHover": "",
                     "onPressed": "",
                     "onReleased": "",
-                    "onValueChanged": ""
+                    "onValueChanged": "Settings.ToggleChanged"
                 },
                 "children": []
             }

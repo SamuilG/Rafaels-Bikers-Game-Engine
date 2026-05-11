@@ -164,6 +164,8 @@ namespace engine {
         bool wholeNumbers = false;  // 是否只取整数
         glm::vec4 fillColor = glm::vec4(0.35f, 0.72f, 0.96f, 1.0f);   // 填充部分颜色
         glm::vec4 handleColor = glm::vec4(0.95f, 0.97f, 1.0f, 1.0f);  // 滑块手柄颜色
+        std::string fillImagePath;
+        std::string handleImagePath;
     };
 
     // 开关元素 —— 二态切换控件（开 / 关）。
@@ -177,6 +179,8 @@ namespace engine {
         glm::vec4 onColor = glm::vec4(0.28f, 0.72f, 0.42f, 1.0f);   // 开启时的轨道颜色
         glm::vec4 offColor = glm::vec4(0.32f, 0.34f, 0.40f, 1.0f);  // 关闭时的轨道颜色
         glm::vec4 knobColor = glm::vec4(0.95f, 0.97f, 1.0f, 1.0f);  // 滑块颜色
+        std::string fillImagePath;
+        std::string handleImagePath;
     };
 
     // 进度条元素 —— 显示 [minValue, maxValue] 范围内的当前进度。

@@ -18,6 +18,7 @@
 
 namespace engine {
 
+    class AudioSystem;
     struct UserState;
     class RuntimeUiController;
 
@@ -65,6 +66,12 @@ namespace engine {
         std::optional<bool> usePresetTransitionStyle;
     };
 
+    struct RuntimeDisplaySettings {
+        int width = 1280;
+        int height = 720;
+        bool fullscreen = false;
+    };
+
     class RuntimeUiWidget final {
     public:
         RuntimeUiWidget() = default;
@@ -97,6 +104,8 @@ namespace engine {
     class RuntimeUiController final {
     public:
         using TextureResolver = std::function<void*(const std::string&)>;
+        using DisplaySettingsQuery = std::function<RuntimeDisplaySettings()>;
+        using DisplaySettingsApply = std::function<bool(const RuntimeDisplaySettings&)>;
 
         RuntimeUiController(bool& appRunning, UserState& state)
             : mAppRunning(appRunning)
@@ -114,7 +123,31 @@ namespace engine {
             mUiManager->SetRenderer(mRenderer);
 
             mEventRouter = std::make_unique<GameUIEventRouter>(*this, mState, mAppRunning);
+            mEventRouter->SetAudioSystem(mAudioSystem);
             mEventRouter->Bind(*mUiManager);
+        }
+
+        void SetAudioSystem(AudioSystem* audioSystem) {
+            mAudioSystem = audioSystem;
+            if (mEventRouter) {
+                mEventRouter->SetAudioSystem(audioSystem);
+            }
+        }
+
+        void SetDisplaySettingsCallbacks(DisplaySettingsQuery query, DisplaySettingsApply apply) {
+            mDisplaySettingsQuery = std::move(query);
+            mDisplaySettingsApply = std::move(apply);
+        }
+
+        RuntimeDisplaySettings QueryDisplaySettings() const {
+            if (mDisplaySettingsQuery) {
+                return mDisplaySettingsQuery();
+            }
+            return {};
+        }
+
+        bool ApplyDisplaySettings(const RuntimeDisplaySettings& settings) const {
+            return mDisplaySettingsApply && mDisplaySettingsApply(settings);
         }
 
         bool IsInitialized() const {
@@ -508,6 +541,9 @@ namespace engine {
         std::unique_ptr<UIManager> mUiManager;
         std::shared_ptr<ImGuiPreviewRenderer> mRenderer;
         std::unique_ptr<GameUIEventRouter> mEventRouter;
+        AudioSystem* mAudioSystem = nullptr;
+        DisplaySettingsQuery mDisplaySettingsQuery;
+        DisplaySettingsApply mDisplaySettingsApply;
     };
 
     inline bool RuntimeUiWidget::Preload() const {

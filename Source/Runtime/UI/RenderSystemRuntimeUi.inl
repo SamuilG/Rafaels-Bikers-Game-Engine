@@ -221,6 +221,7 @@ inline void RenderSystem::ForwardRuntimeUiMouseInput() {
     if (ImGui::IsKeyPressed(ImGuiKey_Backspace, false)) {
         mRuntimeUiManager->HandleBackspace();
     }
+
 }
 
 inline void RenderSystem::RenderRuntimeUi() {

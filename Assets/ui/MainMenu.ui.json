@@ -1099,7 +1099,7 @@
                     "transitionDuration": 0.11999999731779099
                 },
                 "events": {
-                    "onClick": "MainMenu.OpenOptions",
+                    "onClick": "OpenSettings",
                     "onHover": "",
                     "onPressed": "",
                     "onReleased": "",

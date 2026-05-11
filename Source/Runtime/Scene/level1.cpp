@@ -37,9 +37,12 @@ namespace engine {
 		}
 
 		if (RuntimeUiController* ui = GetRuntimeUiController()) {
-			ui->SetElementVisible("Assets/ui/HUD.ui.json", "JumpIcon", mState->jumpEnabled);
-			ui->SetElementVisible("Assets/ui/HUD.ui.json", "HornIcon", mState->hornEnabled);
-			ui->SetElementVisible("Assets/ui/HUD.ui.json", "RadioIcon", mState->radioEnabled);
+			const bool showJumpHint = mState->showHints && mState->jumpEnabled;
+			const bool showHornHint = mState->showHints && mState->hornEnabled;
+			const bool showRadioHint = mState->showHints && mState->radioEnabled;
+			ui->SetElementVisible("Assets/ui/HUD.ui.json", "JumpIcon", showJumpHint);
+			ui->SetElementVisible("Assets/ui/HUD.ui.json", "HornIcon", showHornHint);
+			ui->SetElementVisible("Assets/ui/HUD.ui.json", "RadioIcon", showRadioHint);
 		}
 	}
 

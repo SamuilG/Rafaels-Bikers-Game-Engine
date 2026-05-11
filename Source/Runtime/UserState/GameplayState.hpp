@@ -71,6 +71,7 @@ namespace engine {
 		bool jumpEnabled = true;
 		bool hornEnabled = false;
 		bool radioEnabled = false;
+		bool showHints = true;
 		float deathFactor = 0.0f;
 		float deathTimer = 0.0f;
 		float bikeSpeed = 0.0f;

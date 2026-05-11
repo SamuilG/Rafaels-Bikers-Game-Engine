@@ -66,7 +66,7 @@ namespace engine {
             runtimeUiController->PreloadWidget("Assets/ui/HUD.ui.json");
             runtimeUiController->PreloadWidget("Assets/ui/AbilityUnlock.ui.json");
             runtimeUiController->PreloadWidget("Assets/ui/PauseMenu.ui.json");
-            runtimeUiController->PreloadWidget("Assets/ui/SettingsMenu.ui.json");
+            runtimeUiController->PreloadWidget("Assets/ui/Settings.ui.json");
             runtimeUiController->AddWidgetToViewPort("Assets/ui/MainMenu.ui.json");
         }
 

@@ -161,6 +161,68 @@ namespace engine {
             glfwFocusWindow(mWindow.window);
         }
 
+        RuntimeDisplaySettings GetDisplaySettings() const {
+            RuntimeDisplaySettings settings{};
+            if (!mWindow.window) {
+                return settings;
+            }
+
+            int width = 0;
+            int height = 0;
+            glfwGetWindowSize(mWindow.window, &width, &height);
+            settings.width = std::max(1, width);
+            settings.height = std::max(1, height);
+            settings.fullscreen = glfwGetWindowMonitor(mWindow.window) != nullptr;
+            return settings;
+        }
+
+        bool ApplyDisplaySettings(const RuntimeDisplaySettings& settings) {
+            if (!mWindow.window) {
+                return false;
+            }
+
+            const int width = std::max(640, settings.width);
+            const int height = std::max(360, settings.height);
+            GLFWmonitor* primaryMonitor = glfwGetPrimaryMonitor();
+            const GLFWvidmode* mode = primaryMonitor ? glfwGetVideoMode(primaryMonitor) : nullptr;
+
+            if (settings.fullscreen) {
+                glfwSetWindowMonitor(
+                    mWindow.window,
+                    primaryMonitor,
+                    0,
+                    0,
+                    width,
+                    height,
+                    mode ? mode->refreshRate : GLFW_DONT_CARE);
+            }
+            else {
+                int monitorX = 0;
+                int monitorY = 0;
+                int monitorWidth = width;
+                int monitorHeight = height;
+                if (primaryMonitor && mode) {
+                    glfwGetMonitorPos(primaryMonitor, &monitorX, &monitorY);
+                    monitorWidth = mode->width;
+                    monitorHeight = mode->height;
+                }
+
+                const int windowX = monitorX + std::max(0, (monitorWidth - width) / 2);
+                const int windowY = monitorY + std::max(0, (monitorHeight - height) / 2);
+                glfwSetWindowMonitor(
+                    mWindow.window,
+                    nullptr,
+                    windowX,
+                    windowY,
+                    width,
+                    height,
+                    GLFW_DONT_CARE);
+            }
+
+            mRecreateSwapchain = true;
+            return true;
+        }
+
         //==============UI System=========
         RuntimeUiController* GetRuntimeUiController() const {
             return mRuntimeUiController.get();
@@ -588,6 +650,14 @@ namespace engine {
 
             if (mState) {
                 mRuntimeUiController = std::make_unique<RuntimeUiController>(mAppRunning, *mState);
+                mRuntimeUiController->SetAudioSystem(mAudioSystem);
+                mRuntimeUiController->SetDisplaySettingsCallbacks(
+                    [this]() {
+                        return GetDisplaySettings();
+                    },
+                    [this](const RuntimeDisplaySettings& settings) {
+                        return ApplyDisplaySettings(settings);
+                    });
                 mRuntimeUiController->Initialize([this](const std::string& assetPath) -> void* {
                     return reinterpret_cast<void*>(GetContentBrowserThumbnail(assetPath));
                     });
@@ -857,7 +927,7 @@ namespace engine {
                 if (mState->isGamePause)
                 {
                     if (mRuntimeUiController) {
-                        mRuntimeUiController->RemoveWidgetFromViewPort("Assets/ui/SettingsMenu.ui.json");
+                        mRuntimeUiController->RemoveWidgetFromViewPort("Assets/ui/Settings.ui.json");
                         mRuntimeUiController->AddWidgetToViewPort("Assets/ui/PauseMenu.ui.json");
                     }
                     engine::EngineUi::LogPrintf("Test: Game pause triggered via 'H' key.\n");
@@ -865,7 +935,7 @@ namespace engine {
                 else
                 {
                     if (mRuntimeUiController) {
-                        mRuntimeUiController->RemoveWidgetFromViewPort("Assets/ui/SettingsMenu.ui.json");
+                        mRuntimeUiController->RemoveWidgetFromViewPort("Assets/ui/Settings.ui.json");
                         mRuntimeUiController->RemoveWidgetFromViewPort("Assets/ui/PauseMenu.ui.json");
                         if (mRuntimeUiController->IsWidgetLoaded("Assets/ui/HUD.ui.json")) {
                             mRuntimeUiController->AddWidgetToViewPort("Assets/ui/HUD.ui.json");
@@ -1418,6 +1488,22 @@ namespace engine {
                     EngineUi::ShowToast(mState->showEngineUi ? "[ Engine UI Visible ]" : "[ Engine UI Hidden ]");
                 }
 #endif
+
+                const bool menuBackDown = mInputSystem->IsActionHeld("MenuBack")
+                    || (mWindow.window && glfwGetKey(mWindow.window, GLFW_KEY_ESCAPE) == GLFW_PRESS);
+                const bool menuBackPressed = menuBackDown && !mMenuBackWasDown;
+                mMenuBackWasDown = menuBackDown;
+
+                if (menuBackPressed && mRuntimeUiController && mRuntimeUiManager) {
+                    constexpr std::string_view kSettingsUiPath = "Assets/ui/Settings.ui.json";
+
+                    if (mRuntimeUiController->IsWidgetVisible(kSettingsUiPath)) {
+                        mRuntimeUiManager->TriggerEvent("CloseSettings");
+                    }
+                    else {
+                        mRuntimeUiManager->TriggerEvent("OpenSettings");
+                    }
+                }
                 
 #ifndef GAME_ONLY
                 // Debug Render Modes
@@ -2058,7 +2144,12 @@ namespace engine {
         }
 
         void SetUserState(UserState* state) { this->mState = state; }
-        void SetAudioSystem(AudioSystem* audioSystem) { this->mAudioSystem = audioSystem; }
+        void SetAudioSystem(AudioSystem* audioSystem) {
+            this->mAudioSystem = audioSystem;
+            if (mRuntimeUiController) {
+                mRuntimeUiController->SetAudioSystem(audioSystem);
+            }
+        }
         AudioSystem* GetAudioSystem() const { return mAudioSystem; }
         // 在 RenderSystem.hpp 内部添加该辅助函数
         void UpdateSceneDescriptorSkybox()
@@ -2084,6 +2175,7 @@ namespace engine {
         UserState* mState = nullptr;
 
         engine::InputSystem* mInputSystem = nullptr;
+        bool mMenuBackWasDown = false;
 
         bool TryGetDebugBodyID(flecs::entity entity, uint32_t& outBodyID) const
         {

@@ -117,6 +117,7 @@ namespace engine {
 
         UIElementId GetHoveredElementId() const { return mHoveredElementId; }  // 当前鼠标悬停的元素ID
         UIElementId GetPressedElementId() const { return mPressedElementId; } // 当前鼠标按下的元素ID
+        void TriggerEvent(const std::string& eventName);                      // 触发已注册的事件回调
 
     private:
         // 命中测试结果：记录被命中的屏幕、元素及其ID
@@ -129,7 +130,6 @@ namespace engine {
         static std::filesystem::path NormalizePath(const std::filesystem::path& path);  // 规范化屏幕文件路径（补全目录和扩展名）
         HitResult HitTest(const glm::vec2& point) const;                               // 从栈顶向下进行命中测试
         bool IsInteractive(const UIElement& element) const;                             // 判断元素是否可交互（按钮/切换/滑块/输入框）
-        void TriggerEvent(const std::string& eventName);                                // 触发已注册的事件回调
         void RefreshActiveScreenCache();    // 刷新活跃屏幕缓存（栈顶可见屏幕）
         void ClearPressedStates();          // 清除所有按钮的按下状态
         void SyncScreenRenderOrder();       // 根据栈位置同步每个屏幕的渲染顺序

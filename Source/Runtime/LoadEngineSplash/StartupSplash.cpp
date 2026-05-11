@@ -781,7 +781,7 @@ namespace engine {
         mImpl->window = glfwCreateWindow(
             mImpl->windowWidth,
             mImpl->windowHeight,
-            "Rafael's Bikers Splash",
+            "Engine Splash",
             nullptr,
             nullptr);
 

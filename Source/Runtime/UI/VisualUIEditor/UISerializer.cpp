@@ -436,6 +436,8 @@ namespace engine {
                 widgetData["wholeNumbers"] = slider->wholeNumbers;
                 widgetData["fillColor"] = SerializeVec4(slider->fillColor);
                 widgetData["handleColor"] = SerializeVec4(slider->handleColor);
+                widgetData["fillImagePath"] = slider->fillImagePath;
+                widgetData["handleImagePath"] = slider->handleImagePath;
             }
             else if (const auto* toggle = dynamic_cast<const UIToggle*>(&element)) {
                 widgetData["label"] = toggle->label;
@@ -443,6 +445,8 @@ namespace engine {
                 widgetData["onColor"] = SerializeVec4(toggle->onColor);
                 widgetData["offColor"] = SerializeVec4(toggle->offColor);
                 widgetData["knobColor"] = SerializeVec4(toggle->knobColor);
+                widgetData["fillImagePath"] = toggle->fillImagePath;
+                widgetData["handleImagePath"] = toggle->handleImagePath;
             }
             else if (const auto* radialProgressBar = dynamic_cast<const UIRadialProgressBar*>(&element)) {
                 widgetData["minValue"] = radialProgressBar->minValue;
@@ -604,6 +608,8 @@ namespace engine {
                 slider->wholeNumbers = widgetData.value("wholeNumbers", slider->wholeNumbers);
                 slider->fillColor = DeserializeVec4(widgetData.value("fillColor", Json::object()), slider->fillColor);
                 slider->handleColor = DeserializeVec4(widgetData.value("handleColor", Json::object()), slider->handleColor);
+                slider->fillImagePath = widgetData.value("fillImagePath", slider->fillImagePath);
+                slider->handleImagePath = widgetData.value("handleImagePath", slider->handleImagePath);
             }
             else if (auto* toggle = dynamic_cast<UIToggle*>(&element)) {
                 toggle->label = widgetData.value("label", toggle->label);
@@ -611,6 +617,8 @@ namespace engine {
                 toggle->onColor = DeserializeVec4(widgetData.value("onColor", Json::object()), toggle->onColor);
                 toggle->offColor = DeserializeVec4(widgetData.value("offColor", Json::object()), toggle->offColor);
                 toggle->knobColor = DeserializeVec4(widgetData.value("knobColor", Json::object()), toggle->knobColor);
+                toggle->fillImagePath = widgetData.value("fillImagePath", toggle->fillImagePath);
+                toggle->handleImagePath = widgetData.value("handleImagePath", toggle->handleImagePath);
             }
             else if (auto* radialProgressBar = dynamic_cast<UIRadialProgressBar*>(&element)) {
                 radialProgressBar->minValue = widgetData.value("minValue", radialProgressBar->minValue);
