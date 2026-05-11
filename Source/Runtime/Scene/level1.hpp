@@ -1,10 +1,12 @@
 #pragma once
 #include "GameScene.hpp"
 #include "../Physics/bikeController.hpp"
+#include "../UI/VisualUIEditor/RuntimeUiController.hpp"
 #include <flecs.h>
 #include <memory>
 #include <string>
 #include <vector>
+#include <string_view>
 
 namespace engine {
 
@@ -61,6 +63,8 @@ namespace engine {
 
 		bool m_respawnPromptVisible = false;
         float m_respawnStillnessTime = 0.0f;
+        bool m_abilityUnlockPopupVisible = false;
+        float m_abilityUnlockPopupTimer = 0.0f;
 
 		// Satellite — mounted to character's back after radio pickup
 		flecs::entity m_satelliteEntity;
@@ -69,6 +73,12 @@ namespace engine {
 		bool      m_hasCheckpoint   = false;
 		glm::vec3 m_checkpointPos   = glm::vec3(0.0f);
 		float     m_checkpointYaw   = 0.0f;
+
+
+        RuntimeUiController* GetRuntimeUiController() const;
+        void RefreshAbilityHintUi() const;
+        void ShowAbilityUnlockPopup(std::string_view abilityName);
+        void HideAbilityUnlockPopup();
     };
 
 } // namespace engine

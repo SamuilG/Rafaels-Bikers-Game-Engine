@@ -153,8 +153,8 @@ namespace engine {
         mState.isGameOver = false;
         mState.gameFlowState = GameFlowState::Settings;
 
-        mRuntimeUiController.AddWidgetToViewPort(kPauseMenuUiPath);
-        mRuntimeUiController.AddWidgetToViewPort(kSettingsUiPath);
+        //mRuntimeUiController.AddWidgetToViewPort(kPauseMenuUiPath);
+        //mRuntimeUiController.AddWidgetToViewPort(kSettingsUiPath);
 
         EngineUi::ShowToast("[ Runtime UI: Settings ]");
         EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> Settings | SettingsMenu visible\n", eventName);

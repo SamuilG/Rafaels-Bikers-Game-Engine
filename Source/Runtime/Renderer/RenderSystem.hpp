@@ -171,7 +171,7 @@ namespace engine {
             // 游戏未开始// Game not started
             if (!mState->isGameStarted) {
                 // Draw the main menu UI主菜单
-                EngineUi::DrawMainMenu(this, mAppRunning, mState->isGameStarted);
+                //EngineUi::DrawMainMenu(this, mAppRunning, mState->isGameStarted);
             }
         }
 
@@ -887,15 +887,15 @@ namespace engine {
             //start gmae menu
            // 如果游戏还没开始，只画主菜单
             if (!mState->isGameStarted) {
-                EngineUi::DrawMainMenu(this, mAppRunning, mState->isGameStarted);
+                //EngineUi::DrawMainMenu(this, mAppRunning, mState->isGameStarted);
             }
             else if (mState->isGameOver) {
                 // gameover UI
-                EngineUi::DrawGameOver(this, *mState, mAppRunning);
+                //EngineUi::DrawGameOver(this, *mState, mAppRunning);
             }
             else if (mState->isGamePause) {
                 // gameover UI 
-                EngineUi::DrawGamePause(this, *mState, mAppRunning);
+                //EngineUi::DrawGamePause(this, *mState, mAppRunning);
             }
             else
             {

@@ -148,6 +148,107 @@
                     ]
                 }
             ]
+        },
+        {
+            "name": "Animation_01",
+            "duration": 0.6000000238418579,
+            "loopCount": 1,
+            "playOnShow": true,
+            "trackCount": 0,
+            "tracks": []
+        },
+        {
+            "name": "JumpIcon_Fade In_01",
+            "duration": 0.44999998807907104,
+            "loopCount": 1,
+            "playOnShow": true,
+            "trackCount": 1,
+            "tracks": [
+                {
+                    "targetElementId": 535,
+                    "property": "Opacity",
+                    "keyframes": [
+                        {
+                            "time": 0.0,
+                            "value": {
+                                "type": "Float",
+                                "value": 0.0
+                            },
+                            "easing": "EaseOut"
+                        },
+                        {
+                            "time": 0.44999998807907104,
+                            "value": {
+                                "type": "Float",
+                                "value": 1.0
+                            },
+                            "easing": "EaseOut"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "HornIcon_Fade In_01",
+            "duration": 0.44999998807907104,
+            "loopCount": 1,
+            "playOnShow": true,
+            "trackCount": 1,
+            "tracks": [
+                {
+                    "targetElementId": 554,
+                    "property": "Opacity",
+                    "keyframes": [
+                        {
+                            "time": 0.0,
+                            "value": {
+                                "type": "Float",
+                                "value": 0.0
+                            },
+                            "easing": "EaseOut"
+                        },
+                        {
+                            "time": 0.44999998807907104,
+                            "value": {
+                                "type": "Float",
+                                "value": 1.0
+                            },
+                            "easing": "EaseOut"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "RadioIcon_Fade In_01",
+            "duration": 0.44999998807907104,
+            "loopCount": 1,
+            "playOnShow": true,
+            "trackCount": 1,
+            "tracks": [
+                {
+                    "targetElementId": 574,
+                    "property": "Opacity",
+                    "keyframes": [
+                        {
+                            "time": 0.0,
+                            "value": {
+                                "type": "Float",
+                                "value": 0.0
+                            },
+                            "easing": "EaseOut"
+                        },
+                        {
+                            "time": 0.44999998807907104,
+                            "value": {
+                                "type": "Float",
+                                "value": 1.0
+                            },
+                            "easing": "EaseOut"
+                        }
+                    ]
+                }
+            ]
         }
     ],
     "rootElement": {
@@ -582,144 +683,6 @@
                 "children": []
             },
             {
-                "id": 9,
-                "name": "PauseButton",
-                "type": "Button",
-                "visible": true,
-                "enabled": true,
-                "interactable": true,
-                "runtimeMutable": true,
-                "zOrder": 30,
-                "transform": {
-                    "position": {
-                        "x": 1740.0,
-                        "y": 960.0
-                    },
-                    "size": {
-                        "x": 140.0,
-                        "y": 56.0
-                    },
-                    "anchorMin": {
-                        "x": 0.0,
-                        "y": 0.0
-                    },
-                    "anchorMax": {
-                        "x": 0.0,
-                        "y": 0.0
-                    },
-                    "pivot": {
-                        "x": 0.5,
-                        "y": 0.5
-                    },
-                    "rotation": 0.0,
-                    "scale": {
-                        "x": 1.0,
-                        "y": 1.0
-                    }
-                },
-                "style": {
-                    "presetName": "SecondaryButton",
-                    "overrides": {
-                        "backgroundColor": true,
-                        "tintColor": true,
-                        "textColor": true,
-                        "texturePath": true,
-                        "fontPath": true,
-                        "fontSize": true,
-                        "opacity": true,
-                        "padding": true,
-                        "margin": true,
-                        "borderColor": true,
-                        "borderWidth": true,
-                        "borderRadius": true
-                    },
-                    "backgroundColor": {
-                        "x": 0.09000000357627869,
-                        "y": 0.10999999940395355,
-                        "z": 0.18000000715255737,
-                        "w": 0.9599999785423279
-                    },
-                    "tintColor": {
-                        "x": 1.0,
-                        "y": 1.0,
-                        "z": 1.0,
-                        "w": 1.0
-                    },
-                    "textColor": {
-                        "x": 1.0,
-                        "y": 1.0,
-                        "z": 1.0,
-                        "w": 1.0
-                    },
-                    "texturePath": "",
-                    "fontPath": "Assets/Fonts/simhei.ttf",
-                    "fontSize": 22.0,
-                    "opacity": 1.0,
-                    "padding": {
-                        "left": 0.0,
-                        "top": 0.0,
-                        "right": 0.0,
-                        "bottom": 0.0
-                    },
-                    "margin": {
-                        "left": 0.0,
-                        "top": 0.0,
-                        "right": 0.0,
-                        "bottom": 0.0
-                    },
-                    "borderColor": {
-                        "x": 0.3199999928474426,
-                        "y": 0.5799999833106995,
-                        "z": 1.0,
-                        "w": 0.949999988079071
-                    },
-                    "borderWidth": 2.0,
-                    "borderRadius": 12.0
-                },
-                "widgetData": {
-                    "label": "Pause",
-                    "pressed": false,
-                    "usePresetTransitionStyle": true,
-                    "transitionMode": "Animation",
-                    "normalColor": {
-                        "x": 0.09000000357627869,
-                        "y": 0.10999999940395355,
-                        "z": 0.18000000715255737,
-                        "w": 0.9599999785423279
-                    },
-                    "hoverColor": {
-                        "x": 0.15000000596046448,
-                        "y": 0.18000000715255737,
-                        "z": 0.2800000011920929,
-                        "w": 1.0
-                    },
-                    "pressedColor": {
-                        "x": 0.07000000029802322,
-                        "y": 0.09000000357627869,
-                        "z": 0.14000000059604645,
-                        "w": 1.0
-                    },
-                    "disabledColor": {
-                        "x": 0.18000000715255737,
-                        "y": 0.18000000715255737,
-                        "z": 0.18000000715255737,
-                        "w": 0.75
-                    },
-                    "normalScale": 1.0,
-                    "hoverScale": 1.0399999618530273,
-                    "pressedScale": 0.9599999785423279,
-                    "transitionDuration": 0.11999999731779099
-                },
-                "events": {
-                    "onClick": "PauseGame",
-                    "onHover": "",
-                    "onPressed": "",
-                    "onReleased": "",
-                    "onValueChanged": ""
-                },
-                "children": []
-            },
-            {
                 "id": 151,
                 "name": "RadialProgressBar_001",
                 "type": "RadialProgressBar",
@@ -849,6 +812,547 @@
                     "onValueChanged": ""
                 },
                 "children": []
+            },
+            {
+                "id": 431,
+                "name": "Image_001",
+                "type": "Image",
+                "visible": true,
+                "enabled": true,
+                "interactable": true,
+                "runtimeMutable": true,
+                "zOrder": 0,
+                "transform": {
+                    "position": {
+                        "x": 65.0,
+                        "y": 716.0
+                    },
+                    "size": {
+                        "x": 256.0,
+                        "y": 256.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "pivot": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "rotation": 0.0,
+                    "scale": {
+                        "x": 1.350000023841858,
+                        "y": 1.350000023841858
+                    }
+                },
+                "style": {
+                    "presetName": "",
+                    "overrides": {
+                        "backgroundColor": true,
+                        "tintColor": true,
+                        "textColor": true,
+                        "texturePath": true,
+                        "fontPath": true,
+                        "fontSize": true,
+                        "opacity": true,
+                        "padding": true,
+                        "margin": true,
+                        "borderColor": true,
+                        "borderWidth": true,
+                        "borderRadius": true
+                    },
+                    "backgroundColor": {
+                        "x": 0.18000000715255737,
+                        "y": 0.20000000298023224,
+                        "z": 0.25999999046325684,
+                        "w": 1.0
+                    },
+                    "tintColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "textColor": {
+                        "x": 0.949999988079071,
+                        "y": 0.949999988079071,
+                        "z": 0.9800000190734863,
+                        "w": 1.0
+                    },
+                    "texturePath": "Assets/Textures/SpeedBackground.png",
+                    "fontPath": "",
+                    "fontSize": 16.0,
+                    "opacity": 1.0,
+                    "padding": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "margin": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "borderColor": {
+                        "x": 0.3499999940395355,
+                        "y": 0.4000000059604645,
+                        "z": 0.5199999809265137,
+                        "w": 1.0
+                    },
+                    "borderWidth": 0.0,
+                    "borderRadius": 0.0
+                },
+                "widgetData": {
+                    "imagePath": "Assets/Textures/SpeedBackground.png",
+                    "preserveAspectRatio": true
+                },
+                "events": {
+                    "onClick": "",
+                    "onHover": "",
+                    "onPressed": "",
+                    "onReleased": "",
+                    "onValueChanged": ""
+                },
+                "children": []
+            },
+            {
+                "id": 482,
+                "name": "control",
+                "type": "Image",
+                "visible": true,
+                "enabled": true,
+                "interactable": true,
+                "runtimeMutable": true,
+                "zOrder": 0,
+                "transform": {
+                    "position": {
+                        "x": 748.0,
+                        "y": 855.0
+                    },
+                    "size": {
+                        "x": 427.0,
+                        "y": 256.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "pivot": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "rotation": 0.0,
+                    "scale": {
+                        "x": 1.0,
+                        "y": 1.0
+                    }
+                },
+                "style": {
+                    "presetName": "",
+                    "overrides": {
+                        "backgroundColor": true,
+                        "tintColor": true,
+                        "textColor": true,
+                        "texturePath": true,
+                        "fontPath": true,
+                        "fontSize": true,
+                        "opacity": true,
+                        "padding": true,
+                        "margin": true,
+                        "borderColor": true,
+                        "borderWidth": true,
+                        "borderRadius": true
+                    },
+                    "backgroundColor": {
+                        "x": 0.18000000715255737,
+                        "y": 0.20000000298023224,
+                        "z": 0.25999999046325684,
+                        "w": 1.0
+                    },
+                    "tintColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "textColor": {
+                        "x": 0.949999988079071,
+                        "y": 0.949999988079071,
+                        "z": 0.9800000190734863,
+                        "w": 1.0
+                    },
+                    "texturePath": "Assets/Textures/control.png",
+                    "fontPath": "",
+                    "fontSize": 16.0,
+                    "opacity": 1.0,
+                    "padding": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "margin": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "borderColor": {
+                        "x": 0.3499999940395355,
+                        "y": 0.4000000059604645,
+                        "z": 0.5199999809265137,
+                        "w": 1.0
+                    },
+                    "borderWidth": 0.0,
+                    "borderRadius": 0.0
+                },
+                "widgetData": {
+                    "imagePath": "Assets/Textures/control.png",
+                    "preserveAspectRatio": true
+                },
+                "events": {
+                    "onClick": "",
+                    "onHover": "",
+                    "onPressed": "",
+                    "onReleased": "",
+                    "onValueChanged": ""
+                },
+                "children": [
+                    {
+                        "id": 535,
+                        "name": "JumpIcon",
+                        "type": "Image",
+                        "visible": false,
+                        "enabled": true,
+                        "interactable": true,
+                        "runtimeMutable": true,
+                        "zOrder": 0,
+                        "transform": {
+                            "position": {
+                                "x": 0.0,
+                                "y": 0.0
+                            },
+                            "size": {
+                                "x": 427.0,
+                                "y": 256.0
+                            },
+                            "anchorMin": {
+                                "x": 0.0,
+                                "y": 0.0
+                            },
+                            "anchorMax": {
+                                "x": 0.0,
+                                "y": 0.0
+                            },
+                            "pivot": {
+                                "x": 0.0,
+                                "y": 0.0
+                            },
+                            "rotation": 0.0,
+                            "scale": {
+                                "x": 1.0,
+                                "y": 1.0
+                            }
+                        },
+                        "style": {
+                            "presetName": "",
+                            "overrides": {
+                                "backgroundColor": true,
+                                "tintColor": true,
+                                "textColor": true,
+                                "texturePath": true,
+                                "fontPath": true,
+                                "fontSize": true,
+                                "opacity": true,
+                                "padding": true,
+                                "margin": true,
+                                "borderColor": true,
+                                "borderWidth": true,
+                                "borderRadius": true
+                            },
+                            "backgroundColor": {
+                                "x": 0.18000000715255737,
+                                "y": 0.20000000298023224,
+                                "z": 0.25999999046325684,
+                                "w": 1.0
+                            },
+                            "tintColor": {
+                                "x": 1.0,
+                                "y": 1.0,
+                                "z": 1.0,
+                                "w": 1.0
+                            },
+                            "textColor": {
+                                "x": 0.949999988079071,
+                                "y": 0.949999988079071,
+                                "z": 0.9800000190734863,
+                                "w": 1.0
+                            },
+                            "texturePath": "Assets/Textures/controlJump.png",
+                            "fontPath": "",
+                            "fontSize": 16.0,
+                            "opacity": 1.0,
+                            "padding": {
+                                "left": 0.0,
+                                "top": 0.0,
+                                "right": 0.0,
+                                "bottom": 0.0
+                            },
+                            "margin": {
+                                "left": 0.0,
+                                "top": 0.0,
+                                "right": 0.0,
+                                "bottom": 0.0
+                            },
+                            "borderColor": {
+                                "x": 0.3499999940395355,
+                                "y": 0.4000000059604645,
+                                "z": 0.5199999809265137,
+                                "w": 1.0
+                            },
+                            "borderWidth": 0.0,
+                            "borderRadius": 0.0
+                        },
+                        "widgetData": {
+                            "imagePath": "Assets/Textures/controlJump.png",
+                            "preserveAspectRatio": true
+                        },
+                        "events": {
+                            "onClick": "",
+                            "onHover": "",
+                            "onPressed": "",
+                            "onReleased": "",
+                            "onValueChanged": ""
+                        },
+                        "children": []
+                    },
+                    {
+                        "id": 554,
+                        "name": "HornIcon",
+                        "type": "Image",
+                        "visible": false,
+                        "enabled": true,
+                        "interactable": true,
+                        "runtimeMutable": true,
+                        "zOrder": 0,
+                        "transform": {
+                            "position": {
+                                "x": 0.0,
+                                "y": 0.0
+                            },
+                            "size": {
+                                "x": 427.0,
+                                "y": 256.0
+                            },
+                            "anchorMin": {
+                                "x": 0.0,
+                                "y": 0.0
+                            },
+                            "anchorMax": {
+                                "x": 0.0,
+                                "y": 0.0
+                            },
+                            "pivot": {
+                                "x": 0.0,
+                                "y": 0.0
+                            },
+                            "rotation": 0.0,
+                            "scale": {
+                                "x": 1.0,
+                                "y": 1.0
+                            }
+                        },
+                        "style": {
+                            "presetName": "",
+                            "overrides": {
+                                "backgroundColor": true,
+                                "tintColor": true,
+                                "textColor": true,
+                                "texturePath": true,
+                                "fontPath": true,
+                                "fontSize": true,
+                                "opacity": true,
+                                "padding": true,
+                                "margin": true,
+                                "borderColor": true,
+                                "borderWidth": true,
+                                "borderRadius": true
+                            },
+                            "backgroundColor": {
+                                "x": 0.18000000715255737,
+                                "y": 0.20000000298023224,
+                                "z": 0.25999999046325684,
+                                "w": 1.0
+                            },
+                            "tintColor": {
+                                "x": 1.0,
+                                "y": 1.0,
+                                "z": 1.0,
+                                "w": 1.0
+                            },
+                            "textColor": {
+                                "x": 0.949999988079071,
+                                "y": 0.949999988079071,
+                                "z": 0.9800000190734863,
+                                "w": 1.0
+                            },
+                            "texturePath": "Assets/Textures/controlHorn.png",
+                            "fontPath": "",
+                            "fontSize": 16.0,
+                            "opacity": 1.0,
+                            "padding": {
+                                "left": 0.0,
+                                "top": 0.0,
+                                "right": 0.0,
+                                "bottom": 0.0
+                            },
+                            "margin": {
+                                "left": 0.0,
+                                "top": 0.0,
+                                "right": 0.0,
+                                "bottom": 0.0
+                            },
+                            "borderColor": {
+                                "x": 0.3499999940395355,
+                                "y": 0.4000000059604645,
+                                "z": 0.5199999809265137,
+                                "w": 1.0
+                            },
+                            "borderWidth": 0.0,
+                            "borderRadius": 0.0
+                        },
+                        "widgetData": {
+                            "imagePath": "Assets/Textures/controlHorn.png",
+                            "preserveAspectRatio": true
+                        },
+                        "events": {
+                            "onClick": "",
+                            "onHover": "",
+                            "onPressed": "",
+                            "onReleased": "",
+                            "onValueChanged": ""
+                        },
+                        "children": []
+                    },
+                    {
+                        "id": 574,
+                        "name": "RadioIcon",
+                        "type": "Image",
+                        "visible": false,
+                        "enabled": true,
+                        "interactable": true,
+                        "runtimeMutable": true,
+                        "zOrder": 0,
+                        "transform": {
+                            "position": {
+                                "x": 0.0,
+                                "y": 0.0
+                            },
+                            "size": {
+                                "x": 427.0,
+                                "y": 256.0
+                            },
+                            "anchorMin": {
+                                "x": 0.0,
+                                "y": 0.0
+                            },
+                            "anchorMax": {
+                                "x": 0.0,
+                                "y": 0.0
+                            },
+                            "pivot": {
+                                "x": 0.0,
+                                "y": 0.0
+                            },
+                            "rotation": 0.0,
+                            "scale": {
+                                "x": 1.0,
+                                "y": 1.0
+                            }
+                        },
+                        "style": {
+                            "presetName": "",
+                            "overrides": {
+                                "backgroundColor": true,
+                                "tintColor": true,
+                                "textColor": true,
+                                "texturePath": true,
+                                "fontPath": true,
+                                "fontSize": true,
+                                "opacity": true,
+                                "padding": true,
+                                "margin": true,
+                                "borderColor": true,
+                                "borderWidth": true,
+                                "borderRadius": true
+                            },
+                            "backgroundColor": {
+                                "x": 0.18000000715255737,
+                                "y": 0.20000000298023224,
+                                "z": 0.25999999046325684,
+                                "w": 1.0
+                            },
+                            "tintColor": {
+                                "x": 1.0,
+                                "y": 1.0,
+                                "z": 1.0,
+                                "w": 1.0
+                            },
+                            "textColor": {
+                                "x": 0.949999988079071,
+                                "y": 0.949999988079071,
+                                "z": 0.9800000190734863,
+                                "w": 1.0
+                            },
+                            "texturePath": "Assets/Textures/controlSound.png",
+                            "fontPath": "",
+                            "fontSize": 16.0,
+                            "opacity": 1.0,
+                            "padding": {
+                                "left": 0.0,
+                                "top": 0.0,
+                                "right": 0.0,
+                                "bottom": 0.0
+                            },
+                            "margin": {
+                                "left": 0.0,
+                                "top": 0.0,
+                                "right": 0.0,
+                                "bottom": 0.0
+                            },
+                            "borderColor": {
+                                "x": 0.3499999940395355,
+                                "y": 0.4000000059604645,
+                                "z": 0.5199999809265137,
+                                "w": 1.0
+                            },
+                            "borderWidth": 0.0,
+                            "borderRadius": 0.0
+                        },
+                        "widgetData": {
+                            "imagePath": "Assets/Textures/controlSound.png",
+                            "preserveAspectRatio": true
+                        },
+                        "events": {
+                            "onClick": "",
+                            "onHover": "",
+                            "onPressed": "",
+                            "onReleased": "",
+                            "onValueChanged": ""
+                        },
+                        "children": []
+                    }
+                ]
             }
         ]
     }
