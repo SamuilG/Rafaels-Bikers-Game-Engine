@@ -64,6 +64,7 @@ namespace engine {
         if (runtimeUiController) {
             runtimeUiController->PreloadWidget("Assets/ui/MainMenu.ui.json");
             runtimeUiController->PreloadWidget("Assets/ui/HUD.ui.json");
+            runtimeUiController->PreloadWidget("Assets/ui/AbilityUnlock.ui.json");
             runtimeUiController->PreloadWidget("Assets/ui/PauseMenu.ui.json");
             runtimeUiController->PreloadWidget("Assets/ui/SettingsMenu.ui.json");
             runtimeUiController->AddWidgetToViewPort("Assets/ui/MainMenu.ui.json");

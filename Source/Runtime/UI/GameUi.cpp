@@ -457,24 +457,24 @@ namespace engine {
 
             ImDrawList* drawList = ImGui::GetWindowDrawList();
             ImFont* font = ImGui::GetFont();
-            const char* hintText = "WASD Move  RMB Look";
+            
             const float fontSize = 18.0f;
 
             ImVec2 engineTextSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, engineUiLabel);
-            ImVec2 hintTextSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, hintText);
+            //ImVec2 hintTextSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, hintText);
 
             ImVec2 engineTextPos(
                 viewportPos.x + viewportSize.x - 24.0f - engineTextSize.x,
                 viewportPos.y + viewportSize.y - 52.0f);
-            ImVec2 hintPos(
+            /*ImVec2 hintPos(
                 viewportPos.x + viewportSize.x - 24.0f - hintTextSize.x,
-                viewportPos.y + viewportSize.y - 28.0f);
+                viewportPos.y + viewportSize.y - 28.0f);*/
 
             drawList->AddText(font, fontSize, ImVec2(engineTextPos.x + 1.0f, engineTextPos.y + 1.0f), IM_COL32(0, 0, 0, 180), engineUiLabel);
             drawList->AddText(font, fontSize, engineTextPos, IM_COL32(255, 255, 255, 235), engineUiLabel);
 
-            drawList->AddText(font, fontSize, ImVec2(hintPos.x + 1.0f, hintPos.y + 1.0f), IM_COL32(0, 0, 0, 180), hintText);
-            drawList->AddText(font, fontSize, hintPos, IM_COL32(255, 255, 255, 235), hintText);
+            //drawList->AddText(font, fontSize, ImVec2(hintPos.x + 1.0f, hintPos.y + 1.0f), IM_COL32(0, 0, 0, 180), hintText);
+            //drawList->AddText(font, fontSize, hintPos, IM_COL32(255, 255, 255, 235), hintText);
 
             ImGui::End();
         }
