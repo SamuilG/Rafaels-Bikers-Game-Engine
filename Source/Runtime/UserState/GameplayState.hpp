@@ -68,8 +68,9 @@ namespace engine {
 		bool thirdPersonMode = true;
 		bool isAlive = true;
 
-		bool jumpEnabled = true;
+		bool jumpEnabled = false;
 		bool hornEnabled = false;
+		bool radioEnabled = false;
 		float deathFactor = 0.0f;
 		float deathTimer = 0.0f;
 		float bikeSpeed = 0.0f;
