@@ -447,7 +447,13 @@ void record_commands(
 	if (aSkinnedPipe != VK_NULL_HANDLE && aSkinnedBatches && !aSkinnedBatches->empty() && aMeshJoints && aMeshWeights && aBoneDescriptorSet != VK_NULL_HANDLE)
 	{
 		struct alignas(16) SkinnedPC {
-			glm::mat4 transform; glm::vec4 baseColorFactor; float metallicFactor; float roughnessFactor; uint32_t boneBaseIndex; float _pad;
+			glm::mat4 transform;        // offset 0
+			glm::vec4 baseColorFactor;  // offset 64
+			glm::vec4 emissiveFactor;   // offset 80 (matches default.frag)
+			float metallicFactor;       // offset 96
+			float roughnessFactor;      // offset 100
+			float alphaCutoff;          // offset 104
+			uint32_t boneBaseIndex;     // offset 108
 		};
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipe);
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
@@ -465,10 +471,14 @@ void record_commands(
 			SkinnedPC pc{};
 			pc.transform = batch.transform; pc.boneBaseIndex = batch.boneBaseIndex;
 			if (matIdx < aMaterials.size()) {
-				pc.baseColorFactor = aMaterials[matIdx].baseColorFactor; pc.metallicFactor = aMaterials[matIdx].metallicFactor; pc.roughnessFactor = aMaterials[matIdx].roughnessFactor;
+				pc.baseColorFactor = aMaterials[matIdx].baseColorFactor;
+				pc.emissiveFactor = aMaterials[matIdx].emissiveFactor;
+				pc.metallicFactor = aMaterials[matIdx].metallicFactor;
+				pc.roughnessFactor = aMaterials[matIdx].roughnessFactor;
+				pc.alphaCutoff = aMaterials[matIdx].alphaCutoff;
 			}
 			else {
-				pc.baseColorFactor = glm::vec4(1.0f); pc.metallicFactor = pc.roughnessFactor = 1.0f;
+				pc.baseColorFactor = glm::vec4(1.0f); pc.emissiveFactor = glm::vec4(0.0f); pc.metallicFactor = 0.0f; pc.roughnessFactor = 0.8f; pc.alphaCutoff = 0.5f;
 			}
 
 			vkCmdPushConstants(aCmdBuff, aSkinnedPipeLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(SkinnedPC), &pc);
@@ -777,7 +787,13 @@ void record_commands(
 	// --- 3. 画半透明骨骼动画 ---
 	if (aSkinnedAlphaPipe != VK_NULL_HANDLE && aSkinnedBatches && !aSkinnedBatches->empty() && aBoneDescriptorSet != VK_NULL_HANDLE) {
 		struct alignas(16) SkinnedPC {
-			glm::mat4 transform; glm::vec4 baseColorFactor; float metallicFactor; float roughnessFactor; uint32_t boneBaseIndex; float _pad;
+			glm::mat4 transform;        // offset 0
+			glm::vec4 baseColorFactor;  // offset 64
+			glm::vec4 emissiveFactor;   // offset 80 (matches default.frag)
+			float metallicFactor;       // offset 96
+			float roughnessFactor;      // offset 100
+			float alphaCutoff;          // offset 104
+			uint32_t boneBaseIndex;     // offset 108
 		};
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedAlphaPipe);
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
@@ -794,10 +810,14 @@ void record_commands(
 			SkinnedPC pc{};
 			pc.transform = batch.transform; pc.boneBaseIndex = batch.boneBaseIndex;
 			if (matIdx < aMaterials.size()) {
-				pc.baseColorFactor = aMaterials[matIdx].baseColorFactor; pc.metallicFactor = aMaterials[matIdx].metallicFactor; pc.roughnessFactor = aMaterials[matIdx].roughnessFactor;
+				pc.baseColorFactor = aMaterials[matIdx].baseColorFactor;
+				pc.emissiveFactor = aMaterials[matIdx].emissiveFactor;
+				pc.metallicFactor = aMaterials[matIdx].metallicFactor;
+				pc.roughnessFactor = aMaterials[matIdx].roughnessFactor;
+				pc.alphaCutoff = aMaterials[matIdx].alphaCutoff;
 			}
 			else {
-				pc.baseColorFactor = glm::vec4(1.0f); pc.metallicFactor = pc.roughnessFactor = 1.0f;
+				pc.baseColorFactor = glm::vec4(1.0f); pc.emissiveFactor = glm::vec4(0.0f); pc.metallicFactor = 0.0f; pc.roughnessFactor = 0.8f; pc.alphaCutoff = 0.5f;
 			}
 			pc.baseColorFactor.a *= batch.alphaMultiplier;
 
