@@ -101,7 +101,13 @@ namespace engine {
 		RemoveWidget(kRespawnPromptUiPath);
 		RemoveWidget(kAbilityUnlockUiPath);
 		RefreshAbilityHintUi();
-		
+
+
+		m_audio->LoadSound("NextSong", "Assets/Sounds/Button.mp3");
+		m_audio->SetVolume("NextSong", 0.7f);
+		// N key cycles songs
+		m_input->MapKeyboardAction("NextSong", GLFW_KEY_N);
+		m_input->MapKeyboardAction("Mute", GLFW_KEY_M);
 
 
 		// load the terrain and static models
@@ -406,9 +412,6 @@ namespace engine {
 		glm::mat4 sunTransform = glm::mat4(1.0f); sunTransform[3] = glm::vec4(sunDir, 0.0f);
 		m_scene->create_light_entity("MainSun", engine::LightType::Directional, glm::vec3(1.2f, 0.95f, 0.8f), 2.5f, sunTransform, 0);
 
-		glm::mat4 light2SpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(20.0f, 3.0f, 30.0f));
-		flecs::entity vidl =  m_scene->create_light_entity("voidLight", engine::LightType::Point, glm::vec3(0.5f, 0.0f, 3.0f), 8, light2SpawnPos, 20.0f);
-		vidl.get_mut<engine::LightComponent>().specularMultiplier = 0.0f;
 		// 5. ���ô����� (Trigger)
 		m_render->AddParticleGroup();
 		auto& triggerParticles = m_render->GetParticles();
@@ -677,8 +680,8 @@ namespace engine {
 		{//-127,25 -72
 			
 			
-			//constexpr glm::vec3 kSpringPickupPos = glm::vec3(413.0f, 56.0f, 458.0f);
-			constexpr glm::vec3 kSpringPickupPos = glm::vec3(65.0f, 21.0f, 70.0f);//测试位置
+			constexpr glm::vec3 kSpringPickupPos = glm::vec3(413.0f, 56.0f, 458.0f);
+			//constexpr glm::vec3 kSpringPickupPos = glm::vec3(65.0f, 21.0f, 70.0f);//测试位置
 			const glm::mat4 kSpringTransform =
 				glm::translate(glm::mat4(1.0f), kSpringPickupPos) *
 				glm::rotate(glm::mat4(1.0f), glm::radians(35.0f), glm::vec3(1.0f, 0.0f, 0.0f)) *
@@ -752,8 +755,8 @@ namespace engine {
 		// Placed to the left of the bike spawn point
 		// =========================================================
 		{
-			//constexpr glm::vec3 kHornPickupPos = glm::vec3(-127.0f, 25.0f, -72.0f);
-			constexpr glm::vec3 kHornPickupPos = glm::vec3(70.0f, 21.0f, 70.0f);//测试位置
+			constexpr glm::vec3 kHornPickupPos = glm::vec3(-127.0f, 25.0f, -72.0f);
+			//constexpr glm::vec3 kHornPickupPos = glm::vec3(70.0f, 21.0f, 70.0f);//测试位置
 			const glm::mat4 kHornTransform =
 				glm::translate(glm::mat4(1.0f), kHornPickupPos) *
 				glm::rotate(glm::mat4(1.0f), glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f)) *  // correct upside-down orientation
@@ -833,7 +836,7 @@ namespace engine {
 		{
 			namespace fs = std::filesystem;
 
-			const glm::vec3 kRadioPickupPos = glm::vec3(-133.11f, 1.0f, -95.13f);
+			const glm::vec3 kRadioPickupPos = glm::vec3(-133.11f, 1.5f, -95.13f);
 			const glm::mat4 kRadioTransform = glm::translate(glm::mat4(1.0f), kRadioPickupPos)
 				* glm::scale(glm::mat4(1.0f), glm::vec3(3.0f));
 
@@ -899,6 +902,16 @@ namespace engine {
 					// Step 2 & 3 handled by timers in Update:
 					//   0.5s → boardcast.mp3
 					//   boardcast duration → bg music loop starts
+
+					// =========================================================
+					m_audio->LoadSound("RadioBuzz", "Assets/Sounds/buzz.mp3");
+					m_audio->SetVolume("RadioBuzz", 0.25f); // 噪音通常比较刺耳，建议音量给低一点
+					m_audio->PlayLoop("RadioBuzz");
+					m_audio->LoadSound("RadioBuzz1", "Assets/Sounds/buzz1.mp3");
+					m_audio->SetVolume("RadioBuzz1", 0.25f); // 噪音通常比较刺耳，建议音量给低一点
+					m_audio->PlayLoop("RadioBuzz1");
+
+					// Step 2 & 3 handled by timers in Update:
 					m_radioBroadcastDelay = 0.5f;
 
 				// Mount satellite to character's back (bike-local space)
@@ -914,15 +927,13 @@ namespace engine {
 				nullptr
 			);
 
-			// N key cycles songs
-			m_input->MapKeyboardAction("NextSong", GLFW_KEY_N);
 		}
 
 		// =========================================================
 		// Newspaper pickup — near radio; shows UFO.png for 5 s on trigger
 		// =========================================================
 		{
-			constexpr glm::vec3 kNewsPickupPos = glm::vec3(-142.0f, 2.0f, -95.13f); // 收音机右边
+			constexpr glm::vec3 kNewsPickupPos = glm::vec3(-142.0f, 2.25f, -95.13f); // 收音机右边
 			
 			const glm::mat4 kNewsTransform =
 				glm::translate(glm::mat4(1.0f), kNewsPickupPos) *
@@ -1008,38 +1019,7 @@ namespace engine {
 			m_satelliteEntity.set<EntityStatus>({ false, false }); // hidden until radio picked up
 		}
 
-		// =========================================================
-		// Rocket — hidden at start, mounted to rear frame on first gas tank collection
-		// =========================================================
-		{
-			//flecs::entity rocketAsset = m_scene->LoadModel(
-			//	m_render, "Assets/Models/rocket.glb",
-			//	engine::ModelPhysicsType::Static, 0.0f,
-			//	glm::mat4(1.0f));
-
-			//uint32_t rocketMeshIdx = 0, rocketMatIdx = 0;
-			//if (rocketAsset.is_valid()) {
-			//	if (rocketAsset.has<MeshComponent>())     rocketMeshIdx = rocketAsset.get<MeshComponent>().meshIndex;
-			//	if (rocketAsset.has<MaterialComponent>()) rocketMatIdx  = rocketAsset.get<MaterialComponent>().materialIndex;
-			//	m_scene->get_world().query<const MeshComponent>()
-			//		.each([&](flecs::entity e, const MeshComponent& mc) {
-			//			if (mc.meshIndex < rocketMeshIdx) return;
-			//			e.set<EntityStatus>({ false, false });
-			//			if (e.has<PhysicsBody>()) {
-			//				JPH::BodyID bid(e.get<PhysicsBody>().bodyID);
-			//				JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
-			//				if (bi.IsAdded(bid)) { bi.RemoveBody(bid); bi.DestroyBody(bid); }
-			//				e.remove<PhysicsBody>();
-			//			}
-			//		});
-
-			//	m_rocketEntity = m_scene->create_dynamic_entity(
-			//		"RocketMount", rocketMeshIdx, rocketMatIdx, glm::mat4(1.0f));
-			//	m_rocketEntity.set<EntityStatus>({ false, false }); // hidden until first gas tank
-			//}
-		}
-
-
+	
 		{
 			const glm::vec3 kCheckpointPos   = glm::vec3(374.91f, 77.54f, 296.48f);
 			const float     kCheckpointRadius = 19.80f;
@@ -1178,6 +1158,8 @@ namespace engine {
 					if (m_bgMusicPlaying && !m_radioSongs.empty())
 						m_audio->Stop(m_radioSongs[m_currentSongIndex]);
 					m_audio->Stop("Broadcast");
+					m_audio->Stop("RadioBuzz");
+					m_audio->Stop("RadioBuzz1");
 					m_bgMusicPlaying = false;
 					m_radioBgMusicDelay   = -1.0f;
 					m_radioBroadcastDelay = -1.0f;
@@ -1220,6 +1202,8 @@ namespace engine {
 	}
 
 	void level::Update(float dt) {
+
+
 
 		const float respawnStillnessDelay = 0.25f;
 		bool canRespawnNow = false;
@@ -1301,14 +1285,29 @@ namespace engine {
 				RemoveWidget("Assets/ui/UFONews.ui.json");
 		}
 
-		// Stage 2: after boardcast finishes → enable bg music + N-key switching
 		if (m_radioBgMusicDelay >= 0.0f) {
 			m_radioBgMusicDelay -= dt;
 			if (m_radioBgMusicDelay < 0.0f && !m_radioSongs.empty()) {
-				m_bgMusicPlaying   = true;
+				m_bgMusicPlaying = true;
 				m_currentSongIndex = 0;
-				m_audio->PlayLoop(m_radioSongs[0]);
-				RefreshAbilityHintUi();//刷新提示UI
+				m_audio->Stop("RadioBuzz");
+				m_audio->Stop("RadioBuzz1");
+				// =========================================================
+				// 【电台模式核心】：同时让所有歌曲循环播放！
+				// 但只把当前频道的音量设为 0.35，其他全是 0 (哑音播放)
+				// =========================================================
+				for (int i = 0; i < m_radioSongs.size(); ++i) {
+					m_audio->PlayLoop(m_radioSongs[i]);
+
+					if (i == m_currentSongIndex && !mState->radioMuted) {
+						m_audio->SetVolume(m_radioSongs[i], 0.35f);
+					}
+					else {
+						m_audio->SetVolume(m_radioSongs[i], 0.0f);
+					}
+				}
+
+				RefreshAbilityHintUi();
 				Log(std::format("[Radio] Now playing: {}\n", m_radioLabels[0]));
 				Toast(std::format("Radio! Now playing: {}. Press N to switch.", m_radioLabels[0]));
 				//解锁收音机
@@ -1336,18 +1335,54 @@ namespace engine {
 			spinPickup(m_hornPickupEntity);
 			for (auto& ge : m_gasPickupEntities) spinPickup(ge);
 		}
-		m_audio->LoadSound("NextSong", "Assets/Sounds/Button.mp3");
-		m_audio->SetVolume("NextSong", 0.7f);
-		// Radio: press N to play the next song in RadioMusic/ (only after radio is picked up)
-		if (m_bgMusicPlaying && !m_radioSongs.empty() && m_input && m_input->IsActionPressed("NextSong")) {
-			m_audio->Stop(m_radioSongs[m_currentSongIndex]);
-			m_currentSongIndex = (m_currentSongIndex + 1) % static_cast<int>(m_radioSongs.size());
-			m_audio->PlayLoop(m_radioSongs[m_currentSongIndex]);
-			Log(std::format("[Radio] Switched to: {}\n", m_radioLabels[m_currentSongIndex]));
-			Toast(std::format("Now playing: {}", m_radioLabels[m_currentSongIndex]));
-			m_audio->PlayOneShot("NextSong");
+		// =========================================================
+		// 【新增】：收音机按键冷却计时器，防止按住键时一秒触发 60 次
+		// =========================================================
+		static float s_radioInputCooldown = 0.0f;
+		if (s_radioInputCooldown > 0.0f) {
+			s_radioInputCooldown -= dt;
 		}
 
+		if (m_bgMusicPlaying && !m_radioSongs.empty() && m_input) {
+
+			// 1. M 键静音切换 (保持不变)
+			if (m_input->IsActionPressed("Mute") && s_radioInputCooldown <= 0.0f) {
+				mState->radioMuted = !mState->radioMuted; // 状态翻转
+
+				if (mState->radioMuted) {
+					m_audio->SetVolume(m_radioSongs[m_currentSongIndex], 0.0f);
+					Toast("Radio Muted");
+				}
+				else {
+					m_audio->SetVolume(m_radioSongs[m_currentSongIndex], 0.35f);
+					Toast("Radio Unmuted");
+				}
+				s_radioInputCooldown = 0.3f;
+			}
+
+			// =========================================================
+			// 2. N 键切歌 (电台模式)
+			// =========================================================
+			if (m_input->IsActionPressed("NextSong") && s_radioInputCooldown <= 0.0f) {
+
+				// 1. 把当前频道的音量拉到 0 (不要调用 Stop，让它在后台继续默默放！)
+				m_audio->SetVolume(m_radioSongs[m_currentSongIndex], 0.0f);
+
+				// 2. 切换到下一个频道
+				m_currentSongIndex = (m_currentSongIndex + 1) % static_cast<int>(m_radioSongs.size());
+
+				// 3. 把新频道的音量推上去 (前提是玩家没按 M 键静音)
+				if (!mState->radioMuted) {
+					m_audio->SetVolume(m_radioSongs[m_currentSongIndex], 0.35f);
+				}
+
+				Log(std::format("[Radio] Switched channel to: {}\n", m_radioLabels[m_currentSongIndex]));
+				Toast(std::format("Channel: {}", m_radioLabels[m_currentSongIndex]));
+				m_audio->PlayOneShot("NextSong"); // 播放按钮咔哒声
+
+				s_radioInputCooldown = 0.3f;
+			}
+		}
 		if (mState->hornEnabled && m_input && m_audio && m_input->IsActionPressed("Horn")) {
 			m_audio->LoadSound("Horn", "Assets/Sounds/bicycle_horn.mp3");
 			m_audio->SetVolume("Horn", 0.7f);
