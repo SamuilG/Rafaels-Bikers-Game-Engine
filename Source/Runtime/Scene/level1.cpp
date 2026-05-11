@@ -17,10 +17,70 @@
 namespace engine {
 	namespace {
 		constexpr const char* kRespawnPromptUiPath = "Assets/ui/RespawnPrompt.ui.json";
+		constexpr const char* kAbilityUnlockUiPath = "Assets/ui/AbilityUnlock.ui.json";
+		constexpr float kAbilityUnlockPopupDuration = 3.5f;//弹出获取技能提示持续时间
+		constexpr const char* kUnlockJumpIconPath = "Assets/Textures/jumpSkill.png";
+		constexpr const char* kUnlockHornIconPath = "Assets/Textures/hornSkill.png";
+		constexpr const char* kUnlockRadioIconPath = "Assets/Textures/radioSkill.png";
 	}
 
 	level::level() = default;
 	level::~level() = default;
+
+	RuntimeUiController* level::GetRuntimeUiController() const {
+		return m_render ? m_render->GetRuntimeUiController() : nullptr;
+	}
+
+	void level::RefreshAbilityHintUi() const {
+		if (!mState) {
+			return;
+		}
+
+		if (RuntimeUiController* ui = GetRuntimeUiController()) {
+			ui->SetElementVisible("Assets/ui/HUD.ui.json", "JumpIcon", mState->jumpEnabled);
+			ui->SetElementVisible("Assets/ui/HUD.ui.json", "HornIcon", mState->hornEnabled);
+			ui->SetElementVisible("Assets/ui/HUD.ui.json", "RadioIcon", mState->radioEnabled);
+		}
+	}
+
+	void level::ShowAbilityUnlockPopup(std::string_view abilityName) {
+		if (RuntimeUiController* ui = GetRuntimeUiController()) {
+			RuntimeUiImageOptions iconOptions;
+			iconOptions.preserveAspectRatio = true;
+
+			if (abilityName == "Jump Unlocked") {
+				iconOptions.imagePath = kUnlockJumpIconPath;
+			}
+			else if (abilityName == "Horn Unlocked") {
+				iconOptions.imagePath = kUnlockHornIconPath;
+			}
+			else if (abilityName == "Radio Controls") {
+				iconOptions.imagePath = kUnlockRadioIconPath;
+			}
+
+			if (iconOptions.imagePath.has_value()) {
+				ui->SetImage(kAbilityUnlockUiPath, "image", iconOptions);
+			}
+			ui->SetElementVisible(kAbilityUnlockUiPath, "image", true);
+
+
+		}
+
+		AddWidget(kAbilityUnlockUiPath);
+		m_abilityUnlockPopupVisible = true;
+		m_abilityUnlockPopupTimer = kAbilityUnlockPopupDuration;
+	}
+
+	void level::HideAbilityUnlockPopup() {
+		if (RuntimeUiController* ui = GetRuntimeUiController()) {
+			ui->SetElementVisible(kAbilityUnlockUiPath, "image", false);
+		}
+
+		RemoveWidget(kAbilityUnlockUiPath);
+		m_abilityUnlockPopupVisible = false;
+		m_abilityUnlockPopupTimer = 0.0f;
+	}
+
 	void level::Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, GameplayState* state, AnimationSystem* anima, AudioSystem* audio) {
 		InitBase(render);
 		m_render = render;
@@ -32,8 +92,13 @@ namespace engine {
 		m_anima = anima;
 		m_audio = audio;
 		m_respawnPromptVisible = false;
+		m_abilityUnlockPopupVisible = false;
+		m_abilityUnlockPopupTimer = 0.0f;
 
 		RemoveWidget(kRespawnPromptUiPath);
+		RemoveWidget(kAbilityUnlockUiPath);
+		RefreshAbilityHintUi();
+		
 
 
 		// load the terrain and static models
@@ -609,7 +674,8 @@ namespace engine {
 		{//-127,25 -72
 			
 			
-			constexpr glm::vec3 kSpringPickupPos = glm::vec3(413.0f, 56.0f, 458.0f);
+			//constexpr glm::vec3 kSpringPickupPos = glm::vec3(413.0f, 56.0f, 458.0f);
+			constexpr glm::vec3 kSpringPickupPos = glm::vec3(65.0f, 21.0f, 70.0f);//测试位置
 			const glm::mat4 kSpringTransform =
 				glm::translate(glm::mat4(1.0f), kSpringPickupPos) *
 				glm::rotate(glm::mat4(1.0f), glm::radians(35.0f), glm::vec3(1.0f, 0.0f, 0.0f)) *
@@ -653,6 +719,7 @@ namespace engine {
 			m_render->GetTriggerSystem().SetTriggerCallbacks(jumpPickupTrigger,
 				[this]() {
 					mState->jumpEnabled = true;
+					RefreshAbilityHintUi();
 					if (m_springPickupEntity.is_valid() && m_bikeEntity.is_valid()) {
 						// Mount spring to bottom-center of bike frame, flipped upside down
 						glm::mat4 mountT =
@@ -670,6 +737,8 @@ namespace engine {
 					m_audio->PlayOneShot("AllCollectd");
 					Log("[Pickup] Jump ability unlocked!\n");
 					Toast("Jump unlocked! Press Space to jump.");
+					//解锁跳跃
+					ShowAbilityUnlockPopup("Jump Unlocked");
 				},
 				nullptr
 			);
@@ -680,7 +749,8 @@ namespace engine {
 		// Placed to the left of the bike spawn point
 		// =========================================================
 		{
-			constexpr glm::vec3 kHornPickupPos = glm::vec3(-127.0f, 25.0f, -72.0f);
+			//constexpr glm::vec3 kHornPickupPos = glm::vec3(-127.0f, 25.0f, -72.0f);
+			constexpr glm::vec3 kHornPickupPos = glm::vec3(70.0f, 21.0f, 70.0f);//测试位置
 			const glm::mat4 kHornTransform =
 				glm::translate(glm::mat4(1.0f), kHornPickupPos) *
 				glm::rotate(glm::mat4(1.0f), glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f)) *  // correct upside-down orientation
@@ -725,6 +795,7 @@ namespace engine {
 			m_render->GetTriggerSystem().SetTriggerCallbacks(hornPickupTrigger,
 				[this]() {
 					mState->hornEnabled = true;
+					RefreshAbilityHintUi();//刷新提示UI
 					if (m_hornPickupEntity.is_valid() && m_bikeEntity.is_valid()) {
 						// Mount horn above right handlebar, no tilt (keep 180° X flip for model orientation)
 						m_hornBaseMountT =
@@ -743,6 +814,8 @@ namespace engine {
 					m_audio->PlayOneShot("AllCollectd");
 					Log("[Pickup] Horn ability unlocked!\n");
 					Toast("Horn unlocked! Press F to honk.");
+					//解锁喇叭
+					ShowAbilityUnlockPopup("Horn Unlocked");
 				},
 				nullptr
 			);
@@ -812,6 +885,7 @@ namespace engine {
 			);
 			m_render->GetTriggerSystem().SetTriggerCallbacks(radioTrigger,
 				[this]() {
+					mState->radioEnabled = true;
 					for (auto& re : m_radioPickupEntities)
 						if (re.is_valid()) re.set<EntityStatus>({ false, false });
 					if (m_radioSongs.empty()) return;
@@ -846,6 +920,7 @@ namespace engine {
 		// =========================================================
 		{
 			constexpr glm::vec3 kNewsPickupPos = glm::vec3(-142.0f, 2.0f, -95.13f); // 收音机右边
+			
 			const glm::mat4 kNewsTransform =
 				glm::translate(glm::mat4(1.0f), kNewsPickupPos) *
 				glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f)) *
@@ -1189,6 +1264,14 @@ namespace engine {
 			}
 		}
 
+		//倒计时隐藏能力解锁提示
+		if (m_abilityUnlockPopupVisible) {
+			m_abilityUnlockPopupTimer -= dt;
+			if (m_abilityUnlockPopupTimer <= 0.0f) {
+				HideAbilityUnlockPopup();
+			}
+		}
+
 		if (m_allCollectSoundDelay >= 0.0f) {
 			m_allCollectSoundDelay -= dt;
 			if (m_allCollectSoundDelay < 0.0f) {
@@ -1222,8 +1305,11 @@ namespace engine {
 				m_bgMusicPlaying   = true;
 				m_currentSongIndex = 0;
 				m_audio->PlayLoop(m_radioSongs[0]);
+				RefreshAbilityHintUi();//刷新提示UI
 				Log(std::format("[Radio] Now playing: {}\n", m_radioLabels[0]));
 				Toast(std::format("Radio! Now playing: {}. Press N to switch.", m_radioLabels[0]));
+				//解锁收音机
+				ShowAbilityUnlockPopup("Radio Controls");
 			}
 		}
 
@@ -1499,9 +1585,11 @@ namespace engine {
 	void level::Shutdown() {
 
 		RemoveWidget(kRespawnPromptUiPath);
+		RemoveWidget(kAbilityUnlockUiPath);
 		m_respawnPromptVisible = false;
 		m_respawnStillnessTime = 0.0f;
-		
+		m_abilityUnlockPopupVisible = false;
+		m_abilityUnlockPopupTimer = 0.0f;
 		m_bikeController.reset();
 	}
 
