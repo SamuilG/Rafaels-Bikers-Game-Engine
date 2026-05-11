@@ -757,7 +757,7 @@ namespace engine {
 		{
 			namespace fs = std::filesystem;
 
-			const glm::vec3 kRadioPickupPos = glm::vec3(-133.11f, 1.0f, -100.13f);
+			const glm::vec3 kRadioPickupPos = glm::vec3(-133.11f, 1.0f, -95.13f);
 			const glm::mat4 kRadioTransform = glm::translate(glm::mat4(1.0f), kRadioPickupPos)
 				* glm::scale(glm::mat4(1.0f), glm::vec3(3.0f));
 
@@ -827,7 +827,7 @@ namespace engine {
 				// Mount satellite to character's back (bike-local space)
 				if (m_satelliteEntity.is_valid() && m_bikeEntity.is_valid()) {
 					const glm::mat4 satMountT =
-						glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.5f, -0.3f)) *
+						glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.5f, -0.5f)) *
 						glm::scale(glm::mat4(1.0f), glm::vec3(0.009f));
 					m_satelliteEntity.child_of(m_bikeEntity);
 					m_satelliteEntity.set<LocalTransform>({ satMountT });
@@ -845,7 +845,7 @@ namespace engine {
 		// Newspaper pickup — near radio; shows UFO.png for 5 s on trigger
 		// =========================================================
 		{
-			constexpr glm::vec3 kNewsPickupPos = glm::vec3(-142.0f, 2.0f, -100.13f); // 收音机右边
+			constexpr glm::vec3 kNewsPickupPos = glm::vec3(-142.0f, 2.0f, -95.13f); // 收音机右边
 			const glm::mat4 kNewsTransform =
 				glm::translate(glm::mat4(1.0f), kNewsPickupPos) *
 				glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f)) *
@@ -1112,27 +1112,32 @@ namespace engine {
 			);
 
 			// Rocket flame particles — hidden until launch, emitting downward (-Y)
-			m_render->AddParticleGroup(250000); 
+			m_render->AddParticleGroup(13000);
 			auto& flameParticles = m_render->GetParticles();
 			m_rocketFlameParticleIndex = flameParticles.size() - 1;
 			auto& flameCfg = flameParticles[m_rocketFlameParticleIndex]->config;
-			flameCfg.isVisible    = true;
-			flameCfg.emitterPos   = m_rocket2Center + glm::vec3(0.0f, 23.0f, 0.0f);
-			flameCfg.emitDir      = glm::vec3(0.0f, -1.0f, 0.0f); // 向下喷射
-			flameCfg.gravity      = glm::vec3(0.0f, -4.0f, 0.0f); // 重力向下，加速尾焰
-			flameCfg.speedMin     = 8.0f;
-			flameCfg.speedMax     = 18.0f;
-			flameCfg.lifeMin      = 0.3f;
-			flameCfg.lifeMax      = 0.7f;
-			flameCfg.sizeMin      = 10.0f;
-			flameCfg.sizeMax      = 25.0f;
-			flameCfg.coneSpread   = 0.5f;
-			flameCfg.startColor   = glm::vec4(1.0f, 0.85f, 0.2f, 1.0f); // 亮黄色
-			flameCfg.endColor     = glm::vec4(0.9f, 0.5f, 0.0f, 0.0f); // 红色渐隐
-			flameCfg.startSizeScale = 1.0f;
-			flameCfg.endSizeScale   = 0.0f;
-			flameCfg.sphereRadius = 50.0f;  
-			flameParticles[m_rocketFlameParticleIndex]->setEmitterShape(EmitterShape::Disk);
+			flameCfg.textureDescriptor = m_render->GetParticleTextureDescriptor(cfg::RocketFlameTexture);
+			flameCfg.useTexture = 1;
+			flameCfg.animateAtlas = true;
+			flameCfg.atlasCols = 8;
+			flameCfg.atlasRows = 8;
+			flameCfg.isVisible = true;
+			flameCfg.emitterPos = m_rocket2Center + glm::vec3(0.0f, 23.0f, 0.0f);
+			flameCfg.emitDir = glm::vec3(0.0f, -1.0f, 0.0f); // 向下喷射
+			flameCfg.gravity = glm::vec3(0.0f, -150.0f, 0.0f);
+			flameCfg.speedMin = 15.581f;
+			flameCfg.speedMax = 19.4f;
+			flameCfg.lifeMin = 1.084f;
+			flameCfg.lifeMax = 2.f;
+			flameCfg.sizeMin = 923.0f;
+			flameCfg.sizeMax = 1000.0f;
+			flameCfg.coneSpread = 80.27f;
+			flameCfg.startColor = glm::vec4(1.0f, 0.0f, 0.0f, 250.0f / 255.0f);
+			flameCfg.endColor = glm::vec4(1.0f, 60.0f / 255.0f, 0.0f, 53.0f / 255.0f);
+			flameCfg.startSizeScale = 6.0f;
+			flameCfg.endSizeScale = 10.0f;
+			flameCfg.sphereRadius = 2.2f;
+			flameParticles[m_rocketFlameParticleIndex]->setEmitterShape(EmitterShape::Cone);
 		}
 	}
 
@@ -1365,7 +1370,7 @@ namespace engine {
 				auto& particles = m_render->GetParticles();
 				if (m_rocketFlameParticleIndex < particles.size())
 					particles[m_rocketFlameParticleIndex]->config.emitterPos =
-						m_rocket2Center + glm::vec3(0.0f, 23.0f, 0.0f);
+						m_rocket2Center + glm::vec3(0.0f, 150.0f, 0.0f);
 			}
 
 			bool hide = (m_rocket2LaunchTimer > kHideAfter);
