@@ -39,14 +39,15 @@ layout(set = 2, binding = 0) readonly buffer BoneCB {
     mat4 bones[];
 } boneCB;
 
-// Push constants (same 128-byte range as the static pipeline)
+// Push constants (must match default.frag layout exactly)
 layout(push_constant) uniform PushConstants {
-    mat4  transform;         //  64 bytes
-    vec4  baseColorFactor;   //  16 bytes
-    float metallicFactor;    //   4 bytes
-    float roughnessFactor;   //   4 bytes
-    uint  boneBaseIndex;     //   4 bytes  <-- selects this entity's slice in boneCB
-    float _pad;              //   4 bytes
+    mat4  transform;         //  64 bytes - offset 0
+    vec4  baseColorFactor;   //  16 bytes - offset 64
+    vec4  emissiveFactor;    //  16 bytes - offset 80  (matches default.frag)
+    float metallicFactor;    //   4 bytes - offset 96
+    float roughnessFactor;   //   4 bytes - offset 100
+    float alphaCutoff;       //   4 bytes - offset 104
+    uint  boneBaseIndex;     //   4 bytes - offset 108
 } pc;
 
 layout(location = 0) out vec2 v2fTexCoord;
