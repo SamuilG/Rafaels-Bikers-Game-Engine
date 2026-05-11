@@ -98,7 +98,13 @@ namespace engine {
 		RemoveWidget(kRespawnPromptUiPath);
 		RemoveWidget(kAbilityUnlockUiPath);
 		RefreshAbilityHintUi();
-		
+
+
+		m_audio->LoadSound("NextSong", "Assets/Sounds/Button.mp3");
+		m_audio->SetVolume("NextSong", 0.7f);
+		// N key cycles songs
+		m_input->MapKeyboardAction("NextSong", GLFW_KEY_N);
+		m_input->MapKeyboardAction("Mute", GLFW_KEY_M);
 
 
 		// load the terrain and static models
@@ -893,6 +899,16 @@ namespace engine {
 					// Step 2 & 3 handled by timers in Update:
 					//   0.5s → boardcast.mp3
 					//   boardcast duration → bg music loop starts
+
+					// =========================================================
+					m_audio->LoadSound("RadioBuzz", "Assets/Sounds/buzz.mp3");
+					m_audio->SetVolume("RadioBuzz", 0.25f); // 噪音通常比较刺耳，建议音量给低一点
+					m_audio->PlayLoop("RadioBuzz");
+					m_audio->LoadSound("RadioBuzz1", "Assets/Sounds/buzz1.mp3");
+					m_audio->SetVolume("RadioBuzz1", 0.25f); // 噪音通常比较刺耳，建议音量给低一点
+					m_audio->PlayLoop("RadioBuzz1");
+
+					// Step 2 & 3 handled by timers in Update:
 					m_radioBroadcastDelay = 0.5f;
 
 				// Mount satellite to character's back (bike-local space)
@@ -908,9 +924,6 @@ namespace engine {
 				nullptr
 			);
 
-			// N key cycles songs
-			m_input->MapKeyboardAction("NextSong", GLFW_KEY_N);
-			m_input->MapKeyboardAction("Mute", GLFW_KEY_M);
 		}
 
 		// =========================================================
@@ -1142,6 +1155,8 @@ namespace engine {
 					if (m_bgMusicPlaying && !m_radioSongs.empty())
 						m_audio->Stop(m_radioSongs[m_currentSongIndex]);
 					m_audio->Stop("Broadcast");
+					m_audio->Stop("RadioBuzz");
+					m_audio->Stop("RadioBuzz1");
 					m_bgMusicPlaying = false;
 					m_radioBgMusicDelay   = -1.0f;
 					m_radioBroadcastDelay = -1.0f;
@@ -1267,14 +1282,29 @@ namespace engine {
 				RemoveWidget("Assets/ui/UFONews.ui.json");
 		}
 
-		// Stage 2: after boardcast finishes → enable bg music + N-key switching
 		if (m_radioBgMusicDelay >= 0.0f) {
 			m_radioBgMusicDelay -= dt;
 			if (m_radioBgMusicDelay < 0.0f && !m_radioSongs.empty()) {
-				m_bgMusicPlaying   = true;
+				m_bgMusicPlaying = true;
 				m_currentSongIndex = 0;
-				m_audio->PlayLoop(m_radioSongs[0]);
-				RefreshAbilityHintUi();//刷新提示UI
+				m_audio->Stop("RadioBuzz");
+				m_audio->Stop("RadioBuzz1");
+				// =========================================================
+				// 【电台模式核心】：同时让所有歌曲循环播放！
+				// 但只把当前频道的音量设为 0.35，其他全是 0 (哑音播放)
+				// =========================================================
+				for (int i = 0; i < m_radioSongs.size(); ++i) {
+					m_audio->PlayLoop(m_radioSongs[i]);
+
+					if (i == m_currentSongIndex && !mState->radioMuted) {
+						m_audio->SetVolume(m_radioSongs[i], 0.35f);
+					}
+					else {
+						m_audio->SetVolume(m_radioSongs[i], 0.0f);
+					}
+				}
+
+				RefreshAbilityHintUi();
 				Log(std::format("[Radio] Now playing: {}\n", m_radioLabels[0]));
 				Toast(std::format("Radio! Now playing: {}. Press N to switch.", m_radioLabels[0]));
 				//解锁收音机
@@ -1302,18 +1332,54 @@ namespace engine {
 			spinPickup(m_hornPickupEntity);
 			for (auto& ge : m_gasPickupEntities) spinPickup(ge);
 		}
-		m_audio->LoadSound("NextSong", "Assets/Sounds/Button.mp3");
-		m_audio->SetVolume("NextSong", 0.7f);
-		// Radio: press N to play the next song in RadioMusic/ (only after radio is picked up)
-		if (m_bgMusicPlaying && !m_radioSongs.empty() && m_input && m_input->IsActionPressed("NextSong")) {
-			m_audio->Stop(m_radioSongs[m_currentSongIndex]);
-			m_currentSongIndex = (m_currentSongIndex + 1) % static_cast<int>(m_radioSongs.size());
-			m_audio->PlayLoop(m_radioSongs[m_currentSongIndex]);
-			Log(std::format("[Radio] Switched to: {}\n", m_radioLabels[m_currentSongIndex]));
-			Toast(std::format("Now playing: {}", m_radioLabels[m_currentSongIndex]));
-			m_audio->PlayOneShot("NextSong");
+		// =========================================================
+		// 【新增】：收音机按键冷却计时器，防止按住键时一秒触发 60 次
+		// =========================================================
+		static float s_radioInputCooldown = 0.0f;
+		if (s_radioInputCooldown > 0.0f) {
+			s_radioInputCooldown -= dt;
 		}
 
+		if (m_bgMusicPlaying && !m_radioSongs.empty() && m_input) {
+
+			// 1. M 键静音切换 (保持不变)
+			if (m_input->IsActionPressed("Mute") && s_radioInputCooldown <= 0.0f) {
+				mState->radioMuted = !mState->radioMuted; // 状态翻转
+
+				if (mState->radioMuted) {
+					m_audio->SetVolume(m_radioSongs[m_currentSongIndex], 0.0f);
+					Toast("Radio Muted");
+				}
+				else {
+					m_audio->SetVolume(m_radioSongs[m_currentSongIndex], 0.35f);
+					Toast("Radio Unmuted");
+				}
+				s_radioInputCooldown = 0.3f;
+			}
+
+			// =========================================================
+			// 2. N 键切歌 (电台模式)
+			// =========================================================
+			if (m_input->IsActionPressed("NextSong") && s_radioInputCooldown <= 0.0f) {
+
+				// 1. 把当前频道的音量拉到 0 (不要调用 Stop，让它在后台继续默默放！)
+				m_audio->SetVolume(m_radioSongs[m_currentSongIndex], 0.0f);
+
+				// 2. 切换到下一个频道
+				m_currentSongIndex = (m_currentSongIndex + 1) % static_cast<int>(m_radioSongs.size());
+
+				// 3. 把新频道的音量推上去 (前提是玩家没按 M 键静音)
+				if (!mState->radioMuted) {
+					m_audio->SetVolume(m_radioSongs[m_currentSongIndex], 0.35f);
+				}
+
+				Log(std::format("[Radio] Switched channel to: {}\n", m_radioLabels[m_currentSongIndex]));
+				Toast(std::format("Channel: {}", m_radioLabels[m_currentSongIndex]));
+				m_audio->PlayOneShot("NextSong"); // 播放按钮咔哒声
+
+				s_radioInputCooldown = 0.3f;
+			}
+		}
 		if (mState->hornEnabled && m_input && m_audio && m_input->IsActionPressed("Horn")) {
 			m_audio->LoadSound("Horn", "Assets/Sounds/bicycle_horn.mp3");
 			m_audio->SetVolume("Horn", 0.7f);
