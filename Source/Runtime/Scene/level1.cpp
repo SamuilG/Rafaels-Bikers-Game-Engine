@@ -18,6 +18,7 @@ namespace engine {
 	namespace {
 		constexpr const char* kRespawnPromptUiPath = "Assets/ui/RespawnPrompt.ui.json";
 		constexpr const char* kAbilityUnlockUiPath = "Assets/ui/AbilityUnlock.ui.json";
+		constexpr const char* kWinUiPath = "Assets/ui/Win.ui.json";
 		constexpr float kAbilityUnlockPopupDuration = 3.5f;//弹出获取技能提示持续时间
 		constexpr const char* kUnlockJumpIconPath = "Assets/Textures/jumpSkill.png";
 		constexpr const char* kUnlockHornIconPath = "Assets/Textures/hornSkill.png";
@@ -84,6 +85,43 @@ namespace engine {
 		m_abilityUnlockPopupTimer = 0.0f;
 	}
 
+	void level::ShowWinScreen() {
+		if (!mState || m_winUiVisible) {
+			return;
+		}
+
+		if (RuntimeUiController* ui = GetRuntimeUiController()) {
+			ui->RemoveWidgetFromViewPort("Assets/ui/HUD.ui.json");
+			ui->RemoveWidgetFromViewPort(kRespawnPromptUiPath);
+			ui->AddWidgetToViewPort(kWinUiPath);
+			ui->SetText(
+				kWinUiPath,
+				"DeadCount",
+				RuntimeUiTextOptions{
+					.text = std::to_string(mState->deathCount)
+				});
+		}
+
+		mState->isGameStarted = true;
+		mState->isGamePause = false;
+		mState->isGameOver = false;
+		mState->isGameWon = true;
+		mState->gameFlowState = GameFlowState::Victory;
+		m_winUiVisible = true;
+	}
+
+	void level::HideWinScreen() {
+		RemoveWidget(kWinUiPath);
+		m_winUiVisible = false;
+		m_winUiDelayTimer = -1.0f;
+		if (mState) {
+			mState->isGameWon = false;
+			if (mState->gameFlowState == GameFlowState::Victory) {
+				mState->gameFlowState = GameFlowState::Playing;
+			}
+		}
+	}
+
 	void level::Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, GameplayState* state, AnimationSystem* anima, AudioSystem* audio) {
 		InitBase(render);
 		m_render = render;
@@ -97,9 +135,13 @@ namespace engine {
 		m_respawnPromptVisible = false;
 		m_abilityUnlockPopupVisible = false;
 		m_abilityUnlockPopupTimer = 0.0f;
+		m_winUiVisible = false;
+		m_winUiDelayTimer = -1.0f;
+		m_previousAliveState = mState ? mState->isAlive : true;
 
 		RemoveWidget(kRespawnPromptUiPath);
 		RemoveWidget(kAbilityUnlockUiPath);
+		RemoveWidget(kWinUiPath);
 		RefreshAbilityHintUi();
 
 
@@ -147,6 +189,7 @@ namespace engine {
 
 		//TODO:change
 		glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(-152, 3, -84));
+		//glm::mat4 BikeSpawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(-152 + 360, 3 + 90, -84 - 90));//测试胜利位置用的
 		glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(2,4,-157));\
 		glm::mat4 FinalPos = glm::translate(glm::mat4(1.0f), glm::vec3(218.83, 91.0f, -197.74f));
 		glm::mat4 bikeAnchorWorld = glm::mat4(0.0f); // sentinel: [3][3]==0 means anchor not found
@@ -1165,6 +1208,8 @@ namespace engine {
 					m_radioBroadcastDelay = -1.0f;
 					m_audio->LoadSound("RocketLaunch", "Assets/Sounds/rocket_launch.mp3");
 					m_audio->PlayOneShot("RocketLaunch");
+					m_winUiDelayTimer = 20.0f;//发射后延迟20秒显示win界面
+					m_winUiVisible = false;
 					Log("[Trigger] Rocket launched!\n");
 					Toast("Rocket launched!");
 				},
@@ -1203,7 +1248,19 @@ namespace engine {
 
 	void level::Update(float dt) {
 
+		if (mState) {
+			if (m_previousAliveState && !mState->isAlive) {
+				++mState->deathCount;
+			}
+			m_previousAliveState = mState->isAlive;
+		}
 
+		if (m_winUiDelayTimer >= 0.0f) {
+			m_winUiDelayTimer -= dt;
+			if (m_winUiDelayTimer <= 0.0f) {
+				ShowWinScreen();
+			}
+		}
 
 		const float respawnStillnessDelay = 0.25f;
 		bool canRespawnNow = false;
@@ -1624,10 +1681,14 @@ namespace engine {
 
 		RemoveWidget(kRespawnPromptUiPath);
 		RemoveWidget(kAbilityUnlockUiPath);
+		RemoveWidget(kWinUiPath);
 		m_respawnPromptVisible = false;
 		m_respawnStillnessTime = 0.0f;
 		m_abilityUnlockPopupVisible = false;
 		m_abilityUnlockPopupTimer = 0.0f;
+		m_winUiVisible = false;
+		m_winUiDelayTimer = -1.0f;
+		m_previousAliveState = true;
 		m_bikeController.reset();
 	}
 

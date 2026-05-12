@@ -25,6 +25,7 @@ namespace engine {
                 case GameFlowState::Paused:   return "Paused";
                 case GameFlowState::Settings: return "Settings";
                 case GameFlowState::GameOver: return "GameOver";
+                case GameFlowState::Victory: return "Victory";
                 }
                 return "Unknown";
             }

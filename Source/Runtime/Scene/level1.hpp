@@ -79,6 +79,9 @@ namespace engine {
         float m_respawnStillnessTime = 0.0f;
         bool m_abilityUnlockPopupVisible = false;
         float m_abilityUnlockPopupTimer = 0.0f;
+        bool m_winUiVisible = false;
+        float m_winUiDelayTimer = -1.0f;
+        bool m_previousAliveState = true;
 
 		// Satellite — mounted to character's back after radio pickup
 		flecs::entity m_satelliteEntity;
@@ -93,6 +96,8 @@ namespace engine {
         void RefreshAbilityHintUi() const;
         void ShowAbilityUnlockPopup(std::string_view abilityName);
         void HideAbilityUnlockPopup();
+        void ShowWinScreen();
+        void HideWinScreen();
     };
 
 } // namespace engine

@@ -24,7 +24,8 @@ namespace engine {
 		Playing,
 		Paused,
 		Settings,
-		GameOver
+		GameOver,
+		Victory
 	};
 
 	struct GameplayState
@@ -60,6 +61,7 @@ namespace engine {
 		GameFlowState gameFlowState = GameFlowState::MainMenu;
 		bool isGameStarted = true;
 		bool isGameOver = false;
+		bool isGameWon = false;
 		bool isGamePause = false;
 		bool isExtremeSpeed = false;
 
@@ -78,6 +80,9 @@ namespace engine {
 		float bikeSteerAngle = 0.0f;
 		float engineForce = 0.0f;
 		int lastPedal = -1;
+		int deathCount = 0;
+		bool restartRequested = false;
+		bool returnToMainMenuRequested = false;
 
 		BikeTuning bikeTuning{};
 

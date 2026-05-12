@@ -21,6 +21,7 @@ namespace engine {
         constexpr const char* kPauseMenuUiPath = "Assets/ui/PauseMenu.ui.json";
         constexpr const char* kSettingsUiPath = "Assets/ui/Settings.ui.json";
         constexpr const char* kGameOverUiPath = "Assets/ui/GameOver.ui.json";
+        constexpr const char* kWinUiPath = "Assets/ui/Win.ui.json";
 
         constexpr const char* kVolumeSliderName = "VolumeSlider";
         constexpr const char* kShowHintsToggleName = "Toggle_001";
@@ -120,7 +121,6 @@ namespace engine {
         uiManager.RegisterEventHandler("RestartGame", [this](const std::string& eventName) {
             HandleRestartGame(eventName);
         });
-
         uiManager.RegisterEventHandler("OpenEditor", [this](const std::string& eventName) {
             HandleOpenEditor(eventName);
         });
@@ -212,6 +212,7 @@ namespace engine {
             mState.isGameStarted = false;
             mState.isGamePause = false;
             mState.isGameOver = false;
+            mState.isGameWon = false;
             mState.gameFlowState = GameFlowState::MainMenu;
             if (!mRuntimeUiController.IsWidgetVisible(kMainMenuUiPath)) {
                 mRuntimeUiController.AddWidgetToViewPort(kMainMenuUiPath);
@@ -222,6 +223,7 @@ namespace engine {
         mState.isGameStarted = true;
         mState.isGamePause = true;
         mState.isGameOver = false;
+        mState.isGameWon = false;
         mState.gameFlowState = GameFlowState::Paused;
         if (!mRuntimeUiController.IsWidgetVisible(kPauseMenuUiPath)) {
             mRuntimeUiController.AddWidgetToViewPort(kPauseMenuUiPath);
@@ -232,11 +234,13 @@ namespace engine {
         mState.isGameStarted = true;
         mState.isGamePause = false;
         mState.isGameOver = false;
+        mState.isGameWon = false;
         mState.gameFlowState = GameFlowState::Playing;
 
         mRuntimeUiController.RemoveWidgetFromViewPort(kMainMenuUiPath);
         mRuntimeUiController.RemoveWidgetFromViewPort(kPauseMenuUiPath);
         mRuntimeUiController.RemoveWidgetFromViewPort(kSettingsUiPath);
+        mRuntimeUiController.RemoveWidgetFromViewPort(kWinUiPath);
         mRuntimeUiController.AddWidgetToViewPort(kHudUiPath);
 
         EngineUi::ShowToast("[ Runtime UI: Start Game ]");
@@ -250,26 +254,30 @@ namespace engine {
         mState.isGameStarted = true;
         mState.isGamePause = false;
         mState.isGameOver = false;
+        mState.isGameWon = false;
         mState.gameFlowState = GameFlowState::Playing;
         mState.showEngineUi = true;
 
         mRuntimeUiController.RemoveWidgetFromViewPort(kMainMenuUiPath);
         mRuntimeUiController.RemoveWidgetFromViewPort(kPauseMenuUiPath);
         mRuntimeUiController.RemoveWidgetFromViewPort(kSettingsUiPath);
+        mRuntimeUiController.RemoveWidgetFromViewPort(kWinUiPath);
         mRuntimeUiController.AddWidgetToViewPort(kHudUiPath);
 
         EngineUi::ShowToast("[ Editor Mode ]");
         EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> Playing + Editor UI\n", eventName);
 #endif
     }
-    // PauseGame£ºÔİÍ£ÓÎÏ·²¢µ¯³ö PauseMenu ¸²¸Ç²ã¡£
+    // PauseGameï¼šæš‚åœæ¸¸æˆå¹¶å¼¹å‡º PauseMenu è¦†ç›–å±‚ã€‚
     void GameUIEventRouter::HandlePauseGame(const std::string& eventName) {
         mState.isGameStarted = true;
         mState.isGamePause = true;
         mState.isGameOver = false;
+        mState.isGameWon = false;
         mState.gameFlowState = GameFlowState::Paused;
 
         mRuntimeUiController.RemoveWidgetFromViewPort(kSettingsUiPath);
+        mRuntimeUiController.RemoveWidgetFromViewPort(kWinUiPath);
         mRuntimeUiController.AddWidgetToViewPort(kPauseMenuUiPath);
 
         EngineUi::ShowToast("[ Runtime UI: Pause ]");
@@ -303,7 +311,7 @@ namespace engine {
         EngineUi::ShowToast("[ Runtime UI: Settings Screen Opened ]");
         EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> Settings | Settings screen pushed and visible\n", eventName);
     }
-    // CloseSettings£º¹Ø±ÕÉèÖÃ½çÃæ£¬»ØÍËµ½ÔİÍ£²Ëµ¥¡£
+    // CloseSettingsï¼šå…³é—­è®¾ç½®ç•Œé¢ï¼Œå›é€€åˆ°æš‚åœèœå•ã€‚
     void GameUIEventRouter::HandleCloseSettings(const std::string& eventName) {
         RefreshPendingSettingsFromGame();
         mRuntimeUiController.RemoveWidgetFromViewPort(kSettingsUiPath);
@@ -423,16 +431,17 @@ namespace engine {
         const auto [width, height] = kSupportedResolutions[clampedIndex];
         return std::format("{} x {}", width, height);
     }
-    // QuitGame / ExitGame£ºÖ±½Ó¹Ø±ÕÓ¦ÓÃ¡£
+    // QuitGame / ExitGameï¼šç›´æ¥å…³é—­åº”ç”¨ã€‚
     void GameUIEventRouter::HandleQuitGame(const std::string& eventName) {
         mAppRunning = false;
         EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> exit application\n", eventName);
     }
 
     void GameUIEventRouter::HandleBackToMainMenu(const std::string& eventName) {
-        // »ØÖ÷²Ëµ¥Ê±±£ÁôÒÑ¼ÓÔØÆÁÄ»£¬Ö»ÖØÖÃ¿É¼û²ã¼¶£¬·½±ãºóĞøÔÙ´ÎÇĞ»Ø HUD / Pause¡£
+        // å›ä¸»èœå•æ—¶ä¿ç•™å·²åŠ è½½å±å¹•ï¼Œåªé‡ç½®å¯è§å±‚çº§ï¼Œæ–¹ä¾¿åç»­å†æ¬¡åˆ‡å› HUD / Pauseã€‚
         mState.isGamePause = false;
         mState.isGameOver = false;
+        mState.isGameWon = false;
         mState.isGameStarted = false;
         mState.gameFlowState = GameFlowState::MainMenu;
 
@@ -440,6 +449,7 @@ namespace engine {
         mRuntimeUiController.RemoveWidgetFromViewPort(kPauseMenuUiPath);
         mRuntimeUiController.RemoveWidgetFromViewPort(kSettingsUiPath);
         mRuntimeUiController.RemoveWidgetFromViewPort(kGameOverUiPath);
+        mRuntimeUiController.RemoveWidgetFromViewPort(kWinUiPath);
         mRuntimeUiController.AddWidgetToViewPort(kMainMenuUiPath);
 
         EngineUi::ShowToast("[ Runtime UI: Back To Main Menu ]");
@@ -447,51 +457,58 @@ namespace engine {
     }
 
     void GameUIEventRouter::HandleResumeGame(const std::string& eventName) {
-        // Resume£º¹Ø±ÕÉèÖÃ²ãºÍÔİÍ£²ã£¬²¢»Ö¸´ HUD µÄÏÔÊ¾Ë³Ğò¡£
+        // Resumeï¼šå…³é—­è®¾ç½®å±‚å’Œæš‚åœå±‚ï¼Œå¹¶æ¢å¤ HUD çš„æ˜¾ç¤ºé¡ºåºã€‚
         mState.isGameStarted = true;
         mState.isGamePause = false;
         mState.isGameOver = false;
+        mState.isGameWon = false;
         mState.gameFlowState = GameFlowState::Playing;
 
         mRuntimeUiController.RemoveWidgetFromViewPort(kSettingsUiPath);
         mRuntimeUiController.RemoveWidgetFromViewPort(kPauseMenuUiPath);
+        mRuntimeUiController.RemoveWidgetFromViewPort(kWinUiPath);
         mRuntimeUiController.AddWidgetToViewPort(kHudUiPath);
 
         EngineUi::ShowToast("[ Runtime UI: Resume ]");
         EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> Playing | PauseMenu hidden | HUD visible\n", eventName);
     }
-    // ShowGameOver£ºÇĞµ½ GameOver ×´Ì¬£¬Òş²ØËùÓĞÓÎÏ·ÖĞ½çÃæ²¢ÏÔÊ¾½áËãÆÁÄ»¡£
+    // ShowGameOverï¼šåˆ‡åˆ° GameOver çŠ¶æ€ï¼Œéšè—æ‰€æœ‰æ¸¸æˆä¸­ç•Œé¢å¹¶æ˜¾ç¤ºç»“ç®—å±å¹•ã€‚
     void GameUIEventRouter::HandleShowGameOver(const std::string& eventName) {
         mState.isGameStarted = true;
         mState.isGamePause = false;
         mState.isGameOver = true;
+        mState.isGameWon = false;
         mState.gameFlowState = GameFlowState::GameOver;
 
         mRuntimeUiController.RemoveWidgetFromViewPort(kHudUiPath);
         mRuntimeUiController.RemoveWidgetFromViewPort(kPauseMenuUiPath);
         mRuntimeUiController.RemoveWidgetFromViewPort(kSettingsUiPath);
+        mRuntimeUiController.RemoveWidgetFromViewPort(kWinUiPath);
         mRuntimeUiController.AddWidgetToViewPort(kGameOverUiPath);
 
         EngineUi::ShowToast("[ Runtime UI: Game Over ]");
         EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> GameOver | GameOver screen visible\n", eventName);
     }
-    // RestartGame£ºÖØĞÂ¿ªÊ¼ÓÎÏ·£¬ÖØÖÃÎª Playing ×´Ì¬²¢»Ö¸´ HUD¡£
+    // RestartGameï¼šé‡æ–°å¼€å§‹æ¸¸æˆï¼Œé‡ç½®ä¸º Playing çŠ¶æ€å¹¶æ¢å¤ HUDã€‚
     void GameUIEventRouter::HandleRestartGame(const std::string& eventName) {
         mState.isGameStarted = true;
         mState.isGamePause = false;
         mState.isGameOver = false;
+        mState.isGameWon = false;
         mState.gameFlowState = GameFlowState::Playing;
+        mState.restartRequested = true;
+        mState.returnToMainMenuRequested = false;
 
         mRuntimeUiController.RemoveWidgetFromViewPort(kGameOverUiPath);
+        mRuntimeUiController.RemoveWidgetFromViewPort(kWinUiPath);
         mRuntimeUiController.RemoveWidgetFromViewPort(kPauseMenuUiPath);
         mRuntimeUiController.RemoveWidgetFromViewPort(kSettingsUiPath);
-        mRuntimeUiController.AddWidgetToViewPort(kHudUiPath);
 
         EngineUi::ShowToast("[ Runtime UI: Restart Game ]");
-        EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> Playing | Restarted\n", eventName);
+        EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> Playing | Restart requested\n", eventName);
     }
 
-    // TestButton£ºµ÷ÊÔÓÃ£¬´òÓ¡ÈÕÖ¾ºÍµ¯³ö Toast¡£
+    // TestButtonï¼šè°ƒè¯•ç”¨ï¼Œæ‰“å°æ—¥å¿—å’Œå¼¹å‡º Toastã€‚
     void GameUIEventRouter::HandleTestButton(const std::string& eventName)
     {
         EngineUi::ShowToast("[ Runtime UI: Test Button Clicked ]");

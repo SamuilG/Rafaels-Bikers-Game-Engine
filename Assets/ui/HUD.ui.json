@@ -774,13 +774,13 @@
                         "z": 0.8030887842178345,
                         "w": 1.0
                     },
-                    "borderWidth": 1.0,
-                    "borderRadius": 8.0
+                    "borderWidth": 0.0,
+                    "borderRadius": 0.0
                 },
                 "widgetData": {
                     "minValue": 0.0,
-                    "maxValue": 40.0,
-                    "value": 40.0,
+                    "maxValue": 90.0,
+                    "value": 90.0,
                     "showPercentage": false,
                     "fillColor": {
                         "x": 1.0,

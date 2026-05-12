@@ -1,153 +1,26 @@
 {
     "version": 1,
-    "screenName": "AbilityUnlock",
+    "screenName": "Win",
     "themePath": "Assets/ui/BicycleSim_DarkTheme.ui.theme.json",
     "screenSettings": {
-        "visible": false,
-        "blocksInput": false,
-        "renderOrder": 6,
-        "pauseGameWhenOpen": false,
-        "allowInputPassthrough": true,
-        "enterAnimation": "AbilityUnlock_FadeIn",
-        "exitAnimation": "AbilityUnlock_FadeOut",
+        "visible": true,
+        "blocksInput": true,
+        "renderOrder": 5,
+        "pauseGameWhenOpen": true,
+        "allowInputPassthrough": false,
+        "enterAnimation": "",
+        "exitAnimation": "",
         "hideAfterExit": true,
-        "blockInputDuringTransition": false
+        "blockInputDuringTransition": true
     },
     "canvasReferenceResolution": {
         "x": 1920.0,
         "y": 1080.0
     },
     "bindings": [],
-    "animations": [
-        {
-            "name": "AbilityUnlock_FadeIn",
-            "duration": 0.25,
-            "loopCount": 1,
-            "playOnShow": true,
-            "trackCount": 1,
-            "tracks": [
-                {
-                    "targetElementId": 2,
-                    "property": "Opacity",
-                    "keyframes": []
-                }
-            ]
-        },
-        {
-            "name": "AbilityUnlock_FadeOut",
-            "duration": 0.20000000298023224,
-            "loopCount": 1,
-            "playOnShow": false,
-            "trackCount": 1,
-            "tracks": [
-                {
-                    "targetElementId": 2,
-                    "property": "Opacity",
-                    "keyframes": [
-                        {
-                            "time": 0.0,
-                            "value": {
-                                "type": "Float",
-                                "value": 1.0
-                            },
-                            "easing": "EaseIn"
-                        },
-                        {
-                            "time": 0.20000000298023224,
-                            "value": {
-                                "type": "Float",
-                                "value": 0.0
-                            },
-                            "easing": "EaseIn"
-                        }
-                    ]
-                }
-            ]
-        },
-        {
-            "name": "image_Shake_01",
-            "duration": 0.44999998807907104,
-            "loopCount": 1,
-            "playOnShow": false,
-            "trackCount": 1,
-            "tracks": [
-                {
-                    "targetElementId": 635,
-                    "property": "Position",
-                    "keyframes": [
-                        {
-                            "time": 0.0,
-                            "value": {
-                                "type": "Vec2",
-                                "value": {
-                                    "x": 617.0,
-                                    "y": 0.0
-                                }
-                            },
-                            "easing": "Linear"
-                        },
-                        {
-                            "time": 0.07999999821186066,
-                            "value": {
-                                "type": "Vec2",
-                                "value": {
-                                    "x": 599.0,
-                                    "y": 0.0
-                                }
-                            },
-                            "easing": "EaseOut"
-                        },
-                        {
-                            "time": 0.1599999964237213,
-                            "value": {
-                                "type": "Vec2",
-                                "value": {
-                                    "x": 635.0,
-                                    "y": 0.0
-                                }
-                            },
-                            "easing": "EaseOut"
-                        },
-                        {
-                            "time": 0.23999999463558197,
-                            "value": {
-                                "type": "Vec2",
-                                "value": {
-                                    "x": 605.0,
-                                    "y": 0.0
-                                }
-                            },
-                            "easing": "EaseOut"
-                        },
-                        {
-                            "time": 0.3199999928474426,
-                            "value": {
-                                "type": "Vec2",
-                                "value": {
-                                    "x": 629.0,
-                                    "y": 0.0
-                                }
-                            },
-                            "easing": "EaseOut"
-                        },
-                        {
-                            "time": 0.44999998807907104,
-                            "value": {
-                                "type": "Vec2",
-                                "value": {
-                                    "x": 617.0,
-                                    "y": 0.0
-                                }
-                            },
-                            "easing": "EaseInOut"
-                        }
-                    ]
-                }
-            ]
-        }
-    ],
+    "animations": [],
     "rootElement": {
-        "id": 1,
+        "id": 684,
         "name": "Canvas",
         "type": "Canvas",
         "visible": true,
@@ -217,7 +90,7 @@
                 "w": 1.0
             },
             "texturePath": "",
-            "fontPath": "Assets/Fonts/simhei.ttf",
+            "fontPath": "",
             "fontSize": 16.0,
             "opacity": 1.0,
             "padding": {
@@ -251,332 +124,8 @@
         },
         "children": [
             {
-                "id": 620,
-                "name": "radioSkill",
-                "type": "Image",
-                "visible": false,
-                "enabled": true,
-                "interactable": true,
-                "runtimeMutable": true,
-                "zOrder": 0,
-                "transform": {
-                    "position": {
-                        "x": 617.0,
-                        "y": 0.0
-                    },
-                    "size": {
-                        "x": 656.0,
-                        "y": 399.0
-                    },
-                    "anchorMin": {
-                        "x": 0.0,
-                        "y": 0.0
-                    },
-                    "anchorMax": {
-                        "x": 0.0,
-                        "y": 0.0
-                    },
-                    "pivot": {
-                        "x": 0.0,
-                        "y": 0.0
-                    },
-                    "rotation": 0.0,
-                    "scale": {
-                        "x": 1.0,
-                        "y": 1.0
-                    }
-                },
-                "style": {
-                    "presetName": "",
-                    "overrides": {
-                        "backgroundColor": true,
-                        "tintColor": true,
-                        "textColor": true,
-                        "texturePath": true,
-                        "fontPath": true,
-                        "fontSize": true,
-                        "opacity": true,
-                        "padding": true,
-                        "margin": true,
-                        "borderColor": true,
-                        "borderWidth": true,
-                        "borderRadius": true
-                    },
-                    "backgroundColor": {
-                        "x": 0.18000000715255737,
-                        "y": 0.20000000298023224,
-                        "z": 0.25999999046325684,
-                        "w": 1.0
-                    },
-                    "tintColor": {
-                        "x": 1.0,
-                        "y": 1.0,
-                        "z": 1.0,
-                        "w": 1.0
-                    },
-                    "textColor": {
-                        "x": 0.949999988079071,
-                        "y": 0.949999988079071,
-                        "z": 0.9800000190734863,
-                        "w": 1.0
-                    },
-                    "texturePath": "Assets/Textures/radioSkill.png",
-                    "fontPath": "",
-                    "fontSize": 16.0,
-                    "opacity": 1.0,
-                    "padding": {
-                        "left": 0.0,
-                        "top": 0.0,
-                        "right": 0.0,
-                        "bottom": 0.0
-                    },
-                    "margin": {
-                        "left": 0.0,
-                        "top": 0.0,
-                        "right": 0.0,
-                        "bottom": 0.0
-                    },
-                    "borderColor": {
-                        "x": 0.3499999940395355,
-                        "y": 0.4000000059604645,
-                        "z": 0.5199999809265137,
-                        "w": 1.0
-                    },
-                    "borderWidth": 1.0,
-                    "borderRadius": 8.0
-                },
-                "widgetData": {
-                    "imagePath": "Assets/Textures/radioSkill.png",
-                    "preserveAspectRatio": true
-                },
-                "events": {
-                    "onClick": "",
-                    "onHover": "",
-                    "onPressed": "",
-                    "onReleased": "",
-                    "onValueChanged": ""
-                },
-                "children": []
-            },
-            {
-                "id": 621,
-                "name": "jumpSkill",
-                "type": "Image",
-                "visible": false,
-                "enabled": true,
-                "interactable": true,
-                "runtimeMutable": true,
-                "zOrder": 0,
-                "transform": {
-                    "position": {
-                        "x": 617.0,
-                        "y": 0.0
-                    },
-                    "size": {
-                        "x": 656.0,
-                        "y": 399.0
-                    },
-                    "anchorMin": {
-                        "x": 0.0,
-                        "y": 0.0
-                    },
-                    "anchorMax": {
-                        "x": 0.0,
-                        "y": 0.0
-                    },
-                    "pivot": {
-                        "x": 0.0,
-                        "y": 0.0
-                    },
-                    "rotation": 0.0,
-                    "scale": {
-                        "x": 1.0,
-                        "y": 1.0
-                    }
-                },
-                "style": {
-                    "presetName": "",
-                    "overrides": {
-                        "backgroundColor": true,
-                        "tintColor": true,
-                        "textColor": true,
-                        "texturePath": true,
-                        "fontPath": true,
-                        "fontSize": true,
-                        "opacity": true,
-                        "padding": true,
-                        "margin": true,
-                        "borderColor": true,
-                        "borderWidth": true,
-                        "borderRadius": true
-                    },
-                    "backgroundColor": {
-                        "x": 0.18000000715255737,
-                        "y": 0.20000000298023224,
-                        "z": 0.25999999046325684,
-                        "w": 1.0
-                    },
-                    "tintColor": {
-                        "x": 1.0,
-                        "y": 1.0,
-                        "z": 1.0,
-                        "w": 1.0
-                    },
-                    "textColor": {
-                        "x": 0.949999988079071,
-                        "y": 0.949999988079071,
-                        "z": 0.9800000190734863,
-                        "w": 1.0
-                    },
-                    "texturePath": "Assets/Textures/jumpSkill.png",
-                    "fontPath": "",
-                    "fontSize": 16.0,
-                    "opacity": 1.0,
-                    "padding": {
-                        "left": 0.0,
-                        "top": 0.0,
-                        "right": 0.0,
-                        "bottom": 0.0
-                    },
-                    "margin": {
-                        "left": 0.0,
-                        "top": 0.0,
-                        "right": 0.0,
-                        "bottom": 0.0
-                    },
-                    "borderColor": {
-                        "x": 0.3499999940395355,
-                        "y": 0.4000000059604645,
-                        "z": 0.5199999809265137,
-                        "w": 1.0
-                    },
-                    "borderWidth": 0.0,
-                    "borderRadius": 0.0
-                },
-                "widgetData": {
-                    "imagePath": "Assets/Textures/jumpSkill.png",
-                    "preserveAspectRatio": true
-                },
-                "events": {
-                    "onClick": "",
-                    "onHover": "",
-                    "onPressed": "",
-                    "onReleased": "",
-                    "onValueChanged": ""
-                },
-                "children": []
-            },
-            {
-                "id": 623,
-                "name": "hornSkill",
-                "type": "Image",
-                "visible": false,
-                "enabled": true,
-                "interactable": true,
-                "runtimeMutable": true,
-                "zOrder": 0,
-                "transform": {
-                    "position": {
-                        "x": 617.0,
-                        "y": 0.0
-                    },
-                    "size": {
-                        "x": 656.0,
-                        "y": 399.0
-                    },
-                    "anchorMin": {
-                        "x": 0.0,
-                        "y": 0.0
-                    },
-                    "anchorMax": {
-                        "x": 0.0,
-                        "y": 0.0
-                    },
-                    "pivot": {
-                        "x": 0.0,
-                        "y": 0.0
-                    },
-                    "rotation": 0.0,
-                    "scale": {
-                        "x": 1.0,
-                        "y": 1.0
-                    }
-                },
-                "style": {
-                    "presetName": "",
-                    "overrides": {
-                        "backgroundColor": true,
-                        "tintColor": true,
-                        "textColor": true,
-                        "texturePath": true,
-                        "fontPath": true,
-                        "fontSize": true,
-                        "opacity": true,
-                        "padding": true,
-                        "margin": true,
-                        "borderColor": true,
-                        "borderWidth": true,
-                        "borderRadius": true
-                    },
-                    "backgroundColor": {
-                        "x": 0.18000000715255737,
-                        "y": 0.20000000298023224,
-                        "z": 0.25999999046325684,
-                        "w": 1.0
-                    },
-                    "tintColor": {
-                        "x": 1.0,
-                        "y": 1.0,
-                        "z": 1.0,
-                        "w": 1.0
-                    },
-                    "textColor": {
-                        "x": 0.949999988079071,
-                        "y": 0.949999988079071,
-                        "z": 0.9800000190734863,
-                        "w": 1.0
-                    },
-                    "texturePath": "Assets/Textures/hornSkill.png",
-                    "fontPath": "",
-                    "fontSize": 16.0,
-                    "opacity": 1.0,
-                    "padding": {
-                        "left": 0.0,
-                        "top": 0.0,
-                        "right": 0.0,
-                        "bottom": 0.0
-                    },
-                    "margin": {
-                        "left": 0.0,
-                        "top": 0.0,
-                        "right": 0.0,
-                        "bottom": 0.0
-                    },
-                    "borderColor": {
-                        "x": 0.3499999940395355,
-                        "y": 0.4000000059604645,
-                        "z": 0.5199999809265137,
-                        "w": 1.0
-                    },
-                    "borderWidth": 0.0,
-                    "borderRadius": 0.0
-                },
-                "widgetData": {
-                    "imagePath": "Assets/Textures/hornSkill.png",
-                    "preserveAspectRatio": true
-                },
-                "events": {
-                    "onClick": "",
-                    "onHover": "",
-                    "onPressed": "",
-                    "onReleased": "",
-                    "onValueChanged": ""
-                },
-                "children": []
-            },
-            {
-                "id": 635,
-                "name": "image",
+                "id": 685,
+                "name": "Image_001",
                 "type": "Image",
                 "visible": true,
                 "enabled": true,
@@ -585,12 +134,12 @@
                 "zOrder": 0,
                 "transform": {
                     "position": {
-                        "x": 617.0,
-                        "y": 0.0
+                        "x": 360.0,
+                        "y": 45.0
                     },
                     "size": {
-                        "x": 656.0,
-                        "y": 399.0
+                        "x": 922.0,
+                        "y": 770.0
                     },
                     "anchorMin": {
                         "x": 0.0,
@@ -606,8 +155,8 @@
                     },
                     "rotation": 0.0,
                     "scale": {
-                        "x": 1.0,
-                        "y": 1.0
+                        "x": 1.2999999523162842,
+                        "y": 1.2999999523162842
                     }
                 },
                 "style": {
@@ -644,9 +193,9 @@
                         "z": 0.9800000190734863,
                         "w": 1.0
                     },
-                    "texturePath": "",
+                    "texturePath": "Assets/Textures/Win/WinBoard.png",
                     "fontPath": "",
-                    "fontSize": 26.5,
+                    "fontSize": 16.0,
                     "opacity": 1.0,
                     "padding": {
                         "left": 0.0,
@@ -670,8 +219,401 @@
                     "borderRadius": 0.0
                 },
                 "widgetData": {
-                    "imagePath": "",
+                    "imagePath": "Assets/Textures/Win/WinBoard.png",
                     "preserveAspectRatio": true
+                },
+                "events": {
+                    "onClick": "",
+                    "onHover": "",
+                    "onPressed": "",
+                    "onReleased": "",
+                    "onValueChanged": ""
+                },
+                "children": []
+            },
+            {
+                "id": 686,
+                "name": "Quit",
+                "type": "Button",
+                "visible": true,
+                "enabled": true,
+                "interactable": true,
+                "runtimeMutable": true,
+                "zOrder": 0,
+                "transform": {
+                    "position": {
+                        "x": 630.0,
+                        "y": 810.0
+                    },
+                    "size": {
+                        "x": 220.0,
+                        "y": 64.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "pivot": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "rotation": 0.0,
+                    "scale": {
+                        "x": 1.2000000476837158,
+                        "y": 1.2000000476837158
+                    }
+                },
+                "style": {
+                    "presetName": "",
+                    "overrides": {
+                        "backgroundColor": true,
+                        "tintColor": true,
+                        "textColor": true,
+                        "texturePath": true,
+                        "fontPath": true,
+                        "fontSize": true,
+                        "opacity": true,
+                        "padding": true,
+                        "margin": true,
+                        "borderColor": true,
+                        "borderWidth": true,
+                        "borderRadius": true
+                    },
+                    "backgroundColor": {
+                        "x": 0.23999999463558197,
+                        "y": 0.3100000023841858,
+                        "z": 0.550000011920929,
+                        "w": 1.0
+                    },
+                    "tintColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "textColor": {
+                        "x": 0.949999988079071,
+                        "y": 0.949999988079071,
+                        "z": 0.9800000190734863,
+                        "w": 1.0
+                    },
+                    "texturePath": "Assets/Textures/Win/exit.png",
+                    "fontPath": "",
+                    "fontSize": 16.0,
+                    "opacity": 1.0,
+                    "padding": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "margin": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "borderColor": {
+                        "x": 0.6499999761581421,
+                        "y": 0.7400000095367432,
+                        "z": 0.9599999785423279,
+                        "w": 1.0
+                    },
+                    "borderWidth": 0.0,
+                    "borderRadius": 0.0
+                },
+                "widgetData": {
+                    "label": " ",
+                    "pressed": false,
+                    "usePresetTransitionStyle": true,
+                    "transitionMode": "Animation",
+                    "backgroundImageScale": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "normalColor": {
+                        "x": 0.23999999463558197,
+                        "y": 0.3100000023841858,
+                        "z": 0.550000011920929,
+                        "w": 1.0
+                    },
+                    "hoverColor": {
+                        "x": 0.3199999928474426,
+                        "y": 0.4000000059604645,
+                        "z": 0.6600000262260437,
+                        "w": 1.0
+                    },
+                    "pressedColor": {
+                        "x": 0.18000000715255737,
+                        "y": 0.23999999463558197,
+                        "z": 0.41999998688697815,
+                        "w": 1.0
+                    },
+                    "disabledColor": {
+                        "x": 0.25,
+                        "y": 0.25,
+                        "z": 0.2800000011920929,
+                        "w": 0.800000011920929
+                    },
+                    "normalScale": 1.0,
+                    "hoverScale": 1.0399999618530273,
+                    "pressedScale": 0.9599999785423279,
+                    "transitionDuration": 0.11999999731779099
+                },
+                "events": {
+                    "onClick": "QuitGame",
+                    "onHover": "",
+                    "onPressed": "",
+                    "onReleased": "",
+                    "onValueChanged": ""
+                },
+                "children": []
+            },
+            {
+                "id": 687,
+                "name": "retry",
+                "type": "Button",
+                "visible": true,
+                "enabled": true,
+                "interactable": true,
+                "runtimeMutable": true,
+                "zOrder": 0,
+                "transform": {
+                    "position": {
+                        "x": 1040.0,
+                        "y": 810.0
+                    },
+                    "size": {
+                        "x": 220.0,
+                        "y": 64.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "pivot": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "rotation": 0.0,
+                    "scale": {
+                        "x": 1.2000000476837158,
+                        "y": 1.2000000476837158
+                    }
+                },
+                "style": {
+                    "presetName": "",
+                    "overrides": {
+                        "backgroundColor": true,
+                        "tintColor": true,
+                        "textColor": true,
+                        "texturePath": true,
+                        "fontPath": true,
+                        "fontSize": true,
+                        "opacity": true,
+                        "padding": true,
+                        "margin": true,
+                        "borderColor": true,
+                        "borderWidth": true,
+                        "borderRadius": true
+                    },
+                    "backgroundColor": {
+                        "x": 0.23999999463558197,
+                        "y": 0.3100000023841858,
+                        "z": 0.550000011920929,
+                        "w": 1.0
+                    },
+                    "tintColor": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0,
+                        "w": 1.0
+                    },
+                    "textColor": {
+                        "x": 0.949999988079071,
+                        "y": 0.949999988079071,
+                        "z": 0.9800000190734863,
+                        "w": 1.0
+                    },
+                    "texturePath": "Assets/Textures/Win/retry.png",
+                    "fontPath": "",
+                    "fontSize": 16.0,
+                    "opacity": 1.0,
+                    "padding": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "margin": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "borderColor": {
+                        "x": 0.6499999761581421,
+                        "y": 0.7400000095367432,
+                        "z": 0.9599999785423279,
+                        "w": 1.0
+                    },
+                    "borderWidth": 0.0,
+                    "borderRadius": 0.0
+                },
+                "widgetData": {
+                    "label": " ",
+                    "pressed": false,
+                    "usePresetTransitionStyle": true,
+                    "transitionMode": "Animation",
+                    "backgroundImageScale": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "normalColor": {
+                        "x": 0.23999999463558197,
+                        "y": 0.3100000023841858,
+                        "z": 0.550000011920929,
+                        "w": 1.0
+                    },
+                    "hoverColor": {
+                        "x": 0.3199999928474426,
+                        "y": 0.4000000059604645,
+                        "z": 0.6600000262260437,
+                        "w": 1.0
+                    },
+                    "pressedColor": {
+                        "x": 0.18000000715255737,
+                        "y": 0.23999999463558197,
+                        "z": 0.41999998688697815,
+                        "w": 1.0
+                    },
+                    "disabledColor": {
+                        "x": 0.25,
+                        "y": 0.25,
+                        "z": 0.2800000011920929,
+                        "w": 0.800000011920929
+                    },
+                    "normalScale": 1.0,
+                    "hoverScale": 1.0399999618530273,
+                    "pressedScale": 0.9599999785423279,
+                    "transitionDuration": 0.11999999731779099
+                },
+                "events": {
+                    "onClick": "RestartGame",
+                    "onHover": "",
+                    "onPressed": "",
+                    "onReleased": "",
+                    "onValueChanged": ""
+                },
+                "children": []
+            },
+            {
+                "id": 688,
+                "name": "DeadCount",
+                "type": "Text",
+                "visible": true,
+                "enabled": true,
+                "interactable": false,
+                "runtimeMutable": true,
+                "zOrder": 0,
+                "transform": {
+                    "position": {
+                        "x": 1021.0,
+                        "y": 641.0
+                    },
+                    "size": {
+                        "x": 129.0,
+                        "y": 106.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "pivot": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "rotation": 0.0,
+                    "scale": {
+                        "x": 1.0,
+                        "y": 1.0
+                    }
+                },
+                "style": {
+                    "presetName": "",
+                    "overrides": {
+                        "backgroundColor": true,
+                        "tintColor": true,
+                        "textColor": true,
+                        "texturePath": true,
+                        "fontPath": true,
+                        "fontSize": true,
+                        "opacity": true,
+                        "padding": true,
+                        "margin": true,
+                        "borderColor": true,
+                        "borderWidth": true,
+                        "borderRadius": true
+                    },
+                    "backgroundColor": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0,
+                        "w": 0.0
+                    },
+                    "tintColor": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0,
+                        "w": 1.0
+                    },
+                    "textColor": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0,
+                        "w": 1.0
+                    },
+                    "texturePath": "",
+                    "fontPath": "Assets/Fonts/BRADHITC.TTF",
+                    "fontSize": 86.0,
+                    "opacity": 1.0,
+                    "padding": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "margin": {
+                        "left": 0.0,
+                        "top": 0.0,
+                        "right": 0.0,
+                        "bottom": 0.0
+                    },
+                    "borderColor": {
+                        "x": 0.3499999940395355,
+                        "y": 0.4000000059604645,
+                        "z": 0.5199999809265137,
+                        "w": 1.0
+                    },
+                    "borderWidth": 0.0,
+                    "borderRadius": 0.0
+                },
+                "widgetData": {
+                    "text": "0",
+                    "alignment": "Center",
+                    "wrapText": true
                 },
                 "events": {
                     "onClick": "",

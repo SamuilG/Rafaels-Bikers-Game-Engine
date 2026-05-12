@@ -67,6 +67,7 @@ namespace engine {
             runtimeUiController->PreloadWidget("Assets/ui/AbilityUnlock.ui.json");
             runtimeUiController->PreloadWidget("Assets/ui/PauseMenu.ui.json");
             runtimeUiController->PreloadWidget("Assets/ui/Settings.ui.json");
+            runtimeUiController->PreloadWidget("Assets/ui/Win.ui.json");
             runtimeUiController->AddWidgetToViewPort("Assets/ui/MainMenu.ui.json");
         }
 
@@ -148,6 +149,11 @@ namespace engine {
                 audioSystem->SetRuntimeVolume("BikeChain", speed01);
                 audioSystem->SetPitch("BikeChain", 0.75f + speed01 * 1.25f);
             }
+
+            if (mState.restartRequested || mState.returnToMainMenuRequested) {
+                const bool returnToMainMenu = mState.returnToMainMenuRequested;
+                ReloadCurrentScene(returnToMainMenu);
+            }
         }
     }
 
@@ -160,6 +166,113 @@ namespace engine {
     void Application::ShowMainWindow() {
         if (renderSystem) {
             renderSystem->ShowMainWindow();
+        }
+    }
+
+    void Application::ReloadCurrentScene(bool returnToMainMenu) {
+        constexpr const char* kMainMenuUiPath = "Assets/ui/MainMenu.ui.json";
+        constexpr const char* kHudUiPath = "Assets/ui/HUD.ui.json";
+        constexpr const char* kPauseMenuUiPath = "Assets/ui/PauseMenu.ui.json";
+        constexpr const char* kSettingsUiPath = "Assets/ui/Settings.ui.json";
+        constexpr const char* kGameOverUiPath = "Assets/ui/GameOver.ui.json";
+        constexpr const char* kWinUiPath = "Assets/ui/Win.ui.json";
+        constexpr const char* kAbilityUnlockUiPath = "Assets/ui/AbilityUnlock.ui.json";
+        constexpr const char* kRespawnPromptUiPath = "Assets/ui/RespawnPrompt.ui.json";
+        constexpr const char* kUfoNewsUiPath = "Assets/ui/UFONews.ui.json";
+
+        const bool preserveShowEngineUi = mState.showEngineUi;
+        const bool preserveRuntimeUi = mState.showRuntimeUi;
+        const float preserveMasterVolume = audioSystem ? audioSystem->GetMasterVolume() : 1.0f;
+
+        if (m_currentScene) {
+            m_currentScene->Shutdown();
+            m_currentScene.reset();
+        }
+
+        if (renderSystem) {
+            renderSystem->GetTriggerSystem().ClearTriggers();
+            renderSystem->GetParticles().clear();
+        }
+
+        if (eventSystem) {
+            eventSystem->Shutdown();
+            eventSystem->Init();
+        }
+
+        if (audioSystem) {
+            audioSystem->Shutdown();
+            audioSystem->Init();
+            audioSystem->SetMasterVolume(preserveMasterVolume);
+            audioSystem->LoadSound("BikeChain", "Assets/Sounds/BikeChain.mp3");
+            audioSystem->SetVolume("BikeChain", 0.2f);
+            audioSystem->SetRuntimeVolume("BikeChain", 0.0f);
+            audioSystem->SetPitch("BikeChain", 1.0f);
+            audioSystem->PlayLoop("BikeChain");
+            audioSystem->LoadSound("Chain", "Assets/Sounds/BikeChain.mp3");
+        }
+
+        if (physicsSystem) {
+            physicsSystem->Shutdown();
+            physicsSystem->Init();
+            physicsSystem->SetEventSystem(eventSystem);
+            physicsSystem->SetInputSystem(inputSystem);
+        }
+
+        if (sceneManager) {
+            sceneManager->Shutdown();
+            sceneManager->Init();
+        }
+
+        if (animationSystem) {
+            animationSystem->Shutdown();
+            animationSystem->Init();
+            animationSystem->set_scene_manager(sceneManager);
+        }
+
+        mState = UserState{};
+        mState.showEngineUi = preserveShowEngineUi;
+        mState.showRuntimeUi = preserveRuntimeUi;
+        mState.isGameStarted = !returnToMainMenu;
+        mState.isGamePause = false;
+        mState.isGameOver = false;
+        mState.isGameWon = false;
+        mState.restartRequested = false;
+        mState.returnToMainMenuRequested = false;
+        mState.gameFlowState = returnToMainMenu ? GameFlowState::MainMenu : GameFlowState::Playing;
+
+        if (physicsSystem) {
+            physicsSystem->SetUserState(&mState);
+        }
+        if (sceneManager) {
+            sceneManager->SetUserState(&mState);
+        }
+        if (renderSystem) {
+            renderSystem->SetUserState(&mState);
+        }
+
+        RuntimeUiController* runtimeUiController = renderSystem ? renderSystem->GetRuntimeUiController() : nullptr;
+        if (runtimeUiController) {
+            runtimeUiController->RemoveWidgetFromViewPort(kMainMenuUiPath);
+            runtimeUiController->RemoveWidgetFromViewPort(kHudUiPath);
+            runtimeUiController->RemoveWidgetFromViewPort(kPauseMenuUiPath);
+            runtimeUiController->RemoveWidgetFromViewPort(kSettingsUiPath);
+            runtimeUiController->RemoveWidgetFromViewPort(kGameOverUiPath);
+            runtimeUiController->RemoveWidgetFromViewPort(kWinUiPath);
+            runtimeUiController->RemoveWidgetFromViewPort(kAbilityUnlockUiPath);
+            runtimeUiController->RemoveWidgetFromViewPort(kRespawnPromptUiPath);
+            runtimeUiController->RemoveWidgetFromViewPort(kUfoNewsUiPath);
+        }
+
+        m_currentScene = std::make_unique<level>();
+        m_currentScene->Init(renderSystem, sceneManager, physicsSystem, inputSystem, eventSystem, &mState, animationSystem, audioSystem);
+
+        if (runtimeUiController) {
+            if (returnToMainMenu) {
+                runtimeUiController->AddWidgetToViewPort(kMainMenuUiPath);
+            }
+            else {
+                runtimeUiController->AddWidgetToViewPort(kHudUiPath);
+            }
         }
     }
 }

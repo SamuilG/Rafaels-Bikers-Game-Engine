@@ -50,7 +50,12 @@ public:
 
     void Init()     override {}
     void Update(float dt) override;
-    void Shutdown() override {}
+    void Shutdown() override {
+        mNodes.clear();
+        mSkins.clear();
+        mAnims.clear();
+        mNodeBasePerSkin.clear();
+    }
 
     // Provide the SceneManager so this system can query/modify ECS components
     void set_scene_manager(SceneManager* sm) { mSceneManager = sm; }

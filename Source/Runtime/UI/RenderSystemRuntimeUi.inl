@@ -77,7 +77,7 @@ inline void RenderSystem::RefreshRuntimeUiDataContext(float dt) {
         return;
     }
 
-    if (!mState->isGameStarted || mState->isGameOver) {
+    if (!mState->isGameStarted || mState->isGameOver || mState->isGameWon) {
         mRuntimeUiLapTimeSeconds = 0.0f;
         mRuntimeUiTravelDistanceMeters = 0.0f;
     }
