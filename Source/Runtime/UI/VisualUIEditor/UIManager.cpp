@@ -12,6 +12,10 @@
 #include "../EngineUi.hpp"
 #include "UITheme.hpp"
 
+#ifdef None
+#undef None
+#endif
+
 namespace engine {
 
     namespace {

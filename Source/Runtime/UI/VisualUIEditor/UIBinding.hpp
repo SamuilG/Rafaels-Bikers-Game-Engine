@@ -15,6 +15,10 @@
 
 #include "UICommon.hpp"
 
+#ifdef None
+#undef None
+#endif
+
 namespace engine {
 
     // 数据绑定系统支持的值类型枚举。

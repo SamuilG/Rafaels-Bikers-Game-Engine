@@ -1,4 +1,4 @@
-﻿#include "Level1.hpp"
+#include "Level1.hpp"
 #include "../Renderer/RenderSystem.hpp"
 #include "../Scene/SceneManager.hpp"
 #include "../Physics/PhysicsSystem.hpp"
@@ -503,7 +503,7 @@ namespace engine {
 
 				if (gasAsset.has<MeshComponent>())     collectMeshIdx = gasAsset.get<MeshComponent>().meshIndex;
 				if (gasAsset.has<MaterialComponent>()) collectMatIdx  = gasAsset.get<MaterialComponent>().materialIndex;
-
+				m_scene->get_world().defer_begin();
 				m_scene->get_world().query<const MeshComponent>()
 					.each([&](flecs::entity e, const MeshComponent& mc) {
 						if (mc.meshIndex < collectMeshIdx) return;
@@ -516,7 +516,7 @@ namespace engine {
 						}
 
 					});
-
+				m_scene->get_world().defer_end();
 			}
 
 			// Tilt applied once; spinning rotates around local (tilted) Y for wobble effect
@@ -741,6 +741,7 @@ namespace engine {
 			if (springAsset.is_valid()) {
 				if (springAsset.has<MeshComponent>())     springMeshIdx = springAsset.get<MeshComponent>().meshIndex;
 				if (springAsset.has<MaterialComponent>()) springMatIdx  = springAsset.get<MaterialComponent>().materialIndex;
+				m_scene->get_world().defer_begin();
 				m_scene->get_world().query<const MeshComponent>()
 					.each([&](flecs::entity e, const MeshComponent& mc) {
 						if (mc.meshIndex < springMeshIdx) return;
@@ -752,6 +753,7 @@ namespace engine {
 							e.remove<PhysicsBody>();
 						}
 					});
+				m_scene->get_world().defer_end();
 			}
 			// Create a single physics-free visual entity (physicsBodyID = ~0u → no body)
 			m_springPickupEntity = m_scene->create_dynamic_entity(
@@ -817,6 +819,7 @@ namespace engine {
 			if (hornAsset.is_valid()) {
 				if (hornAsset.has<MeshComponent>())     hornMeshIdx = hornAsset.get<MeshComponent>().meshIndex;
 				if (hornAsset.has<MaterialComponent>()) hornMatIdx  = hornAsset.get<MaterialComponent>().materialIndex;
+				m_scene->get_world().defer_begin();
 				m_scene->get_world().query<const MeshComponent>()
 					.each([&](flecs::entity e, const MeshComponent& mc) {
 						if (mc.meshIndex < hornMeshIdx) return;
@@ -828,6 +831,7 @@ namespace engine {
 							e.remove<PhysicsBody>();
 						}
 					});
+				m_scene->get_world().defer_end();
 			}
 			// Create a single physics-free visual entity (physicsBodyID = ~0u → no body)
 			m_hornPickupEntity = m_scene->create_dynamic_entity(
@@ -992,6 +996,7 @@ namespace engine {
 			if (newsAsset.is_valid()) {
 				if (newsAsset.has<MeshComponent>())     newsMeshIdx = newsAsset.get<MeshComponent>().meshIndex;
 				if (newsAsset.has<MaterialComponent>()) newsMatIdx  = newsAsset.get<MaterialComponent>().materialIndex;
+				m_scene->get_world().defer_begin();
 				m_scene->get_world().query<const MeshComponent>()
 					.each([&](flecs::entity e, const MeshComponent& mc) {
 						if (mc.meshIndex < newsMeshIdx) return;
@@ -1003,6 +1008,7 @@ namespace engine {
 							e.remove<PhysicsBody>();
 						}
 					});
+				m_scene->get_world().defer_end();
 			}
 			// Single physics-free visual entity for the spinning pickup
 			m_newspaperEntity = m_scene->create_dynamic_entity(
@@ -1045,6 +1051,7 @@ namespace engine {
 			if (satAsset.is_valid()) {
 				if (satAsset.has<MeshComponent>())     satMeshIdx = satAsset.get<MeshComponent>().meshIndex;
 				if (satAsset.has<MaterialComponent>()) satMatIdx  = satAsset.get<MaterialComponent>().materialIndex;
+				m_scene->get_world().defer_begin();
 				m_scene->get_world().query<const MeshComponent>()
 					.each([&](flecs::entity e, const MeshComponent& mc) {
 						if (mc.meshIndex < satMeshIdx) return;
@@ -1056,6 +1063,7 @@ namespace engine {
 							e.remove<PhysicsBody>();
 						}
 					});
+				m_scene->get_world().defer_end();
 			}
 			m_satelliteEntity = m_scene->create_dynamic_entity(
 				"SatelliteMount", satMeshIdx, satMatIdx, glm::mat4(1.0f));

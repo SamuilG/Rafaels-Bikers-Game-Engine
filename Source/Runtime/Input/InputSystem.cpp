@@ -78,6 +78,7 @@ namespace engine {
         MapKeyboardAction("MoveBackward", GLFW_KEY_S);
         MapKeyboardAction("MoveBackward", GLFW_KEY_DOWN);
         MapGamepadAxisAction("MoveBackward", GLFW_GAMEPAD_AXIS_LEFT_Y, 1.0f);
+        MapGamepadButtonAction("MoveBackward", GLFW_GAMEPAD_BUTTON_B);
       
 
         // Strafing (Left/Right)
@@ -118,10 +119,13 @@ namespace engine {
         MapMouseButtonAction("CaptureMouse", GLFW_MOUSE_BUTTON_MIDDLE);
         
         MapMouseButtonAction("pedal0" , GLFW_MOUSE_BUTTON_LEFT);
+        MapGamepadAxisAction("pedal0", GLFW_GAMEPAD_AXIS_LEFT_TRIGGER, 1.0f, -0.5f);
         MapMouseButtonAction("pedal1" , GLFW_MOUSE_BUTTON_RIGHT);
+        MapGamepadAxisAction("pedal1", GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER, 1.0f, -0.5f);
 
         // --- Game Systems & Effects ---
         MapKeyboardAction("DEPLOY", GLFW_KEY_R);
+        MapGamepadButtonAction("DEPLOY", GLFW_GAMEPAD_BUTTON_X);
         
         // MapGamepadButtonAction("ToggleParticles", GLFW_GAMEPAD_BUTTON_X);
 
@@ -149,6 +153,7 @@ namespace engine {
         
         MapKeyboardAction("SSAOToggle", GLFW_KEY_P);
         MapKeyboardAction("MenuBack", GLFW_KEY_ESCAPE);
+        MapGamepadButtonAction("MenuBack", GLFW_GAMEPAD_BUTTON_START);
         
 		MapKeyboardAction("ToggleEngineUi", GLFW_KEY_F1);// F1键：切换引擎UI显示//f1： switch engine UI
 

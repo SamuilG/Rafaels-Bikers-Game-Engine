@@ -22,6 +22,13 @@ else ifeq ($(config),release_x64)
   Engine_config = release_x64
   Shaders_config = release_x64
 
+else ifeq ($(config),game_x64)
+  GLFW_config = game_x64
+  JoltPhysics_config = game_x64
+  ImGui_config = game_x64
+  Engine_config = game_x64
+  Shaders_config = game_x64
+
 else
   $(error "invalid configuration $(config)")
 endif
@@ -75,6 +82,7 @@ help:
 	@echo "CONFIGURATIONS:"
 	@echo "  debug_x64"
 	@echo "  release_x64"
+	@echo "  game_x64"
 	@echo ""
 	@echo "TARGETS:"
 	@echo "   all (default)"

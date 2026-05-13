@@ -6,6 +6,10 @@
 
 #include "UICommon.hpp"
 
+#ifdef None
+#undef None
+#endif
+
 namespace engine {
 
     // 按钮交互状态切换时的过渡效果类型。
