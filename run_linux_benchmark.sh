@@ -36,7 +36,7 @@ echo "------------------------------------------------"
 # Run the engine
 # Added 'log_delay=60' to the config string below
 # MANGOHUD_CONFIG="log_duration=60,output_folder=./benchmarks,full,autostart_log=1" \
-MANGOHUD_CONFIG="log_delay=60,log_duration=60,output_folder=./benchmarks,full,autostart_log=1" \
+MANGOHUD_CONFIG="log_delay=60,log_duration=120,output_folder=./benchmarks,full,autostart_log=1" \
 mangohud ./Bin/Engine --benchmark $CULLING_STATE
 
 echo ""
