@@ -203,7 +203,7 @@ namespace labut2
 		glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 		glfwWindowHint(GLFW_DECORATED, GLFW_TRUE);
 		glfwWindowHint(GLFW_FLOATING, GLFW_FALSE);
-		// Ñ¡Ôñ monitor ºÍ ·Ö±æÂÊ£ºÈç¹ûÐèÒªÈ«ÆÁ£¬Ê¹ÓÃÖ÷ÏÔÊ¾Æ÷ºÍÆäµ±Ç° video mode
+		// Ñ¡ï¿½ï¿½ monitor ï¿½ï¿½ ï¿½Ö±ï¿½ï¿½Ê£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÒªÈ«ï¿½ï¿½ï¿½ï¿½Ê¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¾ï¿½ï¿½ï¿½ï¿½ï¿½äµ±Ç° video mode
 		GLFWmonitor* monitor = nullptr;
 		int width = 1280;
 		int height = 720;
@@ -219,7 +219,7 @@ namespace labut2
 		}
 
 		// create glfw window (monitor == nullptr -> windowed; otherwise fullscreen on that monitor)
-		ret.window = glfwCreateWindow(width, height, "Rafael's  Bikers", monitor, nullptr);
+		ret.window = glfwCreateWindow(width, height, "Steer Engine", monitor, nullptr);
 		if (!ret.window)
 		{
 			// get glfw error and throw
@@ -659,7 +659,7 @@ namespace
 		}
 
 		VkPhysicalDeviceFeatures deviceFeatures{};
-		deviceFeatures.independentBlend = VK_TRUE; // ¿ªÆô¶ÀÁ¢»ìºÏÌØÐÔ
+		deviceFeatures.independentBlend = VK_TRUE; // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 		// No extra Vulkan 1.0 features for now.
 
 		VkPhysicalDeviceVulkan13Features vk13{};
