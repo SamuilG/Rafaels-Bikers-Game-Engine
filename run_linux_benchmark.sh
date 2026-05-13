@@ -26,6 +26,7 @@ fi
 echo "------------------------------------------------"
 echo "Steer Engine Automated Benchmark (Linux)"
 echo "------------------------------------------------"
+echo "Startup Delay: 60 Seconds (Waiting for engine to load...)"
 echo "Duration: 60 Seconds"
 echo "Mode: Auto-start logging + Deterministic Mode"
 echo "Culling: $CULLING_STATE"
@@ -33,7 +34,9 @@ echo "Output: ./benchmarks/"
 echo "------------------------------------------------"
 
 # Run the engine
-MANGOHUD_CONFIG="log_duration=60,output_folder=./benchmarks,full,autostart_log=1" \
+# Added 'log_delay=60' to the config string below
+# MANGOHUD_CONFIG="log_duration=60,output_folder=./benchmarks,full,autostart_log=1" \
+MANGOHUD_CONFIG="log_delay=60,log_duration=60,output_folder=./benchmarks,full,autostart_log=1" \
 mangohud ./Bin/Engine --benchmark $CULLING_STATE
 
 echo ""
