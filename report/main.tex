@@ -17,6 +17,7 @@
 \emergencystretch 5em
 %%
 %% end of the preamble, start of the body of the document source.
+\makeatletter \renewcommand\@biblabel[1]{} \makeatother
 \begin{document}
 
 \title{Steer Engine: A Performance-Focused ECS Engine for Vehicular Action Games}
@@ -145,7 +146,7 @@ Simulating vehicular dynamics in real-time requires a robust physics solver capa
 
 \begin{figure}[h]
   \centering
-  \includegraphics[width=\linewidth]{simplified_architecture.png}
+  \includegraphics[width=\linewidth]{figures/simplified_architecture.png}
   \caption{\textbf{Simplified Engine Macro-Architecture.} Directed edges represent ownership or primary data-flow relationships. The \texttt{EngineApplication} orchestrates five top-level subsystems; the \texttt{World} manages scene-graph entities, camera, and terrain; the \texttt{RenderSystem} owns the Vulkan backend and asset pipeline.}
   \label{fig:architecture}
 \end{figure}
@@ -256,7 +257,7 @@ The pipeline is logically separated into distinct stages, each executed linearly
 \begin{table}[h]
 \centering
 \small
-\begin{tabular}{|l|l|l|}
+\begin{tabular}{|l|l|p{3.8cm}|}
 \hline
 \textbf{Pass} & \textbf{Type} & \textbf{Function / Attachments} \\ \hline
 Shadow Pass & Depth-only & Cascaded light-space depth generation \\ \hline
@@ -515,44 +516,53 @@ The group are thankful to the university staff and TAs for their guidance and fe
 
 \begin{thebibliography}{99}
 
-\bibitem{JoltHorizon} Jorrit Rouwe. 2021. Physics Animation in Horizon Forbidden West. GDC 2021.
-\bibitem{HorizonFW} Guerrilla Games. 2022. Horizon Forbidden West. Sony Interactive Entertainment.
-\bibitem{NFSUnbound} Criterion Games. 2022. Need for Speed Unbound. Electronic Arts.
-\bibitem{NFSUnboundTech} Oliver Mackenzie. 2022. Need for Speed Unbound tech review. EuroGamer.
-\bibitem{Flecs} Sander Mertens. 2025. Flecs: A fast and lightweight C/C++ ECS. https://github.com/SanderMertens/flecs
-\bibitem{JoltPhysics} Jorrit Rouwe. 2025. Jolt Physics. https://github.com/jrouwe/JoltPhysics
-\bibitem{VulkanSpec} Khronos. 2025. Vulkan Documentation.
-\bibitem{ImGui} Omar Cornut. 2025. Dear Imgui.
-\bibitem{GLFW} Marcus Geelnard. 2025. GLFW.
-\bibitem{CookTorrance} R. L. Cook and K. E. Torrance. 1982. A Reflectance Model for Computer Graphics. ACM Transactions on Graphics.
-\bibitem{Schlick} Christophe Schlick. 1994. An Inexpensive BRDF Model for Physically-Based Rendering. Computer Graphics Forum.
-\bibitem{Beckmann} P. Beckmann and A. Spizzichino. 1963. The Scattering of Electromagnetic Waves from Rough Surfaces. Macmillan.
-\bibitem{RocketLeague} Psyonix. 2015. Rocket League. Psyonix.
-\bibitem{OverwatchECS} Timothy Ford. 2017. Overwatch Gameplay Architecture and Netcode. GDC 2017.
-\bibitem{DestinyECS} Chris Tchou. 2017. Destiny's Multithreaded Rendering Architecture. GDC 2017.
-\bibitem{DoomEternal} id Software. 2020. DOOM Eternal. Bethesda Softworks.
-\bibitem{DoomVulkan} Axel Gneiting. 2016. The devil is in the details: idTech 6. SIGGRAPH 2016.
-\bibitem{VMA} Adam Sawicki. 2025. Vulkan Memory Allocator. AMD GPUOpen.
-\bibitem{DataOrientedDesign} Richard Fabian. 2018. Data-Oriented Design.
-\bibitem{GameEngineArch} Jason Gregory. 2018. Game Engine Architecture, Third Edition. CRC Press.
-\bibitem{BulletPhysics} Erwin Coumans. 2025. Bullet Real-Time Physics Simulation.
-\bibitem{PhysX} NVIDIA. 2025. NVIDIA PhysX SDK 4.0.
-\bibitem{CyberpunkVulkan} CD Projekt Red. 2020. Cyberpunk 2077. CD Projekt.
-\bibitem{ForzaHorizon5} Playground Games. 2021. Forza Horizon 5. Xbox Game Studios.
-\bibitem{ForzaPhysics} Chris Tector. 2014. Forza Motorsport 5: Next-Generation Physics. GDC 2014.
-\bibitem{DirtRally} Codemasters. 2015. DiRT Rally. Codemasters.
-\bibitem{MarioKart8} Nintendo EAD. 2014. Mario Kart 8. Nintendo.
-\bibitem{OpenGLSuperBible} Graham Sellers. 2015. OpenGL SuperBible. Addison-Wesley.
-\bibitem{RealTimeRendering} Tomas Akenine-Möller. 2018. Real-Time Rendering. A K Peters.
-\bibitem{LearnVulkan} Alexander Overvoorde. 2025. Vulkan Tutorial.
-\bibitem{GTA5} Rockstar North. 2013. Grand Theft Auto V. Rockstar Games.
-\bibitem{Frostbite} Electronic Arts. 2025. Frostbite Engine Documentation.
-\bibitem{Wipeout} Studio Liverpool. 2008. Wipeout HD. Sony Computer Entertainment.
+\bibitem[Akenine-Möller (2018)]{RealTimeRendering} Tomas Akenine-Möller. 2018. Real-Time Rendering. A K Peters.
+\bibitem[Beckmann and Spizzichino (1963)]{Beckmann} P. Beckmann and A. Spizzichino. 1963. The Scattering of Electromagnetic Waves from Rough Surfaces. Macmillan.
+\bibitem[CD Projekt Red (2020)]{CyberpunkVulkan} CD Projekt Red. 2020. Cyberpunk 2077. CD Projekt.
+\bibitem[Codemasters (2015)]{DirtRally} Codemasters. 2015. DiRT Rally. Codemasters.
+\bibitem[Cook and Torrance (1982)]{CookTorrance} R. L. Cook and K. E. Torrance. 1982. A Reflectance Model for Computer Graphics. ACM Transactions on Graphics.
+\bibitem[Cornut (2025)]{ImGui} Omar Cornut. 2025. Dear Imgui.
+\bibitem[Coumans (2025)]{BulletPhysics} Erwin Coumans. 2025. Bullet Real-Time Physics Simulation.
+\bibitem[Criterion Games (2022)]{NFSUnbound} Criterion Games. 2022. Need for Speed Unbound. Electronic Arts.
+\bibitem[Electronic Arts (2025)]{Frostbite} Electronic Arts. 2025. Frostbite Engine Documentation.
+\bibitem[Fabian (2018)]{DataOrientedDesign} Richard Fabian. 2018. Data-Oriented Design.
+\bibitem[Ford (2017)]{OverwatchECS} Timothy Ford. 2017. Overwatch Gameplay Architecture and Netcode. GDC 2017.
+\bibitem[Geelnard (2025)]{GLFW} Marcus Geelnard. 2025. GLFW.
+\bibitem[Gneiting (2016)]{DoomVulkan} Axel Gneiting. 2016. The devil is in the details: idTech 6. SIGGRAPH 2016.
+\bibitem[Gregory (2018)]{GameEngineArch} Jason Gregory. 2018. Game Engine Architecture, Third Edition. CRC Press.
+\bibitem[Guerrilla Games (2022)]{HorizonFW} Guerrilla Games. 2022. Horizon Forbidden West. Sony Interactive Entertainment.
+\bibitem[id Software (2020)]{DoomEternal} id Software. 2020. DOOM Eternal. Bethesda Softworks.
+\bibitem[Khronos (2025)]{VulkanSpec} Khronos. 2025. Vulkan Documentation.
+\bibitem[Mackenzie (2022)]{NFSUnboundTech} Oliver Mackenzie. 2022. Need for Speed Unbound tech review. EuroGamer.
+\bibitem[Mertens (2025)]{Flecs} Sander Mertens. 2025. Flecs: A fast and lightweight C/C++ ECS. https://github.com/SanderMertens/flecs
+\bibitem[Nintendo EAD (2014)]{MarioKart8} Nintendo EAD. 2014. Mario Kart 8. Nintendo.
+\bibitem[NVIDIA (2025)]{PhysX} NVIDIA. 2025. NVIDIA PhysX SDK 4.0.
+\bibitem[Overvoorde (2025)]{LearnVulkan} Alexander Overvoorde. 2025. Vulkan Tutorial.
+\bibitem[Playground Games (2021)]{ForzaHorizon5} Playground Games. 2021. Forza Horizon 5. Xbox Game Studios.
+\bibitem[Psyonix (2015)]{RocketLeague} Psyonix. 2015. Rocket League. Psyonix.
+\bibitem[Rockstar North (2013)]{GTA5} Rockstar North. 2013. Grand Theft Auto V. Rockstar Games.
+\bibitem[Rouwe (2021)]{JoltHorizon} Jorrit Rouwe. 2021. Physics Animation in Horizon Forbidden West. GDC 2021.
+\bibitem[Rouwe (2025)]{JoltPhysics} Jorrit Rouwe. 2025. Jolt Physics. https://github.com/jrouwe/JoltPhysics
+\bibitem[Sawicki (2025)]{VMA} Adam Sawicki. 2025. Vulkan Memory Allocator. AMD GPUOpen.
+\bibitem[Schlick (1994)]{Schlick} Christophe Schlick. 1994. An Inexpensive BRDF Model for Physically-Based Rendering. Computer Graphics Forum.
+\bibitem[Sellers (2015)]{OpenGLSuperBible} Graham Sellers. 2015. OpenGL SuperBible. Addison-Wesley.
+\bibitem[Studio Liverpool (2008)]{Wipeout} Studio Liverpool. 2008. Wipeout HD. Sony Computer Entertainment.
+\bibitem[Tchou (2017)]{DestinyECS} Chris Tchou. 2017. Destiny's Multithreaded Rendering Architecture. GDC 2017.
+\bibitem[Tector (2014)]{ForzaPhysics} Chris Tector. 2014. Forza Motorsport 5: Next-Generation Physics. GDC 2014.
 
 \end{thebibliography}
 
 \newpage
 \appendix
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{"figures/Online Gantt 20260211".png}
+  \vspace{2mm}
+  \includegraphics[width=\textwidth]{"figures/Online Gantt 20260513".png}
+  \caption{\textbf{Project Planning and Timeline Comparison.} Top: Initial planning Gantt chart. Bottom: Actual execution Gantt chart. The comparison between the initial plan and final execution highlights our dynamic task reallocation and agile development process throughout the engine's lifecycle.}
+  \label{fig:gantt_comparison}
+\end{figure*}
 
 \section{Project management}
 \textcolor{blue}{This is the appendix of your report, which should contain all the project management details, distinct from the scientific content of it. 
@@ -587,7 +597,9 @@ Work distribution was handled fairly and transparently based on individual stren
 \textcolor{blue}{This should contain two gantt charts: the initial planning, and what actually ended up happening.
 The text in this section should be a reflection of why there was any different between them, or a reflection on why it was the right choice of planning in case they are exactly the same. }
 
-[in progress; not done yet]
+
+
+Our project's trajectory, visualised through the Gantt charts in Figure~\ref{fig:gantt_comparison}, underscores the evolution from a rigid initial roadmap to a responsive, agile workflow. This comparison highlights our dynamic task reallocation and agile development process, particularly as we pivoted resources from the original concept to the high-performance bicycle demo.
 
 At the beginning of the semester, our initial plan was highly structured. We allocated specific weeks for engine architecture, rendering milestones, physics integration, and gameplay scripting. However, we underestimated the cascading complexities that arise when porting individual assignments into a unified monolithic architecture managed by Flecs. Creating a pipeline that seamlessly translated raw level data into Flecs entities, Jolt physical bodies, and Vulkan render batches took nearly four weeks instead of the planned two. Because we front-loaded the most critical architectural tasks, the delays did not completely derail the project, and we retained a functioning core loop early enough to pivot our gameplay mechanics.
 
