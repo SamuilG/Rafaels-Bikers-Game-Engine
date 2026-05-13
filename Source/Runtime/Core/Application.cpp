@@ -12,13 +12,28 @@
 
 namespace engine {
 
-    Application::Application(ProgressCallback progress) : mProgressCallback(std::move(progress))
+    Application::Application(int argc, char** argv, ProgressCallback progress) : mProgressCallback(std::move(progress))
     {
         ReportProgress(0.02f, "Creating engine systems...");
 
+        bool isBenchmarkMode = false;
+        bool forceCullingOn = false;
+        bool forceCullingOff = false;
+
+        for (int i = 0; i < argc; ++i) {
+            std::string_view arg(argv[i]);
+            if (arg == "--benchmark") {
+                isBenchmarkMode = true;
+            } else if (arg == "--culling-on") {
+                forceCullingOn = true;
+            } else if (arg == "--culling-off") {
+                forceCullingOff = true;
+            }
+        }
+
         inputSystem = AddSystem<InputSystem>();
         eventSystem = AddSystem<EventSystem>();
-		audioSystem = AddSystem<AudioSystem>();//音频系统
+        audioSystem = AddSystem<AudioSystem>();//音频系统
 
         physicsSystem = AddSystem<PhysicsSystem>();
         physicsSystem->SetEventSystem(eventSystem);
@@ -33,7 +48,7 @@ namespace engine {
         renderSystem = AddSystem<RenderSystem>(Running, sceneManager);
         renderSystem->SetUserState(&mState);
         renderSystem->set_animation_system(animationSystem);
-		renderSystem->SetAudioSystem(audioSystem);
+        renderSystem->SetAudioSystem(audioSystem);
         
         //splash
         constexpr float kRenderInitStart = 0.10f;
@@ -58,7 +73,7 @@ namespace engine {
             physicsSystem->SetInputSystem(inputSystem);
         }
 
-		// UI 系统初始化
+        // UI 系统初始化
         ReportProgress(0.7f, "Loading startup audio...");
         RuntimeUiController* runtimeUiController = renderSystem ? renderSystem->GetRuntimeUiController() : nullptr;
         if (runtimeUiController) {
@@ -68,19 +83,18 @@ namespace engine {
             runtimeUiController->PreloadWidget("Assets/ui/PauseMenu.ui.json");
             runtimeUiController->PreloadWidget("Assets/ui/Settings.ui.json");
             runtimeUiController->PreloadWidget("Assets/ui/Win.ui.json");
-            runtimeUiController->AddWidgetToViewPort("Assets/ui/MainMenu.ui.json");
+            
+            if (!isBenchmarkMode) {
+                runtimeUiController->AddWidgetToViewPort("Assets/ui/MainMenu.ui.json");
+            } else {
+                runtimeUiController->AddWidgetToViewPort("Assets/ui/HUD.ui.json");
+            }
         }
 
-		//audio system 初始化
+        //audio system 初始化
         ReportProgress(0.74f, "Loading startup audio...");
         // audio system test
         if (audioSystem) {
-            // Background music is now started by the Radio pickup in level1.
-            // audioSystem->LoadSound("BackgroundTestMusic", "Assets/Sounds/Looping_radio_mix.mp3");
-            // audioSystem->SetVolume("BackgroundTestMusic", 0.1f);
-            // audioSystem->SetPitch("BackgroundTestMusic", 1.0f);
-            // audioSystem->PlayLoop("BackgroundTestMusic");
-
             //bike chain sound effect
             audioSystem->LoadSound("BikeChain", "Assets/Sounds/BikeChain.mp3");
             audioSystem->SetVolume("BikeChain", 0.2f);
@@ -88,10 +102,6 @@ namespace engine {
             audioSystem->SetPitch("BikeChain", 1.0f);
             audioSystem->PlayLoop("BikeChain");
             audioSystem->LoadSound("Chain", "Assets/Sounds/BikeChain.mp3");
-           
-
-         
-
         }
 
         // 注册全局事件监听 (比如碰撞)
@@ -109,6 +119,24 @@ namespace engine {
         m_currentScene = std::make_unique<level>();
 
         m_currentScene->Init(renderSystem, sceneManager, physicsSystem, inputSystem, eventSystem, &mState, animationSystem, audioSystem);
+
+        if (isBenchmarkMode) {
+            mState.isGameStarted = true;
+            mState.gameFlowState = GameFlowState::Playing;
+            mState.thirdPersonMode = true;
+            mState.Yaw = 0.0f;
+            mState.Pitch = -0.3f;
+            mState.Distance = 8.0f;
+            mState.targetYaw = 0.0f;
+            mState.targetPitch = -0.3f;
+            mState.targetDistance = 8.0f;
+            // Ensure physics is stable
+            mState.bikeSpeed = 0.0f;
+            
+            if (forceCullingOn) mState.frustumCullingEnabled = true;
+            if (forceCullingOff) mState.frustumCullingEnabled = false;
+        }
+
         ReportProgress(1.0f, "Ready");
     }
 

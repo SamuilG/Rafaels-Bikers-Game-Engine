@@ -20,7 +20,7 @@ namespace engine {
     class Application {
     public:
         using ProgressCallback = std::function<void(float, std::string_view)>;
-        explicit Application(ProgressCallback progress = {});
+        Application(int argc, char** argv, ProgressCallback progress = {});
         void ShowMainWindow();
 
         Application();
