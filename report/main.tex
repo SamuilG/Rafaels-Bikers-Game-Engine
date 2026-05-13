@@ -19,7 +19,7 @@
 %% end of the preamble, start of the body of the document source.
 \begin{document}
 
-\title{Steer $\Sigma$ngine: A Performance-Focused ECS Engine for Vehicular Action Games}
+\title{Steer Engine: A Performance-Focused ECS Engine for Vehicular Action Games}
 \subtitle{Group Report for COMP 5531M}
 
 \author{Sicheng Chen}
@@ -143,15 +143,22 @@ Simulating vehicular dynamics in real-time requires a robust physics solver capa
 
 \section{Methodology: Engine Architecture \& Implementation}
 
-[INSERT FIGURE: UML Diagram of Core Engine Loop]
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\linewidth]{simplified_architecture.png}
+  \caption{\textbf{Simplified Engine Macro-Architecture.} Directed edges represent ownership or primary data-flow relationships. The \texttt{EngineApplication} orchestrates five top-level subsystems; the \texttt{World} manages scene-graph entities, camera, and terrain; the \texttt{RenderSystem} owns the Vulkan backend and asset pipeline.}
+  \label{fig:architecture}
+\end{figure}
 
-\textcolor{blue}{Here is where your work should be explained.
-The main challenge is finding how granular your descriptions should be. 
-While it is tempting to talk about everything and have 89 pages of going through every single class in your code, nobody will be terribly excited about reading it. 
-Remember who your target audience is: people with interest in knowing how you achieved this.
-You can expect that they either know how some things work, or can probably figure it out by themselves. 
-The question normally asked about this section of the work is: "could this method be reproduced by a motivated student based on this description?", which for your case, can be reworded as "could another group read our report, and re-implement what we did just based on what we described?".
-Ask for help from your supervisor to know what is essential here, as this will vary a lot from the type of project you are implementing.} 
+The engine's macro-architecture, illustrated in Figure~\ref{fig:architecture}, is designed around a decoupled, data-driven methodology that isolates the main loop, scene management, physics simulation, and rendering pipelines into distinct subsystems. The core structural interactions can be summarised as follows:
+
+\begin{itemize}
+    \item \textbf{EngineApplication}: Acts as the overarching controller. It owns and coordinates the primary subsystems: \texttt{InputManager}, \texttt{PhysicsSystem}, \texttt{RenderSystem}, the \texttt{ImGuiLayer}, and the active \texttt{World}.
+    \item \textbf{World}: Functions as the scene manager, holding the \texttt{CameraSystem}, \texttt{TerrainSystem}, and a collection of \texttt{Entity} objects. It bridges gameplay logic and rendering by processing entities and exposing them via \texttt{GetRenderables()}.
+    \item \textbf{Entity}: Represents an individual game object in the world. Instead of complex inheritance, entities act as containers for components like transforms, mesh references, and physics bodies.
+    \item \textbf{RenderSystem}: Drives the Vulkan backend. It references the \texttt{WindowSystem} for surface management, retrieves geometry and textures via the \texttt{AssetManager}, and compiles frame commands for GPU submission.
+    \item \textbf{PhysicsSystem}: Encapsulates the Jolt Physics engine. It owns the \texttt{VehicleController} and is strictly responsible for updating spatial data and handling collision constraints for entities that possess a \texttt{PhysicsBody}.
+\end{itemize}
 
 \subsection{Core System and ECS Integration (Flecs)}
 The engine's lifecycle is governed by the \texttt{Application} class, which acts as the central orchestrator. It initializes the core subsystems: Windowing via GLFW \cite{GLFW}, Renderer, Input, Events, Physics, and the \texttt{SceneManager}.
@@ -162,6 +169,13 @@ The core logic revolves around \textbf{Flecs}, our chosen ECS backend.
 
 \subsubsection{Core Component Structs}
 To fully exploit Flecs' cache locality, our components are defined as tightly packed, plain-old-data (POD) C++ structs without virtual functions. This ensures they can be copied directly in contiguous memory. Some of our core components include:
+\begin{verbatim}
+struct LocalTransform { glm::mat4 matrix; };
+struct WorldTransform { glm::mat4 matrix; };
+struct MeshComponent  { uint32_t meshIndex; };
+struct PhysicsBody    { uint32_t bodyID; };
+struct EntityStatus   { bool should_render; bool has_physics; };
+\end{verbatim}
 
 Each component is a plain-old-data (POD) struct containing only scalar or fixed-size matrix fields. They use no virtual functions and require no heap allocations. For example, \texttt{LocalTransform} and \texttt{WorldTransform} each wrap a single $4 \times 4$ affine matrix, while \texttt{MeshComponent} and \texttt{MaterialComponent} store lightweight 32-bit indices into the engine's unified geometry and material registries. The \texttt{PhysicsBody} component holds a Jolt \texttt{BodyID} handle alongside a boolean flag indicating dynamic status, and the \texttt{RenderBatch} component records vertex offsets, index offsets, and index counts into the shared Vulkan device-local buffer.
 
@@ -222,6 +236,15 @@ We rely heavily on explicit synchronization primitives. Before calling \texttt{v
 Supplying data to the shaders efficiently is critical for performance. We heavily utilize Uniform Buffer Objects (UBOs) to pass global scene parameters (View Matrix, Projection Matrix, Light Position, and Camera Position) to the vertex and fragment pipelines.
 
 \textbf{std140 Memory Alignment}: A significant C++ implementation challenge was guaranteeing memory alignment between the CPU data structs (using GLM) and the Vulkan GLSL shader expectations. We strictly adhered to the \texttt{std140} layout rules. For instance, in our C++ struct, a \texttt{glm::vec3} (12 bytes) must be padded to 16 bytes. We explicitly added \texttt{alignas(16)} to our struct members to prevent subtle data corruption where Vulkan reads offset bytes:
+\begin{verbatim}
+struct alignas(16) ObjectPC {
+    glm::mat4 transform;       // Offset 0,  Size 64
+    glm::vec4 baseColorFactor; // Offset 64, Size 16
+    glm::vec4 emissiveFactor;  // Offset 80, Size 16
+    float metallicFactor;      // Offset 96, Size 4
+    float roughnessFactor;     // Offset 100,Size 4
+};
+\end{verbatim}
 
 Each field in the global uniform buffer is aligned to a 16-byte boundary in accordance with the \texttt{std140} layout specification. In particular, three-component vectors (12~bytes) are padded to 16~bytes, preventing byte-offset mismatches between the host-side C++ struct and the device-side GLSL interface block. The buffer supplies the camera's View matrix $\mathbf{V}$, the Projection matrix $\mathbf{P}$, the directional light position $\mathbf{p}_{\text{light}}$, and the camera position $\mathbf{p}_{\text{cam}}$ to every shader stage via a single descriptor binding.
 
@@ -230,7 +253,24 @@ Each field in the global uniform buffer is aligned to a 16-byte boundary in acco
 \subsubsection{Render Pass Layout}
 The pipeline is logically separated into distinct stages, each executed linearly with strict pipeline barriers ensuring safe memory transitions between color and depth attachments.
 
-[INSERT TABLE: Render Pass Layout]
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Pass} & \textbf{Type} & \textbf{Function / Attachments} \\ \hline
+Shadow Pass & Depth-only & Cascaded light-space depth generation \\ \hline
+Forward MRT & G-Buffer & Opaque, Alpha-Mask, Skybox; Color + Bright + Normal \\ \hline
+SSR Pass & Post-Process & Screen Space Reflections based on G-Buffer \\ \hline
+SSAO Pass & Post-Process & Ambient Occlusion via depth/normal sampling \\ \hline
+Gaussian Blur & Compute-like & Horizontal/Vertical blur on Brightness attachment \\ \hline
+Composite & Main Blending & Scene + Bloom + SSR + SSAO + Transparency + Particles \\ \hline
+Post-FX & Final Resolve & Speed-blur, Death-desaturation, Bloom Resolve \\ \hline
+UI Pass & Overlay & Dear ImGui render submission to Swapchain \\ \hline
+\end{tabular}
+\caption{Modular Multi-Pass Rendering Pipeline Layout.}
+\label{tab:render_passes}
+\end{table}
 
 \begin{enumerate}
     \item \textbf{Shadow Pass (Cascaded Orthographic)}: An off-screen depth-only pass capturing the scene from the directional light's perspective. To ensure maximum shadow resolution near the player without wasting texels on distant geometry, we dynamically calculate a Light Space Matrix.
@@ -429,8 +469,6 @@ The OMEN15 dual-boot testing yielded clear performance data regarding both our e
   \label{fig:os_comparison}
 \end{figure}
 
-[PLACEHOLDER FOR DRAW.IO DIAGRAM 1]
-
 Ubuntu 24.04 performed slightly worse than Windows 11 with culling off ($111.6$ FPS vs $112.0$ FPS), but significantly outperformed Windows 11 when culling was enabled ($113.5$ FPS vs $108.6$ FPS). On Linux, enabling Frustum Culling improved the average framerate from $111.6$ FPS to $113.5$ FPS, confirming that our CPU-side culling successfully reduces Vulkan submission overhead. Conversely, the performance regression on Windows when Frustum Culling was enabled indicates potential differences in how the Windows NVIDIA Vulkan driver handles dynamic command buffer recording and CPU-side branching compared to the Linux driver.
 
 \subsection{Results: Hardware Scaling}
@@ -442,8 +480,6 @@ The hardware scaling test evaluated how the engine performs on high-end desktop 
   \caption{\textbf{Hardware Scaling.} Average FPS on Linux comparing the OMEN15 Laptop (GTX 1660 Ti) and the UNI Lab PC (RTX 4070).}
   \label{fig:hardware_scaling}
 \end{figure}
-
-[PLACEHOLDER FOR DRAW.IO DIAGRAM 2]
 
 While the OMEN15 produced $111.6$ FPS (Off) and $113.5$ FPS (On), the high-end UNI Lab PC (RTX 4070) initially delivered a locked $100.0$ FPS in both tests. This initial lock was traced back to the engine's default Vulkan presentation mode (\texttt{VK\_PRESENT\_MODE\_FIFO\_KHR}), which enforced V-Sync and artificially capped the framerate to the lab monitor's 100Hz refresh rate. To accurately measure the hardware limits, we explicitly modified the RHI layer to request an uncapped presentation mode (\texttt{VK\_PRESENT\_MODE\_IMMEDIATE\_KHR} or \texttt{VK\_PRESENT\_MODE\_MAILBOX\_KHR}).
 
