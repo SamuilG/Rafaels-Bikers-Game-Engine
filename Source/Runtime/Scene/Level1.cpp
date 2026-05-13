@@ -149,6 +149,7 @@ namespace engine {
 		m_audio->SetVolume("NextSong", 0.7f);
 		// N key cycles songs
 		m_input->MapKeyboardAction("NextSong", GLFW_KEY_N);
+		m_input->MapKeyboardAction("NextSong", GLFW_GAMEPAD_BUTTON_LEFT_BUMPER);
 		m_input->MapKeyboardAction("Mute", GLFW_KEY_M);
 
 
@@ -715,6 +716,7 @@ namespace engine {
 		// ========================================================= 
 
 		m_input->MapKeyboardAction("Horn", GLFW_KEY_F);
+		m_input->MapKeyboardAction("Horn", GLFW_GAMEPAD_BUTTON_RIGHT_BUMPER);
 
 		// =========================================================
 		// Pickup: Jump unlock — model: spring.glb

@@ -114,7 +114,7 @@ namespace engine {
 
         // --- Camera & View ---
         MapKeyboardAction("CameraThirdPersonToggle", GLFW_KEY_T);
-        MapGamepadButtonAction("CameraThirdPersonToggle", GLFW_GAMEPAD_BUTTON_Y);
+        MapGamepadButtonAction("CameraThirdPersonToggle", GLFW_GAMEPAD_BUTTON_X);
 
         MapMouseButtonAction("CaptureMouse", GLFW_MOUSE_BUTTON_MIDDLE);
         
@@ -125,7 +125,15 @@ namespace engine {
 
         // --- Game Systems & Effects ---
         MapKeyboardAction("DEPLOY", GLFW_KEY_R);
-        MapGamepadButtonAction("DEPLOY", GLFW_GAMEPAD_BUTTON_X);
+        MapGamepadButtonAction("DEPLOY", GLFW_GAMEPAD_BUTTON_Y);
+
+        // Music Controls
+        MapKeyboardAction("NextSong", GLFW_GAMEPAD_BUTTON_LEFT_BUMPER);
+		// MapKeyboardAction("Mute", GLFW_GAMEPAD_BUTTON_RIGHT_BUMPER);
+
+        // Horn
+		MapKeyboardAction("Horn", GLFW_GAMEPAD_BUTTON_RIGHT_BUMPER);
+
         
         // MapGamepadButtonAction("ToggleParticles", GLFW_GAMEPAD_BUTTON_X);
 
