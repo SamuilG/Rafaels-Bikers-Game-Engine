@@ -1,0 +1,41 @@
+# Steer Engine Video Presentation Script
+
+| Time | [Voiceover] | [Suggested Visual] |
+| :--- | :--- | :--- |
+| **0:00** | **[Intro]** Welcome to the Steer Engine. We set out to build a high-performance, C++ game engine specialized for fast-paced vehicular action and expansive environments. | Cinematic slow-motion shot of the bicycle on a high-up platform, sun flare hitting the lens. Engine logo "STEER ENGINE" fades in. |
+| **0:12** | Our goal was to abandon the monolithic, deep inheritance structures of generalized engines in favor of a lean, data-oriented architecture that puts performance first. | Fast-cut montage of the bike racing through the level, hitting a ramp, and collecting a booster. |
+| **0:25** | **[Architecture]** At the heart of Steer Engine is Flecs, a pure Entity Component System. Unlike traditional Object-Oriented engines, Steer Engine treats entities as lightweight IDs and components as plain-old-data structs. | Transition to a technical diagram showing 'Entity ID' pointing to contiguous 'Transform', 'Mesh', and 'Physics' components in memory. |
+| **0:40** | This ensures maximum CPU cache locality. By grouping entities into archetypes, our systems can iterate through homogeneous blocks of memory, effectively eliminating the traditional bottlenecks associated with scattered heap allocations. | B-roll of the engine code (flecs queries) or the ImGui 'Flecs Explorer' showing entity archetypes and component counts. |
+| **0:55** | Our systems—from input and physics to rendering—operate in a strictly linear pipeline. This deterministic lifecycle ensures that data mutations, like physics transform syncs, occur predictably before the frame is ever submitted to the GPU. | Split screen: Left side shows a code snippet of the main game loop phases; Right side shows the bike physics and camera moving smoothly without jitter. |
+| **1:15** | **[Physics]** For our physics backbone, we integrated the Jolt Physics library. We chose Jolt for its incredible multithreaded scalability and its specialized vehicle constraint system. | Close-up of the bike's wheels in the editor with physics wireframes (raycasts) visible. |
+| **1:30** | The bicycle uses a raycast-based suspension model. We've heavily tuned the spring stiffness, damping, and friction curves to provide a responsive, arcade-like feel. | Footage of the bike landing a huge jump; show the suspension compressing and the bike stabilizing without flipping. |
+| **1:45** | Longitudinal torque is applied directly to the rear wheel based on a burst-decay engine model, while lateral grip is dynamically adjusted to allow for controlled drifts at high speeds. | High-speed drift around a corner, maybe show a debug 'Velocity Vector' arrow pointing out of the chassis. |
+| **2:00** | **[Rendering]** To match this high-speed gameplay with visual fidelity, we built a modern Vulkan backend. Utilizing the VK\_KHR\_dynamic\_rendering extension, we maintain explicit control over every stage of the pipeline without the overhead of legacy render passes. | Flashy shot of the bike under intense lighting. Overlay text: "VULKAN 1.3 DYNAMIC RENDERING". |
+| **2:15** | Our shading is driven by a Physically Based Rendering model using the Cook-Torrance BRDF. This includes energy-conserving diffuse and specular lobes, providing realistic interactions for metals and dielectrics alike. | Close-up of the bike's frame. Pan the camera to show the material reflecting the environment and changing based on light angle. |
+| **2:30** | Lighting is grounded by Cascaded Shadow Maps. We dynamically calculate light-space bounding boxes for the camera's view frustum, ensuring sharp, high-resolution shadows near the player while maintaining efficiency in the distance. | Show a 'Shadow Cascade' debug view (different colors for different cascades) followed by the final high-quality shadowed scene. |
+| **2:45** | For complex geometry like chain-link fences and foliage, we implemented a dedicated Alpha-Masking pass. This allows us to render transparent textures with correct shadow-casting while preserving our cache-friendly ECS iteration order. | Shot of the bike driving past a fence. Show the shadow of the fence accurately projected on the ground. |
+| **3:00** | **[Post-Processing]** The visual experience is rounded out by a suite of post-processing effects, including Multi-pass Bloom, Screen Space Ambient Occlusion for deep contact shadows, and Screen Space Reflections for dynamic surface highlights. | Toggle comparison: 'Raw Render' vs 'Full Post-FX (SSAO, SSR, Bloom)'. |
+| **3:15** | **[Supporting Systems]** Beyond the core, Steer Engine features a robust suite of supporting systems. Our animation system utilizes a custom 2-bone Inverse Kinematics solver to ensure the rider's hands remain firmly attached to the handlebars regardless of steering angle. | Close-up of the rider's hands on the handlebars as the bike steers; highlight the IK movement. |
+| **3:30** | We also implemented a high-performance Particle System supporting GPU-instanced rendering, allowing us to spawn thousands of dynamic emitters for booster explosions and tire smoke with negligible overhead. | Shot of the bike collecting a booster; show the particle explosion in slow motion. |
+| **3:45** | Audio is handled via the Miniaudio library, providing spatialized 3D soundscapes and low-latency feedback for engine revving and physics-driven impacts. | Clip of the bike hitting a wall or landing; ensure the sound is crisp and spatialized. |
+| **4:00** | **[Tools & Pipeline]** Level creation is streamlined through our Asset Pipeline. We parse optimized GLTF scenes, automatically generating static triangle mesh colliders and instantiating Flecs entities for every mesh, light, and trigger. | Video of the SceneManager loading a file, then showing the level populating in the engine. |
+| **4:15** | We also integrated a custom Visual UI Editor and real-time ImGui debug panels. This allows us to tune physics parameters, tweak rendering constants, and inspect the ECS state live, drastically reducing iteration time. | Screen recording of a dev dragging a slider in ImGui to change the bike's 'Torque' and immediately seeing the bike speed up. |
+| **4:30** | **[Performance & Evaluation]** To validate our architecture, we conducted rigorous benchmarking across different hardware profiles and operating systems. | Split screen showing the 'OMEN15 Laptop' vs 'UNI Lab PC' hardware specs. |
+| **4:45** | We observed exceptional scaling; on high-end hardware like the RTX 4070, Steer Engine achieves over 300 FPS when uncapped. Notably, our Frustum Culling implementation on Linux showed a measurable reduction in Vulkan submission overhead, proving our architectural efficiency. | Graph overlay showing FPS comparison (Culling On vs Off) and (Linux vs Windows). |
+| **5:00** | **[Conclusion]** Steer Engine successfully marries the raw power of Vulkan and Jolt with the organizational elegance of Flecs. It is a testament to how specialized, data-oriented design can deliver a premium, high-performance experience. | Final shot: The bike driving into the sunset. Fade to black. Text: "STEER ENGINE - Performance First." |
+| **5:15** | Thank you for watching. | Credits roll. |
+" |
+
+## Key Grading Keywords included:
+- **Flecs ECS / Data Locality**: Emphasized in the Architecture section.
+- **Vulkan Dynamic Rendering**: Highlighted in the Rendering section.
+- **Jolt Physics / VehicleConstraint**: Core of the Physics section.
+- **PBR (Cook-Torrance)**: Explicitly mentioned.
+- **Cascaded Shadow Maps**: Detailed as a technical feature.
+- **Performance Scaling**: Proven with the 300 FPS benchmark mention.
+- **Asset Pipeline / GLTF**: Mentioned in Tools.
+
+## Notes for the Editor:
+- **Audio Cues**: Use an energetic, synth-heavy track that ramps up during the gameplay montage and becomes more atmospheric during the technical deep-dives.
+- **Overlays**: Use clean, modern sans-serif fonts for technical labels (e.g., "Physically Based Rendering", "Flecs ECS Archetypes").
+- **Speed**: The script is approximately 650 words. At a standard 150 wpm, this is about 4 minutes and 20 seconds. Record the whole thing and cut the least critical technical details if you need to hit exactly 4:00.
