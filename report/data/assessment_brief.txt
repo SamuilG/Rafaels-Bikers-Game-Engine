@@ -1,0 +1,126 @@
+UNIVERSITY OF LEEDS | SCHOOL OF COMPUTING
+
+Assessment Brief
+Module title
+
+Group Project
+
+Module code
+
+COMP 5530M
+
+Assignment title
+
+Group Project
+
+Assignment type and
+description
+
+Game engine programming project accompanied by a report.
+
+Rationale
+
+The Group Project provides an opportunity for you to work on a major
+computing project as part of a team. The project will further develop both
+your team working/ project management skills and your technical knowledge
+and skills.
+
+Word limit and guidance
+
+Main report: 12 pages
+Appendix: 6 pages.
+Video: 4 minutes
+Poster: A1
+Individual report: 2 pages
+
+Weighting
+
+100%
+
+Submission deadline
+
+08/05/2026
+
+Submission method
+
+Turnitin
+
+Feedback provision
+
+Turnitin, Poster Session
+
+Learning outcomes
+assessed
+
+L01-6
+
+Module leader
+
+Rafael Kuffner dos Anjos
+
+UNIVERSITY OF LEEDS | SCHOOL OF COMPUTING
+1. Assignment guidance
+This is your one assessment for this module.
+During semester one, you will find a pair and consider a project theme.
+During semester two, you will form a group, be assigned a supervisor, and carry out the project your group
+has set out for yourselves.
+2. Assessment tasks
+The actual work will depend on the project agreed between you and your supervisor. Meet with them
+regularly (suggested once every 2 weeks), where it is your responsibility to book the meeting and the room
+to have it.
+As a group:
+Prepare a presentation of your plan for your project and the planned tasks and features for week 3.
+Formative feedback will be given.
+Every week during teaching time:
+Submit group activities summary to Gradescope. (formative feedback)
+Work on a report describing your work with a maximum of 12 pages, following the ACM article style with the
+template available on Minerva.
+Work on a 6 page appendix document describing your project management, following the same template.
+Create a 4 minute video of your project as either a short presentation or a highlights video.
+Create an A1 poster of your project for the poster session at the end of the semester.
+Individually:
+Work on an individual report of a maximum of 2 pages, following the ACM article style with the template
+available on Minerva. This report should describe in detail a task that you were the main contributor to.
+These can be either implementation or management tasks.
+Submit everything by the final date.
+3. General guidance and study support
+Supporting information can be found on Minerva (Lecture slides and templates).
+4. Assessment criteria and marking process
+40% Report, 30% Project scope and deliverables
+5% Poster, 5% Showcase video
+Assessed by supervisor + 1 independent reviewer.
+20% Individual report
+Assessed by the module leader
+
+UNIVERSITY OF LEEDS | SCHOOL OF COMPUTING
+5. Presentation and referencing
+Your report should be written using the provided template, which follows the standard ACM article style.
+This must not be changed.
+The quality of written English will be assessed in this work. As a minimum, you must ensure:
+• Paragraphs are used
+• There are links between and within paragraphs although these may be ineffective at times
+• There are (at least) attempts at referencing
+• Word choice and grammar do not seriously undermine the meaning and comprehensibility of the
+argument
+• Word choice and grammar are generally appropriate to an academic text
+These are pass/ fail criteria. So irrespective of marks awarded elsewhere, if you do not meet these criteria,
+you will fail overall.
+6. Submission requirements
+All files submitted to Turnitin, following the limits on the guidance.
+7. Academic misconduct and plagiarism
+Leeds students are part of an academic community that shares ideas and develops new ones.
+You need to learn how to work with others, how to interpret and present other people's ideas, and how to
+produce your own independent academic work. It is essential that you can distinguish between other
+people's work and your own, and correctly acknowledge other people's work.
+All students new to the University are expected to complete an online Academic Integrity tutorial and test,
+and all Leeds students should ensure that they are aware of the principles of Academic integrity.
+When you submit work for assessment it is expected that it will meet the University’s academic integrity
+standards.
+If you do not understand what these standards are, or how they apply to your work, then please ask the
+module teaching staff for further guidance.
+By submitting this assignment, you are confirming that the work is a true expression of your own work and
+ideas and that you have given credit to others where their work has contributed to yours.
+8. Assessment/ marking criteria grid
+Please consult the document uploaded separately to Minerva for details.
+
+

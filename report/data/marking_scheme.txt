@@ -1,0 +1,185 @@
+MARKING SCHEME COMP 5530M
+GROUP REPORT: 40%
+Reports are marked similarly to a paper. Not each individual section is marked, but more general aspects
+of the report that cover different parts of it. The main component of the report counts for 30 marks,
+and the management section counts for 10 marks.
+Each individual section of the academic part of the report will be marked from 0-10. with the following
+rationale:
+< 5 : Failed at this aspect. Would warrant a major rewrite.
+5: Barely meets the criteria for acceptance. The foundations are there, but there is much to work on.
+6: They did a good job at this, but there are still many improvements that can be made.
+7: They did as good a job as you could expect from them. There may still be a few possibilities for
+improvement.
+8: The article presents quality seen in academic publications for this aspect.
+9: This would be accepted in an academic journal.
+10: This would be accepted in a high tier academic journal.
+SUMMARY OF CONTRIBUTIONS (0)
+This does not award any marks. It’s just a short description of your understanding of the project this
+group has carried out. This helps both you and them understand how well the message got through.
+CLARITY OF PRESENTATION (10)
+This has to do with the “form” and how clearly things are communicated in the paper.
+-
+
+Does it use good quality academic writing that is clear and concise?
+
+-
+
+Is the method explained in enough detail?
+Is it supported by high quality illustrations and example images?
+
+-
+
+Are the results communicated using the right type of visualization? (plots, tables, figures)
+
+-
+
+Is the evaluation clearly outlined and the results discussed thoroughly?
+
+-
+
+Is everything that needs to be explained present in the paper or are important things left out?
+
+TECHNICAL SOUNDNESS (10)
+This has to do with the “correctness” of the statements that are made.
+-
+
+Is the motivation true and relevant to the problem they are trying to address?
+
+-
+
+Are the statements about related work correct?
+
+-
+
+Are the algorithms/methods free of mistakes?
+
+-
+
+Are the choices of methods/tools appropriate for the problem at hand?
+
+-
+
+Is the project thoroughly evaluated? Are all the necessary aspects investigated?
+
+-
+
+Is the evaluation methodology sound?
+
+QUALITY OF REFERENCES (10)
+This has to do with the scholarly awareness of the paper.
+-
+
+Does the introduction justify this work in comparison to previous work?
+
+-
+
+Does the background work cover the necessary range of topics?
+
+-
+
+Are the references relevant and up to date?
+
+-
+
+Are previous works simply cited or did the authors provide a higher understanding of the
+research landscape (e.g. grouping works by areas and highlighting importance and drawbacks
+of each methods)?
+
+-
+
+Are important statements throughout the paper supported by references when appropriate?
+
+MANAGEMENT & SOFT SKILLS (10)
+This has to do with the appendix section only that talks about non academic aspects of the project
+including project management, group reflection on soft skills acquired during the project.
+-
+
+How good was the initial plan for developing the project?
+Did the team allocate enough time for each one of the tasks?
+Is the project size suitable for the time the team had to develop it?
+How strictly was the plan followed?
+How well has the team adapted to unforeseen circumstances?
+Was the time with the supervisor well utilized?
+Has the group learned important skills to be used in the workforce?
+Has the group learned skills that go beyond the taught material?
+How was the group dynamic?
+Was the work distributed fairly, and was there enough support from the group when one
+struggled?
+How well has the group communicated internally?
+How well did the group utilize their supervision expertise?
+
+PROJECT SCOPE AND DELIVERABLES 30%
+This has to do with what they set out to do, and what did they achieve when compared to it. Here we do
+not want to penalize “negative results”, as a method was implemented successfully, but it was worse
+than the state of the art. It is a balance between level of challenge of the problem, and the level of
+quality of the solution.
+-
+
+How challenging was the project?
+
+-
+
+How well were the objectives achieved?
+
+-
+
+How properly packaged are the deliverables?
+Would you be able to experiment with the prototype without much hassle?
+What is the technical quality of the work that was achieved?
+
+< 15 Did not deliver something of the correct scope or technical quality expected.
+15 – 17 Barely meets the minimum requirements for this scope of project. The group has a working
+prototype to show addressing a suitable problem.
+18 – 20 - The group achieved something of good quality, but there was much room for improvement.
+21 – 23 The group has performed as well as you could have expected them to at this level. They chose a
+good problem and have a good solution to it.
+24 – 26 The group has tackled a challenging problem, and succeeded in developing a suitable solution
+for it, or has delivered an outstanding solution to a good problem.
+27 – 29 The group has tackled a very challenging problem and delivered an outstanding solution to it.
+30 – The group has tackled a very challenging problem, delivered an outstanding solution to it, and this
+exceeds any expectation for any student at their level at any university.
+INDIVIDUAL REPORT 20%
+Each individual member will submit a one page report describing one chosen task from the group
+project where they were the main (or solo) contributor to. The task can be chosen amongst all tasks in
+the project, and the student should pick the one that they believe will give them the best chance for
+high marks. These can be implementation or management tasks.
+Reports are marked in the same rubrics:
+Clarity of Presentation (5), Technical Soundness (5), Task scope and Deliverables (10)
+
+POSTER 5%
+Posters are marked from 0-10 on their overall quality. They should not only be visually appealing, but
+also contain a good summary of the work that has been carried out, with the main findings and method.
+The poster should work as a good support for the group during their presentation in the poster session.
+It should also be understandable without the support of the authors.
+
+< 5 Fails to communicate the project in any aspect. If you read it without the group, you have no idea
+what happened.
+5: Provides a minimal acceptable summary of the work that was carried out.
+6: Provides a decent summary of the work. You can understand clearly what was achieved. There are
+still aspects of it that could be improved with the presentation or content.
+7: Good quality poster. Has all the right amount of detail and exposition, and uses high quality visuals.
+8: Eye-catching poster with an excellent summary of the work. Space was used very efficiently, supports
+the group in a good way.
+9: This is a great example of a poster that any academic should aim to have when submitting to
+conferences.
+10: This is a poster that should be framed and hanged in our school for years to come.
+SHOWCASE VIDEO 5%
+Showcase videos are marked from 0-10 on their overall quality. They should work as a standalone short
+presentation of the work. While visual quality will be rewarded, the main focus is on how well it works
+as a presentation.
+<5 Not sufficient effort to introduce the work. Does not allow one to understand what the project was
+about, or what it achieved.
+5: Sufficient presentation with sufficient use of visuals to communicate about the achievements project.
+Either aspect could be majorly improved.
+6: Good presentation with the support of nice visuals. Clear communication about the project, with
+aspects that could have been easily improved.
+7: Great presentation with high quality visuals. Works well as a standalone presentation, and
+compliments the report and poster with extra information that improve the understanding of the
+project.
+8: High quality standalone video and presentation of work, which would lead someone to look for
+further details about this project.
+9: Outstanding showcase video which allows even layman audiences to fully understand the project.
+10: Incredible video that rivals levels of product launches from big companies or videos from top tier
+academic publications.
+
+

@@ -1,0 +1,15 @@
+Welcome to Ubiquitous Reality, a game engine designed for unique stylization, vehicle-based physics, and game performance. At its core, UbiquiR uses an entity component system that allows the developer to create and manage any number of unique or repeated entities across custom-created scenes. Control and interaction are handled through our custom interfacing system, GameWares. GameWares act as the gateway to all features, supporting custom logic, entity pooling, and seamless access to all engine systems.
+
+Here you can see our appalling system in action. In this example, each gameware shares a custom script which can spawn additional instances of itself. Our robust event handling system enables objects to listen and respond to events from the engine or custom created events created by the developer. In this example, enemies, bullets and players all listen for the level reset event and reset back to the level's starting state.
+
+Physics simulation is powered by the Jolt Physics library, which we use to handle realistic car behaviour and camera collision detection on top of the standard physics computations. Our camera system uses shape casting to prevent clipping into walls, ensuring smooth and unobstructed visual tracking. Rigidbody and Collider components have been implemented to give the developer control over different collision layers and motion types provided by Jolt.
+
+Input is managed using GLFW and SDL, allowing full support for keyboard, mouse and controllers, along with haptic feedback and runtime key remapping. Audio integration is handled via the Soloud library. Developers can attach spatial sound to gamewares using their inbuilt transform data, and also play background music using the built-in playlists.
+
+Rendering is Vulkan based, using high resolution shadow maps that follow the player, maintaining sharp, artifact-free shadows. Visual output includes physically based rendering with BRDF shading, emissive intensity controls, alpha masking and per-object stylization. Multi-sampling anti-aliasing is supported at the maximum level allowed by the device.
+
+The engine allows the developer to use a unique skybox per scene, with a lighting system which supports numerous point lights with attenuation without significant performance overhead. A wide range of post-processing effects are available out of the box. This includes bloom, chromatic aberration, toon shading, motion blur, and artistic stylization such as the energy ball. Some of these styles can even be applied per object for hybrid rendering.
+
+Additional filters include FXAA for edge smoothing and sharpening for improved image clarity. For game development debugging, we use DRAM GUI to provide live tuning of scene component and rendering parameters. With this, the engine provides live GPU and frame time profiling. Lastly, saving and loading are supported via JSON files and shipped with our scoreboarding features, allowing for high scores to remain in between game sessions.
+
+Thank you for watching our presentation. We hope you enjoyed the demonstration.
