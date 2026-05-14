@@ -25,7 +25,7 @@
 
 \author{Sicheng Chen}
 \authornote{Sharing first authorship}
-\email{sc22sg@leeds.ac.uk}
+\email{sc22s3c@leeds.ac.uk}
 
 \author{Samuil Georgiev}
 \authornotemark[1]
@@ -33,15 +33,15 @@
 
 \author{Qidan Guo}
 \authornotemark[1]
-\email{sc22sg@leeds.ac.uk}
+\email{dhfc0067@leeds.ac.uk}
 
-\author{Harry Li}
+\author{Junxian Li}
 \authornotemark[1]
-\email{sc22sg@leeds.ac.uk}
+\email{jmhz0887@leeds.ac.uk}
 
 \author{Chenghao Zhu}
 \authornotemark[1]
-\email{sc22sg@leeds.ac.uk}
+\email{wqgc0081@leeds.ac.uk}
 
 \author{Rafael Kuffner dos Anjos}
 \authornote{Supervisor}
@@ -57,7 +57,7 @@
 }
 
 \begin{abstract}
-  \textcolor{blue}{This section here is the abstract, which is a summary of your work in no more than \textbf{150 words}.}
+
   As game engines evolve into monolithic toolsets, they introduce unnecessary overhead for genre-specific applications. We present our custom, performance-focused game engine built entirely in C++, leveraging Vulkan for rendering, Flecs for Entity-Component-System (ECS) data locality, and Jolt Physics for deterministic vehicular simulation. By utilizing a pure ECS paradigm, we achieve high-performance entity management with negligible CPU bottlenecks. To demonstrate the engine, we developed a fast-paced bicycle action game requiring high-speed collision resolution and physics-driven mechanics. Our engine development focused on a robust core loop, hardware-accelerated Vulkan rendering, tuned rigid-body dynamics, and comprehensive tooling. The resulting Steer Engine reliably powers the vehicular demo, validating that targeted architectures can outperform generalized engines for specific domains.
 \end{abstract}
 
@@ -96,11 +96,6 @@
 \maketitle
 
 \section{Introduction}
-\textcolor{blue}{The introduction of your report must give the reader some context, motivation for choosing this as a project, describing what you did, and giving a sneak peak of your results.
-This works as a way of getting someone to read the rest of the paper, almost like a pitch.
-The whole report should be no more than 12 pages, references and figures included. 
-4 Pages are reserved for project management on the appendix. }
-
 As game engines have evolved into monolithic toolsets (e.g., Unreal Engine, Unity), they inherently provide generalized architectures to cater to a massive variety of genres. While convenient, this generalization introduces unnecessary overhead, convoluted component hierarchies, and rigidity that can hinder performance-critical, genre-specific applications. We present our custom, performance-focused game engine built entirely in C++, leveraging the explicit graphics control of Vulkan, the rigorous data-locality of Flecs (an Entity-Component-System), and the deterministic physical simulation capabilities of Jolt Physics.
 
 Our primary goal was to construct a scalable architecture specialized in vehicular mechanics and expansive environments, while maintaining the flexibility to incorporate advanced stylisation and rendering features. By abandoning deep inheritance trees in favor of a pure ECS paradigm, we achieve high-performance entity management, capable of handling complex level assemblies with negligible CPU bottlenecks.
@@ -119,13 +114,6 @@ While early prototypes lacked full audiovisual polish, the core engine loop now 
 
 \section{Background Research}
 \label{sec:background}
-\textcolor{blue}{Your background research should include a detailed review of known industry/academic work, and how they relate to what you want to do.
-It should not be simply a list of papers/methods with a short description about them.
-Instead, it should put them in context, establishing relationships, differences, highlights, limitations, and ultimately relating them to your proposed work. 
-You should not need to explain concepts that are already known by the reader. 
-The readers for your project will be academic staff at this university, so while there are some concepts that are important to introduce, you do not need to explain what a computer is. 
-Remember the old saying: Don't preach to the choir.
-Overall, this section should allow readers to understand what people in this field have been doing.}
 
 \subsection{Game Engines and Architectural Patterns: OOP vs. ECS}
 Modern game development largely depends on foundational software frameworks known as game engines. Historically, engines have relied heavily on deep inheritance structures and Object-Oriented Programming (OOP) to manage entities, a pattern extensively documented by Jason Gregory in his seminal work \textit{Game Engine Architecture} \cite{GameEngineArch}. For example, a game entity might inherit from \texttt{GameObject}, which inherits from \texttt{Transformable}, which inherits from \texttt{BaseNode}.
@@ -426,16 +414,6 @@ For rotation, we completely decouple the camera's pitch and roll from the bicycl
 The camera position $\mathbf{p}_{\text{cam}}$ is computed in spherical coordinates relative to a target point $\mathbf{t}$ offset above the player, parameterised by orbital distance $d$, yaw $\theta$, and pitch $\phi$. Each parameter is smoothed per frame via an exponential spring-damper with stiffness $s = 6.0$, interpolating towards the target orbit as $\theta(t + \Delta t) = \theta(t) + (\theta_{\text{target}} - \theta(t)) \cdot s \cdot \Delta t$, and analogously for $\phi$ and $d$. The final view matrix is constructed via $\text{lookAt}(\mathbf{p}_{\text{cam}},\,\mathbf{t},\,\hat{\mathbf{u}}_{\text{dyn}})$. This spring-damped orbit ensures the player remains comfortably centered in the frame, while the physical bicycle is allowed to dynamically bounce and bank independently beneath the focal point.
 
 \section{Evaluation}
-\textcolor{blue}{This section should cover how your project was evaluated. 
-Regardless of the goal you are trying to achieve, a well designed evaluation should be considered. 
-This section should describe what are the components you are trying to evaluate, and how the tests executed were the right ones for the purpose. 
-This should be separated from considerations, as you might need to run several separate evaluations, and report distinct set of results that should be considered together. 
-Use tables and graphs to communicate your results in an aggregated way, presenting the necessary information for the reader to comprehend your results quickly. 
-While you could provide extra data in appendix, all that is necessary for comprehension of your results should be in the body of the report. 
-Anyone reviewing your submission should not need to look at appendix to understand a core part of your manuscript. 
-The appendix is not a workaround to the page limit, it is a bonus for really interested people. 
-A good rule of thumb is: if my appendix is deleted, my report should still be comprehensible. 
-}
 
 To rigorously assess the technical soundness of our custom engine, we established specific testing methodologies targeting rendering efficiency, OS-level driver overhead, and hardware scaling. 
 
@@ -493,9 +471,6 @@ While the OMEN15 produced $111.6$ FPS (Off) and $113.5$ FPS (On), the high-end U
 With the V-Sync limit removed, the RTX 4070 demonstrated massive processing headroom, skyrocketing to $296.1$ FPS (Off) and $301.8$ FPS (On). This nearly 2.6x performance delta compared to the GTX 1660 Ti definitively proves that the engine's underlying architecture scales exceptionally well on high-end desktop hardware when not bottlenecked by synchronization limits.
 
 \section{Discussion}
-\textcolor{blue}{This is where you actually draw conclusions from your results, and discuss how successful or not things were. 
-This is where we would like to see your critical analysis of the method and the results. 
-Provide unique insights on why do you think you achieved the results you did in the previous section, do not limit yourself to stating the obvious.}
 
 Building a custom Vulkan engine from the ground up to support a specialized vehicular game was an immensely challenging but rewarding endeavor. Rather than battling the generalized rigidity of an engine like Unreal, we were able to surgically optimize our collision detection and memory layout for exactly what we needed.
 
@@ -508,16 +483,13 @@ Our decision to use pure ECS (Flecs) came with a steep learning curve. While it 
 Additionally, the initial challenges with gameplay integration for our Particle System have been resolved, allowing for synchronized visual effects (like booster explosions and tire smoke) directly tied to event triggers. Similarly, the successful integration of the Miniaudio \texttt{AudioSystem} significantly elevates the game feel, ensuring that collecting boosters and landing jumps are accompanied by impactful, low-latency auditory feedback.
 
 \section{Conclusion}
-\textcolor{blue}{Here you draw things to a close.
-It should be a much shorter version of your introduction, without the motivation part, but focusing on your results, and what it leads to going forward. 
-You can have clear sections for limitations and future work, or work it into the text of your conclusion.}
 
 The Steer Engine successfully demonstrates that a targeted, performance-centric architecture can yield rapid, flexible development for specialized games. By marrying the data-locality of Flecs ECS with the raw performance of Vulkan and Jolt Physics, we established a pipeline capable of processing complex level geometry, PBR lighting, and robust vehicular dynamics.
 
 Having successfully integrated full skeletal animation IK and a robust sound system, the demo game delivers a highly polished experience. The core loop proves the engine's capability to seamlessly handle event-driven gameplay logic, concurrent physics simulation, and dynamic audio-visual feedback simultaneously. This loop consists of traversing the level, collecting boosters, gaining speed, and clearing the ramp. The project succeeded in its primary goal: establishing a technical foundation that out-performs generalised architectures for this specific domain.
 
 \begin{acks}
-The group are thankful to the university staff and TAs for their guidance and feedback throughout the project.
+We thank our supervisor Rafael Kuffner dos Anjos, the teaching staff, our classmates, and our families for their invaluable support and guidance.
 \end{acks}
 
 \begin{thebibliography}{99}
@@ -580,7 +552,7 @@ Do not go into long narratives, but this should highlight the good match between
 Mention how often you had contact with your supervisor, and rough structure of these meetings. 
 It should be clear what was their goal. }
 
-Text
+Our group was uniquely formed by the teaching staff through the strategic merger of three distinct project pitches: a high-speed bicycle action game, an endless-runner title, and a realistic rocket launch simulator. This synthesis of ideas presented both a creative challenge and a unique technical opportunity. We were assigned Rafael Kuffner dos Anjos as our supervisor, whose expertise in high-performance rendering and real-time systems aligned perfectly with our technical ambitions. To ensure a cohesive and achievable project scope, we diplomatically consolidated our vision: we prioritized the high-performance bicycle dynamics as the core gameplay loop, integrated the rocket launch concept as an immersive environmental backdrop, and respectfully pivoted away from the endless-runner mechanics to maintain architectural focus. Throughout the development cycle, we held regular bi-weekly meetings with Rafael, which proved essential for unblocking technical hurdles related to Vulkan synchronization and complex rigid-body constraints.
 
 \subsection{Group organization}
 \textcolor{blue}{What was the adopted development strategy?
@@ -595,9 +567,11 @@ What measures you had in place to keep everyone in track?
 What measures you had in place to ensure deadlines were met?
 What measures you had in place to evenly distribute work?}
 
-The group dynamic was generally very positive, though it naturally experienced the stress associated with impending deadlines. We established a shared technical vocabulary early on and communicated primarily through a shared Discord server, documenting our API contracts meticulously.
+The group dynamic was generally very positive, though it naturally experienced the stress associated with impending deadlines. We established a shared technical vocabulary early on and communicated primarily through a shared Discord server, documenting our API contracts meticulously. 
 
-Work distribution was handled fairly and transparently based on individual strengths and interests. The labor was divided across major systems: the Vulkan Renderer Port and Shadow System, Jolt Physics Integration and vehicle control, Flecs ECS integration, and overarching Scene Management. Sometimes team members struggled with specific issues, such as mapping Linux Xbox controller inputs into the generic Input System. When this happened, those who had finished their tasks early stepped in to pair-program solutions. We utilized a strict Git branching strategy (\texttt{feature/} branches merging into main), preventing individual experiments from breaking the master build. Features deemed too complex for the timeframe, such as the Animation State Machine, were collectively agreed upon to be marked as 'in development' to prevent burnout.
+We adopted an agile development strategy, utilizing Git and GitHub for rigorous version control and Discord for near-instantaneous communication. To maintain momentum, Samuil and Sicheng shared managerial responsibilities; Samuil established the initial Gantt charts and high-level task distributions, while Sicheng managed the day-to-day agile tracking by creating and updating granular tasks on our Trello board.
+
+Work distribution was handled fairly and transparently based on individual strengths and interests. The labor was divided across major systems: the Vulkan Renderer Port and Shadow System, Jolt Physics Integration and vehicle control, Flecs ECS integration, and overarching Scene Management. Implementing general controller support was initially a significant hurdle, particularly when handling device-specific polling on Linux; however, the team resolved this by completely refactoring the Input System to integrate natively with the Flecs ECS, which ultimately made the controller implementation seamless and decoupled from the main loop. When specific technical bottlenecks occurred, team members who had finished their tasks early stepped in to pair-program solutions. We utilized a strict Git branching strategy (\texttt{feature/} branches merging into main), preventing individual experiments from breaking the master build. Features deemed too complex for the timeframe, such as a full Animation State Machine, were collectively agreed upon to be postponed to ensure the stability of the core simulation.
 
 \subsection{Planning and execution}
 \textcolor{blue}{This should contain two gantt charts: the initial planning, and what actually ended up happening.
@@ -615,11 +589,31 @@ The most significant test of our adaptability occurred mid-semester during a maj
 \textcolor{blue}{Overall conclusion of the project from a management point of view. 
 Besides the technological and scientific aspects of your project, what did you learn as a group, and how may that be useful in the workforce, hopefully soon? Please provide individual reflections from different group members. Group please make sure what they say is true.}
 
-This project was a crucible for developing professional soft skills that go far beyond the taught material. First and foremost, we learned the critical importance of \textbf{Technical Negotiation}. When integrating different systems, we frequently had to negotiate API boundaries. Learning how to compromise and design components to satisfy both rendering and physics requirements without causing friction was a massive learning experience.
+This project was a crucible for developing professional soft skills that go far beyond the taught material. First and foremost, we learned the critical importance of \textbf{Technical Negotiation}. When integrating different systems, we frequently had to negotiate internal C++ subsystem interfaces and component boundaries. Learning how to compromise and design components to satisfy both rendering and physics requirements without causing friction was a massive learning experience.
 
 Secondly, we developed robust \textbf{Agile Adaptability}. Scrapping the ICBM game taught us not to succumb to the "sunk cost fallacy." In the real workforce, requirements change, and features get cut. Learning to emotionally detach from discarded code and pivot towards a more viable product is an invaluable skill.
 
 Finally, we refined our \textbf{Cross-Disciplinary Communication}. Writing engine code requires explaining abstract memory management concepts to team members focused on level design. We learned how to write clear, concise documentation and how to give constructive code reviews that focused on logic and performance rather than personal coding styles.
+
+\subsection{Individual reflections}
+\textbf{Sicheng Chen}: Leading the development of the Visual UI Editor allowed me to bridge the gap between low-level Vulkan rendering and high-level tool design. Managing our Agile workflow via Trello taught me how to balance technical debt with feature velocity in a high-pressure environment.
+
+\textbf{Samuil Georgiev}: Integrating Jolt Physics and architecting the initial renderer skeleton was a deep dive into deterministic simulation and modern graphics pipelines. I learned that project management is as much about clear initial distribution as it is about technical execution.
+
+\textbf{Qidan Guo}: Implementing the Particle System and optimizing it via GPU instancing provided a practical understanding of hardware-accelerated visual effects. I gained significant experience in managing memory layouts to ensure high performance across different hardware profiles.
+
+\textbf{Junxian Li}: Developing the Audio System using miniaudio and implementing the engine's Event System taught me the importance of decoupled communication in a complex codebase. I now better understand how to design robust interfaces that can handle asynchronous game events without introducing circular dependencies.
+
+\textbf{Chenghao Zhu}: Focusing on the Skeletal Animation System and the Inverse Kinematics solver was a challenging exercise in 3D mathematics and component-based logic. This role improved my ability to implement complex mathematical models within a data-oriented ECS framework.
+
+\section{Summary of Contributions}
+\begin{itemize}
+    \item \textbf{Sicheng Chen}: Project Management (Agile Trello tracking), Visual UI Editor development, UI Compiler, Runtime UI Debugging panels, and Asset Serialization.
+    \item \textbf{Samuil Georgiev}: Project Management (Gantt charts \& initial distribution), Jolt Physics integration, Input System \& Controller support, Initial Renderer skeleton, Original Shadow implementation, Showcase Poster, and Report Writing.
+    \item \textbf{Qidan Guo}: Particle System implementation, GPU Instancing optimization, Compute Shader infrastructure, and Technical Documentation.
+    \item \textbf{Junxian Li}: Audio System integration (Miniaudio), Event System architecture, Observer pattern implementation, and Input Mapping.
+    \item \textbf{Chenghao Zhu}: Skeletal Animation System, 2-Bone IK Solver, GLTF Asset Pipeline, and Scene Management core.
+\end{itemize}
 
 \section{How ethical issues are addressed}
 \textcolor{blue}{This is a University requirement. See Resources on 'Ethics relevant to computing projects' for guidance and discuss it with your supervisor. If no ethical issue is involved, a sentence to that effect will suffice.}
