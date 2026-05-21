@@ -77,14 +77,17 @@ void main() {
     //  【核心修复 1】：彻底移除 0.5 的强制厚度！完全信任外部传入的严格厚度
     float adaptiveThickness = pc.thickness;
 
+   // =========================================================
+    // 3. 移除随机起点抖动 (Jittering)，还你一个纯净的镜面！
     // =========================================================
-    // 3. 应用随机起点抖动 (Jittering)
-    // =========================================================
-    float jitter = hash(gl_FragCoord.xy);
-    //vec3 currentPos = viewPos + reflectDir * (0.1 + jitter * dynamicStepSize);
-    vec3 currentPos = viewPos + normalView * 0.05 + reflectDir * (0.05 + jitter * dynamicStepSize);
+    // 注释掉这两行：
+    // float jitter = hash(gl_FragCoord.xy);
+    // vec3 currentPos = viewPos + normalView * 0.05 + reflectDir * (0.05 + jitter * dynamicStepSize);
+    
+    // 替换为这行纯净平滑的起点：
+    vec3 currentPos = viewPos + normalView * 0.05 + reflectDir * 0.05;
+    
     vec3 lastPos = currentPos; // 记录上一步的位置，为二分查找做准备
-
     // =========================================================
     // 4. 开始 Ray Marching
     // =========================================================
