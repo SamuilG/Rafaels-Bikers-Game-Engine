@@ -496,6 +496,7 @@ namespace engine {
 
             mPipe = create_triangle_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
             mAlphaPipe = create_alpha_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+            mPortalSurfacePipe = create_portal_surface_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
             mThumbnailAlphaPipe = create_alpha_pipeline_1_attachment(mWindow, mPipeLayout.handle, VK_FORMAT_R8G8B8A8_UNORM);
             mMipPipe = create_debug_pipeline(mWindow, mPipeLayout.handle, cfg::kDebugVertShaderPath, cfg::kDebugMipFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT);
             mDepthPipe = create_debug_pipeline(mWindow, mPipeLayout.handle, cfg::kDebugVertShaderPath, cfg::kDebugDepthFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT);
@@ -529,6 +530,12 @@ namespace engine {
 
             mDepthBuffer = create_depth_buffer(mWindow, mAllocator);
             mOffscreenImage = create_offscreen_buffer(mWindow, mAllocator);
+            mPortalColorImage = create_offscreen_buffer(mWindow, mAllocator);
+            mPortalBrightImage = create_offscreen_buffer(mWindow, mAllocator);
+            mPortalNormalImage = create_normal_buffer(mWindow, mAllocator);
+            mPortalDepthImage = create_depth_buffer(mWindow, mAllocator);
+            mPortalSurfaceDesc = BuildPortalSurfaceDesc(mPortalColorImage.view);
+            CreatePortalSurfaceMesh();
 
             // 【清理修复】：SSR 只初始化这一次！
             mNormalImage = create_normal_buffer(mWindow, mAllocator);
@@ -1289,6 +1296,7 @@ namespace engine {
                 if (changes.changedFormat) {
                     mPipe = create_triangle_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
                     mAlphaPipe = create_alpha_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+                    mPortalSurfacePipe = create_portal_surface_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
                     mThumbnailAlphaPipe = create_alpha_pipeline_1_attachment(mWindow, mPipeLayout.handle, VK_FORMAT_R8G8B8A8_UNORM);
                     mMipPipe = create_debug_pipeline(mWindow, mPipeLayout.handle, cfg::kDebugVertShaderPath, cfg::kDebugMipFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT);
                     mDepthPipe = create_debug_pipeline(mWindow, mPipeLayout.handle, cfg::kDebugVertShaderPath, cfg::kDebugDepthFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT);
@@ -1305,6 +1313,11 @@ namespace engine {
                     // 1. 重建所有与屏幕尺寸绑定的画板 (Image)
                     mDepthBuffer = create_depth_buffer(mWindow, mAllocator);
                     mOffscreenImage = create_offscreen_buffer(mWindow, mAllocator);
+                    mPortalColorImage = create_offscreen_buffer(mWindow, mAllocator);
+                    mPortalBrightImage = create_offscreen_buffer(mWindow, mAllocator);
+                    mPortalNormalImage = create_normal_buffer(mWindow, mAllocator);
+                    mPortalDepthImage = create_depth_buffer(mWindow, mAllocator);
+                    WritePortalSurfaceDesc(mPortalSurfaceDesc, mPortalColorImage.view);
                     mVisImage = create_vis_image(mWindow, mAllocator);
                     mNormalImage = create_normal_buffer(mWindow, mAllocator);
                     mSsrOutputImage = create_offscreen_buffer(mWindow, mAllocator);
@@ -1768,6 +1781,13 @@ namespace engine {
                     static_cast<glm::mat4*>(ptr), kMaxBoneMatrices, boneCount);
                 vmaUnmapMemory(mAllocator.allocator, mBoneSSBO.allocation);
             }
+
+            glsl::SceneUniform portalSceneUniform = BuildPortalSceneUniform(sceneUniforms, finalWidth, finalHeight);
+            const bool portalEnabledForFrame = mPortalEnabled && mState->renderMode == 0;
+            ImageAndView portalColorTarget{ mPortalColorImage.image, mPortalColorImage.view };
+            ImageAndView portalBrightTarget{ mPortalBrightImage.image, mPortalBrightImage.view };
+            ImageAndView portalNormalTarget{ mPortalNormalImage.image, mPortalNormalImage.view };
+            ImageAndView portalDepthTarget{ mPortalDepthImage.image, mPortalDepthImage.view };
             // =========================================================
             // Record and submit commands for this frame
             // 在 Update 函数末尾找到 record_commands 调用，修改如下：
@@ -1863,7 +1883,17 @@ namespace engine {
                 mSkyboxPipe.handle,
                 mSkyboxPipeLayout.handle,
                 mSkyboxDescSet,
-                mSkyboxVBO.buffer
+                mSkyboxVBO.buffer,
+                portalEnabledForFrame,
+                &portalSceneUniform,
+                &portalColorTarget,
+                &portalBrightTarget,
+                &portalNormalTarget,
+                &portalDepthTarget,
+                mPortalSurfacePipe.handle,
+                mPortalSurfaceDesc,
+                mPortalMeshIndex,
+                &mPortalSurfaceTransform
             );
 			//clear debug renderer data after uploading
             mDebugRenderer.Clear();
@@ -2068,6 +2098,26 @@ namespace engine {
             return static_cast<uint32_t>(mModel.materials.size());
         }
 
+        void SetPortalPreview(
+            const glm::mat4& surfaceTransform,
+            const glm::vec3& cameraPosition,
+            const glm::vec3& cameraTarget,
+            const glm::vec3& cameraUp = glm::vec3(0.0f, 1.0f, 0.0f),
+            float fovDegrees = 75.0f)
+        {
+            mPortalEnabled = true;
+            mPortalSurfaceTransform = surfaceTransform;
+            mPortalCameraPosition = cameraPosition;
+            mPortalCameraTarget = cameraTarget;
+            mPortalCameraUp = glm::dot(cameraUp, cameraUp) > 0.0001f ? glm::normalize(cameraUp) : glm::vec3(0.0f, 1.0f, 0.0f);
+            mPortalCameraFovDegrees = std::clamp(fovDegrees, 20.0f, 120.0f);
+        }
+
+        void DisablePortalPreview()
+        {
+            mPortalEnabled = false;
+        }
+
         // Allow application to pass in the input system
         void SetInputSystem(engine::InputSystem* sys) { mInputSystem = sys; }
 
@@ -2171,6 +2221,94 @@ namespace engine {
             vkUpdateDescriptorSets(mWindow.device, 1, &write, 0, nullptr);
         }
     private:
+
+        void CreatePortalSurfaceMesh()
+        {
+            if (mPortalMeshIndex != UINT32_MAX) {
+                return;
+            }
+
+            EngineMesh mesh{};
+            mesh.positions = {
+                {-0.5f, -0.5f, 0.0f},
+                { 0.5f, -0.5f, 0.0f},
+                { 0.5f,  0.5f, 0.0f},
+                {-0.5f,  0.5f, 0.0f}
+            };
+            mesh.texcoords = {
+                {0.0f, 1.0f},
+                {1.0f, 1.0f},
+                {1.0f, 0.0f},
+                {0.0f, 0.0f}
+            };
+            mesh.normals = {
+                {0.0f, 0.0f, 1.0f},
+                {0.0f, 0.0f, 1.0f},
+                {0.0f, 0.0f, 1.0f},
+                {0.0f, 0.0f, 1.0f}
+            };
+            mesh.indices = { 0, 1, 2, 2, 3, 0 };
+            mesh.localAabbMin = glm::vec3(-0.5f, -0.5f, -0.01f);
+            mesh.localAabbMax = glm::vec3(0.5f, 0.5f, 0.01f);
+
+            mPortalMeshIndex = static_cast<uint32_t>(mModel.meshes.size());
+            mModel.meshes.push_back(mesh);
+            UploadSingleMesh(mModel.meshes.back());
+        }
+
+        VkDescriptorSet BuildPortalSurfaceDesc(VkImageView portalView)
+        {
+            VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, mObjectLayout.handle);
+            WritePortalSurfaceDesc(ds, portalView);
+            return ds;
+        }
+
+        void WritePortalSurfaceDesc(VkDescriptorSet ds, VkImageView portalView)
+        {
+            if (ds == VK_NULL_HANDLE || portalView == VK_NULL_HANDLE) {
+                return;
+            }
+
+            VkDescriptorImageInfo imgs[6]{};
+            imgs[0] = { mDefaultSampler.handle, portalView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            imgs[1] = { mDefaultSampler.handle, mDefaultGrayView.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            imgs[2] = { mDefaultSampler.handle, mDefaultGrayView.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            imgs[3] = { mDefaultSampler.handle, mDefaultBlackView.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            imgs[4] = { mDefaultSampler.handle, mDefaultNormalView.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            imgs[5] = { mDefaultSampler.handle, mDefaultGrayView.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+
+            VkWriteDescriptorSet writes[6]{};
+            for (uint32_t i = 0; i < 6; ++i) {
+                writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                writes[i].dstSet = ds;
+                writes[i].dstBinding = i;
+                writes[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                writes[i].descriptorCount = 1;
+                writes[i].pImageInfo = &imgs[i];
+            }
+
+            vkUpdateDescriptorSets(mWindow.device, 6, writes, 0, nullptr);
+        }
+
+        glsl::SceneUniform BuildPortalSceneUniform(glsl::SceneUniform const& baseUniform, float width, float height) const
+        {
+            glsl::SceneUniform portalUniform = baseUniform;
+            const float aspect = std::max(width, 1.0f) / std::max(height, 1.0f);
+            const float fov = glm::radians(mPortalCameraFovDegrees);
+
+            glm::vec3 target = mPortalCameraTarget;
+            if (glm::dot(target - mPortalCameraPosition, target - mPortalCameraPosition) < 0.0001f) {
+                target = mPortalCameraPosition + glm::vec3(0.0f, 0.0f, -1.0f);
+            }
+
+            portalUniform.camera = glm::lookAt(mPortalCameraPosition, target, mPortalCameraUp);
+            portalUniform.projection = glm::perspectiveRH_ZO(fov, aspect, cfg::kCameraNear, cfg::kCameraFar);
+            portalUniform.projection[1][1] *= -1.0f;
+            portalUniform.projCam = portalUniform.projection * portalUniform.camera;
+            portalUniform.cameraPos = glm::vec4(mPortalCameraPosition, 1.0f);
+            portalUniform.renderMode = 0;
+            return portalUniform;
+        }
 
         UserState* mState = nullptr;
 
@@ -2705,6 +2843,7 @@ void InitSkybox()
         lut::PipelineLayout      mPipeLayout, mPostPipeLayout;
 
         lut::Pipeline mPipe, mAlphaPipe;
+        lut::Pipeline mPortalSurfacePipe;
         lut::Pipeline mMipPipe, mDepthPipe, mDerivPipe;
         lut::Pipeline mOverdrawPipe, mOvershadingPipe;
         lut::Pipeline mPostProcPipe, mVisResolvePipe;
@@ -2776,6 +2915,18 @@ void InitSkybox()
         // Render targets
         lut::ImageWithView mDepthBuffer;
         lut::ImageWithView mOffscreenImage;
+        lut::ImageWithView mPortalColorImage;
+        lut::ImageWithView mPortalBrightImage;
+        lut::ImageWithView mPortalNormalImage;
+        lut::ImageWithView mPortalDepthImage;
+        VkDescriptorSet    mPortalSurfaceDesc = VK_NULL_HANDLE;
+        uint32_t           mPortalMeshIndex = UINT32_MAX;
+        bool               mPortalEnabled = false;
+        glm::mat4          mPortalSurfaceTransform = glm::mat4(1.0f);
+        glm::vec3          mPortalCameraPosition = glm::vec3(0.0f, 10.0f, 0.0f);
+        glm::vec3          mPortalCameraTarget = glm::vec3(0.0f, 10.0f, -1.0f);
+        glm::vec3          mPortalCameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
+        float              mPortalCameraFovDegrees = 75.0f;
         lut::ImageWithView mVisImage;
         lut::ImageWithView mShadowMap;
         std::vector<VkImageView> mShadowCascadeViews;

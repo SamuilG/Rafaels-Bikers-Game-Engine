@@ -115,7 +115,17 @@ void record_commands(
 	VkPipeline skyboxPipe,
 	VkPipelineLayout skyboxPipeLayout,
 	VkDescriptorSet skyboxDescSet,
-	VkBuffer skyboxVBO
+	VkBuffer skyboxVBO,
+	bool aPortalEnabled,
+	glsl::SceneUniform const* aPortalSceneUniform,
+	ImageAndView const* aPortalColor,
+	ImageAndView const* aPortalBright,
+	ImageAndView const* aPortalNormal,
+	ImageAndView const* aPortalDepth,
+	VkPipeline aPortalSurfacePipe,
+	VkDescriptorSet aPortalSurfaceDesc,
+	uint32_t aPortalMeshIndex,
+	glm::mat4 const* aPortalSurfaceTransform
 )
 {
 	// Begin command buffer
@@ -130,10 +140,14 @@ void record_commands(
 		);
 	}
 
-	// Upload scene UBO (with barriers)
-	lut::buffer_barrier(aCmdBuff, aSceneUBO, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_ACCESS_UNIFORM_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
-	vkCmdUpdateBuffer(aCmdBuff, aSceneUBO, 0, sizeof(glsl::SceneUniform), &aSceneUniform);
-	lut::buffer_barrier(aCmdBuff, aSceneUBO, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_ACCESS_UNIFORM_READ_BIT);
+	auto uploadSceneUniform = [&](glsl::SceneUniform const& sceneUniform) {
+		constexpr VkPipelineStageFlags kShaderStages = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+		lut::buffer_barrier(aCmdBuff, aSceneUBO, kShaderStages, VK_ACCESS_UNIFORM_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+		vkCmdUpdateBuffer(aCmdBuff, aSceneUBO, 0, sizeof(glsl::SceneUniform), &sceneUniform);
+		lut::buffer_barrier(aCmdBuff, aSceneUBO, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, kShaderStages, VK_ACCESS_UNIFORM_READ_BIT);
+	};
+
+	uploadSceneUniform(aSceneUniform);
 
 	// ---------------------------
 	// Shadow pass (保持原实现)
@@ -266,6 +280,152 @@ void record_commands(
 			VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
 			VkImageSubresourceRange{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, kCascadeCount }
 		);
+	}
+
+	const bool portalReady =
+		aPortalEnabled &&
+		aPortalSceneUniform != nullptr &&
+		aPortalColor != nullptr &&
+		aPortalBright != nullptr &&
+		aPortalNormal != nullptr &&
+		aPortalDepth != nullptr &&
+		aPortalSurfacePipe != VK_NULL_HANDLE &&
+		aPortalSurfaceDesc != VK_NULL_HANDLE &&
+		aPortalSurfaceTransform != nullptr &&
+		aPortalMeshIndex < aMeshInfos.size();
+
+	if (portalReady)
+	{
+		uploadSceneUniform(*aPortalSceneUniform);
+
+		VkImageSubresourceRange portalColorRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+		VkImageSubresourceRange portalDepthRange{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
+
+		lut::image_barrier(aCmdBuff, aPortalColor->image,
+			VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, portalColorRange);
+		lut::image_barrier(aCmdBuff, aPortalBright->image,
+			VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, portalColorRange);
+		lut::image_barrier(aCmdBuff, aPortalNormal->image,
+			VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, portalColorRange);
+		lut::image_barrier(aCmdBuff, aPortalDepth->image,
+			VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+			VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
+			VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, portalDepthRange);
+
+		VkRenderingAttachmentInfo portalDepthAtt{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+		portalDepthAtt.imageView = aPortalDepth->view;
+		portalDepthAtt.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		portalDepthAtt.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		portalDepthAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+		portalDepthAtt.clearValue.depthStencil = { 1.f, 0 };
+
+		VkRenderingAttachmentInfo portalColorAtts[3]{};
+		portalColorAtts[0].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+		portalColorAtts[0].imageView = aPortalColor->view;
+		portalColorAtts[0].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		portalColorAtts[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		portalColorAtts[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+		portalColorAtts[0].clearValue.color = { 0.02f, 0.03f, 0.05f, 1.0f };
+
+		portalColorAtts[1] = portalColorAtts[0];
+		portalColorAtts[1].imageView = aPortalBright->view;
+		portalColorAtts[1].clearValue.color = { 0.f, 0.f, 0.f, 1.f };
+
+		portalColorAtts[2] = portalColorAtts[0];
+		portalColorAtts[2].imageView = aPortalNormal->view;
+		portalColorAtts[2].clearValue.color = { 0.f, 0.f, 0.f, 0.f };
+
+		VkRenderingInfo portalInfo{ VK_STRUCTURE_TYPE_RENDERING_INFO };
+		portalInfo.renderArea.extent = aImageExtent;
+		portalInfo.layerCount = 1;
+		portalInfo.colorAttachmentCount = 3;
+		portalInfo.pColorAttachments = portalColorAtts;
+		portalInfo.pDepthAttachment = &portalDepthAtt;
+
+		vkCmdBeginRendering(aCmdBuff, &portalInfo);
+
+		VkViewport portalVp{};
+		portalVp.x = 0.f;
+		portalVp.y = 0.f;
+		portalVp.width = float(aImageExtent.width);
+		portalVp.height = float(aImageExtent.height);
+		portalVp.minDepth = 0.f;
+		portalVp.maxDepth = 1.f;
+		vkCmdSetViewport(aCmdBuff, 0, 1, &portalVp);
+		VkRect2D portalScissor{ {0, 0}, aImageExtent };
+		vkCmdSetScissor(aCmdBuff, 0, 1, &portalScissor);
+
+		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsPipe);
+		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
+
+		VkDeviceSize portalZeroOffset = 0;
+		for (const auto& batch : aBatches)
+		{
+			uint32_t matIdx = batch.materialIndex;
+			uint32_t meshIdx = batch.meshIndex;
+			if (meshIdx >= aMeshInfos.size() || matIdx >= aMaterialDescriptors.size()) {
+				continue;
+			}
+
+			bool isMasked = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0);
+			if (!isMasked && batch.alphaMultiplier < 0.99f) {
+				continue;
+			}
+
+			ObjectPC pcData{};
+			pcData.transform = batch.transform;
+			if (matIdx < aMaterials.size()) {
+				pcData.baseColorFactor = aMaterials[matIdx].baseColorFactor;
+				pcData.emissiveFactor = aMaterials[matIdx].emissiveFactor;
+				pcData.metallicFactor = aMaterials[matIdx].metallicFactor;
+				pcData.roughnessFactor = aMaterials[matIdx].roughnessFactor;
+				pcData.alphaCutoff = aMaterials[matIdx].alphaCutoff;
+			}
+			else {
+				pcData.baseColorFactor = glm::vec4(1.0f);
+				pcData.emissiveFactor = glm::vec4(0.0f);
+				pcData.metallicFactor = 0.0f;
+				pcData.roughnessFactor = 0.8f;
+				pcData.alphaCutoff = 0.5f;
+			}
+
+			pcData.baseColorFactor.a *= batch.alphaMultiplier;
+
+			vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ObjectPC), &pcData);
+			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
+			vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &portalZeroOffset);
+			vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &portalZeroOffset);
+			vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &portalZeroOffset);
+			vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
+			vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(aMeshInfos[meshIdx].indices.size()), 1, 0, 0, 0);
+		}
+
+		if (skyboxPipe != VK_NULL_HANDLE && skyboxVBO != VK_NULL_HANDLE) {
+			vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipe);
+			vkCmdSetViewport(aCmdBuff, 0, 1, &portalVp);
+			vkCmdSetScissor(aCmdBuff, 0, 1, &portalScissor);
+			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipeLayout, 0, 1, &skyboxDescSet, 0, nullptr);
+			VkDeviceSize offsets[1] = { 0 };
+			vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &skyboxVBO, offsets);
+			vkCmdDraw(aCmdBuff, 36, 1, 0, 0);
+		}
+
+		vkCmdEndRendering(aCmdBuff);
+
+		lut::image_barrier(aCmdBuff, aPortalColor->image,
+			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, portalColorRange);
+
+		uploadSceneUniform(aSceneUniform);
 	}
 
 	// ==========================================================
@@ -411,6 +571,21 @@ void record_commands(
 		vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
 		vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(meshInfo.indices.size()), 1, 0, 0, 0);
 	}
+
+	if (portalReady)
+	{
+		uint32_t meshIdx = aPortalMeshIndex;
+		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aPortalSurfacePipe);
+		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
+		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aPortalSurfaceDesc, 0, nullptr);
+		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(glm::mat4), aPortalSurfaceTransform);
+		vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset);
+		vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &kZeroOffset);
+		vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &kZeroOffset);
+		vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
+		vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(aMeshInfos[meshIdx].indices.size()), 1, 0, 0, 0);
+	}
+
 	// =====================================================================
 	// 阶段 1.5：画【天空盒】 (此时利用 Early-Z 剔除被建筑挡住的天空像素，性能极高！)
 	// =====================================================================

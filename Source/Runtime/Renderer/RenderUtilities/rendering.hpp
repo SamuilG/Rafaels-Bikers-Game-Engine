@@ -1,6 +1,7 @@
 #pragma once
 
 #include <volk/volk.h>
+#include <cstdint>
 #include <vector>
 #include <memory>
 #include <unordered_map>
@@ -105,7 +106,18 @@ void record_commands(
 	VkPipeline skyboxPipe = VK_NULL_HANDLE,
 	VkPipelineLayout skyboxPipeLayout = VK_NULL_HANDLE,
 	VkDescriptorSet skyboxDescSet = VK_NULL_HANDLE,
-	VkBuffer skyboxVBO = VK_NULL_HANDLE
+	VkBuffer skyboxVBO = VK_NULL_HANDLE,
+
+	bool aPortalEnabled = false,
+	glsl::SceneUniform const* aPortalSceneUniform = nullptr,
+	ImageAndView const* aPortalColor = nullptr,
+	ImageAndView const* aPortalBright = nullptr,
+	ImageAndView const* aPortalNormal = nullptr,
+	ImageAndView const* aPortalDepth = nullptr,
+	VkPipeline aPortalSurfacePipe = VK_NULL_HANDLE,
+	VkDescriptorSet aPortalSurfaceDesc = VK_NULL_HANDLE,
+	uint32_t aPortalMeshIndex = UINT32_MAX,
+	glm::mat4 const* aPortalSurfaceTransform = nullptr
 );
 
 

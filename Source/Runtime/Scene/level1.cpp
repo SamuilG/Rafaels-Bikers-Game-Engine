@@ -12,6 +12,7 @@
 #include <format>
 #include <filesystem>
 #include <algorithm>
+#include <cmath>
 #include <unordered_set>
 
 namespace engine {
@@ -224,6 +225,32 @@ namespace engine {
 		glm::mat4 FinalPos = glm::translate(glm::mat4(1.0f), glm::vec3(218.83, 91.0f, -197.74f));
 		glm::mat4 bikeAnchorWorld = glm::mat4(0.0f); // sentinel: [3][3]==0 means anchor not found
 
+		const glm::mat4 portalSurface =
+			glm::translate(glm::mat4(1.0f), glm::vec3(-139.0f, 9.0f, -76.0f)) *
+			glm::rotate(glm::mat4(1.0f), glm::radians(-25.0f), glm::vec3(0.0f, 1.0f, 0.0f)) *
+			glm::scale(glm::mat4(1.0f), glm::vec3(10.0f, 6.0f, 1.0f));
+		const glm::vec3 portalExitPosition = glm::vec3(205.0f, 91.0f, -65.0f);
+		const glm::vec3 portalExitLookTarget = glm::vec3(226.0f, 87.0f, -25.0f);
+		glm::vec3 portalExitDir = portalExitLookTarget - portalExitPosition;
+		portalExitDir.y = 0.0f;
+		if (glm::dot(portalExitDir, portalExitDir) < 0.0001f) {
+			portalExitDir = glm::vec3(0.0f, 0.0f, -1.0f);
+		}
+		portalExitDir = glm::normalize(portalExitDir);
+
+		m_portalRuntime.enabled = true;
+		m_portalRuntime.surfaceTransform = portalSurface;
+		m_portalRuntime.inverseSurfaceTransform = glm::inverse(portalSurface);
+		m_portalRuntime.exitPosition = portalExitPosition;
+		m_portalRuntime.exitYaw = std::atan2(-portalExitDir.x, -portalExitDir.z);
+		m_portalRuntime.previousLocalZ = 0.0f;
+		m_portalRuntime.cooldown = 0.0f;
+		m_portalRuntime.hasPreviousSample = false;
+		m_render->SetPortalPreview(
+			portalSurface,
+			glm::vec3(527.35f, 98.08f, 205.77f),
+			glm::vec3(260.92f, 40.0f, 0.0f));
+
 		m_render->load_animated_model("Assets/Models/character.glb", FinalPos);
 		flecs::entity playerBike = m_scene->LoadModel(m_render, "Assets/Models/tbikeWithAnchor.glb", engine::ModelPhysicsType::CustomC, 90.0f, BikeSpawnPos);
 
@@ -231,7 +258,9 @@ namespace engine {
 		m_bikeController = std::make_unique<BikeController>(m_physics->GetJoltSystem(), m_input, mState);
 		m_audio->LoadSound("Jump", "Assets/Sounds/jump_effect.mp3");
 		m_audio->LoadSound("SpringJump", "Assets/Sounds/spring.mp3");
+		m_audio->LoadSound("PortalWarp", "Assets/Sounds/deepBass.mp3");
 		m_audio->SetVolume("SpringJump", 1.2f);
+		m_audio->SetVolume("PortalWarp", 0.8f);
 		m_bikeController->SetAudioSystem(m_audio);
 		flecs::entity bikeEntity = m_scene->find_entity("Bike_0");
 		m_bikeEntity = bikeEntity;
@@ -1276,6 +1305,113 @@ namespace engine {
 		}
 	}
 
+	uint32_t level::GetBikeBodyID() const {
+		if (!m_bikeEntity.is_valid()) {
+			return JPH::BodyID::cInvalidBodyID;
+		}
+
+		if (m_bikeEntity.has<PhysicsBody>()) {
+			return m_bikeEntity.get<PhysicsBody>().bodyID;
+		}
+		if (m_bikeEntity.has<CompoundParent>()) {
+			return m_bikeEntity.get<CompoundParent>().bodyID;
+		}
+
+		return JPH::BodyID::cInvalidBodyID;
+	}
+
+	void level::UpdatePortalTeleport(float dt) {
+		if (!m_portalRuntime.enabled || !m_physics || !mState || !mState->isAlive) {
+			m_portalRuntime.hasPreviousSample = false;
+			return;
+		}
+
+		if (m_portalRuntime.cooldown > 0.0f) {
+			m_portalRuntime.cooldown = std::max(0.0f, m_portalRuntime.cooldown - dt);
+		}
+
+		const uint32_t bikeBodyID = GetBikeBodyID();
+		if (bikeBodyID == JPH::BodyID::cInvalidBodyID) {
+			m_portalRuntime.hasPreviousSample = false;
+			return;
+		}
+
+		JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
+		JPH::BodyID id(bikeBodyID);
+		if (!bi.IsAdded(id)) {
+			m_portalRuntime.hasPreviousSample = false;
+			return;
+		}
+
+		const JPH::RVec3 bodyPos = bi.GetPosition(id);
+		const glm::vec3 samplePos(
+			static_cast<float>(bodyPos.GetX()),
+			static_cast<float>(bodyPos.GetY()) + 2.5f,
+			static_cast<float>(bodyPos.GetZ()));
+		const glm::vec3 portalLocal = glm::vec3(m_portalRuntime.inverseSurfaceTransform * glm::vec4(samplePos, 1.0f));
+
+		constexpr float kHalfWidth = 0.68f;
+		constexpr float kHalfHeight = 1.20f;
+		constexpr float kPlaneDepth = 1.25f;
+		const bool insidePortalFace =
+			std::abs(portalLocal.x) <= kHalfWidth &&
+			std::abs(portalLocal.y) <= kHalfHeight &&
+			std::abs(portalLocal.z) <= kPlaneDepth;
+
+		const bool crossedPlane =
+			m_portalRuntime.hasPreviousSample &&
+			((m_portalRuntime.previousLocalZ > 0.08f && portalLocal.z <= -0.02f) ||
+			 (m_portalRuntime.previousLocalZ < -0.08f && portalLocal.z >= 0.02f));
+
+		if (insidePortalFace && crossedPlane && m_portalRuntime.cooldown <= 0.0f) {
+			const JPH::Quat currentRot = bi.GetRotation(id);
+			const JPH::Vec3 currentVel = bi.GetLinearVelocity(id);
+			const JPH::Vec3 currentFwd = currentRot.RotateAxisZ();
+			const float currentYaw = std::atan2(-currentFwd.GetX(), -currentFwd.GetZ());
+			const float currentForwardX = -std::sin(currentYaw);
+			const float currentForwardZ = -std::cos(currentYaw);
+			const float signedForwardSpeed = currentVel.GetX() * currentForwardX + currentVel.GetZ() * currentForwardZ;
+			const float horizontalSpeed = std::sqrt(currentVel.GetX() * currentVel.GetX() + currentVel.GetZ() * currentVel.GetZ());
+			const float carriedSpeed = std::max(4.0f, std::max(std::abs(signedForwardSpeed), horizontalSpeed));
+
+			const float exitYaw = m_portalRuntime.exitYaw;
+			const JPH::Quat exitRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), exitYaw + JPH::JPH_PI);
+			const JPH::Vec3 exitForward(-std::sin(exitYaw), 0.0f, -std::cos(exitYaw));
+			const JPH::RVec3 exitPos(
+				m_portalRuntime.exitPosition.x,
+				m_portalRuntime.exitPosition.y,
+				m_portalRuntime.exitPosition.z);
+			const JPH::Vec3 exitVel(
+				exitForward.GetX() * carriedSpeed,
+				std::max(currentVel.GetY(), 0.0f),
+				exitForward.GetZ() * carriedSpeed);
+
+			bi.SetPositionAndRotation(id, exitPos, exitRot, JPH::EActivation::Activate);
+			bi.SetLinearVelocity(id, exitVel);
+			bi.SetAngularVelocity(id, JPH::Vec3::sZero());
+
+			mState->bikeYaw = exitYaw;
+			mState->Yaw = exitYaw;
+			mState->targetYaw = exitYaw;
+			mState->cameraIdleTimer = 0.0f;
+			mState->followTargetPos = m_portalRuntime.exitPosition;
+			mState->thirdPersonMode = true;
+			mState->lastPedal = -1;
+
+			if (m_audio) {
+				m_audio->PlayOneShot("PortalWarp");
+			}
+			Toast("Portal Jump");
+
+			m_portalRuntime.cooldown = 1.25f;
+			m_portalRuntime.hasPreviousSample = false;
+			return;
+		}
+
+		m_portalRuntime.previousLocalZ = portalLocal.z;
+		m_portalRuntime.hasPreviousSample = true;
+	}
+
 	void level::Update(float dt) {
 
 		// =========================================================
@@ -1668,6 +1804,8 @@ namespace engine {
 				}
 			}
 		}
+
+		UpdatePortalTeleport(dt);
 		
 		// =========================================================
 		// 长按 DEPLOY 键回档逻辑 (需长按 1.5 秒)

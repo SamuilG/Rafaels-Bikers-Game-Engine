@@ -96,6 +96,8 @@ namespace cfg
 	constexpr char const* skyboxFragShaderPath = SHADERDIR_"skybox.frag.spv";
 	// Skeletal skinning
 	constexpr char const* kSkinnedVertShaderPath = SHADERDIR_"skinned.vert.spv";
+	constexpr char const* kPortalVertShaderPath = SHADERDIR_ "portal.vert.spv";
+	constexpr char const* kPortalFragShaderPath = SHADERDIR_ "portal.frag.spv";
 	// 【新增】：SSR 屏幕空间反射
 	constexpr char const* kSsrFragShaderPath = SHADERDIR_ "ssr.frag.spv";
 	constexpr char const* kSsaorFragShaderPath = SHADERDIR_ "ssao.frag.spv";
@@ -168,6 +170,7 @@ lut::DescriptorSetLayout create_composite_descriptor_layout(lut::VulkanWindow co
 lut::DescriptorSetLayout create_blur_descriptor_layout(lut::VulkanContext const& aContext);
 
 lut::Pipeline create_triangle_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_B8G8R8A8_SRGB );
+lut::Pipeline create_portal_surface_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_B8G8R8A8_SRGB );
 lut::Pipeline create_debug_pipeline( lut::VulkanWindow const&, VkPipelineLayout, char const* aVertPath, char const* aFragPath, VkFormat = VK_FORMAT_B8G8R8A8_SRGB );
 lut::Pipeline create_alpha_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_B8G8R8A8_SRGB );
 lut::Pipeline create_alpha_pipeline_1_attachment( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_B8G8R8A8_SRGB );

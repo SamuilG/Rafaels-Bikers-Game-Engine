@@ -4,6 +4,7 @@
 #include "../UI/VisualUIEditor/RuntimeUiController.hpp"
 #include <flecs.h>
 #include <memory>
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <string_view>
@@ -99,6 +100,20 @@ namespace engine {
 		glm::vec3 m_checkpointPos   = glm::vec3(0.0f);
 		float     m_checkpointYaw   = 0.0f;
 
+		struct PortalRuntime {
+			bool enabled = false;
+			glm::mat4 surfaceTransform = glm::mat4(1.0f);
+			glm::mat4 inverseSurfaceTransform = glm::mat4(1.0f);
+			glm::vec3 exitPosition = glm::vec3(0.0f);
+			float exitYaw = 0.0f;
+			float previousLocalZ = 0.0f;
+			float cooldown = 0.0f;
+			bool hasPreviousSample = false;
+		};
+
+		PortalRuntime m_portalRuntime;
+		uint32_t GetBikeBodyID() const;
+		void UpdatePortalTeleport(float dt);
 
         RuntimeUiController* GetRuntimeUiController() const;
         void RefreshAbilityHintUi() const;

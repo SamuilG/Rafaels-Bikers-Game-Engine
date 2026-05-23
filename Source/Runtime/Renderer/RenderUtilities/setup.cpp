@@ -333,6 +333,167 @@ lut::Pipeline create_triangle_pipeline(lut::VulkanWindow const& aWindow, VkPipel
 	return lut::Pipeline(aWindow.device, pipe);
 }
 
+lut::Pipeline create_portal_surface_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, VkFormat aColorFormat)
+{
+	auto const vertSpirV = lut::load_file_u32(cfg::kPortalVertShaderPath);
+	auto const fragSpirV = lut::load_file_u32(cfg::kPortalFragShaderPath);
+
+	VkShaderModuleCreateInfo code[2]{};
+	code[0].sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	code[0].codeSize = vertSpirV.size() * sizeof(std::uint32_t);
+	code[0].pCode = vertSpirV.data();
+
+	code[1].sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	code[1].codeSize = fragSpirV.size() * sizeof(std::uint32_t);
+	code[1].pCode = fragSpirV.data();
+
+	VkPipelineShaderStageCreateInfo stages[2]{};
+	stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+	stages[0].pName = "main";
+	stages[0].pNext = &code[0];
+
+	stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	stages[1].pName = "main";
+	stages[1].pNext = &code[1];
+
+	VkVertexInputBindingDescription vertexInputs[3]{};
+	vertexInputs[0].binding = 0;
+	vertexInputs[0].stride = sizeof(float) * 3;
+	vertexInputs[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[1].binding = 1;
+	vertexInputs[1].stride = sizeof(float) * 2;
+	vertexInputs[1].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	vertexInputs[2].binding = 2;
+	vertexInputs[2].stride = sizeof(float) * 3;
+	vertexInputs[2].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+	VkVertexInputAttributeDescription vertexAttributes[3]{};
+	vertexAttributes[0].binding = 0;
+	vertexAttributes[0].location = 0;
+	vertexAttributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+	vertexAttributes[0].offset = 0;
+	vertexAttributes[1].binding = 1;
+	vertexAttributes[1].location = 1;
+	vertexAttributes[1].format = VK_FORMAT_R32G32_SFLOAT;
+	vertexAttributes[1].offset = 0;
+	vertexAttributes[2].binding = 2;
+	vertexAttributes[2].location = 2;
+	vertexAttributes[2].format = VK_FORMAT_R32G32B32_SFLOAT;
+	vertexAttributes[2].offset = 0;
+
+	VkPipelineVertexInputStateCreateInfo inputInfo{};
+	inputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	inputInfo.vertexBindingDescriptionCount = 3;
+	inputInfo.pVertexBindingDescriptions = vertexInputs;
+	inputInfo.vertexAttributeDescriptionCount = 3;
+	inputInfo.pVertexAttributeDescriptions = vertexAttributes;
+
+	VkPipelineInputAssemblyStateCreateInfo assemblyInfo{};
+	assemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	assemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	assemblyInfo.primitiveRestartEnable = VK_FALSE;
+
+	VkViewport viewport{};
+	viewport.x = 0.f;
+	viewport.y = 0.f;
+	viewport.width = float(aWindow.swapchainExtent.width);
+	viewport.height = float(aWindow.swapchainExtent.height);
+	viewport.minDepth = 0.f;
+	viewport.maxDepth = 1.f;
+
+	VkRect2D scissor{};
+	scissor.offset = VkOffset2D{ 0, 0 };
+	scissor.extent = aWindow.swapchainExtent;
+
+	VkPipelineViewportStateCreateInfo viewportInfo{};
+	viewportInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportInfo.viewportCount = 1;
+	viewportInfo.pViewports = &viewport;
+	viewportInfo.scissorCount = 1;
+	viewportInfo.pScissors = &scissor;
+
+	VkPipelineRasterizationStateCreateInfo rasterInfo{};
+	rasterInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterInfo.depthClampEnable = VK_FALSE;
+	rasterInfo.rasterizerDiscardEnable = VK_FALSE;
+	rasterInfo.polygonMode = VK_POLYGON_MODE_FILL;
+	rasterInfo.cullMode = VK_CULL_MODE_NONE;
+	rasterInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	rasterInfo.depthBiasEnable = VK_FALSE;
+	rasterInfo.lineWidth = 1.f;
+
+	VkPipelineMultisampleStateCreateInfo samplingInfo{};
+	samplingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	samplingInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+	VkPipelineColorBlendAttachmentState blendStates[3]{};
+	for (auto& blendState : blendStates) {
+		blendState.blendEnable = VK_FALSE;
+		blendState.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	}
+
+	VkPipelineColorBlendStateCreateInfo blendInfo{};
+	blendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	blendInfo.logicOpEnable = VK_FALSE;
+	blendInfo.attachmentCount = 3;
+	blendInfo.pAttachments = blendStates;
+
+	VkFormat colorFormats[3] = {
+		aColorFormat,
+		aColorFormat,
+		VK_FORMAT_R16G16B16A16_SFLOAT
+	};
+
+	VkPipelineRenderingCreateInfo renderingInfo{};
+	renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+	renderingInfo.colorAttachmentCount = 3;
+	renderingInfo.pColorAttachmentFormats = colorFormats;
+	renderingInfo.depthAttachmentFormat = cfg::kDepthFormat;
+
+	VkPipelineDepthStencilStateCreateInfo depthInfo{};
+	depthInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthInfo.depthTestEnable = VK_TRUE;
+	depthInfo.depthWriteEnable = VK_TRUE;
+	depthInfo.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+	depthInfo.minDepthBounds = 0.f;
+	depthInfo.maxDepthBounds = 1.f;
+
+	VkDynamicState dynamicStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+	VkPipelineDynamicStateCreateInfo dynamicInfo{};
+	dynamicInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dynamicInfo.dynamicStateCount = 2;
+	dynamicInfo.pDynamicStates = dynamicStates;
+
+	VkGraphicsPipelineCreateInfo pipeInfo{};
+	pipeInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipeInfo.pNext = &renderingInfo;
+	pipeInfo.stageCount = 2;
+	pipeInfo.pStages = stages;
+	pipeInfo.pVertexInputState = &inputInfo;
+	pipeInfo.pInputAssemblyState = &assemblyInfo;
+	pipeInfo.pTessellationState = nullptr;
+	pipeInfo.pViewportState = &viewportInfo;
+	pipeInfo.pRasterizationState = &rasterInfo;
+	pipeInfo.pMultisampleState = &samplingInfo;
+	pipeInfo.pDepthStencilState = &depthInfo;
+	pipeInfo.pColorBlendState = &blendInfo;
+	pipeInfo.pDynamicState = &dynamicInfo;
+	pipeInfo.layout = aPipelineLayout;
+	pipeInfo.subpass = 0;
+
+	VkPipeline pipe = VK_NULL_HANDLE;
+	if (auto const res = vkCreateGraphicsPipelines(aWindow.device, VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &pipe); VK_SUCCESS != res)
+	{
+		throw lut::Error("Unable to create portal surface pipeline\n"
+			"vkCreateGraphicsPipelines() returned {}", lut::to_string(res)
+		);
+	}
+
+	return lut::Pipeline(aWindow.device, pipe);
+}
+
 
 
 
