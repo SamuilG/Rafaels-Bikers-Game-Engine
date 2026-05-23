@@ -225,31 +225,78 @@ namespace engine {
 		glm::mat4 FinalPos = glm::translate(glm::mat4(1.0f), glm::vec3(218.83, 91.0f, -197.74f));
 		glm::mat4 bikeAnchorWorld = glm::mat4(0.0f); // sentinel: [3][3]==0 means anchor not found
 
-		const glm::mat4 portalSurface =
-			glm::translate(glm::mat4(1.0f), glm::vec3(-139.0f, 9.0f, -76.0f)) *
-			glm::rotate(glm::mat4(1.0f), glm::radians(-25.0f), glm::vec3(0.0f, 1.0f, 0.0f)) *
-			glm::scale(glm::mat4(1.0f), glm::vec3(10.0f, 6.0f, 1.0f));
-		const glm::vec3 portalExitPosition = glm::vec3(205.0f, 91.0f, -65.0f);
-		const glm::vec3 portalExitLookTarget = glm::vec3(226.0f, 87.0f, -25.0f);
-		glm::vec3 portalExitDir = portalExitLookTarget - portalExitPosition;
-		portalExitDir.y = 0.0f;
-		if (glm::dot(portalExitDir, portalExitDir) < 0.0001f) {
-			portalExitDir = glm::vec3(0.0f, 0.0f, -1.0f);
-		}
-		portalExitDir = glm::normalize(portalExitDir);
+		constexpr float kPortalFloorY = 3.0f;
+		constexpr float kPortalWidth = 7.0f;
+		constexpr float kPortalHeight = 5.5f;
+		constexpr float kPortalExitOffset = 4.0f;
+		const float portalCenterY = kPortalFloorY + kPortalHeight * 0.5f;
+		const float portalYawRadians = glm::radians(180.0f);
+		const glm::vec3 leftPortalCenter = glm::vec3(-158.0f, portalCenterY, -72.0f);
+		const glm::vec3 rightPortalCenter = glm::vec3(-146.0f, portalCenterY, -72.0f);
 
-		m_portalRuntime.enabled = true;
-		m_portalRuntime.surfaceTransform = portalSurface;
-		m_portalRuntime.inverseSurfaceTransform = glm::inverse(portalSurface);
-		m_portalRuntime.exitPosition = portalExitPosition;
-		m_portalRuntime.exitYaw = std::atan2(-portalExitDir.x, -portalExitDir.z);
-		m_portalRuntime.previousLocalZ = 0.0f;
-		m_portalRuntime.cooldown = 0.0f;
-		m_portalRuntime.hasPreviousSample = false;
-		m_render->SetPortalPreview(
-			portalSurface,
-			glm::vec3(527.35f, 98.08f, 205.77f),
-			glm::vec3(260.92f, 40.0f, 0.0f));
+		auto makePortalSurface = [&](const glm::vec3& center) {
+			return glm::translate(glm::mat4(1.0f), center) *
+				glm::rotate(glm::mat4(1.0f), portalYawRadians, glm::vec3(0.0f, 1.0f, 0.0f)) *
+				glm::scale(glm::mat4(1.0f), glm::vec3(kPortalWidth, kPortalHeight, 1.0f));
+		};
+		auto portalForward = [](const glm::mat4& surface) {
+			glm::vec3 forward = glm::vec3(surface * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f));
+			forward.y = 0.0f;
+			if (glm::dot(forward, forward) < 0.0001f) {
+				forward = glm::vec3(0.0f, 0.0f, -1.0f);
+			}
+			return glm::normalize(forward);
+		};
+		auto yawFromForward = [](glm::vec3 forward) {
+			forward.y = 0.0f;
+			if (glm::dot(forward, forward) < 0.0001f) {
+				forward = glm::vec3(0.0f, 0.0f, -1.0f);
+			}
+			forward = glm::normalize(forward);
+			return std::atan2(-forward.x, -forward.z);
+		};
+
+		const glm::mat4 leftPortalSurface = makePortalSurface(leftPortalCenter);
+		const glm::mat4 rightPortalSurface = makePortalSurface(rightPortalCenter);
+		const glm::vec3 leftPortalForward = portalForward(leftPortalSurface);
+		const glm::vec3 rightPortalForward = portalForward(rightPortalSurface);
+		const glm::vec3 leftExitPosition = glm::vec3(
+			leftPortalCenter.x + leftPortalForward.x * kPortalExitOffset,
+			kPortalFloorY,
+			leftPortalCenter.z + leftPortalForward.z * kPortalExitOffset);
+		const glm::vec3 rightExitPosition = glm::vec3(
+			rightPortalCenter.x + rightPortalForward.x * kPortalExitOffset,
+			kPortalFloorY,
+			rightPortalCenter.z + rightPortalForward.z * kPortalExitOffset);
+
+		m_portals[0].enabled = true;
+		m_portals[0].surfaceTransform = leftPortalSurface;
+		m_portals[0].inverseSurfaceTransform = glm::inverse(leftPortalSurface);
+		m_portals[0].exitPosition = rightExitPosition;
+		m_portals[0].exitYaw = yawFromForward(rightPortalForward);
+		m_portals[0].previousLocalZ = 0.0f;
+		m_portals[0].hasPreviousSample = false;
+
+		m_portals[1].enabled = true;
+		m_portals[1].surfaceTransform = rightPortalSurface;
+		m_portals[1].inverseSurfaceTransform = glm::inverse(rightPortalSurface);
+		m_portals[1].exitPosition = leftExitPosition;
+		m_portals[1].exitYaw = yawFromForward(leftPortalForward);
+		m_portals[1].previousLocalZ = 0.0f;
+		m_portals[1].hasPreviousSample = false;
+		m_portalPairCooldown = 0.0f;
+
+		const glm::vec3 leftPortalCamera = leftPortalCenter + leftPortalForward * 2.0f + glm::vec3(0.0f, 0.8f, 0.0f);
+		const glm::vec3 rightPortalCamera = rightPortalCenter + rightPortalForward * 2.0f + glm::vec3(0.0f, 0.8f, 0.0f);
+		m_render->SetPortalPreviewPair(
+			leftPortalSurface,
+			rightPortalCamera,
+			rightPortalCamera + rightPortalForward * 18.0f,
+			rightPortalSurface,
+			leftPortalCamera,
+			leftPortalCamera + leftPortalForward * 18.0f,
+			glm::vec3(0.0f, 1.0f, 0.0f),
+			80.0f);
 
 		m_render->load_animated_model("Assets/Models/character.glb", FinalPos);
 		flecs::entity playerBike = m_scene->LoadModel(m_render, "Assets/Models/tbikeWithAnchor.glb", engine::ModelPhysicsType::CustomC, 90.0f, BikeSpawnPos);
@@ -1321,25 +1368,32 @@ namespace engine {
 	}
 
 	void level::UpdatePortalTeleport(float dt) {
-		if (!m_portalRuntime.enabled || !m_physics || !mState || !mState->isAlive) {
-			m_portalRuntime.hasPreviousSample = false;
+		auto resetPortalSamples = [&]() {
+			for (auto& portal : m_portals) {
+				portal.hasPreviousSample = false;
+			}
+		};
+
+		const bool anyPortalEnabled = m_portals[0].enabled || m_portals[1].enabled;
+		if (!anyPortalEnabled || !m_physics || !mState || !mState->isAlive) {
+			resetPortalSamples();
 			return;
 		}
 
-		if (m_portalRuntime.cooldown > 0.0f) {
-			m_portalRuntime.cooldown = std::max(0.0f, m_portalRuntime.cooldown - dt);
+		if (m_portalPairCooldown > 0.0f) {
+			m_portalPairCooldown = std::max(0.0f, m_portalPairCooldown - dt);
 		}
 
 		const uint32_t bikeBodyID = GetBikeBodyID();
 		if (bikeBodyID == JPH::BodyID::cInvalidBodyID) {
-			m_portalRuntime.hasPreviousSample = false;
+			resetPortalSamples();
 			return;
 		}
 
 		JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
 		JPH::BodyID id(bikeBodyID);
 		if (!bi.IsAdded(id)) {
-			m_portalRuntime.hasPreviousSample = false;
+			resetPortalSamples();
 			return;
 		}
 
@@ -1348,68 +1402,74 @@ namespace engine {
 			static_cast<float>(bodyPos.GetX()),
 			static_cast<float>(bodyPos.GetY()) + 2.5f,
 			static_cast<float>(bodyPos.GetZ()));
-		const glm::vec3 portalLocal = glm::vec3(m_portalRuntime.inverseSurfaceTransform * glm::vec4(samplePos, 1.0f));
 
 		constexpr float kHalfWidth = 0.68f;
 		constexpr float kHalfHeight = 1.20f;
 		constexpr float kPlaneDepth = 1.25f;
-		const bool insidePortalFace =
-			std::abs(portalLocal.x) <= kHalfWidth &&
-			std::abs(portalLocal.y) <= kHalfHeight &&
-			std::abs(portalLocal.z) <= kPlaneDepth;
-
-		const bool crossedPlane =
-			m_portalRuntime.hasPreviousSample &&
-			((m_portalRuntime.previousLocalZ > 0.08f && portalLocal.z <= -0.02f) ||
-			 (m_portalRuntime.previousLocalZ < -0.08f && portalLocal.z >= 0.02f));
-
-		if (insidePortalFace && crossedPlane && m_portalRuntime.cooldown <= 0.0f) {
-			const JPH::Quat currentRot = bi.GetRotation(id);
-			const JPH::Vec3 currentVel = bi.GetLinearVelocity(id);
-			const JPH::Vec3 currentFwd = currentRot.RotateAxisZ();
-			const float currentYaw = std::atan2(-currentFwd.GetX(), -currentFwd.GetZ());
-			const float currentForwardX = -std::sin(currentYaw);
-			const float currentForwardZ = -std::cos(currentYaw);
-			const float signedForwardSpeed = currentVel.GetX() * currentForwardX + currentVel.GetZ() * currentForwardZ;
-			const float horizontalSpeed = std::sqrt(currentVel.GetX() * currentVel.GetX() + currentVel.GetZ() * currentVel.GetZ());
-			const float carriedSpeed = std::max(4.0f, std::max(std::abs(signedForwardSpeed), horizontalSpeed));
-
-			const float exitYaw = m_portalRuntime.exitYaw;
-			const JPH::Quat exitRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), exitYaw + JPH::JPH_PI);
-			const JPH::Vec3 exitForward(-std::sin(exitYaw), 0.0f, -std::cos(exitYaw));
-			const JPH::RVec3 exitPos(
-				m_portalRuntime.exitPosition.x,
-				m_portalRuntime.exitPosition.y,
-				m_portalRuntime.exitPosition.z);
-			const JPH::Vec3 exitVel(
-				exitForward.GetX() * carriedSpeed,
-				std::max(currentVel.GetY(), 0.0f),
-				exitForward.GetZ() * carriedSpeed);
-
-			bi.SetPositionAndRotation(id, exitPos, exitRot, JPH::EActivation::Activate);
-			bi.SetLinearVelocity(id, exitVel);
-			bi.SetAngularVelocity(id, JPH::Vec3::sZero());
-
-			mState->bikeYaw = exitYaw;
-			mState->Yaw = exitYaw;
-			mState->targetYaw = exitYaw;
-			mState->cameraIdleTimer = 0.0f;
-			mState->followTargetPos = m_portalRuntime.exitPosition;
-			mState->thirdPersonMode = true;
-			mState->lastPedal = -1;
-
-			if (m_audio) {
-				m_audio->PlayOneShot("PortalWarp");
+		for (auto& portal : m_portals) {
+			if (!portal.enabled) {
+				portal.hasPreviousSample = false;
+				continue;
 			}
-			Toast("Portal Jump");
 
-			m_portalRuntime.cooldown = 1.25f;
-			m_portalRuntime.hasPreviousSample = false;
-			return;
+			const glm::vec3 portalLocal = glm::vec3(portal.inverseSurfaceTransform * glm::vec4(samplePos, 1.0f));
+			const bool insidePortalFace =
+				std::abs(portalLocal.x) <= kHalfWidth &&
+				std::abs(portalLocal.y) <= kHalfHeight &&
+				std::abs(portalLocal.z) <= kPlaneDepth;
+			const bool crossedPlane =
+				portal.hasPreviousSample &&
+				((portal.previousLocalZ > 0.08f && portalLocal.z <= -0.02f) ||
+				 (portal.previousLocalZ < -0.08f && portalLocal.z >= 0.02f));
+
+			if (insidePortalFace && crossedPlane && m_portalPairCooldown <= 0.0f) {
+				const JPH::Quat currentRot = bi.GetRotation(id);
+				const JPH::Vec3 currentVel = bi.GetLinearVelocity(id);
+				const JPH::Vec3 currentFwd = currentRot.RotateAxisZ();
+				const float currentYaw = std::atan2(-currentFwd.GetX(), -currentFwd.GetZ());
+				const float currentForwardX = -std::sin(currentYaw);
+				const float currentForwardZ = -std::cos(currentYaw);
+				const float signedForwardSpeed = currentVel.GetX() * currentForwardX + currentVel.GetZ() * currentForwardZ;
+				const float horizontalSpeed = std::sqrt(currentVel.GetX() * currentVel.GetX() + currentVel.GetZ() * currentVel.GetZ());
+				const float carriedSpeed = std::max(4.0f, std::max(std::abs(signedForwardSpeed), horizontalSpeed));
+
+				const float exitYaw = portal.exitYaw;
+				const JPH::Quat exitRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), exitYaw + JPH::JPH_PI);
+				const JPH::Vec3 exitForward(-std::sin(exitYaw), 0.0f, -std::cos(exitYaw));
+				const JPH::RVec3 exitPos(
+					portal.exitPosition.x,
+					portal.exitPosition.y,
+					portal.exitPosition.z);
+				const JPH::Vec3 exitVel(
+					exitForward.GetX() * carriedSpeed,
+					std::max(currentVel.GetY(), 0.0f),
+					exitForward.GetZ() * carriedSpeed);
+
+				bi.SetPositionAndRotation(id, exitPos, exitRot, JPH::EActivation::Activate);
+				bi.SetLinearVelocity(id, exitVel);
+				bi.SetAngularVelocity(id, JPH::Vec3::sZero());
+
+				mState->bikeYaw = exitYaw;
+				mState->Yaw = exitYaw;
+				mState->targetYaw = exitYaw;
+				mState->cameraIdleTimer = 0.0f;
+				mState->followTargetPos = portal.exitPosition;
+				mState->thirdPersonMode = true;
+				mState->lastPedal = -1;
+
+				if (m_audio) {
+					m_audio->PlayOneShot("PortalWarp");
+				}
+				Toast("Portal Jump");
+
+				m_portalPairCooldown = 1.25f;
+				resetPortalSamples();
+				return;
+			}
+
+			portal.previousLocalZ = portalLocal.z;
+			portal.hasPreviousSample = true;
 		}
-
-		m_portalRuntime.previousLocalZ = portalLocal.z;
-		m_portalRuntime.hasPreviousSample = true;
 	}
 
 	void level::Update(float dt) {

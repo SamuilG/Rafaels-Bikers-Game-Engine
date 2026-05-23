@@ -535,6 +535,11 @@ namespace engine {
             mPortalNormalImage = create_normal_buffer(mWindow, mAllocator);
             mPortalDepthImage = create_depth_buffer(mWindow, mAllocator);
             mPortalSurfaceDesc = BuildPortalSurfaceDesc(mPortalColorImage.view);
+            mPortal2ColorImage = create_offscreen_buffer(mWindow, mAllocator);
+            mPortal2BrightImage = create_offscreen_buffer(mWindow, mAllocator);
+            mPortal2NormalImage = create_normal_buffer(mWindow, mAllocator);
+            mPortal2DepthImage = create_depth_buffer(mWindow, mAllocator);
+            mPortal2SurfaceDesc = BuildPortalSurfaceDesc(mPortal2ColorImage.view);
             CreatePortalSurfaceMesh();
 
             // 【清理修复】：SSR 只初始化这一次！
@@ -1318,6 +1323,11 @@ namespace engine {
                     mPortalNormalImage = create_normal_buffer(mWindow, mAllocator);
                     mPortalDepthImage = create_depth_buffer(mWindow, mAllocator);
                     WritePortalSurfaceDesc(mPortalSurfaceDesc, mPortalColorImage.view);
+                    mPortal2ColorImage = create_offscreen_buffer(mWindow, mAllocator);
+                    mPortal2BrightImage = create_offscreen_buffer(mWindow, mAllocator);
+                    mPortal2NormalImage = create_normal_buffer(mWindow, mAllocator);
+                    mPortal2DepthImage = create_depth_buffer(mWindow, mAllocator);
+                    WritePortalSurfaceDesc(mPortal2SurfaceDesc, mPortal2ColorImage.view);
                     mVisImage = create_vis_image(mWindow, mAllocator);
                     mNormalImage = create_normal_buffer(mWindow, mAllocator);
                     mSsrOutputImage = create_offscreen_buffer(mWindow, mAllocator);
@@ -1783,11 +1793,17 @@ namespace engine {
             }
 
             glsl::SceneUniform portalSceneUniform = BuildPortalSceneUniform(sceneUniforms, finalWidth, finalHeight);
+            glsl::SceneUniform portal2SceneUniform = BuildPortal2SceneUniform(sceneUniforms, finalWidth, finalHeight);
             const bool portalEnabledForFrame = mPortalEnabled && mState->renderMode == 0;
+            const bool portal2EnabledForFrame = mPortal2Enabled && mState->renderMode == 0;
             ImageAndView portalColorTarget{ mPortalColorImage.image, mPortalColorImage.view };
             ImageAndView portalBrightTarget{ mPortalBrightImage.image, mPortalBrightImage.view };
             ImageAndView portalNormalTarget{ mPortalNormalImage.image, mPortalNormalImage.view };
             ImageAndView portalDepthTarget{ mPortalDepthImage.image, mPortalDepthImage.view };
+            ImageAndView portal2ColorTarget{ mPortal2ColorImage.image, mPortal2ColorImage.view };
+            ImageAndView portal2BrightTarget{ mPortal2BrightImage.image, mPortal2BrightImage.view };
+            ImageAndView portal2NormalTarget{ mPortal2NormalImage.image, mPortal2NormalImage.view };
+            ImageAndView portal2DepthTarget{ mPortal2DepthImage.image, mPortal2DepthImage.view };
             // =========================================================
             // Record and submit commands for this frame
             // 在 Update 函数末尾找到 record_commands 调用，修改如下：
@@ -1893,7 +1909,15 @@ namespace engine {
                 mPortalSurfacePipe.handle,
                 mPortalSurfaceDesc,
                 mPortalMeshIndex,
-                &mPortalSurfaceTransform
+                &mPortalSurfaceTransform,
+                portal2EnabledForFrame,
+                &portal2SceneUniform,
+                &portal2ColorTarget,
+                &portal2BrightTarget,
+                &portal2NormalTarget,
+                &portal2DepthTarget,
+                mPortal2SurfaceDesc,
+                &mPortal2SurfaceTransform
             );
 			//clear debug renderer data after uploading
             mDebugRenderer.Clear();
@@ -2113,9 +2137,29 @@ namespace engine {
             mPortalCameraFovDegrees = std::clamp(fovDegrees, 20.0f, 120.0f);
         }
 
+        void SetPortalPreviewPair(
+            const glm::mat4& firstSurfaceTransform,
+            const glm::vec3& firstCameraPosition,
+            const glm::vec3& firstCameraTarget,
+            const glm::mat4& secondSurfaceTransform,
+            const glm::vec3& secondCameraPosition,
+            const glm::vec3& secondCameraTarget,
+            const glm::vec3& cameraUp = glm::vec3(0.0f, 1.0f, 0.0f),
+            float fovDegrees = 75.0f)
+        {
+            SetPortalPreview(firstSurfaceTransform, firstCameraPosition, firstCameraTarget, cameraUp, fovDegrees);
+            mPortal2Enabled = true;
+            mPortal2SurfaceTransform = secondSurfaceTransform;
+            mPortal2CameraPosition = secondCameraPosition;
+            mPortal2CameraTarget = secondCameraTarget;
+            mPortal2CameraUp = glm::dot(cameraUp, cameraUp) > 0.0001f ? glm::normalize(cameraUp) : glm::vec3(0.0f, 1.0f, 0.0f);
+            mPortal2CameraFovDegrees = std::clamp(fovDegrees, 20.0f, 120.0f);
+        }
+
         void DisablePortalPreview()
         {
             mPortalEnabled = false;
+            mPortal2Enabled = false;
         }
 
         // Allow application to pass in the input system
@@ -2292,20 +2336,51 @@ namespace engine {
 
         glsl::SceneUniform BuildPortalSceneUniform(glsl::SceneUniform const& baseUniform, float width, float height) const
         {
+            return BuildPortalSceneUniformForCamera(
+                baseUniform,
+                width,
+                height,
+                mPortalCameraPosition,
+                mPortalCameraTarget,
+                mPortalCameraUp,
+                mPortalCameraFovDegrees);
+        }
+
+        glsl::SceneUniform BuildPortal2SceneUniform(glsl::SceneUniform const& baseUniform, float width, float height) const
+        {
+            return BuildPortalSceneUniformForCamera(
+                baseUniform,
+                width,
+                height,
+                mPortal2CameraPosition,
+                mPortal2CameraTarget,
+                mPortal2CameraUp,
+                mPortal2CameraFovDegrees);
+        }
+
+        glsl::SceneUniform BuildPortalSceneUniformForCamera(
+            glsl::SceneUniform const& baseUniform,
+            float width,
+            float height,
+            const glm::vec3& cameraPosition,
+            const glm::vec3& cameraTarget,
+            const glm::vec3& cameraUp,
+            float fovDegrees) const
+        {
             glsl::SceneUniform portalUniform = baseUniform;
             const float aspect = std::max(width, 1.0f) / std::max(height, 1.0f);
-            const float fov = glm::radians(mPortalCameraFovDegrees);
+            const float fov = glm::radians(fovDegrees);
 
-            glm::vec3 target = mPortalCameraTarget;
-            if (glm::dot(target - mPortalCameraPosition, target - mPortalCameraPosition) < 0.0001f) {
-                target = mPortalCameraPosition + glm::vec3(0.0f, 0.0f, -1.0f);
+            glm::vec3 target = cameraTarget;
+            if (glm::dot(target - cameraPosition, target - cameraPosition) < 0.0001f) {
+                target = cameraPosition + glm::vec3(0.0f, 0.0f, -1.0f);
             }
 
-            portalUniform.camera = glm::lookAt(mPortalCameraPosition, target, mPortalCameraUp);
+            portalUniform.camera = glm::lookAt(cameraPosition, target, cameraUp);
             portalUniform.projection = glm::perspectiveRH_ZO(fov, aspect, cfg::kCameraNear, cfg::kCameraFar);
             portalUniform.projection[1][1] *= -1.0f;
             portalUniform.projCam = portalUniform.projection * portalUniform.camera;
-            portalUniform.cameraPos = glm::vec4(mPortalCameraPosition, 1.0f);
+            portalUniform.cameraPos = glm::vec4(cameraPosition, 1.0f);
             portalUniform.renderMode = 0;
             return portalUniform;
         }
@@ -2920,6 +2995,11 @@ void InitSkybox()
         lut::ImageWithView mPortalNormalImage;
         lut::ImageWithView mPortalDepthImage;
         VkDescriptorSet    mPortalSurfaceDesc = VK_NULL_HANDLE;
+        lut::ImageWithView mPortal2ColorImage;
+        lut::ImageWithView mPortal2BrightImage;
+        lut::ImageWithView mPortal2NormalImage;
+        lut::ImageWithView mPortal2DepthImage;
+        VkDescriptorSet    mPortal2SurfaceDesc = VK_NULL_HANDLE;
         uint32_t           mPortalMeshIndex = UINT32_MAX;
         bool               mPortalEnabled = false;
         glm::mat4          mPortalSurfaceTransform = glm::mat4(1.0f);
@@ -2927,6 +3007,12 @@ void InitSkybox()
         glm::vec3          mPortalCameraTarget = glm::vec3(0.0f, 10.0f, -1.0f);
         glm::vec3          mPortalCameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
         float              mPortalCameraFovDegrees = 75.0f;
+        bool               mPortal2Enabled = false;
+        glm::mat4          mPortal2SurfaceTransform = glm::mat4(1.0f);
+        glm::vec3          mPortal2CameraPosition = glm::vec3(0.0f, 10.0f, 0.0f);
+        glm::vec3          mPortal2CameraTarget = glm::vec3(0.0f, 10.0f, -1.0f);
+        glm::vec3          mPortal2CameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
+        float              mPortal2CameraFovDegrees = 75.0f;
         lut::ImageWithView mVisImage;
         lut::ImageWithView mShadowMap;
         std::vector<VkImageView> mShadowCascadeViews;

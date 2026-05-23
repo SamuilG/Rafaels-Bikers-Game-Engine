@@ -4,6 +4,7 @@
 #include "../UI/VisualUIEditor/RuntimeUiController.hpp"
 #include <flecs.h>
 #include <memory>
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -107,11 +108,11 @@ namespace engine {
 			glm::vec3 exitPosition = glm::vec3(0.0f);
 			float exitYaw = 0.0f;
 			float previousLocalZ = 0.0f;
-			float cooldown = 0.0f;
 			bool hasPreviousSample = false;
 		};
 
-		PortalRuntime m_portalRuntime;
+		std::array<PortalRuntime, 2> m_portals{};
+		float m_portalPairCooldown = 0.0f;
 		uint32_t GetBikeBodyID() const;
 		void UpdatePortalTeleport(float dt);
 

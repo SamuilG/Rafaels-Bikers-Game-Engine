@@ -117,7 +117,16 @@ void record_commands(
 	VkPipeline aPortalSurfacePipe = VK_NULL_HANDLE,
 	VkDescriptorSet aPortalSurfaceDesc = VK_NULL_HANDLE,
 	uint32_t aPortalMeshIndex = UINT32_MAX,
-	glm::mat4 const* aPortalSurfaceTransform = nullptr
+	glm::mat4 const* aPortalSurfaceTransform = nullptr,
+
+	bool aPortal2Enabled = false,
+	glsl::SceneUniform const* aPortal2SceneUniform = nullptr,
+	ImageAndView const* aPortal2Color = nullptr,
+	ImageAndView const* aPortal2Bright = nullptr,
+	ImageAndView const* aPortal2Normal = nullptr,
+	ImageAndView const* aPortal2Depth = nullptr,
+	VkDescriptorSet aPortal2SurfaceDesc = VK_NULL_HANDLE,
+	glm::mat4 const* aPortal2SurfaceTransform = nullptr
 );
 
 

@@ -125,7 +125,15 @@ void record_commands(
 	VkPipeline aPortalSurfacePipe,
 	VkDescriptorSet aPortalSurfaceDesc,
 	uint32_t aPortalMeshIndex,
-	glm::mat4 const* aPortalSurfaceTransform
+	glm::mat4 const* aPortalSurfaceTransform,
+	bool aPortal2Enabled,
+	glsl::SceneUniform const* aPortal2SceneUniform,
+	ImageAndView const* aPortal2Color,
+	ImageAndView const* aPortal2Bright,
+	ImageAndView const* aPortal2Normal,
+	ImageAndView const* aPortal2Depth,
+	VkDescriptorSet aPortal2SurfaceDesc,
+	glm::mat4 const* aPortal2SurfaceTransform
 )
 {
 	// Begin command buffer
@@ -282,45 +290,75 @@ void record_commands(
 		);
 	}
 
-	const bool portalReady =
-		aPortalEnabled &&
-		aPortalSceneUniform != nullptr &&
-		aPortalColor != nullptr &&
-		aPortalBright != nullptr &&
-		aPortalNormal != nullptr &&
-		aPortalDepth != nullptr &&
-		aPortalSurfacePipe != VK_NULL_HANDLE &&
-		aPortalSurfaceDesc != VK_NULL_HANDLE &&
-		aPortalSurfaceTransform != nullptr &&
-		aPortalMeshIndex < aMeshInfos.size();
+	auto portalReadyFor = [&](bool enabled,
+		glsl::SceneUniform const* sceneUniform,
+		ImageAndView const* color,
+		ImageAndView const* bright,
+		ImageAndView const* normal,
+		ImageAndView const* depth,
+		VkDescriptorSet surfaceDesc,
+		glm::mat4 const* surfaceTransform) {
+		return enabled &&
+			sceneUniform != nullptr &&
+			color != nullptr &&
+			bright != nullptr &&
+			normal != nullptr &&
+			depth != nullptr &&
+			aPortalSurfacePipe != VK_NULL_HANDLE &&
+			surfaceDesc != VK_NULL_HANDLE &&
+			surfaceTransform != nullptr &&
+			aPortalMeshIndex < aMeshInfos.size();
+	};
 
-	if (portalReady)
-	{
-		uploadSceneUniform(*aPortalSceneUniform);
+	const bool portalReady = portalReadyFor(
+		aPortalEnabled,
+		aPortalSceneUniform,
+		aPortalColor,
+		aPortalBright,
+		aPortalNormal,
+		aPortalDepth,
+		aPortalSurfaceDesc,
+		aPortalSurfaceTransform);
+	const bool portal2Ready = portalReadyFor(
+		aPortal2Enabled,
+		aPortal2SceneUniform,
+		aPortal2Color,
+		aPortal2Bright,
+		aPortal2Normal,
+		aPortal2Depth,
+		aPortal2SurfaceDesc,
+		aPortal2SurfaceTransform);
+
+	auto renderPortalView = [&](glsl::SceneUniform const& portalSceneUniform,
+		ImageAndView const& portalColor,
+		ImageAndView const& portalBright,
+		ImageAndView const& portalNormal,
+		ImageAndView const& portalDepth) {
+		uploadSceneUniform(portalSceneUniform);
 
 		VkImageSubresourceRange portalColorRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 		VkImageSubresourceRange portalDepthRange{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
 
-		lut::image_barrier(aCmdBuff, aPortalColor->image,
+		lut::image_barrier(aCmdBuff, portalColor.image,
 			VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, portalColorRange);
-		lut::image_barrier(aCmdBuff, aPortalBright->image,
+		lut::image_barrier(aCmdBuff, portalBright.image,
 			VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, portalColorRange);
-		lut::image_barrier(aCmdBuff, aPortalNormal->image,
+		lut::image_barrier(aCmdBuff, portalNormal.image,
 			VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, portalColorRange);
-		lut::image_barrier(aCmdBuff, aPortalDepth->image,
+		lut::image_barrier(aCmdBuff, portalDepth.image,
 			VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
 			VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
 			VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, portalDepthRange);
 
 		VkRenderingAttachmentInfo portalDepthAtt{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
-		portalDepthAtt.imageView = aPortalDepth->view;
+		portalDepthAtt.imageView = portalDepth.view;
 		portalDepthAtt.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 		portalDepthAtt.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 		portalDepthAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -328,18 +366,18 @@ void record_commands(
 
 		VkRenderingAttachmentInfo portalColorAtts[3]{};
 		portalColorAtts[0].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-		portalColorAtts[0].imageView = aPortalColor->view;
+		portalColorAtts[0].imageView = portalColor.view;
 		portalColorAtts[0].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		portalColorAtts[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 		portalColorAtts[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 		portalColorAtts[0].clearValue.color = { 0.02f, 0.03f, 0.05f, 1.0f };
 
 		portalColorAtts[1] = portalColorAtts[0];
-		portalColorAtts[1].imageView = aPortalBright->view;
+		portalColorAtts[1].imageView = portalBright.view;
 		portalColorAtts[1].clearValue.color = { 0.f, 0.f, 0.f, 1.f };
 
 		portalColorAtts[2] = portalColorAtts[0];
-		portalColorAtts[2].imageView = aPortalNormal->view;
+		portalColorAtts[2].imageView = portalNormal.view;
 		portalColorAtts[2].clearValue.color = { 0.f, 0.f, 0.f, 0.f };
 
 		VkRenderingInfo portalInfo{ VK_STRUCTURE_TYPE_RENDERING_INFO };
@@ -419,12 +457,20 @@ void record_commands(
 
 		vkCmdEndRendering(aCmdBuff);
 
-		lut::image_barrier(aCmdBuff, aPortalColor->image,
+		lut::image_barrier(aCmdBuff, portalColor.image,
 			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 			VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT,
 			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, portalColorRange);
+	};
 
+	if (portalReady) {
+		renderPortalView(*aPortalSceneUniform, *aPortalColor, *aPortalBright, *aPortalNormal, *aPortalDepth);
+	}
+	if (portal2Ready) {
+		renderPortalView(*aPortal2SceneUniform, *aPortal2Color, *aPortal2Bright, *aPortal2Normal, *aPortal2Depth);
+	}
+	if (portalReady || portal2Ready) {
 		uploadSceneUniform(aSceneUniform);
 	}
 
@@ -579,6 +625,19 @@ void record_commands(
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aPortalSurfaceDesc, 0, nullptr);
 		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(glm::mat4), aPortalSurfaceTransform);
+		vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset);
+		vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &kZeroOffset);
+		vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &kZeroOffset);
+		vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
+		vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(aMeshInfos[meshIdx].indices.size()), 1, 0, 0, 0);
+	}
+	if (portal2Ready)
+	{
+		uint32_t meshIdx = aPortalMeshIndex;
+		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aPortalSurfacePipe);
+		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
+		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aPortal2SurfaceDesc, 0, nullptr);
+		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(glm::mat4), aPortal2SurfaceTransform);
 		vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset);
 		vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &kZeroOffset);
 		vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &kZeroOffset);
