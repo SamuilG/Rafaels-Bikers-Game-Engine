@@ -24,6 +24,37 @@ namespace engine {
 		constexpr const char* kUnlockJumpIconPath = "Assets/Textures/jumpSkill.png";
 		constexpr const char* kUnlockHornIconPath = "Assets/Textures/hornSkill.png";
 		constexpr const char* kUnlockRadioIconPath = "Assets/Textures/radioSkill.png";
+		constexpr float kDeployPortalWidth = 7.0f;
+		constexpr float kDeployPortalHeight = 5.5f;
+		constexpr float kDeployPortalExitOffset = 4.0f;
+
+		glm::vec3 NormalizeFlat(glm::vec3 value, glm::vec3 fallback = glm::vec3(0.0f, 0.0f, -1.0f)) {
+			value.y = 0.0f;
+			if (glm::dot(value, value) < 0.0001f) {
+				value = fallback;
+			}
+			return glm::normalize(value);
+		}
+
+		glm::vec3 BikeForwardFromYaw(float yaw) {
+			return glm::vec3(-std::sin(yaw), 0.0f, -std::cos(yaw));
+		}
+
+		float BikeYawFromForward(glm::vec3 forward) {
+			forward = NormalizeFlat(forward);
+			return std::atan2(-forward.x, -forward.z);
+		}
+
+		float PortalSurfaceYawFromNormal(glm::vec3 normal) {
+			normal = NormalizeFlat(normal);
+			return std::atan2(normal.x, normal.z);
+		}
+
+		glm::mat4 MakeDeployPortalSurface(const glm::vec3& center, glm::vec3 normal) {
+			return glm::translate(glm::mat4(1.0f), center) *
+				glm::rotate(glm::mat4(1.0f), PortalSurfaceYawFromNormal(normal), glm::vec3(0.0f, 1.0f, 0.0f)) *
+				glm::scale(glm::mat4(1.0f), glm::vec3(kDeployPortalWidth, kDeployPortalHeight, 1.0f));
+		}
 	}
 
 	level::level() = default;
@@ -145,6 +176,7 @@ namespace engine {
 		RemoveWidget(kWinUiPath);
 		RefreshAbilityHintUi();
 		m_deployHoldTimer = 0.0f;
+		m_deployConsumedUntilRelease = false;
 
 		m_audio->LoadSound("NextSong", "Assets/Sounds/Button.mp3");
 		m_audio->SetVolume("NextSong", 0.7f);
@@ -1871,18 +1903,104 @@ namespace engine {
 		// 长按 DEPLOY 键回档逻辑 (需长按 1.5 秒)
 		// =========================================================
 		if (m_input && m_input->IsActionHeld("DEPLOY")) {
-			m_deployHoldTimer += dt;
+			if (m_deployConsumedUntilRelease) {
+				m_deployHoldTimer = 0.0f;
+			}
+			else {
+				m_deployHoldTimer += dt;
+			}
 		}
 		else {
 			// 如果松开按键，或者根本没按，计时器立刻清零
 			m_deployHoldTimer = 0.0f;
+			m_deployConsumedUntilRelease = false;
 		}
 
 		// 当长按时间超过 1.5 秒时，触发回档，并清空计时器防止连续触发
-		if (m_deployHoldTimer >= 1.5f) {
+		if (m_deployHoldTimer >= 1.5f && !m_deployConsumedUntilRelease) {
 			m_deployHoldTimer = 0.0f; // 触发后立刻清零
+			m_deployConsumedUntilRelease = true;
 
-			if (!mState->isAlive || m_hasCheckpoint) { // 允许在活着时按住回档到复活点
+			bool portalDeployHandled = false;
+			if (mState->isAlive && mState->isExtremeSpeed && m_hasCheckpoint && m_render && m_physics) {
+				const uint32_t bikeBodyID = GetBikeBodyID();
+				if (bikeBodyID != JPH::BodyID::cInvalidBodyID) {
+					JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
+					JPH::BodyID id(bikeBodyID);
+					if (bi.IsAdded(id)) {
+						const JPH::RVec3 currentPos = bi.GetPosition(id);
+						const JPH::Quat currentRot = bi.GetRotation(id);
+						const JPH::Vec3 currentFwd = currentRot.RotateAxisZ();
+						const float currentYaw = std::atan2(-currentFwd.GetX(), -currentFwd.GetZ());
+						const glm::vec3 entryForward = BikeForwardFromYaw(currentYaw);
+						const glm::vec3 entryNormal = -entryForward;
+						constexpr float kDeployPortalDistance = 14.0f;
+						constexpr float kPortalCameraOffset = 2.0f;
+						constexpr float kPortalCameraLookDistance = 18.0f;
+
+						const float entryFloorY = static_cast<float>(currentPos.GetY());
+						const glm::vec3 entryCenter(
+							static_cast<float>(currentPos.GetX()) + entryForward.x * kDeployPortalDistance,
+							entryFloorY + kDeployPortalHeight * 0.5f,
+							static_cast<float>(currentPos.GetZ()) + entryForward.z * kDeployPortalDistance);
+						const glm::mat4 entrySurface = MakeDeployPortalSurface(entryCenter, entryNormal);
+
+						const glm::vec3 checkpointBodyPos(m_checkpointPos.x, m_checkpointPos.y - 3.5f, m_checkpointPos.z);
+						const glm::vec3 checkpointForward = BikeForwardFromYaw(m_checkpointYaw);
+						const glm::vec3 checkpointCenter(
+							checkpointBodyPos.x,
+							checkpointBodyPos.y + kDeployPortalHeight * 0.5f,
+							checkpointBodyPos.z);
+						const glm::mat4 checkpointSurface = MakeDeployPortalSurface(checkpointCenter, checkpointForward);
+
+						const glm::vec3 checkpointExitPosition(
+							checkpointBodyPos.x + checkpointForward.x * kDeployPortalExitOffset,
+							checkpointBodyPos.y,
+							checkpointBodyPos.z + checkpointForward.z * kDeployPortalExitOffset);
+						const glm::vec3 entryExitPosition(
+							entryCenter.x + entryNormal.x * kDeployPortalExitOffset,
+							entryFloorY,
+							entryCenter.z + entryNormal.z * kDeployPortalExitOffset);
+
+						m_portals[0].enabled = true;
+						m_portals[0].surfaceTransform = entrySurface;
+						m_portals[0].inverseSurfaceTransform = glm::inverse(entrySurface);
+						m_portals[0].exitPosition = checkpointExitPosition;
+						m_portals[0].exitYaw = m_checkpointYaw;
+						m_portals[0].previousLocalZ = 0.0f;
+						m_portals[0].hasPreviousSample = false;
+
+						m_portals[1].enabled = true;
+						m_portals[1].surfaceTransform = checkpointSurface;
+						m_portals[1].inverseSurfaceTransform = glm::inverse(checkpointSurface);
+						m_portals[1].exitPosition = entryExitPosition;
+						m_portals[1].exitYaw = BikeYawFromForward(entryNormal);
+						m_portals[1].previousLocalZ = 0.0f;
+						m_portals[1].hasPreviousSample = false;
+						m_portalPairCooldown = 0.0f;
+
+						const glm::vec3 entryCamera = entryCenter + entryNormal * kPortalCameraOffset + glm::vec3(0.0f, 0.8f, 0.0f);
+						const glm::vec3 checkpointCamera = checkpointCenter + checkpointForward * kPortalCameraOffset + glm::vec3(0.0f, 0.8f, 0.0f);
+						m_render->SetPortalPreviewPair(
+							entrySurface,
+							checkpointCamera,
+							checkpointCamera + checkpointForward * kPortalCameraLookDistance,
+							checkpointSurface,
+							entryCamera,
+							entryCamera + entryNormal * kPortalCameraLookDistance,
+							glm::vec3(0.0f, 1.0f, 0.0f),
+							80.0f);
+
+						if (m_audio) {
+							m_audio->PlayOneShot("PortalWarp");
+						}
+						Toast("Portal Deployed");
+						portalDeployHandled = true;
+					}
+				}
+			}
+
+			if (!portalDeployHandled && (!mState->isAlive || m_hasCheckpoint)) { // 允许在活着时按住回档到复活点
 				flecs::entity bikeEntity = m_scene->find_entity("Bike_0");
 				if (bikeEntity.is_valid()) {
 					uint32_t bikeBodyID = JPH::BodyID::cInvalidBodyID;
@@ -1987,6 +2105,7 @@ namespace engine {
 		m_winUiVisible = false;
 		m_winUiDelayTimer = -1.0f;
 		m_previousAliveState = true;
+		m_deployConsumedUntilRelease = false;
 		m_bikeController.reset();
 	}
 
