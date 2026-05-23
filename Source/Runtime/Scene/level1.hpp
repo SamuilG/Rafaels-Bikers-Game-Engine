@@ -62,13 +62,16 @@ namespace engine {
 
         // Rocket — hidden at start, mounted to rear frame on first gas tank collection
         flecs::entity m_rocketEntity;
-
+        flecs::entity m_checkpointGhost; // 玩家放置的复活点残影
         // Newspaper pickup — shows UFO image for 5s on trigger
         flecs::entity m_newspaperEntity;
         float         m_ufoDisplayTimer = -1.0f; // counts down from 5s; -1 = inactive
 
         // Rocket2 scene launch — triggered at (232.94, 86.11, -222.40)
         std::vector<flecs::entity> m_rocket2Entities;  // ALL mesh parts of rocket2.glb
+        // 存储真实的单车零件 和 对应的残影零件
+        std::vector<flecs::entity> m_realBikeParts;
+        std::vector<flecs::entity> m_ghostBikeParts;
         glm::vec3     m_rocket2Center      = glm::vec3(260.92f, -20.0f, 0.0f); // pivot point (spawn pos), tracks ascent during launch
         bool          m_rocket2Launching   = false;
         float         m_rocket2LaunchTimer = -1.0f;

@@ -150,8 +150,23 @@ namespace engine {
 		// N key cycles songs
 		m_input->MapKeyboardAction("NextSong", GLFW_KEY_N);
 		m_input->MapKeyboardAction("Mute", GLFW_KEY_M);
+		m_input->MapKeyboardAction("SetCheckpoint", GLFW_KEY_C);
+		// =========================================================
+		// 【新增 2】：预加载全息残影模型 (放置到 Emissive 发光渲染层)
+		// 采用最安全的“地底隐藏法”，不碰 EntityStatus 开关
+		// =========================================================
+		// =========================================================
+		// 【新增 2】：预加载全息残影模型 (放置到 Emissive 发光渲染层)
+		// =========================================================
+		m_checkpointGhost = m_scene->LoadModel(
+			m_render, "Assets/Models/respawnPoint.glb",
+			engine::ModelPhysicsType::Dynamic,
+			-1.0f, // <--- 【绝杀】：传入负数 mass，通知 SceneManager 这是纯视觉模型，绝对不要给它挂载任何物理！
+			glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -20000.0f, 0.0f)), // 一出生就放在地底两万米
+			engine::RenderLayer::Emissive
+		);
 
-
+		
 		// load the terrain and static models
 		//m_scene->LoadModel(m_render, "Assets/Models/TScene.glb", engine::ModelPhysicsType::Static, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
 		m_scene->LoadModel(m_render, "Assets/Models/Level.glb", engine::ModelPhysicsType::Static, 0.0f, glm::scale(glm::mat4(1.0f), glm::vec3(2.0f)));
@@ -480,7 +495,34 @@ namespace engine {
 				if (bikeEntity.has<CompoundParent>()) bikeBodyID_raw = bikeEntity.get<CompoundParent>().bodyID;
 				else if (bikeEntity.has<PhysicsBody>())  bikeBodyID_raw = bikeEntity.get<PhysicsBody>().bodyID;
 			}
+			// =========================================================
+			// 【核心修复】：为组合物体（单车）的每一个零件逐一创建全息残影！
+			// =========================================================
+			m_realBikeParts.clear();
+			m_ghostBikeParts.clear();
 
+			if (bikeBodyID_raw != JPH::BodyID::cInvalidBodyID) {
+				m_scene->get_world().query<const CompoundParent>()
+					.each([&](flecs::entity e, const CompoundParent& cp) {
+					// 只要它的物理归属于这辆单车，它就是单车的一个零件（包含轮子、车把、踏板等）
+					if (cp.bodyID == bikeBodyID_raw) {
+						m_realBikeParts.push_back(e);
+
+						// 动态创建一个纯视觉的克隆体，出生在地底两万米
+						auto ghostPart = m_scene->get_world().entity()
+							.set<EntityStatus>({ true, false }) // 只渲染，绝对无物理
+							.set<engine::LayerComponent>({ engine::RenderLayer::Emissive }) // 塞入泛光层
+							.set<LocalTransform>({ glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -20000.0f, 0.0f)) });
+
+						// 完美复刻它的网格和材质
+						if (e.has<MeshComponent>()) ghostPart.set<MeshComponent>(e.get<MeshComponent>());
+						if (e.has<MaterialComponent>()) ghostPart.set<MaterialComponent>(e.get<MaterialComponent>());
+
+						m_ghostBikeParts.push_back(ghostPart);
+					}
+						});
+				printf("[Ghost] Created %zu ghost parts for the bike.\n", m_ghostBikeParts.size());
+			}
 			//280，47，513
 			//-175，-28，8
 			static const glm::vec3 kCollectPos[5] = {
@@ -1248,6 +1290,62 @@ namespace engine {
 
 	void level::Update(float dt) {
 
+		// =========================================================
+		// 【新增】：玩家手动放置自定义复活点 + 召唤全息残影 (C 键)
+		// =========================================================
+		static float s_checkpointCooldown = 0.0f;
+		if (s_checkpointCooldown > 0.0f) {
+			s_checkpointCooldown -= dt;
+		}
+
+		if (mState->isAlive && m_input && m_input->IsActionPressed("SetCheckpoint") && s_checkpointCooldown <= 0.0f) {
+			if (m_bikeEntity.is_valid() && m_physics) {
+				uint32_t bikeBodyID = JPH::BodyID::cInvalidBodyID;
+				if (m_bikeEntity.has<PhysicsBody>()) bikeBodyID = m_bikeEntity.get<PhysicsBody>().bodyID;
+				else if (m_bikeEntity.has<CompoundParent>()) bikeBodyID = m_bikeEntity.get<CompoundParent>().bodyID;
+
+				if (bikeBodyID != JPH::BodyID::cInvalidBodyID) {
+					JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
+					JPH::BodyID id(bikeBodyID);
+
+					// 1. 获取物理数据并保存全局检查点
+					JPH::RVec3 currentPos = bi.GetPosition(id);
+					JPH::Quat currentRot = bi.GetRotation(id);
+
+					JPH::Vec3 fwd = currentRot.RotateAxisZ();
+					float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
+
+					// 预抬高 3.5f，以抵消 DEPLOY 落地时的悬空衰减量
+					m_checkpointPos = glm::vec3(currentPos.GetX(), currentPos.GetY() + 3.5f, currentPos.GetZ());
+					m_checkpointYaw = currentYaw;
+					m_hasCheckpoint = true;
+
+					// =========================================================
+					// 2. 遍历单车的所有零件，将残影精确覆盖过去！
+					// =========================================================
+					for (size_t i = 0; i < m_realBikeParts.size(); ++i) {
+						if (m_realBikeParts[i].is_alive() && m_realBikeParts[i].has<LocalTransform>()) {
+
+							// 完美提取真实零件的矩阵（这里面已经包含了轮子的自转、车把的转向角！）
+							glm::mat4 liveMatrix = m_realBikeParts[i].get<LocalTransform>().matrix;
+
+							// 强行赋值给对应的残影零件，触发脏标记
+							m_ghostBikeParts[i].set<LocalTransform>({ liveMatrix });
+							m_ghostBikeParts[i].modified<LocalTransform>();
+						}
+					}
+
+					// 3. UI 提示与音效反馈
+					Log("[Checkpoint] Manual checkpoint set at current position.\n");
+					Toast("Checkpoint Saved! Ghost Deployed.");
+
+					m_audio->LoadSound("res", "Assets/Sounds/respawn.mp3");
+					m_audio->PlayOneShot("res");
+
+					s_checkpointCooldown = 1.0f; // 1秒冷却
+				}
+			}
+		}
 		if (mState) {
 			if (m_previousAliveState && !mState->isAlive) {
 				++mState->deathCount;

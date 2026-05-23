@@ -189,7 +189,8 @@ namespace engine {
 
             auto e = m_world->entity(name.c_str())
                 .add<DynamicObject>()
-                .set<EntityStatus>({ true, true })
+                // 【核心修改 1】：如果 mass 是负数，说明我们不需要物理，关闭物理标记
+                .set<EntityStatus>({ true, mass >= 0.0f })
                 .set<LayerComponent>({ layer })
                 .set<LocalTransform>({ instance.transform })
                 .set<WorldTransform>({ instance.transform })
@@ -198,7 +199,8 @@ namespace engine {
             uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
             e.set<MaterialComponent>({ matIdx });
 
-            if (m_physics_system) {
+            // 【核心修改 2】：只有 mass >= 0 时，才生成物理刚体！
+            if (m_physics_system && mass >= 0.0f) {
                 JPH::BodyID bodyID = m_physics_system->create_dynamic_convex_body(model.meshes[instance.meshIndex], instance.transform, mass);
                 if (!bodyID.IsInvalid()) {
                     e.set<PhysicsBody>({ bodyID.GetIndexAndSequenceNumber() });
