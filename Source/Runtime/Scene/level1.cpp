@@ -304,6 +304,8 @@ namespace engine {
 		m_portals[0].enabled = true;
 		m_portals[0].surfaceTransform = leftPortalSurface;
 		m_portals[0].inverseSurfaceTransform = glm::inverse(leftPortalSurface);
+		m_portals[0].exitSurfaceTransform = rightPortalSurface;
+		m_portals[0].inverseExitSurfaceTransform = glm::inverse(rightPortalSurface);
 		m_portals[0].exitPosition = rightExitPosition;
 		m_portals[0].exitYaw = yawFromForward(rightPortalForward);
 		m_portals[0].previousLocalZ = 0.0f;
@@ -312,6 +314,8 @@ namespace engine {
 		m_portals[1].enabled = true;
 		m_portals[1].surfaceTransform = rightPortalSurface;
 		m_portals[1].inverseSurfaceTransform = glm::inverse(rightPortalSurface);
+		m_portals[1].exitSurfaceTransform = leftPortalSurface;
+		m_portals[1].inverseExitSurfaceTransform = glm::inverse(leftPortalSurface);
 		m_portals[1].exitPosition = leftExitPosition;
 		m_portals[1].exitYaw = yawFromForward(leftPortalForward);
 		m_portals[1].previousLocalZ = 0.0f;
@@ -1477,6 +1481,22 @@ namespace engine {
 					std::max(currentVel.GetY(), 0.0f),
 					exitForward.GetZ() * carriedSpeed);
 
+				mState->portalCameraActive = true;
+				mState->portalCameraTimer = 0.0f;
+				mState->portalCameraPosition = glm::vec3(mState->camera2world[3]);
+				mState->portalCameraTargetPosition = mState->followTargetPos + glm::vec3(0.0f, 1.6f, 0.0f);
+				mState->portalCameraBoomLength = std::max(0.1f, glm::length(mState->portalCameraPosition - mState->portalCameraTargetPosition));
+				mState->portalCameraEntrySurface = portal.surfaceTransform;
+				mState->portalCameraExitSurface = portal.exitSurfaceTransform;
+				mState->portalCameraInverseExitSurface = portal.inverseExitSurfaceTransform;
+				mState->portalCameraExitStartDistance = std::max(0.0f, glm::vec3(
+					portal.inverseExitSurfaceTransform *
+					glm::vec4(portal.exitPosition + glm::vec3(0.0f, 1.6f, 0.0f), 1.0f)).z);
+				const float cameraEntryLocalZ = glm::vec3(
+					portal.inverseSurfaceTransform *
+					glm::vec4(mState->portalCameraPosition, 1.0f)).z;
+				mState->portalCameraStartSide = cameraEntryLocalZ < 0.0f ? -1.0f : 1.0f;
+
 				bi.SetPositionAndRotation(id, exitPos, exitRot, JPH::EActivation::Activate);
 				bi.SetLinearVelocity(id, exitVel);
 				bi.SetAngularVelocity(id, JPH::Vec3::sZero());
@@ -1965,6 +1985,8 @@ namespace engine {
 						m_portals[0].enabled = true;
 						m_portals[0].surfaceTransform = entrySurface;
 						m_portals[0].inverseSurfaceTransform = glm::inverse(entrySurface);
+						m_portals[0].exitSurfaceTransform = checkpointSurface;
+						m_portals[0].inverseExitSurfaceTransform = glm::inverse(checkpointSurface);
 						m_portals[0].exitPosition = checkpointExitPosition;
 						m_portals[0].exitYaw = m_checkpointYaw;
 						m_portals[0].previousLocalZ = 0.0f;
@@ -1973,6 +1995,8 @@ namespace engine {
 						m_portals[1].enabled = true;
 						m_portals[1].surfaceTransform = checkpointSurface;
 						m_portals[1].inverseSurfaceTransform = glm::inverse(checkpointSurface);
+						m_portals[1].exitSurfaceTransform = entrySurface;
+						m_portals[1].inverseExitSurfaceTransform = glm::inverse(entrySurface);
 						m_portals[1].exitPosition = entryExitPosition;
 						m_portals[1].exitYaw = BikeYawFromForward(entryNormal);
 						m_portals[1].previousLocalZ = 0.0f;
@@ -2059,6 +2083,12 @@ namespace engine {
 							bi.SetLinearVelocity(id, JPH::Vec3::sZero());
 							bi.SetAngularVelocity(id, JPH::Vec3::sZero());
 
+							mState->portalCameraActive = false;
+							mState->portalCameraTimer = 0.0f;
+							mState->portalCameraExitStartDistance = 0.0f;
+							mState->portalCameraBoomLength = 0.0f;
+							mState->portalCameraStartSide = 1.0f;
+							mState->portalCameraTargetPosition = glm::vec3(0.0f);
 							mState->isAlive = true;
 							mState->deathTimer = 0.0f;
 							mState->isGameOver = false;
@@ -2106,6 +2136,14 @@ namespace engine {
 		m_winUiDelayTimer = -1.0f;
 		m_previousAliveState = true;
 		m_deployConsumedUntilRelease = false;
+		if (mState) {
+			mState->portalCameraActive = false;
+			mState->portalCameraTimer = 0.0f;
+			mState->portalCameraExitStartDistance = 0.0f;
+			mState->portalCameraBoomLength = 0.0f;
+			mState->portalCameraStartSide = 1.0f;
+			mState->portalCameraTargetPosition = glm::vec3(0.0f);
+		}
 		m_bikeController.reset();
 	}
 

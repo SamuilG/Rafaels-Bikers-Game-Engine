@@ -106,6 +106,8 @@ namespace engine {
 			bool enabled = false;
 			glm::mat4 surfaceTransform = glm::mat4(1.0f);
 			glm::mat4 inverseSurfaceTransform = glm::mat4(1.0f);
+			glm::mat4 exitSurfaceTransform = glm::mat4(1.0f);
+			glm::mat4 inverseExitSurfaceTransform = glm::mat4(1.0f);
 			glm::vec3 exitPosition = glm::vec3(0.0f);
 			float exitYaw = 0.0f;
 			float previousLocalZ = 0.0f;
