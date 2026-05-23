@@ -14,7 +14,7 @@ namespace engine {
     public:
         level();
         ~level() override;
-
+        float m_deployHoldTimer = 0.0f;
         void Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, GameplayState* state, AnimationSystem* anima, AudioSystem* audio) override;
         void Update(float dt) override;
         void Shutdown() override;
@@ -63,15 +63,20 @@ namespace engine {
         // Rocket — hidden at start, mounted to rear frame on first gas tank collection
         flecs::entity m_rocketEntity;
         flecs::entity m_checkpointGhost; // 玩家放置的复活点残影
+        // 用于极速传送的固定出生点信息
+        glm::vec3 m_initialSpawnPos = glm::vec3(-152.0f, 3.0f, -84.0f); // 替换为你的真实起点
+        float m_initialSpawnYaw = 0.0f; // 根据你的起点朝向调整 (通常是 0 或 PI)
+
+
+        // 用于标记复活点的简单模型
+        flecs::entity m_checkpointBeacon;
         // Newspaper pickup — shows UFO image for 5s on trigger
         flecs::entity m_newspaperEntity;
         float         m_ufoDisplayTimer = -1.0f; // counts down from 5s; -1 = inactive
 
         // Rocket2 scene launch — triggered at (232.94, 86.11, -222.40)
         std::vector<flecs::entity> m_rocket2Entities;  // ALL mesh parts of rocket2.glb
-        // 存储真实的单车零件 和 对应的残影零件
-        std::vector<flecs::entity> m_realBikeParts;
-        std::vector<flecs::entity> m_ghostBikeParts;
+     
         glm::vec3     m_rocket2Center      = glm::vec3(260.92f, -20.0f, 0.0f); // pivot point (spawn pos), tracks ascent during launch
         bool          m_rocket2Launching   = false;
         float         m_rocket2LaunchTimer = -1.0f;

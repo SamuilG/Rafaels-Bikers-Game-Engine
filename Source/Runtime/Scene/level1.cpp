@@ -143,7 +143,7 @@ namespace engine {
 		RemoveWidget(kAbilityUnlockUiPath);
 		RemoveWidget(kWinUiPath);
 		RefreshAbilityHintUi();
-
+		m_deployHoldTimer = 0.0f;
 
 		m_audio->LoadSound("NextSong", "Assets/Sounds/Button.mp3");
 		m_audio->SetVolume("NextSong", 0.7f);
@@ -152,19 +152,34 @@ namespace engine {
 		m_input->MapKeyboardAction("Mute", GLFW_KEY_M);
 		m_input->MapKeyboardAction("SetCheckpoint", GLFW_KEY_C);
 		// =========================================================
-		// 【新增 2】：预加载全息残影模型 (放置到 Emissive 发光渲染层)
-		// 采用最安全的“地底隐藏法”，不碰 EntityStatus 开关
+		// 【降维打击】：预加载最简单的复活点信标
 		// =========================================================
-		// =========================================================
-		// 【新增 2】：预加载全息残影模型 (放置到 Emissive 发光渲染层)
-		// =========================================================
-		m_checkpointGhost = m_scene->LoadModel(
-			m_render, "Assets/Models/respawnPoint.glb",
-			engine::ModelPhysicsType::Dynamic,
-			-1.0f, // <--- 【绝杀】：传入负数 mass，通知 SceneManager 这是纯视觉模型，绝对不要给它挂载任何物理！
-			glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -20000.0f, 0.0f)), // 一出生就放在地底两万米
+		m_checkpointBeacon = m_scene->LoadModel(
+			m_render, "Assets/Models/respawnPoint.glb", // 请确保这个模型文件存在！
+			engine::ModelPhysicsType::Static,
+			0.0f,
+			glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -20000.0f, 0.0f)), // 扔到地底
 			engine::RenderLayer::Emissive
 		);
+
+		// 如果你确定这个模型不需要任何物理碰撞，可以加上这几行把它剥掉
+		// 如果你希望玩家能撞到复活点，那就把这几行注释掉
+		if (m_checkpointBeacon.is_valid()) {
+			m_scene->get_world().query<const PhysicsBody>()
+				.each([&](flecs::entity e, const PhysicsBody& pb) {
+				// 只清理属于这个信标的物理体（这里假设信标比较简单，只有一个 Mesh）
+				// 为安全起见，这里提供一个简单的剥离：
+				if (e.has<PhysicsBody>() && e.id() == m_checkpointBeacon.id()) {
+					JPH::BodyID bid(e.get<PhysicsBody>().bodyID);
+					JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
+					if (bi.IsAdded(bid)) {
+						bi.RemoveBody(bid);
+						bi.DestroyBody(bid);
+					}
+					e.remove<PhysicsBody>();
+				}
+					});
+		}
 
 		
 		// load the terrain and static models
@@ -495,34 +510,7 @@ namespace engine {
 				if (bikeEntity.has<CompoundParent>()) bikeBodyID_raw = bikeEntity.get<CompoundParent>().bodyID;
 				else if (bikeEntity.has<PhysicsBody>())  bikeBodyID_raw = bikeEntity.get<PhysicsBody>().bodyID;
 			}
-			// =========================================================
-			// 【核心修复】：为组合物体（单车）的每一个零件逐一创建全息残影！
-			// =========================================================
-			m_realBikeParts.clear();
-			m_ghostBikeParts.clear();
-
-			if (bikeBodyID_raw != JPH::BodyID::cInvalidBodyID) {
-				m_scene->get_world().query<const CompoundParent>()
-					.each([&](flecs::entity e, const CompoundParent& cp) {
-					// 只要它的物理归属于这辆单车，它就是单车的一个零件（包含轮子、车把、踏板等）
-					if (cp.bodyID == bikeBodyID_raw) {
-						m_realBikeParts.push_back(e);
-
-						// 动态创建一个纯视觉的克隆体，出生在地底两万米
-						auto ghostPart = m_scene->get_world().entity()
-							.set<EntityStatus>({ true, false }) // 只渲染，绝对无物理
-							.set<engine::LayerComponent>({ engine::RenderLayer::Emissive }) // 塞入泛光层
-							.set<LocalTransform>({ glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -20000.0f, 0.0f)) });
-
-						// 完美复刻它的网格和材质
-						if (e.has<MeshComponent>()) ghostPart.set<MeshComponent>(e.get<MeshComponent>());
-						if (e.has<MaterialComponent>()) ghostPart.set<MaterialComponent>(e.get<MaterialComponent>());
-
-						m_ghostBikeParts.push_back(ghostPart);
-					}
-						});
-				printf("[Ghost] Created %zu ghost parts for the bike.\n", m_ghostBikeParts.size());
-			}
+			
 			//280，47，513
 			//-175，-28，8
 			static const glm::vec3 kCollectPos[5] = {
@@ -1291,7 +1279,7 @@ namespace engine {
 	void level::Update(float dt) {
 
 		// =========================================================
-		// 【新增】：玩家手动放置自定义复活点 + 召唤全息残影 (C 键)
+		// 【新增】：玩家手动放置自定义复活点 + 召唤信标 (C 键)
 		// =========================================================
 		static float s_checkpointCooldown = 0.0f;
 		if (s_checkpointCooldown > 0.0f) {
@@ -1321,23 +1309,33 @@ namespace engine {
 					m_hasCheckpoint = true;
 
 					// =========================================================
-					// 2. 遍历单车的所有零件，将残影精确覆盖过去！
+					// 2. 将信标从地底“瞬移”到玩家当前位置
 					// =========================================================
-					for (size_t i = 0; i < m_realBikeParts.size(); ++i) {
-						if (m_realBikeParts[i].is_alive() && m_realBikeParts[i].has<LocalTransform>()) {
+					if (m_checkpointBeacon.is_valid()) {
 
-							// 完美提取真实零件的矩阵（这里面已经包含了轮子的自转、车把的转向角！）
-							glm::mat4 liveMatrix = m_realBikeParts[i].get<LocalTransform>().matrix;
+						// 只取位置和 Y 轴旋转（Yaw），忽略单车的翻滚和倾斜，让信标永远垂直向上
+						glm::mat4 beaconTransform =
+							glm::translate(glm::mat4(1.0f), glm::vec3(currentPos.GetX(), currentPos.GetY(), currentPos.GetZ())) *
+							glm::rotate(glm::mat4(1.0f), currentYaw, glm::vec3(0.0f, 1.0f, 0.0f));
 
-							// 强行赋值给对应的残影零件，触发脏标记
-							m_ghostBikeParts[i].set<LocalTransform>({ liveMatrix });
-							m_ghostBikeParts[i].modified<LocalTransform>();
-						}
+						// 强制更新信标以及它可能存在的所有子节点的 Transform
+						std::function<void(flecs::entity)> forceUpdateTransform = [&](flecs::entity e) {
+							if (!e.is_valid()) return;
+
+							// 如果有 LocalTransform，就把矩阵塞进去并触发更新
+							if (e.has<LocalTransform>()) {
+								e.set<LocalTransform>({ beaconTransform });
+								e.modified<LocalTransform>();
+							}
+							e.children([&](flecs::entity child) { forceUpdateTransform(child); });
+							};
+
+						forceUpdateTransform(m_checkpointBeacon);
 					}
 
 					// 3. UI 提示与音效反馈
 					Log("[Checkpoint] Manual checkpoint set at current position.\n");
-					Toast("Checkpoint Saved! Ghost Deployed.");
+					Toast("Checkpoint Saved! Beacon Deployed.");
 
 					m_audio->LoadSound("res", "Assets/Sounds/respawn.mp3");
 					m_audio->PlayOneShot("res");
@@ -1670,10 +1668,23 @@ namespace engine {
 				}
 			}
 		}
+		
+		// =========================================================
+		// 长按 DEPLOY 键回档逻辑 (需长按 1.5 秒)
+		// =========================================================
+		if (m_input && m_input->IsActionHeld("DEPLOY")) {
+			m_deployHoldTimer += dt;
+		}
+		else {
+			// 如果松开按键，或者根本没按，计时器立刻清零
+			m_deployHoldTimer = 0.0f;
+		}
 
-		if (m_input && m_input->IsActionPressed("DEPLOY")) {
+		// 当长按时间超过 1.5 秒时，触发回档，并清空计时器防止连续触发
+		if (m_deployHoldTimer >= 1.5f) {
+			m_deployHoldTimer = 0.0f; // 触发后立刻清零
 
-			if (!mState->isAlive) {
+			if (!mState->isAlive || m_hasCheckpoint) { // 允许在活着时按住回档到复活点
 				flecs::entity bikeEntity = m_scene->find_entity("Bike_0");
 				if (bikeEntity.is_valid()) {
 					uint32_t bikeBodyID = JPH::BodyID::cInvalidBodyID;
@@ -1686,34 +1697,31 @@ namespace engine {
 
 						float linVelSq = bi.GetLinearVelocity(id).LengthSq();
 						float angVelSq = bi.GetAngularVelocity(id).LengthSq();
-
-
-
-
 						const float stopThresholdSq = 1.95f;
 
 						// Checkpoint respawn: no speed requirement
-						// In-place respawn: wait until bike has stopped
-						if (m_hasCheckpoint || (linVelSq < stopThresholdSq && angVelSq < stopThresholdSq)) {
+						// In-place respawn: wait until bike has stopped (only if dead and no checkpoint)
+						if (m_hasCheckpoint || (!mState->isAlive && linVelSq < stopThresholdSq && angVelSq < stopThresholdSq)) {
 
 							JPH::RVec3 respawnPos;
 							JPH::Quat  uprightRot;
 
 							if (m_hasCheckpoint) {
-
 								respawnPos = JPH::RVec3(m_checkpointPos.x, m_checkpointPos.y - 3.5f, m_checkpointPos.z);
-								uprightRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), m_checkpointYaw);
+								// 强制加上 JPH_PI (180度) 保证车头朝向一致
+								uprightRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), m_checkpointYaw + JPH::JPH_PI);
+
 								printf("[Gameplay] Bike respawned at checkpoint (%.2f, %.2f, %.2f)\n",
 									m_checkpointPos.x, m_checkpointPos.y, m_checkpointPos.z);
 								mState->iblEnabled = true;
 							}
 							else {
-
+								// 原地复活逻辑 (仅在没有放置自定义复活点，且处于死亡停滞状态时生效)
 								JPH::RVec3 currentPos = bi.GetPosition(id);
-
 								JPH::Quat currentRot = bi.GetRotation(id);
 								JPH::Vec3 fwd = currentRot.RotateAxisZ();
 								JPH::Vec3 flatFwd(fwd.GetX(), 0.0f, fwd.GetZ());
+
 								if (flatFwd.LengthSq() > 0.0001f) {
 									flatFwd = flatFwd.Normalized();
 								}
@@ -1729,7 +1737,6 @@ namespace engine {
 								float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
 								uprightRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), currentYaw + JPH::JPH_PI);
 								respawnPos = currentPos;
-								
 							}
 
 							bi.SetPositionAndRotation(id, respawnPos, uprightRot, JPH::EActivation::Activate);
@@ -1748,14 +1755,9 @@ namespace engine {
 
 							RemoveWidget(kRespawnPromptUiPath);
 							m_respawnPromptVisible = false;
-							
-							printf("[Gameplay] Bike stopped and respawned in place!\n");
+
+							printf("[Gameplay] Bike respawn triggered successfully!\n");
 						}
-						else {
-							// === 单车还在滚动，拒绝复活，可以考虑在这里触发个 UI 提示音 ===
-							// printf("[Gameplay] Cannot respawn yet, bike is still tumbling...\n");
-						}
-						// -----------------------------------------------------
 					}
 				}
 			}

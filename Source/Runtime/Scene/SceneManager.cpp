@@ -148,10 +148,10 @@ namespace engine {
         cache_model_for_culling(model, baseMeshIdx, baseMatIdx);
         flecs::entity firstEntity = flecs::entity::null();
 
-        int counter = 0;
+        static int static_counter = 0;
         for (const auto& instance : model.scenes) {
             std::string name = instance.name.empty() ? "StaticObject" : instance.name;
-            name += "_" + std::to_string(counter++);
+            name += "_" + std::to_string(static_counter++);
 
             auto e = m_world->entity(name.c_str())
                 .add<StaticObject>()
@@ -182,10 +182,10 @@ namespace engine {
         cache_model_for_culling(model, baseMeshIdx, baseMatIdx);
         flecs::entity firstEntity = flecs::entity::null();
 
-        int counter = 0;
+        static int dynamic_counter = 0;
         for (const auto& instance : model.scenes) {
             std::string name = instance.name.empty() ? "DynamicObject" : instance.name;
-            name += "_" + std::to_string(counter++);
+            name += "_" + std::to_string(dynamic_counter++);
 
             auto e = m_world->entity(name.c_str())
                 .add<DynamicObject>()
@@ -235,10 +235,11 @@ namespace engine {
 
         glm::mat4 invBody = glm::inverse(bodyWorldTransform);
 
-        int counter = 0;
+        ;
+        static int compound_counter = 0;
         for (const auto& instance : model.scenes) {
             std::string name = instance.name.empty() ? "CompoundPart" : instance.name;
-            name += "_" + std::to_string(counter++);
+            name += "_" + std::to_string(compound_counter++);
 
             glm::mat4 localOffset = invBody * instance.transform;
 
@@ -293,10 +294,10 @@ namespace engine {
 
         glm::mat4 invBody = glm::inverse(bodyWorldTransform);
 
-        int counter = 0;
+        static int c_counter = 0;
         for (const auto& instance : model.scenes) {
             std::string name = instance.name.empty() ? "CPart" : instance.name;
-            name += "_" + std::to_string(counter++);
+            name += "_" + std::to_string(c_counter++);
 
             glm::mat4 localOffset = invBody * instance.transform;
 
