@@ -697,7 +697,19 @@ void record_commands(
 		vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(meshInfo.indices.size()), 1, 0, 0, 0);
 	}
 
-	if (portalReady)
+	auto portalVisibleToMainCamera = [&](const glm::mat4* surfaceTransform) {
+		if (!surfaceTransform) {
+			return false;
+		}
+
+		const glm::vec3 cameraPos = glm::vec3(aSceneUniform.cameraPos);
+		const glm::vec3 portalLocalPos = glm::vec3(glm::inverse(*surfaceTransform) * glm::vec4(cameraPos, 1.0f));
+		constexpr float kPortalDrawSafetyDistance =
+			cfg::kPortalSurfaceHalfDepth + cfg::kCameraNear + cfg::kPortalCameraClipSafetyMargin;
+		return portalLocalPos.z > kPortalDrawSafetyDistance;
+	};
+
+	if (portalReady && portalVisibleToMainCamera(aPortalSurfaceTransform))
 	{
 		uint32_t meshIdx = aPortalMeshIndex;
 		PortalSurfacePC portalPc{};
@@ -713,7 +725,7 @@ void record_commands(
 		vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
 		vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(aMeshInfos[meshIdx].indices.size()), 1, 0, 0, 0);
 	}
-	if (portal2Ready)
+	if (portal2Ready && portalVisibleToMainCamera(aPortal2SurfaceTransform))
 	{
 		uint32_t meshIdx = aPortalMeshIndex;
 		PortalSurfacePC portalPc{};

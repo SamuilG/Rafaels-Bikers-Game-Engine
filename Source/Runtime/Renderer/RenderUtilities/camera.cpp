@@ -224,14 +224,9 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 				glm::inverse(aState.portalCameraExitSurface);
 			const glm::vec3 perceivedTargetPos = transform_point(exitToEntry, realTargetPos);
 
-			if (aState.portalCameraTimer < 0.08f) {
-				const float targetFollow = 1.0f - std::exp(-54.0f * aElapsedTime);
-				aState.portalCameraTargetPosition +=
-					(perceivedTargetPos - aState.portalCameraTargetPosition) * targetFollow;
-			}
-			else {
-				aState.portalCameraTargetPosition = perceivedTargetPos;
-			}
+			aState.portalCameraTargetPosition = perceivedTargetPos;
+			aState.portalCameraBoomOffset = offset;
+			aState.portalCameraBoomLength = std::max(0.1f, glm::length(offset));
 
 			const glm::vec3 portalSideCamPos = aState.portalCameraTargetPosition + aState.portalCameraBoomOffset;
 			const float cameraFollow = 1.0f - std::exp(-18.0f * aElapsedTime);
@@ -243,9 +238,10 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 			const glm::mat4 entryInverse = glm::inverse(aState.portalCameraEntrySurface);
 			const float cameraEntryLocalZ = glm::vec3(entryInverse * glm::vec4(cam_pos, 1.0f)).z;
 			constexpr float kPortalCameraMinHoldTime = 0.10f;
-			constexpr float kPortalCameraCrossEpsilon = 0.12f;
+			constexpr float kPortalCameraHandoffDistance =
+				cfg::kPortalSurfaceHalfDepth + cfg::kCameraNear + cfg::kPortalCameraClipSafetyMargin;
 			if (aState.portalCameraTimer >= kPortalCameraMinHoldTime &&
-				aState.portalCameraStartSide * cameraEntryLocalZ <= -kPortalCameraCrossEpsilon) {
+				aState.portalCameraStartSide * cameraEntryLocalZ <= kPortalCameraHandoffDistance) {
 				const glm::mat4 entryToExit = aState.portalCameraExitSurface *
 					portal_half_turn() *
 					entryInverse;

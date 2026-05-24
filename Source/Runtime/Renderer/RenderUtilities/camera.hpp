@@ -19,6 +19,9 @@ namespace cfg
 	constexpr float kCameraNear  = 0.1f;
 	constexpr float kCameraFar   = 1000.f;
 	constexpr auto kCameraFov    = labut2::literals::operator""_degf(60.0);
+
+	constexpr float kPortalSurfaceHalfDepth = 0.24f;
+	constexpr float kPortalCameraClipSafetyMargin = 0.06f;
 	
 	constexpr float kCameraBaseSpeed = 2.0f;
 	constexpr float kCameraFastMult = 5.f;

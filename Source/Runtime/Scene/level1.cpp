@@ -1569,13 +1569,10 @@ namespace engine {
 				std::abs(portalLocal.z) <= kPlaneDepth;
 			bool crossedPlane = false;
 			if (portal.hasPreviousSample) {
-				const bool crossedTowardNegative =
+				const bool crossedFromRenderedSide =
 					portal.previousLocalPos.z > kPortalPlaneEnterEpsilon &&
 					portalLocal.z <= -kPortalPlaneExitEpsilon;
-				const bool crossedTowardPositive =
-					portal.previousLocalPos.z < -kPortalPlaneEnterEpsilon &&
-					portalLocal.z >= kPortalPlaneExitEpsilon;
-				if (crossedTowardNegative || crossedTowardPositive) {
+				if (crossedFromRenderedSide) {
 					const float denom = portal.previousLocalPos.z - portalLocal.z;
 					if (std::abs(denom) > 0.0001f) {
 						const float t = std::clamp(portal.previousLocalPos.z / denom, 0.0f, 1.0f);
@@ -1586,8 +1583,8 @@ namespace engine {
 			}
 			crossedPlane = crossedPlane || (currentInsidePortalFace && portal.hasPreviousSample &&
 				std::abs(portal.previousLocalPos.z - portalLocal.z) > kPortalPlaneEnterEpsilon &&
-				((portal.previousLocalPos.z > 0.0f && portalLocal.z <= 0.0f) ||
-				 (portal.previousLocalPos.z < 0.0f && portalLocal.z >= 0.0f)));
+				portal.previousLocalPos.z > 0.0f &&
+				portalLocal.z <= 0.0f);
 
 			if (crossedPlane && m_portalPairCooldown <= 0.0f) {
 				const JPH::Quat currentRot = bi.GetRotation(id);
@@ -1610,6 +1607,7 @@ namespace engine {
 				const glm::mat4 portalMap = PortalSpaceMap(portal.surfaceTransform, portal.exitSurfaceTransform);
 				glm::vec3 mappedBodyPos = TransformPoint(portalMap, bodyWorldPos);
 				glm::vec3 mappedSamplePos = TransformPoint(portalMap, samplePos);
+				glm::vec3 mappedFollowTarget = TransformPoint(portalMap, mState->followTargetPos);
 				glm::vec3 mappedForward = NormalizeFlat(TransformVector(portalMap, currentForward));
 				glm::vec3 mappedVelocity = TransformVector(portalMap, currentVelocity);
 				glm::vec3 mappedAngularVelocity = TransformVector(portalMap, currentAngularVelocity);
@@ -1630,8 +1628,12 @@ namespace engine {
 					portal.inverseExitSurfaceTransform *
 					glm::vec4(mappedSamplePos, 1.0f));
 				const float exitClearance = kPortalExitClearance - std::abs(mappedSampleLocal.z);
+				glm::vec3 exitCorrection(0.0f);
 				if (exitClearance > 0.0f) {
-					mappedBodyPos += pushDir * exitClearance;
+					exitCorrection = pushDir * exitClearance;
+					mappedBodyPos += exitCorrection;
+					mappedSamplePos += exitCorrection;
+					mappedFollowTarget += exitCorrection;
 				}
 
 				const float mappedYaw = BikeYawFromForward(mappedForward);
@@ -1649,7 +1651,6 @@ namespace engine {
 					mappedAngularVelocity.y,
 					mappedAngularVelocity.z);
 
-				const glm::vec3 mappedFollowTarget = TransformPoint(portalMap, mState->followTargetPos);
 				const bool teleportCameraWithBike =
 					mState->isExtremeSpeed || currentSpeed >= kDeployExtremeSpeedThreshold;
 				if (teleportCameraWithBike) {
@@ -1674,9 +1675,20 @@ namespace engine {
 					mState->portalCameraActive = true;
 					mState->portalCameraTimer = 0.0f;
 					mState->portalCameraPosition = glm::vec3(mState->camera2world[3]);
-					mState->portalCameraTargetPosition = mState->followTargetPos + glm::vec3(0.0f, 1.6f, 0.0f);
+					const glm::mat4 exitToEntry = PortalSpaceMap(portal.exitSurfaceTransform, portal.surfaceTransform);
+					mState->portalCameraTargetPosition = TransformPoint(
+						exitToEntry,
+						mappedFollowTarget + glm::vec3(0.0f, 1.6f, 0.0f));
 					mState->portalCameraBoomOffset = mState->portalCameraPosition - mState->portalCameraTargetPosition;
-					mState->portalCameraBoomLength = std::max(0.1f, glm::length(mState->portalCameraPosition - mState->portalCameraTargetPosition));
+					const float portalBoomDistance = std::max(0.1f, glm::length(mState->portalCameraBoomOffset));
+					const glm::vec3 portalBoomDir = mState->portalCameraBoomOffset / portalBoomDistance;
+					mState->portalCameraBoomLength = portalBoomDistance;
+					mState->Distance = portalBoomDistance;
+					mState->targetDistance = portalBoomDistance;
+					mState->Yaw = std::atan2(portalBoomDir.x, portalBoomDir.z);
+					mState->targetYaw = mState->Yaw;
+					mState->Pitch = std::asin(glm::clamp(portalBoomDir.y, -1.0f, 1.0f));
+					mState->targetPitch = mState->Pitch;
 					mState->portalCameraEntrySurface = portal.surfaceTransform;
 					mState->portalCameraExitSurface = portal.exitSurfaceTransform;
 					mState->portalCameraInverseExitSurface = portal.inverseExitSurfaceTransform;
@@ -1692,7 +1704,7 @@ namespace engine {
 
 				mState->bikeYaw = mappedYaw;
 				mState->cameraIdleTimer = 0.0f;
-				mState->followTargetPos = teleportCameraWithBike ? mappedFollowTarget : mappedBodyPos;
+				mState->followTargetPos = mappedFollowTarget;
 				mState->thirdPersonMode = true;
 				mState->lastPedal = -1;
 

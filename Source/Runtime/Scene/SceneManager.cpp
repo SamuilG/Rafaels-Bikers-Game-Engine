@@ -740,50 +740,52 @@ namespace engine {
                     });
                 m_world->defer_end();
 
-                flecs::entity bikeEntity = find_entity("Bike_0");
-                if (bikeEntity.is_valid() && bikeEntity.has<WorldTransform>()) {
-                    uint32_t bikeBodyID = JPH::BodyID::cInvalidBodyID;
-                    if (bikeEntity.has<CompoundParent>()) {
-                        bikeBodyID = bikeEntity.get<CompoundParent>().bodyID;
-                    }
-                    else if (bikeEntity.has<PhysicsBody>()) {
-                        bikeBodyID = bikeEntity.get<PhysicsBody>().bodyID;
-                    }
-
-                    if (bikeBodyID != JPH::BodyID::cInvalidBodyID) {
-                        glm::vec3 bikePos = glm::vec3(bikeEntity.get<WorldTransform>().matrix[3]);
-                        bikePos.y += 0.8f;
-
-                        std::vector<uint32_t> ignoredIDs;
-                        ignoredIDs.push_back(bikeBodyID);
-
-                        m_world->defer_begin();
-                        while (true) {
-                            uint32_t hitBodyID = m_physics_system->cast_ray_ignore_multiple(cameraPos, bikePos, ignoredIDs);
-
-                            if (hitBodyID == JPH::BodyID::cInvalidBodyID) {
-                                break;
-                            }
-
-                            // std::print("[X-Ray] Hit blocking object ID: {}\n", hitBodyID);
-
-                            m_world->query<const PhysicsBody>().each([&](flecs::entity e, const PhysicsBody& pb) {
-                                if (pb.bodyID == hitBodyID) {
-                                    if (!e.has<OpacityComponent>()) e.set<OpacityComponent>({ 1.0f, 0.3f });
-                                    else e.get_mut<OpacityComponent>().targetAlpha = 0.3f;
-                                }
-                                });
-
-                            m_world->query<const CompoundParent>().each([&](flecs::entity e, const CompoundParent& cp) {
-                                if (cp.bodyID == hitBodyID) {
-                                    if (!e.has<OpacityComponent>()) e.set<OpacityComponent>({ 1.0f, 0.3f });
-                                    else e.get_mut<OpacityComponent>().targetAlpha = 0.3f;
-                                }
-                                });
-
-                            ignoredIDs.push_back(hitBodyID);
+                if (!mState->portalCameraActive && !mState->isExtremeSpeed) {
+                    flecs::entity bikeEntity = find_entity("Bike_0");
+                    if (bikeEntity.is_valid() && bikeEntity.has<WorldTransform>()) {
+                        uint32_t bikeBodyID = JPH::BodyID::cInvalidBodyID;
+                        if (bikeEntity.has<CompoundParent>()) {
+                            bikeBodyID = bikeEntity.get<CompoundParent>().bodyID;
                         }
-                        m_world->defer_end();
+                        else if (bikeEntity.has<PhysicsBody>()) {
+                            bikeBodyID = bikeEntity.get<PhysicsBody>().bodyID;
+                        }
+
+                        if (bikeBodyID != JPH::BodyID::cInvalidBodyID) {
+                            glm::vec3 bikePos = glm::vec3(bikeEntity.get<WorldTransform>().matrix[3]);
+                            bikePos.y += 0.8f;
+
+                            std::vector<uint32_t> ignoredIDs;
+                            ignoredIDs.push_back(bikeBodyID);
+
+                            m_world->defer_begin();
+                            while (true) {
+                                uint32_t hitBodyID = m_physics_system->cast_ray_ignore_multiple(cameraPos, bikePos, ignoredIDs);
+
+                                if (hitBodyID == JPH::BodyID::cInvalidBodyID) {
+                                    break;
+                                }
+
+                                // std::print("[X-Ray] Hit blocking object ID: {}\n", hitBodyID);
+
+                                m_world->query<const PhysicsBody>().each([&](flecs::entity e, const PhysicsBody& pb) {
+                                    if (pb.bodyID == hitBodyID) {
+                                        if (!e.has<OpacityComponent>()) e.set<OpacityComponent>({ 1.0f, 0.3f });
+                                        else e.get_mut<OpacityComponent>().targetAlpha = 0.3f;
+                                    }
+                                    });
+
+                                m_world->query<const CompoundParent>().each([&](flecs::entity e, const CompoundParent& cp) {
+                                    if (cp.bodyID == hitBodyID) {
+                                        if (!e.has<OpacityComponent>()) e.set<OpacityComponent>({ 1.0f, 0.3f });
+                                        else e.get_mut<OpacityComponent>().targetAlpha = 0.3f;
+                                    }
+                                    });
+
+                                ignoredIDs.push_back(hitBodyID);
+                            }
+                            m_world->defer_end();
+                        }
                     }
                 }
             }

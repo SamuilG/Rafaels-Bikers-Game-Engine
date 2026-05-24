@@ -1478,6 +1478,18 @@ namespace engine {
                     // 水平向量: (cos(Yaw), 0, -sin(Yaw))
                     // =========================================================
                     glm::vec3 camRight = glm::vec3(std::cos(mState->Yaw), 0.0f, -std::sin(mState->Yaw));
+                    if (mState->portalCameraActive) {
+                        const glm::mat4 entryToExit =
+                            PortalRigidFrame(mState->portalCameraExitSurface) *
+                            PortalHalfTurn() *
+                            glm::inverse(PortalRigidFrame(mState->portalCameraEntrySurface));
+                        camRight = glm::vec3(entryToExit * glm::vec4(camRight, 0.0f));
+                        camRight.y = 0.0f;
+                        const float camRightLenSq = glm::dot(camRight, camRight);
+                        camRight = camRightLenSq > 0.0001f ?
+                            camRight / std::sqrt(camRightLenSq) :
+                            glm::vec3(std::cos(mState->Yaw), 0.0f, -std::sin(mState->Yaw));
+                    }
 
                     // 2. 设置越肩的偏移量 
                     float shoulderOffsetX = 1.0f; //left and right
@@ -2306,14 +2318,24 @@ namespace engine {
                 return;
             }
 
+            constexpr float kPortalHalfDepth = cfg::kPortalSurfaceHalfDepth;
+
             EngineMesh mesh{};
             mesh.positions = {
-                {-0.5f, -0.5f, 0.0f},
-                { 0.5f, -0.5f, 0.0f},
-                { 0.5f,  0.5f, 0.0f},
-                {-0.5f,  0.5f, 0.0f}
+                {-0.5f, -0.5f,  kPortalHalfDepth},
+                { 0.5f, -0.5f,  kPortalHalfDepth},
+                { 0.5f,  0.5f,  kPortalHalfDepth},
+                {-0.5f,  0.5f,  kPortalHalfDepth},
+                {-0.5f, -0.5f, -kPortalHalfDepth},
+                { 0.5f, -0.5f, -kPortalHalfDepth},
+                { 0.5f,  0.5f, -kPortalHalfDepth},
+                {-0.5f,  0.5f, -kPortalHalfDepth}
             };
             mesh.texcoords = {
+                {0.0f, 1.0f},
+                {1.0f, 1.0f},
+                {1.0f, 0.0f},
+                {0.0f, 0.0f},
                 {0.0f, 1.0f},
                 {1.0f, 1.0f},
                 {1.0f, 0.0f},
@@ -2323,11 +2345,18 @@ namespace engine {
                 {0.0f, 0.0f, 1.0f},
                 {0.0f, 0.0f, 1.0f},
                 {0.0f, 0.0f, 1.0f},
-                {0.0f, 0.0f, 1.0f}
+                {0.0f, 0.0f, 1.0f},
+                {0.0f, 0.0f, -1.0f},
+                {0.0f, 0.0f, -1.0f},
+                {0.0f, 0.0f, -1.0f},
+                {0.0f, 0.0f, -1.0f}
             };
-            mesh.indices = { 0, 1, 2, 2, 3, 0 };
-            mesh.localAabbMin = glm::vec3(-0.5f, -0.5f, -0.01f);
-            mesh.localAabbMax = glm::vec3(0.5f, 0.5f, 0.01f);
+            mesh.indices = {
+                0, 1, 2, 2, 3, 0,
+                6, 5, 4, 4, 7, 6
+            };
+            mesh.localAabbMin = glm::vec3(-0.5f, -0.5f, -kPortalHalfDepth);
+            mesh.localAabbMax = glm::vec3(0.5f, 0.5f, kPortalHalfDepth);
 
             mPortalMeshIndex = static_cast<uint32_t>(mModel.meshes.size());
             mModel.meshes.push_back(mesh);
