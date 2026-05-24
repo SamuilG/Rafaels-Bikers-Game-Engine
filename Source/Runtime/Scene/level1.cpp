@@ -24,9 +24,18 @@ namespace engine {
 		constexpr const char* kUnlockJumpIconPath = "Assets/Textures/jumpSkill.png";
 		constexpr const char* kUnlockHornIconPath = "Assets/Textures/hornSkill.png";
 		constexpr const char* kUnlockRadioIconPath = "Assets/Textures/radioSkill.png";
-		constexpr float kDeployPortalWidth = 7.0f;
-		constexpr float kDeployPortalHeight = 5.5f;
+		constexpr float kDeployPortalWidth = 8.4f;
+		constexpr float kDeployPortalHeight = 8.4f;
 		constexpr float kDeployPortalExitOffset = 4.0f;
+		constexpr float kDeployPortalDistance = 14.0f;
+		constexpr float kDeployPortalHoldDuration = 1.5f;
+		constexpr float kDeployPortalMinScale = 0.16f;
+		constexpr float kDeployPortalVerticalOffset = -0.55f;
+		constexpr float kPortalDiscTriggerRadius = 0.56f;
+		constexpr float kPortalDiscTriggerCenterY = -0.08f;
+		constexpr float kPortalCameraOffset = 2.0f;
+		constexpr float kPortalCameraLookDistance = 18.0f;
+		constexpr float kDeployExtremeSpeedThreshold = 36.0f;
 
 		glm::vec3 NormalizeFlat(glm::vec3 value, glm::vec3 fallback = glm::vec3(0.0f, 0.0f, -1.0f)) {
 			value.y = 0.0f;
@@ -50,10 +59,16 @@ namespace engine {
 			return std::atan2(normal.x, normal.z);
 		}
 
-		glm::mat4 MakeDeployPortalSurface(const glm::vec3& center, glm::vec3 normal) {
+		float SmoothStep01(float value) {
+			value = std::clamp(value, 0.0f, 1.0f);
+			return value * value * (3.0f - 2.0f * value);
+		}
+
+		glm::mat4 MakeDeployPortalSurface(const glm::vec3& center, glm::vec3 normal, float sizeScale = 1.0f) {
+			sizeScale = std::max(sizeScale, 0.01f);
 			return glm::translate(glm::mat4(1.0f), center) *
 				glm::rotate(glm::mat4(1.0f), PortalSurfaceYawFromNormal(normal), glm::vec3(0.0f, 1.0f, 0.0f)) *
-				glm::scale(glm::mat4(1.0f), glm::vec3(kDeployPortalWidth, kDeployPortalHeight, 1.0f));
+				glm::scale(glm::mat4(1.0f), glm::vec3(kDeployPortalWidth * sizeScale, kDeployPortalHeight * sizeScale, 1.0f));
 		}
 	}
 
@@ -177,6 +192,11 @@ namespace engine {
 		RefreshAbilityHintUi();
 		m_deployHoldTimer = 0.0f;
 		m_deployConsumedUntilRelease = false;
+		m_deployPortalCharging = false;
+		m_deployPortalEntryFloorCenter = glm::vec3(0.0f);
+		m_deployPortalEntryNormal = glm::vec3(0.0f, 0.0f, 1.0f);
+		m_deployPortalCheckpointBodyPos = glm::vec3(0.0f);
+		m_deployPortalCheckpointForward = glm::vec3(0.0f, 0.0f, -1.0f);
 
 		m_audio->LoadSound("NextSong", "Assets/Sounds/Button.mp3");
 		m_audio->SetVolume("NextSong", 0.7f);
@@ -258,10 +278,10 @@ namespace engine {
 		glm::mat4 bikeAnchorWorld = glm::mat4(0.0f); // sentinel: [3][3]==0 means anchor not found
 
 		constexpr float kPortalFloorY = 3.0f;
-		constexpr float kPortalWidth = 7.0f;
-		constexpr float kPortalHeight = 5.5f;
+		constexpr float kPortalWidth = 8.4f;
+		constexpr float kPortalHeight = 8.4f;
 		constexpr float kPortalExitOffset = 4.0f;
-		const float portalCenterY = kPortalFloorY + kPortalHeight * 0.5f;
+		const float portalCenterY = kPortalFloorY + kPortalHeight * 0.5f + kDeployPortalVerticalOffset;
 		const float portalYawRadians = glm::radians(180.0f);
 		const glm::vec3 leftPortalCenter = glm::vec3(-158.0f, portalCenterY, -72.0f);
 		const glm::vec3 rightPortalCenter = glm::vec3(-146.0f, portalCenterY, -72.0f);
@@ -1439,8 +1459,6 @@ namespace engine {
 			static_cast<float>(bodyPos.GetY()) + 2.5f,
 			static_cast<float>(bodyPos.GetZ()));
 
-		constexpr float kHalfWidth = 0.68f;
-		constexpr float kHalfHeight = 1.20f;
 		constexpr float kPlaneDepth = 1.25f;
 		for (auto& portal : m_portals) {
 			if (!portal.enabled) {
@@ -1449,9 +1467,12 @@ namespace engine {
 			}
 
 			const glm::vec3 portalLocal = glm::vec3(portal.inverseSurfaceTransform * glm::vec4(samplePos, 1.0f));
+			const float portalWidth = glm::length(glm::vec3(portal.surfaceTransform * glm::vec4(1.0f, 0.0f, 0.0f, 0.0f)));
+			const float portalHeight = glm::length(glm::vec3(portal.surfaceTransform * glm::vec4(0.0f, 1.0f, 0.0f, 0.0f)));
+			const float portalAspect = portalHeight > 0.0001f ? portalWidth / portalHeight : 1.0f;
+			const glm::vec2 portalDiscPos(portalLocal.x * portalAspect, portalLocal.y - kPortalDiscTriggerCenterY);
 			const bool insidePortalFace =
-				std::abs(portalLocal.x) <= kHalfWidth &&
-				std::abs(portalLocal.y) <= kHalfHeight &&
+				glm::dot(portalDiscPos, portalDiscPos) <= kPortalDiscTriggerRadius * kPortalDiscTriggerRadius &&
 				std::abs(portalLocal.z) <= kPlaneDepth;
 			const bool crossedPlane =
 				portal.hasPreviousSample &&
@@ -1485,13 +1506,11 @@ namespace engine {
 				mState->portalCameraTimer = 0.0f;
 				mState->portalCameraPosition = glm::vec3(mState->camera2world[3]);
 				mState->portalCameraTargetPosition = mState->followTargetPos + glm::vec3(0.0f, 1.6f, 0.0f);
+				mState->portalCameraBoomOffset = mState->portalCameraPosition - mState->portalCameraTargetPosition;
 				mState->portalCameraBoomLength = std::max(0.1f, glm::length(mState->portalCameraPosition - mState->portalCameraTargetPosition));
 				mState->portalCameraEntrySurface = portal.surfaceTransform;
 				mState->portalCameraExitSurface = portal.exitSurfaceTransform;
 				mState->portalCameraInverseExitSurface = portal.inverseExitSurfaceTransform;
-				mState->portalCameraExitStartDistance = std::max(0.0f, glm::vec3(
-					portal.inverseExitSurfaceTransform *
-					glm::vec4(portal.exitPosition + glm::vec3(0.0f, 1.6f, 0.0f), 1.0f)).z);
 				const float cameraEntryLocalZ = glm::vec3(
 					portal.inverseSurfaceTransform *
 					glm::vec4(mState->portalCameraPosition, 1.0f)).z;
@@ -1920,9 +1939,25 @@ namespace engine {
 		UpdatePortalTeleport(dt);
 		
 		// =========================================================
-		// 长按 DEPLOY 键回档逻辑 (需长按 1.5 秒)
+		// 长按 DEPLOY 键：急速状态下先展开传送门，其他状态保留回档逻辑
 		// =========================================================
-		if (m_input && m_input->IsActionHeld("DEPLOY")) {
+		const bool deployHeld = m_input && m_input->IsActionHeld("DEPLOY");
+		auto cancelDeployPortalCharge = [&]() {
+			if (!m_deployPortalCharging) {
+				return;
+			}
+
+			m_deployPortalCharging = false;
+			m_portals[0].enabled = false;
+			m_portals[1].enabled = false;
+			m_portals[0].hasPreviousSample = false;
+			m_portals[1].hasPreviousSample = false;
+			if (m_render) {
+				m_render->DisablePortalPreview();
+			}
+		};
+
+		if (deployHeld) {
 			if (m_deployConsumedUntilRelease) {
 				m_deployHoldTimer = 0.0f;
 			}
@@ -1932,12 +1967,125 @@ namespace engine {
 		}
 		else {
 			// 如果松开按键，或者根本没按，计时器立刻清零
+			cancelDeployPortalCharge();
 			m_deployHoldTimer = 0.0f;
 			m_deployConsumedUntilRelease = false;
 		}
 
+		if (deployHeld && !m_deployConsumedUntilRelease && mState && mState->isAlive && m_hasCheckpoint && m_render && m_physics) {
+			bool chargingPortalThisFrame = false;
+			const uint32_t bikeBodyID = GetBikeBodyID();
+			if (bikeBodyID != JPH::BodyID::cInvalidBodyID) {
+				JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
+				JPH::BodyID id(bikeBodyID);
+				if (bi.IsAdded(id)) {
+					const JPH::Vec3 currentVelocity = bi.GetLinearVelocity(id);
+					const float horizontalSpeed = std::sqrt(
+						currentVelocity.GetX() * currentVelocity.GetX() +
+						currentVelocity.GetZ() * currentVelocity.GetZ());
+					const bool isExtremeForDeploy = (mState->isExtremeSpeed || horizontalSpeed >= kDeployExtremeSpeedThreshold);
+
+					if (isExtremeForDeploy) {
+						const JPH::RVec3 currentPos = bi.GetPosition(id);
+						const JPH::Quat currentRot = bi.GetRotation(id);
+						const JPH::Vec3 currentFwd = currentRot.RotateAxisZ();
+						const float currentYaw = std::atan2(-currentFwd.GetX(), -currentFwd.GetZ());
+						const glm::vec3 entryForward = BikeForwardFromYaw(currentYaw);
+
+						m_deployPortalEntryNormal = -entryForward;
+						m_deployPortalEntryFloorCenter = glm::vec3(
+							static_cast<float>(currentPos.GetX()) + entryForward.x * kDeployPortalDistance,
+							static_cast<float>(currentPos.GetY()),
+							static_cast<float>(currentPos.GetZ()) + entryForward.z * kDeployPortalDistance);
+						m_deployPortalCheckpointBodyPos = glm::vec3(
+							m_checkpointPos.x,
+							m_checkpointPos.y - 3.5f,
+							m_checkpointPos.z);
+						m_deployPortalCheckpointForward = BikeForwardFromYaw(m_checkpointYaw);
+						m_deployPortalCharging = true;
+
+						const float progress = std::clamp(m_deployHoldTimer / kDeployPortalHoldDuration, 0.0f, 1.0f);
+						const float portalScale = kDeployPortalMinScale + (1.0f - kDeployPortalMinScale) * SmoothStep01(progress);
+						const float portalHalfHeight = kDeployPortalHeight * portalScale * 0.5f;
+						const float portalVerticalOffset = kDeployPortalVerticalOffset * portalScale;
+						const glm::vec3 entryCenter(
+							m_deployPortalEntryFloorCenter.x,
+							m_deployPortalEntryFloorCenter.y + portalHalfHeight + portalVerticalOffset,
+							m_deployPortalEntryFloorCenter.z);
+						const glm::mat4 entrySurface = MakeDeployPortalSurface(entryCenter, m_deployPortalEntryNormal, portalScale);
+
+						const glm::vec3 checkpointCenter(
+							m_deployPortalCheckpointBodyPos.x,
+							m_deployPortalCheckpointBodyPos.y + portalHalfHeight + portalVerticalOffset,
+							m_deployPortalCheckpointBodyPos.z);
+						const glm::mat4 checkpointSurface = MakeDeployPortalSurface(checkpointCenter, m_deployPortalCheckpointForward, portalScale);
+
+						const glm::vec3 checkpointExitPosition(
+							m_deployPortalCheckpointBodyPos.x + m_deployPortalCheckpointForward.x * kDeployPortalExitOffset,
+							m_deployPortalCheckpointBodyPos.y,
+							m_deployPortalCheckpointBodyPos.z + m_deployPortalCheckpointForward.z * kDeployPortalExitOffset);
+						const glm::vec3 entryExitPosition(
+							m_deployPortalEntryFloorCenter.x + m_deployPortalEntryNormal.x * kDeployPortalExitOffset,
+							m_deployPortalEntryFloorCenter.y,
+							m_deployPortalEntryFloorCenter.z + m_deployPortalEntryNormal.z * kDeployPortalExitOffset);
+
+						m_portals[0].enabled = true;
+						m_portals[0].surfaceTransform = entrySurface;
+						m_portals[0].inverseSurfaceTransform = glm::inverse(entrySurface);
+						m_portals[0].exitSurfaceTransform = checkpointSurface;
+						m_portals[0].inverseExitSurfaceTransform = glm::inverse(checkpointSurface);
+						m_portals[0].exitPosition = checkpointExitPosition;
+						m_portals[0].exitYaw = m_checkpointYaw;
+						m_portals[0].previousLocalZ = 0.0f;
+						m_portals[0].hasPreviousSample = false;
+
+						m_portals[1].enabled = true;
+						m_portals[1].surfaceTransform = checkpointSurface;
+						m_portals[1].inverseSurfaceTransform = glm::inverse(checkpointSurface);
+						m_portals[1].exitSurfaceTransform = entrySurface;
+						m_portals[1].inverseExitSurfaceTransform = glm::inverse(entrySurface);
+						m_portals[1].exitPosition = entryExitPosition;
+						m_portals[1].exitYaw = BikeYawFromForward(m_deployPortalEntryNormal);
+						m_portals[1].previousLocalZ = 0.0f;
+						m_portals[1].hasPreviousSample = false;
+						m_portalPairCooldown = 0.0f;
+
+						const glm::vec3 entryCamera = entryCenter + m_deployPortalEntryNormal * kPortalCameraOffset + glm::vec3(0.0f, 0.8f, 0.0f);
+						const glm::vec3 checkpointCamera = checkpointCenter + m_deployPortalCheckpointForward * kPortalCameraOffset + glm::vec3(0.0f, 0.8f, 0.0f);
+						m_render->SetPortalPreviewPair(
+							entrySurface,
+							checkpointCamera,
+							checkpointCamera + m_deployPortalCheckpointForward * kPortalCameraLookDistance,
+							checkpointSurface,
+							entryCamera,
+							entryCamera + m_deployPortalEntryNormal * kPortalCameraLookDistance,
+							glm::vec3(0.0f, 1.0f, 0.0f),
+							80.0f);
+
+						chargingPortalThisFrame = true;
+						if (progress >= 1.0f) {
+							m_deployHoldTimer = 0.0f;
+							m_deployConsumedUntilRelease = true;
+							m_deployPortalCharging = false;
+							if (m_audio) {
+								m_audio->PlayOneShot("PortalWarp");
+							}
+							Toast("Portal Deployed");
+						}
+					}
+				}
+			}
+
+			if (!chargingPortalThisFrame) {
+				cancelDeployPortalCharge();
+			}
+		}
+		else if (m_deployPortalCharging) {
+			cancelDeployPortalCharge();
+		}
+
 		// 当长按时间超过 1.5 秒时，触发回档，并清空计时器防止连续触发
-		if (m_deployHoldTimer >= 1.5f && !m_deployConsumedUntilRelease) {
+		if (m_deployHoldTimer >= kDeployPortalHoldDuration && !m_deployConsumedUntilRelease) {
 			m_deployHoldTimer = 0.0f; // 触发后立刻清零
 			m_deployConsumedUntilRelease = true;
 
@@ -1954,14 +2102,14 @@ namespace engine {
 						const float currentYaw = std::atan2(-currentFwd.GetX(), -currentFwd.GetZ());
 						const glm::vec3 entryForward = BikeForwardFromYaw(currentYaw);
 						const glm::vec3 entryNormal = -entryForward;
-						constexpr float kDeployPortalDistance = 14.0f;
+						constexpr float kDeployPortalDistance = 18.0f;
 						constexpr float kPortalCameraOffset = 2.0f;
 						constexpr float kPortalCameraLookDistance = 18.0f;
 
 						const float entryFloorY = static_cast<float>(currentPos.GetY());
 						const glm::vec3 entryCenter(
 							static_cast<float>(currentPos.GetX()) + entryForward.x * kDeployPortalDistance,
-							entryFloorY + kDeployPortalHeight * 0.5f,
+							entryFloorY + kDeployPortalHeight * 0.5f + kDeployPortalVerticalOffset,
 							static_cast<float>(currentPos.GetZ()) + entryForward.z * kDeployPortalDistance);
 						const glm::mat4 entrySurface = MakeDeployPortalSurface(entryCenter, entryNormal);
 
@@ -1969,7 +2117,7 @@ namespace engine {
 						const glm::vec3 checkpointForward = BikeForwardFromYaw(m_checkpointYaw);
 						const glm::vec3 checkpointCenter(
 							checkpointBodyPos.x,
-							checkpointBodyPos.y + kDeployPortalHeight * 0.5f,
+							checkpointBodyPos.y + kDeployPortalHeight * 0.5f + kDeployPortalVerticalOffset,
 							checkpointBodyPos.z);
 						const glm::mat4 checkpointSurface = MakeDeployPortalSurface(checkpointCenter, checkpointForward);
 
@@ -2085,10 +2233,10 @@ namespace engine {
 
 							mState->portalCameraActive = false;
 							mState->portalCameraTimer = 0.0f;
-							mState->portalCameraExitStartDistance = 0.0f;
 							mState->portalCameraBoomLength = 0.0f;
 							mState->portalCameraStartSide = 1.0f;
 							mState->portalCameraTargetPosition = glm::vec3(0.0f);
+							mState->portalCameraBoomOffset = glm::vec3(0.0f);
 							mState->isAlive = true;
 							mState->deathTimer = 0.0f;
 							mState->isGameOver = false;
@@ -2135,14 +2283,20 @@ namespace engine {
 		m_winUiVisible = false;
 		m_winUiDelayTimer = -1.0f;
 		m_previousAliveState = true;
+		m_deployHoldTimer = 0.0f;
 		m_deployConsumedUntilRelease = false;
+		m_deployPortalCharging = false;
+		m_deployPortalEntryFloorCenter = glm::vec3(0.0f);
+		m_deployPortalEntryNormal = glm::vec3(0.0f, 0.0f, 1.0f);
+		m_deployPortalCheckpointBodyPos = glm::vec3(0.0f);
+		m_deployPortalCheckpointForward = glm::vec3(0.0f, 0.0f, -1.0f);
 		if (mState) {
 			mState->portalCameraActive = false;
 			mState->portalCameraTimer = 0.0f;
-			mState->portalCameraExitStartDistance = 0.0f;
 			mState->portalCameraBoomLength = 0.0f;
 			mState->portalCameraStartSide = 1.0f;
 			mState->portalCameraTargetPosition = glm::vec3(0.0f);
+			mState->portalCameraBoomOffset = glm::vec3(0.0f);
 		}
 		m_bikeController.reset();
 	}

@@ -110,6 +110,7 @@ void record_commands(
 
 	bool aPortalEnabled = false,
 	glsl::SceneUniform const* aPortalSceneUniform = nullptr,
+	const std::vector<RenderBatch>* aPortalBatches = nullptr,
 	ImageAndView const* aPortalColor = nullptr,
 	ImageAndView const* aPortalBright = nullptr,
 	ImageAndView const* aPortalNormal = nullptr,
@@ -121,12 +122,14 @@ void record_commands(
 
 	bool aPortal2Enabled = false,
 	glsl::SceneUniform const* aPortal2SceneUniform = nullptr,
+	const std::vector<RenderBatch>* aPortal2Batches = nullptr,
 	ImageAndView const* aPortal2Color = nullptr,
 	ImageAndView const* aPortal2Bright = nullptr,
 	ImageAndView const* aPortal2Normal = nullptr,
 	ImageAndView const* aPortal2Depth = nullptr,
 	VkDescriptorSet aPortal2SurfaceDesc = VK_NULL_HANDLE,
-	glm::mat4 const* aPortal2SurfaceTransform = nullptr
+	glm::mat4 const* aPortal2SurfaceTransform = nullptr,
+	float aPortalEffectTime = 0.0f
 );
 
 

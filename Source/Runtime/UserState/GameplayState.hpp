@@ -58,11 +58,11 @@ namespace engine {
 		float targetCameraRoll = 0.0f;
 		bool portalCameraActive = false;
 		float portalCameraTimer = 0.0f;
-		float portalCameraExitStartDistance = 0.0f;
 		float portalCameraBoomLength = 0.0f;
 		float portalCameraStartSide = 1.0f;
 		glm::vec3 portalCameraPosition = glm::vec3(0.0f);
 		glm::vec3 portalCameraTargetPosition = glm::vec3(0.0f);
+		glm::vec3 portalCameraBoomOffset = glm::vec3(0.0f);
 		glm::mat4 portalCameraEntrySurface = glm::identity<glm::mat4>();
 		glm::mat4 portalCameraExitSurface = glm::identity<glm::mat4>();
 		glm::mat4 portalCameraInverseExitSurface = glm::identity<glm::mat4>();

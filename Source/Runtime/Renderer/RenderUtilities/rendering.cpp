@@ -13,6 +13,11 @@
 #include "../../UI/ui.hpp"
 #include "../../UserState/UserState.hpp"
 
+struct alignas(16) PortalSurfacePC {
+	glm::mat4 transform;
+	glm::vec4 portalParams;
+};
+
 // multi-pass rendering
 // render scene to offscreen image
 // apply post processing and render to swapchain
@@ -118,6 +123,7 @@ void record_commands(
 	VkBuffer skyboxVBO,
 	bool aPortalEnabled,
 	glsl::SceneUniform const* aPortalSceneUniform,
+	const std::vector<RenderBatch>* aPortalBatches,
 	ImageAndView const* aPortalColor,
 	ImageAndView const* aPortalBright,
 	ImageAndView const* aPortalNormal,
@@ -128,12 +134,14 @@ void record_commands(
 	glm::mat4 const* aPortalSurfaceTransform,
 	bool aPortal2Enabled,
 	glsl::SceneUniform const* aPortal2SceneUniform,
+	const std::vector<RenderBatch>* aPortal2Batches,
 	ImageAndView const* aPortal2Color,
 	ImageAndView const* aPortal2Bright,
 	ImageAndView const* aPortal2Normal,
 	ImageAndView const* aPortal2Depth,
 	VkDescriptorSet aPortal2SurfaceDesc,
-	glm::mat4 const* aPortal2SurfaceTransform
+	glm::mat4 const* aPortal2SurfaceTransform,
+	float aPortalEffectTime
 )
 {
 	// Begin command buffer
@@ -330,6 +338,7 @@ void record_commands(
 		aPortal2SurfaceTransform);
 
 	auto renderPortalView = [&](glsl::SceneUniform const& portalSceneUniform,
+		const std::vector<RenderBatch>* portalBatches,
 		ImageAndView const& portalColor,
 		ImageAndView const& portalBright,
 		ImageAndView const& portalNormal,
@@ -404,7 +413,8 @@ void record_commands(
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
 
 		VkDeviceSize portalZeroOffset = 0;
-		for (const auto& batch : aBatches)
+		const std::vector<RenderBatch>& batchesForPortal = portalBatches ? *portalBatches : aBatches;
+		for (const auto& batch : batchesForPortal)
 		{
 			uint32_t matIdx = batch.materialIndex;
 			uint32_t meshIdx = batch.meshIndex;
@@ -445,6 +455,75 @@ void record_commands(
 			vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(aMeshInfos[meshIdx].indices.size()), 1, 0, 0, 0);
 		}
 
+		if (aSkinnedPipe != VK_NULL_HANDLE && aSkinnedBatches && !aSkinnedBatches->empty() &&
+			aMeshJoints && aMeshWeights && aBoneDescriptorSet != VK_NULL_HANDLE)
+		{
+			struct alignas(16) SkinnedPC {
+				glm::mat4 transform;
+				glm::vec4 baseColorFactor;
+				glm::vec4 emissiveFactor;
+				float metallicFactor;
+				float roughnessFactor;
+				float alphaCutoff;
+				uint32_t boneBaseIndex;
+			};
+
+			vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipe);
+			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
+			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 2, 1, &aBoneDescriptorSet, 0, nullptr);
+
+			for (const auto& batch : *aSkinnedBatches) {
+				uint32_t meshIdx = batch.meshIndex;
+				uint32_t matIdx = batch.materialIndex;
+				if (meshIdx >= aMeshInfos.size() || matIdx >= aMaterialDescriptors.size()) {
+					continue;
+				}
+
+				const bool isAlpha =
+					(matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0) ||
+					(batch.alphaMultiplier < 0.99f);
+				if (isAlpha) {
+					continue;
+				}
+
+				auto jIt = aMeshJoints->find(meshIdx);
+				auto wIt = aMeshWeights->find(meshIdx);
+				if (jIt == aMeshJoints->end() || wIt == aMeshWeights->end()) {
+					continue;
+				}
+
+				SkinnedPC pc{};
+				pc.transform = batch.transform;
+				pc.boneBaseIndex = batch.boneBaseIndex;
+				if (matIdx < aMaterials.size()) {
+					pc.baseColorFactor = aMaterials[matIdx].baseColorFactor;
+					pc.emissiveFactor = aMaterials[matIdx].emissiveFactor;
+					pc.metallicFactor = aMaterials[matIdx].metallicFactor;
+					pc.roughnessFactor = aMaterials[matIdx].roughnessFactor;
+					pc.alphaCutoff = aMaterials[matIdx].alphaCutoff;
+				}
+				else {
+					pc.baseColorFactor = glm::vec4(1.0f);
+					pc.emissiveFactor = glm::vec4(0.0f);
+					pc.metallicFactor = 0.0f;
+					pc.roughnessFactor = 0.8f;
+					pc.alphaCutoff = 0.5f;
+				}
+
+				vkCmdPushConstants(aCmdBuff, aSkinnedPipeLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(SkinnedPC), &pc);
+				vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
+
+				VkDeviceSize z = 0;
+				vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &z);
+				vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &z);
+				vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &z);
+				vkCmdBindVertexBuffers(aCmdBuff, 3, 1, &jIt->second.buffer, &z);
+				vkCmdBindVertexBuffers(aCmdBuff, 4, 1, &wIt->second.buffer, &z);
+				vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
+				vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(aMeshInfos[meshIdx].indices.size()), 1, 0, 0, 0);
+			}
+		}
+
 		if (skyboxPipe != VK_NULL_HANDLE && skyboxVBO != VK_NULL_HANDLE) {
 			vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipe);
 			vkCmdSetViewport(aCmdBuff, 0, 1, &portalVp);
@@ -465,10 +544,10 @@ void record_commands(
 	};
 
 	if (portalReady) {
-		renderPortalView(*aPortalSceneUniform, *aPortalColor, *aPortalBright, *aPortalNormal, *aPortalDepth);
+		renderPortalView(*aPortalSceneUniform, aPortalBatches, *aPortalColor, *aPortalBright, *aPortalNormal, *aPortalDepth);
 	}
 	if (portal2Ready) {
-		renderPortalView(*aPortal2SceneUniform, *aPortal2Color, *aPortal2Bright, *aPortal2Normal, *aPortal2Depth);
+		renderPortalView(*aPortal2SceneUniform, aPortal2Batches, *aPortal2Color, *aPortal2Bright, *aPortal2Normal, *aPortal2Depth);
 	}
 	if (portalReady || portal2Ready) {
 		uploadSceneUniform(aSceneUniform);
@@ -621,10 +700,13 @@ void record_commands(
 	if (portalReady)
 	{
 		uint32_t meshIdx = aPortalMeshIndex;
+		PortalSurfacePC portalPc{};
+		portalPc.transform = *aPortalSurfaceTransform;
+		portalPc.portalParams = glm::vec4(aPortalEffectTime, 0.0f, 0.0f, 0.0f);
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aPortalSurfacePipe);
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aPortalSurfaceDesc, 0, nullptr);
-		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(glm::mat4), aPortalSurfaceTransform);
+		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PortalSurfacePC), &portalPc);
 		vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset);
 		vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &kZeroOffset);
 		vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &kZeroOffset);
@@ -634,10 +716,13 @@ void record_commands(
 	if (portal2Ready)
 	{
 		uint32_t meshIdx = aPortalMeshIndex;
+		PortalSurfacePC portalPc{};
+		portalPc.transform = *aPortal2SurfaceTransform;
+		portalPc.portalParams = glm::vec4(aPortalEffectTime, 5.37f, 0.0f, 0.0f);
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aPortalSurfacePipe);
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aPortal2SurfaceDesc, 0, nullptr);
-		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(glm::mat4), aPortal2SurfaceTransform);
+		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PortalSurfacePC), &portalPc);
 		vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset);
 		vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &kZeroOffset);
 		vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &kZeroOffset);

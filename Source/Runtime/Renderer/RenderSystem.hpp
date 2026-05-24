@@ -18,6 +18,7 @@
 #include <vector>
 #include <stdexcept>
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -1723,14 +1724,18 @@ namespace engine {
                 mState->frustumCullingVisibleCandidates = mSceneManager->get_last_frustum_culling_visible(); // new frustum culling
             }
             // 2. 如果正在拖拽预览，把预览的 Batch 强行加进列表最后面！
-            if (!m_previewModelPath.empty() && m_previewPrefabCache.count(m_previewModelPath)) {
+            auto appendPreviewBatches = [&](std::vector<RenderBatch>& batches) {
+                if (m_previewModelPath.empty() || !m_previewPrefabCache.count(m_previewModelPath)) {
+                    return;
+                }
                 for (const auto& originalBatch : m_previewPrefabCache[m_previewModelPath]) {
                     RenderBatch previewBatch = originalBatch;
                     // 用鼠标的矩阵 * 模型部件自身的原始偏移矩阵
                     previewBatch.transform = m_previewTransform * originalBatch.transform;
-                    finalBatches.push_back(previewBatch);
+                    batches.push_back(previewBatch);
                 }
-            }
+            };
+            appendPreviewBatches(finalBatches);
             // =========================================================
             std::vector<engine::GpuLight> lights;
             if (mSceneManager) {
@@ -1796,6 +1801,28 @@ namespace engine {
             glsl::SceneUniform portal2SceneUniform = BuildPortal2SceneUniform(sceneUniforms, finalWidth, finalHeight);
             const bool portalEnabledForFrame = mPortalEnabled && mState->renderMode == 0;
             const bool portal2EnabledForFrame = mPortal2Enabled && mState->renderMode == 0;
+            std::vector<RenderBatch> portalBatches = finalBatches;
+            std::vector<RenderBatch> portal2Batches = finalBatches;
+            if (mSceneManager && portalEnabledForFrame) {
+                Frustum portalFrustum = BuildFrustum(portalSceneUniform.projCam);
+                const Frustum* portalActiveFrustum = mState->frustumCullingEnabled ? &portalFrustum : nullptr;
+                portalBatches = mSceneManager->get_render_batches(
+                    portalActiveFrustum,
+                    mState->frustumCullingPadding,
+                    glm::vec3(portalSceneUniform.cameraPos));
+                appendPreviewBatches(portalBatches);
+            }
+            if (mSceneManager && portal2EnabledForFrame) {
+                Frustum portal2Frustum = BuildFrustum(portal2SceneUniform.projCam);
+                const Frustum* portal2ActiveFrustum = mState->frustumCullingEnabled ? &portal2Frustum : nullptr;
+                portal2Batches = mSceneManager->get_render_batches(
+                    portal2ActiveFrustum,
+                    mState->frustumCullingPadding,
+                    glm::vec3(portal2SceneUniform.cameraPos));
+                appendPreviewBatches(portal2Batches);
+            }
+            static float portalEffectTime = 0.0f;
+            portalEffectTime += dt;
             ImageAndView portalColorTarget{ mPortalColorImage.image, mPortalColorImage.view };
             ImageAndView portalBrightTarget{ mPortalBrightImage.image, mPortalBrightImage.view };
             ImageAndView portalNormalTarget{ mPortalNormalImage.image, mPortalNormalImage.view };
@@ -1902,6 +1929,7 @@ namespace engine {
                 mSkyboxVBO.buffer,
                 portalEnabledForFrame,
                 &portalSceneUniform,
+                &portalBatches,
                 &portalColorTarget,
                 &portalBrightTarget,
                 &portalNormalTarget,
@@ -1912,12 +1940,14 @@ namespace engine {
                 &mPortalSurfaceTransform,
                 portal2EnabledForFrame,
                 &portal2SceneUniform,
+                &portal2Batches,
                 &portal2ColorTarget,
                 &portal2BrightTarget,
                 &portal2NormalTarget,
                 &portal2DepthTarget,
                 mPortal2SurfaceDesc,
-                &mPortal2SurfaceTransform
+                &mPortal2SurfaceTransform,
+                portalEffectTime
             );
 			//clear debug renderer data after uploading
             mDebugRenderer.Clear();
@@ -2130,6 +2160,8 @@ namespace engine {
             float fovDegrees = 75.0f)
         {
             mPortalEnabled = true;
+            mPortal2Enabled = false;
+            mPortalPreviewPairLinked = false;
             mPortalSurfaceTransform = surfaceTransform;
             mPortalCameraPosition = cameraPosition;
             mPortalCameraTarget = cameraTarget;
@@ -2149,6 +2181,7 @@ namespace engine {
         {
             SetPortalPreview(firstSurfaceTransform, firstCameraPosition, firstCameraTarget, cameraUp, fovDegrees);
             mPortal2Enabled = true;
+            mPortalPreviewPairLinked = true;
             mPortal2SurfaceTransform = secondSurfaceTransform;
             mPortal2CameraPosition = secondCameraPosition;
             mPortal2CameraTarget = secondCameraTarget;
@@ -2160,6 +2193,7 @@ namespace engine {
         {
             mPortalEnabled = false;
             mPortal2Enabled = false;
+            mPortalPreviewPairLinked = false;
         }
 
         // Allow application to pass in the input system
@@ -2336,6 +2370,17 @@ namespace engine {
 
         glsl::SceneUniform BuildPortalSceneUniform(glsl::SceneUniform const& baseUniform, float width, float height) const
         {
+            if (mPortalPreviewPairLinked && mState) {
+                glsl::SceneUniform portalUniform = BuildPortalSceneUniformForCameraTransform(
+                    baseUniform,
+                    width,
+                    height,
+                    BuildLinkedPortalCameraWorld(mPortalSurfaceTransform, mPortal2SurfaceTransform),
+                    LivePortalFovDegrees(mPortalCameraFovDegrees));
+                portalUniform.portalClipPlane = BuildPortalClipPlane(mPortal2SurfaceTransform);
+                return portalUniform;
+            }
+
             return BuildPortalSceneUniformForCamera(
                 baseUniform,
                 width,
@@ -2348,6 +2393,17 @@ namespace engine {
 
         glsl::SceneUniform BuildPortal2SceneUniform(glsl::SceneUniform const& baseUniform, float width, float height) const
         {
+            if (mPortalPreviewPairLinked && mState) {
+                glsl::SceneUniform portalUniform = BuildPortalSceneUniformForCameraTransform(
+                    baseUniform,
+                    width,
+                    height,
+                    BuildLinkedPortalCameraWorld(mPortal2SurfaceTransform, mPortalSurfaceTransform),
+                    LivePortalFovDegrees(mPortal2CameraFovDegrees));
+                portalUniform.portalClipPlane = BuildPortalClipPlane(mPortalSurfaceTransform);
+                return portalUniform;
+            }
+
             return BuildPortalSceneUniformForCamera(
                 baseUniform,
                 width,
@@ -2382,7 +2438,80 @@ namespace engine {
             portalUniform.projCam = portalUniform.projection * portalUniform.camera;
             portalUniform.cameraPos = glm::vec4(cameraPosition, 1.0f);
             portalUniform.renderMode = 0;
+            portalUniform.portalClipPlane = glm::vec4(0.0f);
             return portalUniform;
+        }
+
+        static glm::vec3 NormalizeOr(const glm::vec3& value, const glm::vec3& fallback)
+        {
+            const float lenSq = glm::dot(value, value);
+            if (lenSq < 0.0001f) {
+                return fallback;
+            }
+            return value / std::sqrt(lenSq);
+        }
+
+        static glm::mat4 PortalRigidFrame(const glm::mat4& surface)
+        {
+            glm::mat4 frame(1.0f);
+            frame[0] = glm::vec4(NormalizeOr(glm::vec3(surface[0]), glm::vec3(1.0f, 0.0f, 0.0f)), 0.0f);
+            frame[1] = glm::vec4(NormalizeOr(glm::vec3(surface[1]), glm::vec3(0.0f, 1.0f, 0.0f)), 0.0f);
+            frame[2] = glm::vec4(NormalizeOr(glm::vec3(surface[2]), glm::vec3(0.0f, 0.0f, 1.0f)), 0.0f);
+            frame[3] = glm::vec4(glm::vec3(surface[3]), 1.0f);
+            return frame;
+        }
+
+        static glm::mat4 PortalHalfTurn()
+        {
+            return glm::rotate(glm::mat4(1.0f), glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+        }
+
+        glm::vec4 BuildPortalClipPlane(const glm::mat4& destinationSurface) const
+        {
+            const glm::mat4 destinationFrame = PortalRigidFrame(destinationSurface);
+            const glm::vec3 normal = NormalizeOr(glm::vec3(destinationFrame[2]), glm::vec3(0.0f, 0.0f, 1.0f));
+            const glm::vec3 point = glm::vec3(destinationFrame[3]) + normal * 0.03f;
+            return glm::vec4(normal, -glm::dot(normal, point));
+        }
+
+        glm::mat4 BuildLinkedPortalCameraWorld(const glm::mat4& sourceSurface, const glm::mat4& destinationSurface) const
+        {
+            const glm::mat4 sourceFrame = PortalRigidFrame(sourceSurface);
+            const glm::mat4 destinationFrame = PortalRigidFrame(destinationSurface);
+            return destinationFrame * PortalHalfTurn() * glm::inverse(sourceFrame) * mState->camera2world;
+        }
+
+        float LivePortalFovDegrees(float fallbackFovDegrees) const
+        {
+            if (!mState) {
+                return fallbackFovDegrees;
+            }
+            return std::clamp(mState->cameraFov, 10.0f, 120.0f);
+        }
+
+        glsl::SceneUniform BuildPortalSceneUniformForCameraTransform(
+            glsl::SceneUniform const& baseUniform,
+            float width,
+            float height,
+            const glm::mat4& cameraWorld,
+            float fovDegrees) const
+        {
+            const glm::vec3 cameraPosition = glm::vec3(cameraWorld[3]);
+            const glm::vec3 cameraForward = NormalizeOr(
+                glm::vec3(cameraWorld * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)),
+                glm::vec3(0.0f, 0.0f, -1.0f));
+            const glm::vec3 cameraUp = NormalizeOr(
+                glm::vec3(cameraWorld * glm::vec4(0.0f, 1.0f, 0.0f, 0.0f)),
+                glm::vec3(0.0f, 1.0f, 0.0f));
+
+            return BuildPortalSceneUniformForCamera(
+                baseUniform,
+                width,
+                height,
+                cameraPosition,
+                cameraPosition + cameraForward,
+                cameraUp,
+                fovDegrees);
         }
 
         UserState* mState = nullptr;
@@ -3002,6 +3131,7 @@ void InitSkybox()
         VkDescriptorSet    mPortal2SurfaceDesc = VK_NULL_HANDLE;
         uint32_t           mPortalMeshIndex = UINT32_MAX;
         bool               mPortalEnabled = false;
+        bool               mPortalPreviewPairLinked = false;
         glm::mat4          mPortalSurfaceTransform = glm::mat4(1.0f);
         glm::vec3          mPortalCameraPosition = glm::vec3(0.0f, 10.0f, 0.0f);
         glm::vec3          mPortalCameraTarget = glm::vec3(0.0f, 10.0f, -1.0f);

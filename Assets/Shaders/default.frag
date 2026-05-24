@@ -56,6 +56,7 @@ layout( scalar, set = 0, binding = 0 ) uniform UScene
 
     mat4 lightVP[4];      
     vec4 cascadeSplits;   
+    vec4 portalClipPlane;
 } uScene;
 
 layout( set = 0, binding = 1 ) uniform sampler2DArrayShadow uShadowMap;
@@ -205,6 +206,11 @@ vec3 getNormalFromMap()
 
 void main()
 {
+    if (dot(uScene.portalClipPlane.xyz, uScene.portalClipPlane.xyz) > 0.0001 &&
+        dot(vec4(v2fPos, 1.0), uScene.portalClipPlane) < 0.0) {
+        discard;
+    }
+
     // --- 1. 材质属性采样 ---
     vec4 texColor = texture(uTexColor, v2fTexCoord);
     vec3 baseColor = (texColor * pc.baseColorFactor).rgb;

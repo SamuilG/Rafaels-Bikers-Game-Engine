@@ -31,6 +31,15 @@ namespace {
 	{
 		return glm::rotate(glm::mat4(1.0f), glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
 	}
+
+	glm::vec3 portal_axis(const glm::mat4& surface, const glm::vec3& localAxis)
+	{
+		glm::vec3 axis = glm::vec3(surface * glm::vec4(localAxis, 0.0f));
+		if (glm::dot(axis, axis) < 0.0001f) {
+			return localAxis;
+		}
+		return glm::normalize(axis);
+	}
 }
 
 // Removed callbacks, now fully handled by engine::InputSystem
@@ -212,28 +221,26 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 			aState.portalCameraTimer += aElapsedTime;
 
 			const glm::vec3 realTargetPos = target_pos;
-			const glm::vec3 exitLocalTarget = glm::vec3(
-				aState.portalCameraInverseExitSurface *
-				glm::vec4(realTargetPos, 1.0f));
-			const glm::vec4 exitLocalOffset(
-				exitLocalTarget.x,
-				exitLocalTarget.y,
-				exitLocalTarget.z - aState.portalCameraExitStartDistance,
-				1.0f);
-			const glm::mat4 exitToEntry = aState.portalCameraEntrySurface *
-				portal_half_turn();
-			const glm::vec3 perceivedTargetPos = glm::vec3(exitToEntry * exitLocalOffset);
+			const glm::vec3 entryCenter = glm::vec3(aState.portalCameraEntrySurface[3]);
+			const glm::vec3 exitCenter = glm::vec3(aState.portalCameraExitSurface[3]);
+			const glm::vec3 entryRight = portal_axis(aState.portalCameraEntrySurface, glm::vec3(1.0f, 0.0f, 0.0f));
+			const glm::vec3 entryUp = portal_axis(aState.portalCameraEntrySurface, glm::vec3(0.0f, 1.0f, 0.0f));
+			const glm::vec3 entryForward = portal_axis(aState.portalCameraEntrySurface, glm::vec3(0.0f, 0.0f, 1.0f));
+			const glm::vec3 exitRight = portal_axis(aState.portalCameraExitSurface, glm::vec3(1.0f, 0.0f, 0.0f));
+			const glm::vec3 exitUp = portal_axis(aState.portalCameraExitSurface, glm::vec3(0.0f, 1.0f, 0.0f));
+			const glm::vec3 exitForward = portal_axis(aState.portalCameraExitSurface, glm::vec3(0.0f, 0.0f, 1.0f));
+			const glm::vec3 exitOffset = realTargetPos - exitCenter;
+			const float localX = glm::dot(exitOffset, exitRight);
+			const float localY = glm::dot(exitOffset, exitUp);
+			const float localZ = glm::dot(exitOffset, exitForward);
+			const glm::vec3 perceivedTargetPos = entryCenter
+				- entryRight * localX
+				+ entryUp * localY
+				- entryForward * localZ;
 
-			const float targetFollow = 1.0f - std::exp(-18.0f * aElapsedTime);
-			aState.portalCameraTargetPosition += (perceivedTargetPos - aState.portalCameraTargetPosition) * targetFollow;
+			aState.portalCameraTargetPosition = perceivedTargetPos;
 
-			glm::vec3 targetToCamera = aState.portalCameraPosition - aState.portalCameraTargetPosition;
-			if (glm::dot(targetToCamera, targetToCamera) < 0.0001f) {
-				targetToCamera = cam_pos - realTargetPos;
-			}
-			const glm::vec3 cameraDirection = glm::normalize(targetToCamera);
-			const float boomLength = std::max(0.1f, aState.portalCameraBoomLength);
-			const glm::vec3 portalSideCamPos = aState.portalCameraTargetPosition + cameraDirection * boomLength;
+			const glm::vec3 portalSideCamPos = aState.portalCameraTargetPosition + aState.portalCameraBoomOffset;
 			const float cameraFollow = 1.0f - std::exp(-12.0f * aElapsedTime);
 			aState.portalCameraPosition += (portalSideCamPos - aState.portalCameraPosition) * cameraFollow;
 
@@ -259,10 +266,10 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 				aState.targetPitch = aState.Pitch;
 				aState.portalCameraActive = false;
 				aState.portalCameraTimer = 0.0f;
-				aState.portalCameraExitStartDistance = 0.0f;
 				aState.portalCameraBoomLength = 0.0f;
 				aState.portalCameraStartSide = 1.0f;
 				aState.portalCameraTargetPosition = glm::vec3(0.0f);
+				aState.portalCameraBoomOffset = glm::vec3(0.0f);
 				target_pos = realTargetPos;
 				cam_pos = exitCamPos;
 			}
@@ -347,4 +354,5 @@ void update_scene_uniforms(glsl::SceneUniform& aSceneUniforms, std::uint32_t aFr
 
 	aSceneUniforms.cascadeSplits = shadow.cascadeSplits;
 	for (int i = 0; i < 4; ++i) aSceneUniforms.lightVP[i] = shadow.lightVP[i];
+	aSceneUniforms.portalClipPlane = glm::vec4(0.0f);
 }

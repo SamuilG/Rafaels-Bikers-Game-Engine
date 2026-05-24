@@ -43,6 +43,7 @@ namespace glsl {
 
 		glm::mat4 lightVP[4];
 		glm::vec4 cascadeSplits;
+		glm::vec4 portalClipPlane;
 	};
 }
 
