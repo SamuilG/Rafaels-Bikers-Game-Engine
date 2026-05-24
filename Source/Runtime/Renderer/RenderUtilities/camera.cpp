@@ -32,13 +32,9 @@ namespace {
 		return glm::rotate(glm::mat4(1.0f), glm::pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
 	}
 
-	glm::vec3 portal_axis(const glm::mat4& surface, const glm::vec3& localAxis)
+	glm::vec3 transform_point(const glm::mat4& transform, const glm::vec3& point)
 	{
-		glm::vec3 axis = glm::vec3(surface * glm::vec4(localAxis, 0.0f));
-		if (glm::dot(axis, axis) < 0.0001f) {
-			return localAxis;
-		}
-		return glm::normalize(axis);
+		return glm::vec3(transform * glm::vec4(point, 1.0f));
 	}
 }
 
@@ -156,7 +152,9 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 		float autoAlignDelay = 0.5f;
 		float minAlignSpeed = 2.0f;
 
-		if ((aState.cameraIdleTimer > autoAlignDelay || aState.isExtremeSpeed) && std::abs(aState.bikeSpeed) > minAlignSpeed) {
+		if (!aState.portalCameraActive &&
+			(aState.cameraIdleTimer > autoAlignDelay || aState.isExtremeSpeed) &&
+			std::abs(aState.bikeSpeed) > minAlignSpeed) {
 
 			float fullEffectDist = 2.0f;
 			float noEffectDist = 20.0f;
@@ -221,27 +219,22 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 			aState.portalCameraTimer += aElapsedTime;
 
 			const glm::vec3 realTargetPos = target_pos;
-			const glm::vec3 entryCenter = glm::vec3(aState.portalCameraEntrySurface[3]);
-			const glm::vec3 exitCenter = glm::vec3(aState.portalCameraExitSurface[3]);
-			const glm::vec3 entryRight = portal_axis(aState.portalCameraEntrySurface, glm::vec3(1.0f, 0.0f, 0.0f));
-			const glm::vec3 entryUp = portal_axis(aState.portalCameraEntrySurface, glm::vec3(0.0f, 1.0f, 0.0f));
-			const glm::vec3 entryForward = portal_axis(aState.portalCameraEntrySurface, glm::vec3(0.0f, 0.0f, 1.0f));
-			const glm::vec3 exitRight = portal_axis(aState.portalCameraExitSurface, glm::vec3(1.0f, 0.0f, 0.0f));
-			const glm::vec3 exitUp = portal_axis(aState.portalCameraExitSurface, glm::vec3(0.0f, 1.0f, 0.0f));
-			const glm::vec3 exitForward = portal_axis(aState.portalCameraExitSurface, glm::vec3(0.0f, 0.0f, 1.0f));
-			const glm::vec3 exitOffset = realTargetPos - exitCenter;
-			const float localX = glm::dot(exitOffset, exitRight);
-			const float localY = glm::dot(exitOffset, exitUp);
-			const float localZ = glm::dot(exitOffset, exitForward);
-			const glm::vec3 perceivedTargetPos = entryCenter
-				- entryRight * localX
-				+ entryUp * localY
-				- entryForward * localZ;
+			const glm::mat4 exitToEntry = aState.portalCameraEntrySurface *
+				portal_half_turn() *
+				glm::inverse(aState.portalCameraExitSurface);
+			const glm::vec3 perceivedTargetPos = transform_point(exitToEntry, realTargetPos);
 
-			aState.portalCameraTargetPosition = perceivedTargetPos;
+			if (aState.portalCameraTimer < 0.08f) {
+				const float targetFollow = 1.0f - std::exp(-54.0f * aElapsedTime);
+				aState.portalCameraTargetPosition +=
+					(perceivedTargetPos - aState.portalCameraTargetPosition) * targetFollow;
+			}
+			else {
+				aState.portalCameraTargetPosition = perceivedTargetPos;
+			}
 
 			const glm::vec3 portalSideCamPos = aState.portalCameraTargetPosition + aState.portalCameraBoomOffset;
-			const float cameraFollow = 1.0f - std::exp(-12.0f * aElapsedTime);
+			const float cameraFollow = 1.0f - std::exp(-18.0f * aElapsedTime);
 			aState.portalCameraPosition += (portalSideCamPos - aState.portalCameraPosition) * cameraFollow;
 
 			target_pos = aState.portalCameraTargetPosition;
@@ -249,11 +242,14 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 
 			const glm::mat4 entryInverse = glm::inverse(aState.portalCameraEntrySurface);
 			const float cameraEntryLocalZ = glm::vec3(entryInverse * glm::vec4(cam_pos, 1.0f)).z;
-			if (aState.portalCameraStartSide * cameraEntryLocalZ <= -0.02f) {
+			constexpr float kPortalCameraMinHoldTime = 0.10f;
+			constexpr float kPortalCameraCrossEpsilon = 0.12f;
+			if (aState.portalCameraTimer >= kPortalCameraMinHoldTime &&
+				aState.portalCameraStartSide * cameraEntryLocalZ <= -kPortalCameraCrossEpsilon) {
 				const glm::mat4 entryToExit = aState.portalCameraExitSurface *
 					portal_half_turn() *
 					entryInverse;
-				const glm::vec3 exitCamPos = glm::vec3(entryToExit * glm::vec4(cam_pos, 1.0f));
+				const glm::vec3 exitCamPos = transform_point(entryToExit, cam_pos);
 				glm::vec3 exitOffset = exitCamPos - realTargetPos;
 				const float exitDistance = std::max(0.1f, glm::length(exitOffset));
 				exitOffset /= exitDistance;
