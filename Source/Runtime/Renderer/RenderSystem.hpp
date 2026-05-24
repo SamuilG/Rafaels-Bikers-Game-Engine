@@ -59,6 +59,7 @@ namespace lut = labut2;
 
 #include "RenderUtilities/camera.hpp"
 #include "RenderUtilities/setup.hpp"
+#include "RenderUtilities/light.hpp"
 #include "RenderUtilities/rendering.hpp"
 
 #include "../Input/InputSystem.hpp"
@@ -2468,6 +2469,23 @@ namespace engine {
             portalUniform.cameraPos = glm::vec4(cameraPosition, 1.0f);
             portalUniform.renderMode = 0;
             portalUniform.portalClipPlane = glm::vec4(0.0f);
+
+            const glm::mat4 spotlightLightVP = portalUniform.lightVP[3];
+            constexpr float kPortalShadowFarDistance = 850.0f;
+            engine::ShadowData portalShadow = engine::compute_csm_matrices(
+                glm::vec3(portalUniform.lightPos),
+                portalUniform.camera,
+                fov,
+                aspect,
+                cfg::kCameraNear,
+                kPortalShadowFarDistance);
+
+            portalUniform.cascadeSplits = portalShadow.cascadeSplits;
+            for (int i = 0; i < 3; ++i) {
+                portalUniform.lightVP[i] = portalShadow.lightVP[i];
+            }
+            portalUniform.lightVP[3] = spotlightLightVP;
+
             return portalUniform;
         }
 

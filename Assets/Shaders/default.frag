@@ -142,8 +142,12 @@ float calculate_shadow()
 	vec4 viewPos = uScene.camera * vec4(v2fPos, 1.0);
 	float fragDepth = abs(viewPos.z);
 
-	int cascadeIdx = 3; 
-	float nextSplit = uScene.cascadeSplits.w;
+	if (fragDepth >= uScene.cascadeSplits.z) {
+		return 1.0;
+	}
+
+	int cascadeIdx = 2;
+	float nextSplit = uScene.cascadeSplits.z;
 
 	// 1. 判定当前像素所属的主级联及该级联的远切面深度
 	if (fragDepth < uScene.cascadeSplits.x) {
@@ -152,7 +156,7 @@ float calculate_shadow()
 	} else if (fragDepth < uScene.cascadeSplits.y) {
 		cascadeIdx = 1;
 		nextSplit = uScene.cascadeSplits.y;
-	} else if (fragDepth < uScene.cascadeSplits.z) {
+	} else {
 		cascadeIdx = 2;
 		nextSplit = uScene.cascadeSplits.z;
 	}
@@ -161,7 +165,7 @@ float calculate_shadow()
 	float shadow = SampleShadowCascade(cascadeIdx);
 
 	// 3. 缝隙平滑混合逻辑
-	if (cascadeIdx < 3) {
+	if (cascadeIdx < 2) {
 		// 设置过渡带宽度：使用距离当前 Cascade 边界最后 12% 的区域进行平滑过渡
 		float blendBand = nextSplit * 0.12; 
 		float blendStart = nextSplit - blendBand;

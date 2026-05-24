@@ -164,15 +164,26 @@ void record_commands(
 	};
 
 	uploadSceneUniform(aSceneUniform);
+	VkImageLayout shadowMapLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
 	// ---------------------------
 	// Shadow pass (保持原实现)
 	// ---------------------------
-	{
+	auto renderShadowMap = [&](glsl::SceneUniform const& shadowSceneUniform,
+		const std::vector<RenderBatch>& shadowBatches) {
+		const VkPipelineStageFlags2 shadowOldStage =
+			(shadowMapLayout == VK_IMAGE_LAYOUT_UNDEFINED)
+			? VK_PIPELINE_STAGE_2_NONE
+			: VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+		const VkAccessFlags2 shadowOldAccess =
+			(shadowMapLayout == VK_IMAGE_LAYOUT_UNDEFINED)
+			? VK_ACCESS_2_NONE
+			: VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+
 		lut::image_barrier(aCmdBuff, aShadowMap.image,
-			VK_PIPELINE_STAGE_2_NONE,
-			VK_ACCESS_2_NONE,
-			VK_IMAGE_LAYOUT_UNDEFINED,
+			shadowOldStage,
+			shadowOldAccess,
+			shadowMapLayout,
 			VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT,
 			VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
 			VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
@@ -212,7 +223,7 @@ void record_commands(
 			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
 
 			VkDeviceSize kZeroOffset = 0;
-			for (const auto& batch : aBatches) {
+			for (const auto& batch : shadowBatches) {
 				// 【新增】：如果这个批次被标记为不投射阴影（比如它是发光体），直接跳过它的阴影绘制！
 				if (!batch.castShadow) {
 					continue;
@@ -221,7 +232,7 @@ void record_commands(
 				uint32_t matIdx = batch.materialIndex;
 				//if (batch.alphaMultiplier < 0.99f) continue;
 				// 【关键】：这里一定要乘上 lightVP，算出投影空间矩阵！
-				glm::mat4 lightModel = aSceneUniform.lightVP[i] * batch.transform;
+				glm::mat4 lightModel = shadowSceneUniform.lightVP[i] * batch.transform;
 
 				// 【关键】：这里只推送 64 字节 (sizeof(glm::mat4))！不要传整个 128 字节！
 				vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(glm::mat4), &lightModel);
@@ -264,7 +275,7 @@ void record_commands(
 					if (jIt == aMeshJoints->end() || wIt == aMeshWeights->end()) continue;
 
 					ShadowSkinnedPC pc{};
-					pc.lightModel = aSceneUniform.lightVP[i] * batch.transform;
+					pc.lightModel = shadowSceneUniform.lightVP[i] * batch.transform;
 					pc.boneBaseIndex = batch.boneBaseIndex;
 
 					vkCmdPushConstants(aCmdBuff, aSkinnedPipeLayout,
@@ -296,7 +307,8 @@ void record_commands(
 			VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
 			VkImageSubresourceRange{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, kCascadeCount }
 		);
-	}
+		shadowMapLayout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
+	};
 
 	auto portalReadyFor = [&](bool enabled,
 		glsl::SceneUniform const* sceneUniform,
@@ -544,14 +556,17 @@ void record_commands(
 	};
 
 	if (portalReady) {
+		const auto& portalShadowBatches = aPortalBatches ? *aPortalBatches : aBatches;
+		renderShadowMap(*aPortalSceneUniform, portalShadowBatches);
 		renderPortalView(*aPortalSceneUniform, aPortalBatches, *aPortalColor, *aPortalBright, *aPortalNormal, *aPortalDepth);
 	}
 	if (portal2Ready) {
+		const auto& portal2ShadowBatches = aPortal2Batches ? *aPortal2Batches : aBatches;
+		renderShadowMap(*aPortal2SceneUniform, portal2ShadowBatches);
 		renderPortalView(*aPortal2SceneUniform, aPortal2Batches, *aPortal2Color, *aPortal2Bright, *aPortal2Normal, *aPortal2Depth);
 	}
-	if (portalReady || portal2Ready) {
-		uploadSceneUniform(aSceneUniform);
-	}
+	renderShadowMap(aSceneUniform, aBatches);
+	uploadSceneUniform(aSceneUniform);
 
 	// ==========================================================
 	// PASS 1: 场景渲染 + 亮度提取 (MRT -> Offscreen + Bright)

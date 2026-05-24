@@ -120,9 +120,9 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 			}
 
 			// 重新映射百分比。使用 std::max 防止在平滑释放期间出现负数
-			if (aState.portalCameraActive) {
-				constexpr float kPortalAutoPullMinDistance = 0.55f;
-				constexpr float kPortalAutoPullPerMeter = 1.15f;
+			constexpr float kPortalAutoPullActivationDistance = 3.0f;
+			if (aState.portalCameraActive && aState.Distance > kPortalAutoPullActivationDistance) {
+				constexpr float kPortalAutoPullPerMeter = 5.25f;
 				const glm::vec3 portalRealTarget = aState.followTargetPos + glm::vec3(0.0f, 1.6f, 0.0f);
 				const glm::vec3 exitLocalTarget = transform_point(
 					glm::inverse(aState.portalCameraExitSurface),
@@ -131,7 +131,7 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 				const float pullStartDistance = std::max(aState.portalCameraBoomLength, aState.targetDistance);
 				const float pulledDistance = std::clamp(
 					pullStartDistance - exitTravel * kPortalAutoPullPerMeter,
-					kPortalAutoPullMinDistance,
+					kPortalAutoPullActivationDistance,
 					70.0f);
 				aState.targetDistance = std::min(aState.targetDistance, pulledDistance);
 			}
