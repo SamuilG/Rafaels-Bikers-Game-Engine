@@ -59,12 +59,12 @@ void main() {
     float edgeNoise = Fbm(vec2(angle * 2.0 + phase + time * 0.32, radius * 7.0 - time * 0.24));
     float fineNoise = Fbm(portalUv * 11.0 + vec2(time * 0.48 + phase, -time * 0.36));
     float noisyOuterRadius = portalRadius + (edgeNoise - 0.5) * 0.10 + sin(angle * 14.0 + time * 1.3 + phase) * 0.012;
-    float edgeBand = smoothstep(noisyOuterRadius - 0.34, noisyOuterRadius, radius);
-    float softEdgeAlpha = 1.0 - smoothstep(noisyOuterRadius - 0.22, noisyOuterRadius, radius);
-    float dissolveAlpha = mix(1.0, smoothstep(0.18, 0.74, fineNoise), edgeBand);
-    float alpha = softEdgeAlpha * dissolveAlpha;
+    float fadeStart = noisyOuterRadius - 0.12;
+    float edgeFade = 1.0 - smoothstep(fadeStart, noisyOuterRadius, radius);
+    float edgeDissolve = smoothstep(0.32, 0.80, fineNoise);
+    float coverage = radius < fadeStart ? 1.0 : edgeFade * edgeDissolve;
 
-    if (alpha <= 0.025) {
+    if (coverage <= 0.42) {
         discard;
     }
 
@@ -73,10 +73,12 @@ void main() {
     projectedUv = clamp(projectedUv, vec2(0.0), vec2(1.0));
     vec3 portalView = texture(uPortalViewTexture, projectedUv).rgb;
 
-    float innerVignette = 1.0 - smoothstep(0.40, portalRadius, radius);
-    vec3 color = portalView * mix(0.86, 1.03, innerVignette);
+    float innerVignette = 1.0 - smoothstep(0.55, portalRadius, radius);
+    float edgeTint = smoothstep(fadeStart - 0.04, noisyOuterRadius, radius);
+    vec3 color = portalView * mix(0.92, 1.03, innerVignette);
+    color = mix(color, color * vec3(0.82, 0.96, 1.08), edgeTint * 0.18);
 
-    oColor = vec4(color, alpha);
-    oBrightColor = vec4(0.0, 0.0, 0.0, alpha);
-    oNormal = vec4(normalize(vWorldNormal), 0.05 * alpha);
+    oColor = vec4(color, 1.0);
+    oBrightColor = vec4(0.0, 0.0, 0.0, 1.0);
+    oNormal = vec4(normalize(vWorldNormal), 0.05);
 }

@@ -115,6 +115,7 @@ namespace engine {
 			glm::mat4 inverseExitSurfaceTransform = glm::mat4(1.0f);
 			glm::vec3 exitPosition = glm::vec3(0.0f);
 			float exitYaw = 0.0f;
+			glm::vec3 previousLocalPos = glm::vec3(0.0f);
 			float previousLocalZ = 0.0f;
 			bool hasPreviousSample = false;
 		};
@@ -122,6 +123,8 @@ namespace engine {
 		std::array<PortalRuntime, 2> m_portals{};
 		float m_portalPairCooldown = 0.0f;
 		uint32_t GetBikeBodyID() const;
+		void ResetPortalCameraState();
+		void CloseActivePortals(bool showFeedback);
 		void UpdatePortalTeleport(float dt);
 
         RuntimeUiController* GetRuntimeUiController() const;

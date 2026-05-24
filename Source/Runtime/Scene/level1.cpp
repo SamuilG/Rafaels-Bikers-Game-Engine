@@ -36,6 +36,11 @@ namespace engine {
 		constexpr float kPortalCameraOffset = 2.0f;
 		constexpr float kPortalCameraLookDistance = 18.0f;
 		constexpr float kDeployExtremeSpeedThreshold = 36.0f;
+		constexpr float kPortalPlaneEnterEpsilon = 0.08f;
+		constexpr float kPortalPlaneExitEpsilon = 0.02f;
+		constexpr float kPortalCollisionSoftMargin = 0.08f;
+		constexpr float kPortalExitClearance = 0.28f;
+		constexpr float kPortalTeleportCooldown = 0.25f;
 
 		glm::vec3 NormalizeFlat(glm::vec3 value, glm::vec3 fallback = glm::vec3(0.0f, 0.0f, -1.0f)) {
 			value.y = 0.0f;
@@ -69,6 +74,41 @@ namespace engine {
 			return glm::translate(glm::mat4(1.0f), center) *
 				glm::rotate(glm::mat4(1.0f), PortalSurfaceYawFromNormal(normal), glm::vec3(0.0f, 1.0f, 0.0f)) *
 				glm::scale(glm::mat4(1.0f), glm::vec3(kDeployPortalWidth * sizeScale, kDeployPortalHeight * sizeScale, 1.0f));
+		}
+
+		glm::vec3 Normalize3(glm::vec3 value, glm::vec3 fallback) {
+			if (glm::dot(value, value) < 0.0001f) {
+				value = fallback;
+			}
+			return glm::normalize(value);
+		}
+
+		glm::vec3 PortalAxis(const glm::mat4& surface, glm::vec3 localAxis) {
+			return Normalize3(glm::vec3(surface * glm::vec4(localAxis, 0.0f)), localAxis);
+		}
+
+		glm::mat4 PortalRigidFrame(const glm::mat4& surface) {
+			glm::mat4 frame(1.0f);
+			frame[0] = glm::vec4(PortalAxis(surface, glm::vec3(1.0f, 0.0f, 0.0f)), 0.0f);
+			frame[1] = glm::vec4(PortalAxis(surface, glm::vec3(0.0f, 1.0f, 0.0f)), 0.0f);
+			frame[2] = glm::vec4(PortalAxis(surface, glm::vec3(0.0f, 0.0f, 1.0f)), 0.0f);
+			frame[3] = glm::vec4(glm::vec3(surface[3]), 1.0f);
+			return frame;
+		}
+
+		glm::mat4 PortalSpaceMap(const glm::mat4& sourceSurface, const glm::mat4& destinationSurface) {
+			constexpr float kPi = 3.14159265358979323846f;
+			return PortalRigidFrame(destinationSurface) *
+				glm::rotate(glm::mat4(1.0f), kPi, glm::vec3(0.0f, 1.0f, 0.0f)) *
+				glm::inverse(PortalRigidFrame(sourceSurface));
+		}
+
+		glm::vec3 TransformPoint(const glm::mat4& transform, glm::vec3 point) {
+			return glm::vec3(transform * glm::vec4(point, 1.0f));
+		}
+
+		glm::vec3 TransformVector(const glm::mat4& transform, glm::vec3 vector) {
+			return glm::vec3(transform * glm::vec4(vector, 0.0f));
 		}
 	}
 
@@ -204,6 +244,7 @@ namespace engine {
 		m_input->MapKeyboardAction("NextSong", GLFW_KEY_N);
 		m_input->MapKeyboardAction("Mute", GLFW_KEY_M);
 		m_input->MapKeyboardAction("SetCheckpoint", GLFW_KEY_C);
+		m_input->MapKeyboardAction("ClosePortal", GLFW_KEY_Q);
 		// =========================================================
 		// 【降维打击】：预加载最简单的复活点信标
 		// =========================================================
@@ -1423,9 +1464,51 @@ namespace engine {
 		return JPH::BodyID::cInvalidBodyID;
 	}
 
+	void level::ResetPortalCameraState() {
+		if (!mState) {
+			return;
+		}
+
+		mState->portalCameraActive = false;
+		mState->portalCameraTimer = 0.0f;
+		mState->portalCameraBoomLength = 0.0f;
+		mState->portalCameraStartSide = 1.0f;
+		mState->portalCameraPosition = glm::vec3(0.0f);
+		mState->portalCameraTargetPosition = glm::vec3(0.0f);
+		mState->portalCameraBoomOffset = glm::vec3(0.0f);
+		mState->portalCameraEntrySurface = glm::identity<glm::mat4>();
+		mState->portalCameraExitSurface = glm::identity<glm::mat4>();
+		mState->portalCameraInverseExitSurface = glm::identity<glm::mat4>();
+	}
+
+	void level::CloseActivePortals(bool showFeedback) {
+		const bool hadPortal = m_deployPortalCharging || m_portals[0].enabled || m_portals[1].enabled;
+
+		m_deployPortalCharging = false;
+		m_deployHoldTimer = 0.0f;
+		m_portalPairCooldown = 0.0f;
+		for (auto& portal : m_portals) {
+			portal.enabled = false;
+			portal.previousLocalPos = glm::vec3(0.0f);
+			portal.previousLocalZ = 0.0f;
+			portal.hasPreviousSample = false;
+		}
+
+		if (m_render) {
+			m_render->DisablePortalPreview();
+		}
+		ResetPortalCameraState();
+
+		if (showFeedback && hadPortal) {
+			Toast("Portal Closed");
+		}
+	}
+
 	void level::UpdatePortalTeleport(float dt) {
 		auto resetPortalSamples = [&]() {
 			for (auto& portal : m_portals) {
+				portal.previousLocalPos = glm::vec3(0.0f);
+				portal.previousLocalZ = 0.0f;
 				portal.hasPreviousSample = false;
 			}
 		};
@@ -1454,6 +1537,10 @@ namespace engine {
 		}
 
 		const JPH::RVec3 bodyPos = bi.GetPosition(id);
+		const glm::vec3 bodyWorldPos(
+			static_cast<float>(bodyPos.GetX()),
+			static_cast<float>(bodyPos.GetY()),
+			static_cast<float>(bodyPos.GetZ()));
 		const glm::vec3 samplePos(
 			static_cast<float>(bodyPos.GetX()),
 			static_cast<float>(bodyPos.GetY()) + 2.5f,
@@ -1470,37 +1557,97 @@ namespace engine {
 			const float portalWidth = glm::length(glm::vec3(portal.surfaceTransform * glm::vec4(1.0f, 0.0f, 0.0f, 0.0f)));
 			const float portalHeight = glm::length(glm::vec3(portal.surfaceTransform * glm::vec4(0.0f, 1.0f, 0.0f, 0.0f)));
 			const float portalAspect = portalHeight > 0.0001f ? portalWidth / portalHeight : 1.0f;
-			const glm::vec2 portalDiscPos(portalLocal.x * portalAspect, portalLocal.y - kPortalDiscTriggerCenterY);
-			const bool insidePortalFace =
-				glm::dot(portalDiscPos, portalDiscPos) <= kPortalDiscTriggerRadius * kPortalDiscTriggerRadius &&
-				std::abs(portalLocal.z) <= kPlaneDepth;
-			const bool crossedPlane =
-				portal.hasPreviousSample &&
-				((portal.previousLocalZ > 0.08f && portalLocal.z <= -0.02f) ||
-				 (portal.previousLocalZ < -0.08f && portalLocal.z >= 0.02f));
 
-			if (insidePortalFace && crossedPlane && m_portalPairCooldown <= 0.0f) {
+			auto isInsidePortalDisc = [&](const glm::vec3& localPos, float extraRadius = 0.0f) {
+				const glm::vec2 portalDiscPos(localPos.x * portalAspect, localPos.y - kPortalDiscTriggerCenterY);
+				const float radius = kPortalDiscTriggerRadius + extraRadius;
+				return glm::dot(portalDiscPos, portalDiscPos) <= radius * radius;
+			};
+
+			const bool currentInsidePortalFace =
+				isInsidePortalDisc(portalLocal, kPortalCollisionSoftMargin) &&
+				std::abs(portalLocal.z) <= kPlaneDepth;
+			bool crossedPlane = false;
+			if (portal.hasPreviousSample) {
+				const bool crossedTowardNegative =
+					portal.previousLocalPos.z > kPortalPlaneEnterEpsilon &&
+					portalLocal.z <= -kPortalPlaneExitEpsilon;
+				const bool crossedTowardPositive =
+					portal.previousLocalPos.z < -kPortalPlaneEnterEpsilon &&
+					portalLocal.z >= kPortalPlaneExitEpsilon;
+				if (crossedTowardNegative || crossedTowardPositive) {
+					const float denom = portal.previousLocalPos.z - portalLocal.z;
+					if (std::abs(denom) > 0.0001f) {
+						const float t = std::clamp(portal.previousLocalPos.z / denom, 0.0f, 1.0f);
+						const glm::vec3 hitLocal = portal.previousLocalPos + (portalLocal - portal.previousLocalPos) * t;
+						crossedPlane = isInsidePortalDisc(hitLocal, kPortalCollisionSoftMargin);
+					}
+				}
+			}
+			crossedPlane = crossedPlane || (currentInsidePortalFace && portal.hasPreviousSample &&
+				std::abs(portal.previousLocalPos.z - portalLocal.z) > kPortalPlaneEnterEpsilon &&
+				((portal.previousLocalPos.z > 0.0f && portalLocal.z <= 0.0f) ||
+				 (portal.previousLocalPos.z < 0.0f && portalLocal.z >= 0.0f)));
+
+			if (crossedPlane && m_portalPairCooldown <= 0.0f) {
 				const JPH::Quat currentRot = bi.GetRotation(id);
 				const JPH::Vec3 currentVel = bi.GetLinearVelocity(id);
+				const JPH::Vec3 currentAngularVel = bi.GetAngularVelocity(id);
 				const JPH::Vec3 currentFwd = currentRot.RotateAxisZ();
-				const float currentYaw = std::atan2(-currentFwd.GetX(), -currentFwd.GetZ());
-				const float currentForwardX = -std::sin(currentYaw);
-				const float currentForwardZ = -std::cos(currentYaw);
-				const float signedForwardSpeed = currentVel.GetX() * currentForwardX + currentVel.GetZ() * currentForwardZ;
-				const float horizontalSpeed = std::sqrt(currentVel.GetX() * currentVel.GetX() + currentVel.GetZ() * currentVel.GetZ());
-				const float carriedSpeed = std::max(4.0f, std::max(std::abs(signedForwardSpeed), horizontalSpeed));
+				const glm::vec3 currentVelocity(
+					currentVel.GetX(),
+					currentVel.GetY(),
+					currentVel.GetZ());
+				const glm::vec3 currentAngularVelocity(
+					currentAngularVel.GetX(),
+					currentAngularVel.GetY(),
+					currentAngularVel.GetZ());
+				const glm::vec3 currentForward(
+					currentFwd.GetX(),
+					currentFwd.GetY(),
+					currentFwd.GetZ());
 
-				const float exitYaw = portal.exitYaw;
-				const JPH::Quat exitRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), exitYaw + JPH::JPH_PI);
-				const JPH::Vec3 exitForward(-std::sin(exitYaw), 0.0f, -std::cos(exitYaw));
+				const glm::mat4 portalMap = PortalSpaceMap(portal.surfaceTransform, portal.exitSurfaceTransform);
+				glm::vec3 mappedBodyPos = TransformPoint(portalMap, bodyWorldPos);
+				glm::vec3 mappedSamplePos = TransformPoint(portalMap, samplePos);
+				glm::vec3 mappedForward = NormalizeFlat(TransformVector(portalMap, currentForward));
+				glm::vec3 mappedVelocity = TransformVector(portalMap, currentVelocity);
+				glm::vec3 mappedAngularVelocity = TransformVector(portalMap, currentAngularVelocity);
+
+				const float currentSpeed = glm::length(currentVelocity);
+				const float mappedSpeed = glm::length(mappedVelocity);
+				if (currentSpeed > 0.001f && mappedSpeed > 0.001f) {
+					mappedVelocity = mappedVelocity * (currentSpeed / mappedSpeed);
+				}
+
+				glm::vec3 pushDir = Normalize3(mappedVelocity, mappedForward);
+				const glm::vec3 exitNormal = PortalAxis(portal.exitSurfaceTransform, glm::vec3(0.0f, 0.0f, 1.0f));
+				if (std::abs(glm::dot(pushDir, exitNormal)) < 0.05f) {
+					pushDir = glm::dot(mappedForward, exitNormal) >= 0.0f ? exitNormal : -exitNormal;
+				}
+
+				const glm::vec3 mappedSampleLocal = glm::vec3(
+					portal.inverseExitSurfaceTransform *
+					glm::vec4(mappedSamplePos, 1.0f));
+				const float exitClearance = kPortalExitClearance - std::abs(mappedSampleLocal.z);
+				if (exitClearance > 0.0f) {
+					mappedBodyPos += pushDir * exitClearance;
+				}
+
+				const float mappedYaw = BikeYawFromForward(mappedForward);
+				const JPH::Quat exitRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), mappedYaw + JPH::JPH_PI);
 				const JPH::RVec3 exitPos(
-					portal.exitPosition.x,
-					portal.exitPosition.y,
-					portal.exitPosition.z);
+					mappedBodyPos.x,
+					mappedBodyPos.y,
+					mappedBodyPos.z);
 				const JPH::Vec3 exitVel(
-					exitForward.GetX() * carriedSpeed,
-					std::max(currentVel.GetY(), 0.0f),
-					exitForward.GetZ() * carriedSpeed);
+					mappedVelocity.x,
+					mappedVelocity.y,
+					mappedVelocity.z);
+				const JPH::Vec3 exitAngularVel(
+					mappedAngularVelocity.x,
+					mappedAngularVelocity.y,
+					mappedAngularVelocity.z);
 
 				mState->portalCameraActive = true;
 				mState->portalCameraTimer = 0.0f;
@@ -1518,13 +1665,11 @@ namespace engine {
 
 				bi.SetPositionAndRotation(id, exitPos, exitRot, JPH::EActivation::Activate);
 				bi.SetLinearVelocity(id, exitVel);
-				bi.SetAngularVelocity(id, JPH::Vec3::sZero());
+				bi.SetAngularVelocity(id, exitAngularVel);
 
-				mState->bikeYaw = exitYaw;
-				mState->Yaw = exitYaw;
-				mState->targetYaw = exitYaw;
+				mState->bikeYaw = mappedYaw;
 				mState->cameraIdleTimer = 0.0f;
-				mState->followTargetPos = portal.exitPosition;
+				mState->followTargetPos = mappedBodyPos;
 				mState->thirdPersonMode = true;
 				mState->lastPedal = -1;
 
@@ -1533,17 +1678,25 @@ namespace engine {
 				}
 				Toast("Portal Jump");
 
-				m_portalPairCooldown = 1.25f;
+				m_portalPairCooldown = kPortalTeleportCooldown;
 				resetPortalSamples();
 				return;
 			}
 
+			portal.previousLocalPos = portalLocal;
 			portal.previousLocalZ = portalLocal.z;
 			portal.hasPreviousSample = true;
 		}
 	}
 
 	void level::Update(float dt) {
+
+		if (m_input && m_input->IsActionPressed("ClosePortal")) {
+			CloseActivePortals(true);
+			if (m_input->IsActionHeld("DEPLOY")) {
+				m_deployConsumedUntilRelease = true;
+			}
+		}
 
 		// =========================================================
 		// 【新增】：玩家手动放置自定义复活点 + 召唤信标 (C 键)
@@ -1947,14 +2100,7 @@ namespace engine {
 				return;
 			}
 
-			m_deployPortalCharging = false;
-			m_portals[0].enabled = false;
-			m_portals[1].enabled = false;
-			m_portals[0].hasPreviousSample = false;
-			m_portals[1].hasPreviousSample = false;
-			if (m_render) {
-				m_render->DisablePortalPreview();
-			}
+			CloseActivePortals(false);
 		};
 
 		if (deployHeld) {
