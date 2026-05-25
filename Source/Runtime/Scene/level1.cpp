@@ -703,13 +703,14 @@ namespace engine {
 			
 			//280，47，513
 			//-175，-28，8
-			static const glm::vec3 kCollectPos[5] = {
+			static const glm::vec3 kCollectPos[6] = {
 				{  60.0f, 21.0f,  70.0f }, { 270.0f, 66.0f,  311.0f }, { 107.0f, -43.0f,  282.0f },
 				{ 280.0f, 47.0f,  513.0f }, {  -175.0f, -28.0f, 8.0f }, //{ 15.0f, 1.0f,   2.0f },
+				{-54,28,71.5}
 				
 			};
 			
-			constexpr int kTotalCollectibles = 15;
+			constexpr int kTotalCollectibles = 6;
 
 			// Load GLB once to register mesh/material assets, then hide all created entities
 			flecs::entity gasAsset = m_scene->LoadModel(
