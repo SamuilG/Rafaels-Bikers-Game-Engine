@@ -120,7 +120,7 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 			}
 
 			// 重新映射百分比。使用 std::max 防止在平滑释放期间出现负数
-			constexpr float kPortalAutoPullActivationDistance = 3.0f;
+			constexpr float kPortalAutoPullActivationDistance = 8.0f;
 			if (aState.portalCameraActive && aState.Distance > kPortalAutoPullActivationDistance) {
 				constexpr float kPortalAutoPullPerMeter = 5.25f;
 				const glm::vec3 portalRealTarget = aState.followTargetPos + glm::vec3(0.0f, 1.6f, 0.0f);

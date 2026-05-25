@@ -403,8 +403,16 @@ namespace engine {
 		m_audio->LoadSound("Jump", "Assets/Sounds/jump_effect.mp3");
 		m_audio->LoadSound("SpringJump", "Assets/Sounds/spring.mp3");
 		m_audio->LoadSound("PortalWarp", "Assets/Sounds/deepBass.mp3");
-		m_audio->SetVolume("SpringJump", 1.2f);
+		m_audio->LoadSound("PortalPlaced", "Assets/Sounds/portalPlace.mp3");
+		m_audio->LoadSound("PortalPlacing1", "Assets/Sounds/portalPlacing1.mp3");
+		m_audio->LoadSound("PortalPlacing2", "Assets/Sounds/portalPlacing2.mp3");
+		m_audio->SetVolume("SpringJump", 1.5f);
 		m_audio->SetVolume("PortalWarp", 0.8f);
+		m_audio->SetVolume("PortalPlaced", 1.2f);
+		m_audio->SetVolume("PortalPlacing1", 0.9f);
+		m_audio->SetVolume("PortalPlacing2", 0.6f);
+
+
 		m_bikeController->SetAudioSystem(m_audio);
 		flecs::entity bikeEntity = m_scene->find_entity("Bike_0");
 		m_bikeEntity = bikeEntity;
@@ -2183,7 +2191,12 @@ namespace engine {
 							m_checkpointPos.y - 3.5f,
 							m_checkpointPos.z);
 						m_deployPortalCheckpointForward = BikeForwardFromYaw(m_checkpointYaw);
+						const bool wasDeployPortalCharging = m_deployPortalCharging;
 						m_deployPortalCharging = true;
+						if (!wasDeployPortalCharging && m_audio) {
+							m_audio->PlayOneShot("PortalPlacing1");
+							m_audio->PlayOneShot("PortalPlacing2");
+						}
 
 						const float progress = std::clamp(m_deployHoldTimer / kDeployPortalHoldDuration, 0.0f, 1.0f);
 						const float portalScale = kDeployPortalMinScale + (1.0f - kDeployPortalMinScale) * SmoothStep01(progress);
@@ -2249,7 +2262,7 @@ namespace engine {
 							m_deployConsumedUntilRelease = true;
 							m_deployPortalCharging = false;
 							if (m_audio) {
-								m_audio->PlayOneShot("PortalWarp");
+								m_audio->PlayOneShot("PortalPlaced");
 							}
 							Toast("Portal Deployed");
 						}

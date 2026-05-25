@@ -80,5 +80,5 @@ void main() {
 
     oColor = vec4(color, 1.0);
     oBrightColor = vec4(0.0, 0.0, 0.0, 1.0);
-    oNormal = vec4(normalize(vWorldNormal), 0.05);
+    oNormal = vec4(normalize(vWorldNormal), 1.0);
 }
