@@ -1821,39 +1821,7 @@ namespace engine {
 			}
 		}
 
-		const float respawnStillnessDelay = 0.25f;
-		bool canRespawnNow = false;
-
-		if (mState && !mState->isAlive) {
-			flecs::entity bikeEntity = m_scene ? m_scene->find_entity("Bike_0") : flecs::entity();
-			if (bikeEntity.is_valid()) {
-				uint32_t bikeBodyID = JPH::BodyID::cInvalidBodyID;
-				if (bikeEntity.has<PhysicsBody>()) bikeBodyID = bikeEntity.get<PhysicsBody>().bodyID;
-				else if (bikeEntity.has<CompoundParent>()) bikeBodyID = bikeEntity.get<CompoundParent>().bodyID;
-
-				if (bikeBodyID != JPH::BodyID::cInvalidBodyID && m_physics) {
-					JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
-					JPH::BodyID id(bikeBodyID);
-
-					if (!bi.IsActive(id)) {
-						m_respawnStillnessTime += dt;
-						canRespawnNow = m_respawnStillnessTime >= respawnStillnessDelay;
-					}
-					else {
-						m_respawnStillnessTime = 0.0f;
-					}
-				}
-				else {
-					m_respawnStillnessTime = 0.0f;
-				}
-			}
-			else {
-				m_respawnStillnessTime = 0.0f;
-			}
-		}
-		else {
-			m_respawnStillnessTime = 0.0f;
-		}
+		const bool canRespawnNow = mState && !mState->isAlive;
 
 		if (mState) {
 			if (!mState->isAlive && canRespawnNow) {
@@ -2135,7 +2103,7 @@ namespace engine {
 		UpdatePortalTeleport(dt);
 		
 		// =========================================================
-		// 长按 DEPLOY 键：急速状态下先展开传送门，其他状态保留回档逻辑
+		// 长按 DEPLOY 键：急速状态下展开传送门；死亡时在尸体处原地复活
 		// =========================================================
 		const bool deployHeld = m_input && m_input->IsActionHeld("DEPLOY");
 		auto cancelDeployPortalCharge = [&]() {
@@ -2278,13 +2246,11 @@ namespace engine {
 			cancelDeployPortalCharge();
 		}
 
-		// 当长按时间超过 1.5 秒时，触发回档，并清空计时器防止连续触发
+		// 当长按时间超过 1.5 秒时，只处理急速放门或死亡原地复活
 		if (m_deployHoldTimer >= kDeployPortalHoldDuration && !m_deployConsumedUntilRelease) {
-			m_deployHoldTimer = 0.0f; // 触发后立刻清零
-			m_deployConsumedUntilRelease = true;
-
+			bool deployActionHandled = false;
 			bool portalDeployHandled = false;
-			if (mState->isAlive && mState->isExtremeSpeed && m_hasCheckpoint && m_render && m_physics) {
+			if (mState && mState->isAlive && mState->isExtremeSpeed && m_hasCheckpoint && m_render && m_physics) {
 				const uint32_t bikeBodyID = GetBikeBodyID();
 				if (bikeBodyID != JPH::BodyID::cInvalidBodyID) {
 					JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
@@ -2365,8 +2331,9 @@ namespace engine {
 					}
 				}
 			}
+			deployActionHandled = portalDeployHandled;
 
-			if (!portalDeployHandled && (!mState->isAlive || m_hasCheckpoint)) { // 允许在活着时按住回档到复活点
+			if (!portalDeployHandled && mState && !mState->isAlive && canRespawnNow && m_scene && m_physics) {
 				flecs::entity bikeEntity = m_scene->find_entity("Bike_0");
 				if (bikeEntity.is_valid()) {
 					uint32_t bikeBodyID = JPH::BodyID::cInvalidBodyID;
@@ -2377,77 +2344,54 @@ namespace engine {
 						JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
 						JPH::BodyID id(bikeBodyID);
 
-						float linVelSq = bi.GetLinearVelocity(id).LengthSq();
-						float angVelSq = bi.GetAngularVelocity(id).LengthSq();
-						const float stopThresholdSq = 1.95f;
+						// Death respawn is always in-place at the corpse, never at the checkpoint beacon.
+						JPH::RVec3 respawnPos;
+						JPH::Quat  uprightRot;
 
-						// Checkpoint respawn: no speed requirement
-						// In-place respawn: wait until bike has stopped (only if dead and no checkpoint)
-						if (m_hasCheckpoint || (!mState->isAlive && linVelSq < stopThresholdSq && angVelSq < stopThresholdSq)) {
+						JPH::RVec3 currentPos = bi.GetPosition(id);
+						JPH::Quat currentRot = bi.GetRotation(id);
+						JPH::Vec3 fwd = currentRot.RotateAxisZ();
+						currentPos.SetY(currentPos.GetY() + 1.0f);
 
-							JPH::RVec3 respawnPos;
-							JPH::Quat  uprightRot;
+						float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
+						uprightRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), currentYaw + JPH::JPH_PI);
+						respawnPos = currentPos;
 
-							if (m_hasCheckpoint) {
-								respawnPos = JPH::RVec3(m_checkpointPos.x, m_checkpointPos.y - 3.5f, m_checkpointPos.z);
-								// 强制加上 JPH_PI (180度) 保证车头朝向一致
-								uprightRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), m_checkpointYaw + JPH::JPH_PI);
+						bi.SetPositionAndRotation(id, respawnPos, uprightRot, JPH::EActivation::Activate);
+						bi.SetLinearVelocity(id, JPH::Vec3::sZero());
+						bi.SetAngularVelocity(id, JPH::Vec3::sZero());
 
-								printf("[Gameplay] Bike respawned at checkpoint (%.2f, %.2f, %.2f)\n",
-									m_checkpointPos.x, m_checkpointPos.y, m_checkpointPos.z);
-								mState->iblEnabled = true;
-							}
-							else {
-								// 原地复活逻辑 (仅在没有放置自定义复活点，且处于死亡停滞状态时生效)
-								JPH::RVec3 currentPos = bi.GetPosition(id);
-								JPH::Quat currentRot = bi.GetRotation(id);
-								JPH::Vec3 fwd = currentRot.RotateAxisZ();
-								JPH::Vec3 flatFwd(fwd.GetX(), 0.0f, fwd.GetZ());
+						mState->portalCameraActive = false;
+						mState->portalCameraTimer = 0.0f;
+						mState->portalCameraBoomLength = 0.0f;
+						mState->portalCameraStartSide = 1.0f;
+						mState->portalCameraTargetPosition = glm::vec3(0.0f);
+						mState->portalCameraBoomOffset = glm::vec3(0.0f);
+						mState->isAlive = true;
+						mState->deathTimer = 0.0f;
+						mState->isGameOver = false;
+						mState->bikeLeanAngle = 0.0f;
+						mState->bikeSteerAngle = 0.0f;
+						mState->thirdPersonMode = true;
+						mState->bikeSpeed = 0.0f;
+						mState->engineForce = 0.0f;
+						mState->lastPedal = -1;
 
-								if (flatFwd.LengthSq() > 0.0001f) {
-									flatFwd = flatFwd.Normalized();
-								}
-								else {
-									flatFwd = JPH::Vec3(0.0f, 0.0f, -1.0f);
-								}
+						RemoveWidget(kRespawnPromptUiPath);
+						m_respawnPromptVisible = false;
 
-								float backwardOffset = 0.3f;
-								currentPos.SetX(currentPos.GetX() - flatFwd.GetX() * backwardOffset);
-								currentPos.SetZ(currentPos.GetZ() - flatFwd.GetZ() * backwardOffset);
-								currentPos.SetY(currentPos.GetY() + 1.0f);
-
-								float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
-								uprightRot = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), currentYaw + JPH::JPH_PI);
-								respawnPos = currentPos;
-							}
-
-							bi.SetPositionAndRotation(id, respawnPos, uprightRot, JPH::EActivation::Activate);
-							bi.SetLinearVelocity(id, JPH::Vec3::sZero());
-							bi.SetAngularVelocity(id, JPH::Vec3::sZero());
-
-							mState->portalCameraActive = false;
-							mState->portalCameraTimer = 0.0f;
-							mState->portalCameraBoomLength = 0.0f;
-							mState->portalCameraStartSide = 1.0f;
-							mState->portalCameraTargetPosition = glm::vec3(0.0f);
-							mState->portalCameraBoomOffset = glm::vec3(0.0f);
-							mState->isAlive = true;
-							mState->deathTimer = 0.0f;
-							mState->isGameOver = false;
-							mState->bikeLeanAngle = 0.0f;
-							mState->bikeSteerAngle = 0.0f;
-							mState->thirdPersonMode = true;
-							mState->bikeSpeed = 0.0f;
-							mState->engineForce = 0.0f;
-							mState->lastPedal = -1;
-
-							RemoveWidget(kRespawnPromptUiPath);
-							m_respawnPromptVisible = false;
-
-							printf("[Gameplay] Bike respawn triggered successfully!\n");
-						}
+						printf("[Gameplay] Bike respawn triggered successfully!\n");
+						deployActionHandled = true;
 					}
 				}
+			}
+
+			if (deployActionHandled) {
+				m_deployHoldTimer = 0.0f;
+				m_deployConsumedUntilRelease = true;
+			}
+			else if (mState && mState->isAlive) {
+				m_deployHoldTimer = 0.0f;
 			}
 		}
 		// =========================================================
@@ -2471,7 +2415,6 @@ namespace engine {
 		RemoveWidget(kAbilityUnlockUiPath);
 		RemoveWidget(kWinUiPath);
 		m_respawnPromptVisible = false;
-		m_respawnStillnessTime = 0.0f;
 		m_abilityUnlockPopupVisible = false;
 		m_abilityUnlockPopupTimer = 0.0f;
 		m_winUiVisible = false;

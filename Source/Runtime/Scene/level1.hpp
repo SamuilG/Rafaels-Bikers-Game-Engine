@@ -92,7 +92,6 @@ namespace engine {
         bool          m_rocketCameraActive = false; // camera follows rocket tail looking down
 
 		bool m_respawnPromptVisible = false;
-        float m_respawnStillnessTime = 0.0f;
         bool m_abilityUnlockPopupVisible = false;
         float m_abilityUnlockPopupTimer = 0.0f;
         bool m_winUiVisible = false;
