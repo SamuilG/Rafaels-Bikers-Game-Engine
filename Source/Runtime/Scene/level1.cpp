@@ -59,6 +59,15 @@ namespace engine {
 			return std::atan2(-forward.x, -forward.z);
 		}
 
+		glm::vec3 CameraFlatForward(const GameplayState* state, glm::vec3 fallback) {
+			if (!state) {
+				return NormalizeFlat(fallback);
+			}
+			return NormalizeFlat(
+				glm::vec3(state->camera2world * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)),
+				fallback);
+		}
+
 		float PortalSurfaceYawFromNormal(glm::vec3 normal) {
 			normal = NormalizeFlat(normal);
 			return std::atan2(normal.x, normal.z);
@@ -1764,7 +1773,8 @@ namespace engine {
 					JPH::Quat currentRot = bi.GetRotation(id);
 
 					JPH::Vec3 fwd = currentRot.RotateAxisZ();
-					float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
+					const glm::vec3 bikeForward = NormalizeFlat(glm::vec3(-fwd.GetX(), 0.0f, -fwd.GetZ()));
+					const float currentYaw = BikeYawFromForward(CameraFlatForward(mState, bikeForward));
 
 					// 预抬高 3.5f，以抵消 DEPLOY 落地时的悬空衰减量
 					m_checkpointPos = glm::vec3(currentPos.GetX(), currentPos.GetY() + 3.5f, currentPos.GetZ());
