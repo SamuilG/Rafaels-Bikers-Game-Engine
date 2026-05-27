@@ -537,11 +537,21 @@ namespace engine {
             mPortalNormalImage = create_normal_buffer(mWindow, mAllocator);
             mPortalDepthImage = create_depth_buffer(mWindow, mAllocator);
             mPortalSurfaceDesc = BuildPortalSurfaceDesc(mPortalColorImage.view);
+            mPortalRecursiveColorImage = create_offscreen_buffer(mWindow, mAllocator);
+            mPortalRecursiveBrightImage = create_offscreen_buffer(mWindow, mAllocator);
+            mPortalRecursiveNormalImage = create_normal_buffer(mWindow, mAllocator);
+            mPortalRecursiveDepthImage = create_depth_buffer(mWindow, mAllocator);
+            mPortalRecursiveSurfaceDesc = BuildPortalSurfaceDesc(mPortalRecursiveColorImage.view);
             mPortal2ColorImage = create_offscreen_buffer(mWindow, mAllocator);
             mPortal2BrightImage = create_offscreen_buffer(mWindow, mAllocator);
             mPortal2NormalImage = create_normal_buffer(mWindow, mAllocator);
             mPortal2DepthImage = create_depth_buffer(mWindow, mAllocator);
             mPortal2SurfaceDesc = BuildPortalSurfaceDesc(mPortal2ColorImage.view);
+            mPortal2RecursiveColorImage = create_offscreen_buffer(mWindow, mAllocator);
+            mPortal2RecursiveBrightImage = create_offscreen_buffer(mWindow, mAllocator);
+            mPortal2RecursiveNormalImage = create_normal_buffer(mWindow, mAllocator);
+            mPortal2RecursiveDepthImage = create_depth_buffer(mWindow, mAllocator);
+            mPortal2RecursiveSurfaceDesc = BuildPortalSurfaceDesc(mPortal2RecursiveColorImage.view);
             CreatePortalSurfaceMesh();
 
             // 【清理修复】：SSR 只初始化这一次！
@@ -1325,11 +1335,21 @@ namespace engine {
                     mPortalNormalImage = create_normal_buffer(mWindow, mAllocator);
                     mPortalDepthImage = create_depth_buffer(mWindow, mAllocator);
                     WritePortalSurfaceDesc(mPortalSurfaceDesc, mPortalColorImage.view);
+                    mPortalRecursiveColorImage = create_offscreen_buffer(mWindow, mAllocator);
+                    mPortalRecursiveBrightImage = create_offscreen_buffer(mWindow, mAllocator);
+                    mPortalRecursiveNormalImage = create_normal_buffer(mWindow, mAllocator);
+                    mPortalRecursiveDepthImage = create_depth_buffer(mWindow, mAllocator);
+                    WritePortalSurfaceDesc(mPortalRecursiveSurfaceDesc, mPortalRecursiveColorImage.view);
                     mPortal2ColorImage = create_offscreen_buffer(mWindow, mAllocator);
                     mPortal2BrightImage = create_offscreen_buffer(mWindow, mAllocator);
                     mPortal2NormalImage = create_normal_buffer(mWindow, mAllocator);
                     mPortal2DepthImage = create_depth_buffer(mWindow, mAllocator);
                     WritePortalSurfaceDesc(mPortal2SurfaceDesc, mPortal2ColorImage.view);
+                    mPortal2RecursiveColorImage = create_offscreen_buffer(mWindow, mAllocator);
+                    mPortal2RecursiveBrightImage = create_offscreen_buffer(mWindow, mAllocator);
+                    mPortal2RecursiveNormalImage = create_normal_buffer(mWindow, mAllocator);
+                    mPortal2RecursiveDepthImage = create_depth_buffer(mWindow, mAllocator);
+                    WritePortalSurfaceDesc(mPortal2RecursiveSurfaceDesc, mPortal2RecursiveColorImage.view);
                     mVisImage = create_vis_image(mWindow, mAllocator);
                     mNormalImage = create_normal_buffer(mWindow, mAllocator);
                     mSsrOutputImage = create_offscreen_buffer(mWindow, mAllocator);
@@ -1816,16 +1836,59 @@ namespace engine {
             if (portalEnabledForFrame || portal2EnabledForFrame) {
                 portalVisibilityFrustum = BuildFrustum(sceneUniforms.projCam);
             }
-            const bool portalVisibleForFrame = portalEnabledForFrame &&
-                IsPortalSurfaceVisibleToMainCamera(mPortalSurfaceTransform, sceneUniforms, portalVisibilityFrustum);
-            const bool portal2VisibleForFrame = portal2EnabledForFrame &&
-                IsPortalSurfaceVisibleToMainCamera(mPortal2SurfaceTransform, sceneUniforms, portalVisibilityFrustum);
+            const bool portalMainVisibleForFrame = portalEnabledForFrame &&
+                IsPortalSurfaceVisibleToCamera(mPortalSurfaceTransform, sceneUniforms, portalVisibilityFrustum);
+            const bool portal2MainVisibleForFrame = portal2EnabledForFrame &&
+                IsPortalSurfaceVisibleToCamera(mPortal2SurfaceTransform, sceneUniforms, portalVisibilityFrustum);
+            const bool anyPortalMainVisibleForFrame = portalMainVisibleForFrame || portal2MainVisibleForFrame;
             glsl::SceneUniform portalSceneUniform = sceneUniforms;
             glsl::SceneUniform portal2SceneUniform = sceneUniforms;
-            if (portalVisibleForFrame) {
+            if (portalEnabledForFrame && anyPortalMainVisibleForFrame) {
                 portalSceneUniform = BuildPortalSceneUniform(sceneUniforms, finalWidth, finalHeight);
             }
-            if (portal2VisibleForFrame) {
+            if (portal2EnabledForFrame && anyPortalMainVisibleForFrame) {
+                portal2SceneUniform = BuildPortal2SceneUniform(sceneUniforms, finalWidth, finalHeight);
+            }
+            bool portalVisibleInPortalView = false;
+            bool portal2VisibleInPortalView = false;
+            if (portalEnabledForFrame && anyPortalMainVisibleForFrame) {
+                const Frustum portalFrustum = BuildFrustum(portalSceneUniform.projCam);
+                portalVisibleInPortalView = IsPortalSurfaceVisibleToCamera(
+                    mPortalSurfaceTransform,
+                    portalSceneUniform,
+                    portalFrustum);
+                if (portal2EnabledForFrame) {
+                    portal2VisibleInPortalView = IsPortalSurfaceVisibleToCamera(
+                        mPortal2SurfaceTransform,
+                        portalSceneUniform,
+                        portalFrustum);
+                }
+            }
+            bool portalVisibleInPortal2View = false;
+            bool portal2VisibleInPortal2View = false;
+            if (portal2EnabledForFrame && anyPortalMainVisibleForFrame) {
+                const Frustum portal2Frustum = BuildFrustum(portal2SceneUniform.projCam);
+                if (portalEnabledForFrame) {
+                    portalVisibleInPortal2View = IsPortalSurfaceVisibleToCamera(
+                        mPortalSurfaceTransform,
+                        portal2SceneUniform,
+                        portal2Frustum);
+                }
+                portal2VisibleInPortal2View = IsPortalSurfaceVisibleToCamera(
+                    mPortal2SurfaceTransform,
+                    portal2SceneUniform,
+                    portal2Frustum);
+            }
+            const bool portalVisibleForFrame =
+                portalMainVisibleForFrame ||
+                portalVisibleInPortal2View;
+            const bool portal2VisibleForFrame =
+                portal2MainVisibleForFrame ||
+                portal2VisibleInPortalView;
+            if (portalVisibleForFrame && !anyPortalMainVisibleForFrame) {
+                portalSceneUniform = BuildPortalSceneUniform(sceneUniforms, finalWidth, finalHeight);
+            }
+            if (portal2VisibleForFrame && !anyPortalMainVisibleForFrame) {
                 portal2SceneUniform = BuildPortal2SceneUniform(sceneUniforms, finalWidth, finalHeight);
             }
             std::vector<RenderBatch> portalBatches = finalBatches;
@@ -1848,16 +1911,93 @@ namespace engine {
                     glm::vec3(portal2SceneUniform.cameraPos));
                 appendPreviewBatches(portal2Batches);
             }
+            constexpr uint32_t kPortalRecursionLayers = 4;
+            std::array<glsl::SceneUniform, kPortalRecursionLayers> portalRecursiveSceneUniforms{};
+            std::array<glsl::SceneUniform, kPortalRecursionLayers> portal2RecursiveSceneUniforms{};
+            uint32_t portalRecursiveSceneUniformCount = 0;
+            uint32_t portal2RecursiveSceneUniformCount = 0;
+            if (portalVisibleForFrame) {
+                if (mPortalPreviewPairLinked && mState) {
+                    glm::mat4 viewerCameraWorld = mState->camera2world;
+                    if (!portalMainVisibleForFrame && portalVisibleInPortal2View) {
+                        viewerCameraWorld = glm::inverse(portal2SceneUniform.camera);
+                    }
+                    glm::mat4 recursiveCameraWorld = BuildLinkedPortalCameraWorldFromCamera(
+                        mPortalSurfaceTransform,
+                        mPortal2SurfaceTransform,
+                        viewerCameraWorld);
+                    for (uint32_t layer = 0; layer < kPortalRecursionLayers; ++layer) {
+                        glsl::SceneUniform recursiveUniform = BuildPortalSceneUniformForCameraTransform(
+                            sceneUniforms,
+                            finalWidth,
+                            finalHeight,
+                            recursiveCameraWorld,
+                            LivePortalFovDegrees(mPortalCameraFovDegrees));
+                        recursiveUniform.portalClipPlane = BuildPortalClipPlane(mPortal2SurfaceTransform);
+                        portalRecursiveSceneUniforms[layer] = recursiveUniform;
+                        recursiveCameraWorld = BuildLinkedPortalCameraWorldFromCamera(
+                            mPortalSurfaceTransform,
+                            mPortal2SurfaceTransform,
+                            recursiveCameraWorld);
+                    }
+                    portalRecursiveSceneUniformCount = kPortalRecursionLayers;
+                    portalSceneUniform = portalRecursiveSceneUniforms[0];
+                }
+                else {
+                    portalRecursiveSceneUniforms[0] = portalSceneUniform;
+                    portalRecursiveSceneUniformCount = 1;
+                }
+            }
+            if (portal2VisibleForFrame) {
+                if (mPortalPreviewPairLinked && mState) {
+                    glm::mat4 viewerCameraWorld = mState->camera2world;
+                    if (!portal2MainVisibleForFrame && portal2VisibleInPortalView) {
+                        viewerCameraWorld = glm::inverse(portalSceneUniform.camera);
+                    }
+                    glm::mat4 recursiveCameraWorld = BuildLinkedPortalCameraWorldFromCamera(
+                        mPortal2SurfaceTransform,
+                        mPortalSurfaceTransform,
+                        viewerCameraWorld);
+                    for (uint32_t layer = 0; layer < kPortalRecursionLayers; ++layer) {
+                        glsl::SceneUniform recursiveUniform = BuildPortalSceneUniformForCameraTransform(
+                            sceneUniforms,
+                            finalWidth,
+                            finalHeight,
+                            recursiveCameraWorld,
+                            LivePortalFovDegrees(mPortal2CameraFovDegrees));
+                        recursiveUniform.portalClipPlane = BuildPortalClipPlane(mPortalSurfaceTransform);
+                        portal2RecursiveSceneUniforms[layer] = recursiveUniform;
+                        recursiveCameraWorld = BuildLinkedPortalCameraWorldFromCamera(
+                            mPortal2SurfaceTransform,
+                            mPortalSurfaceTransform,
+                            recursiveCameraWorld);
+                    }
+                    portal2RecursiveSceneUniformCount = kPortalRecursionLayers;
+                    portal2SceneUniform = portal2RecursiveSceneUniforms[0];
+                }
+                else {
+                    portal2RecursiveSceneUniforms[0] = portal2SceneUniform;
+                    portal2RecursiveSceneUniformCount = 1;
+                }
+            }
             static float portalEffectTime = 0.0f;
             portalEffectTime += dt;
             ImageAndView portalColorTarget{ mPortalColorImage.image, mPortalColorImage.view };
             ImageAndView portalBrightTarget{ mPortalBrightImage.image, mPortalBrightImage.view };
             ImageAndView portalNormalTarget{ mPortalNormalImage.image, mPortalNormalImage.view };
             ImageAndView portalDepthTarget{ mPortalDepthImage.image, mPortalDepthImage.view };
+            ImageAndView portalRecursiveColorTarget{ mPortalRecursiveColorImage.image, mPortalRecursiveColorImage.view };
+            ImageAndView portalRecursiveBrightTarget{ mPortalRecursiveBrightImage.image, mPortalRecursiveBrightImage.view };
+            ImageAndView portalRecursiveNormalTarget{ mPortalRecursiveNormalImage.image, mPortalRecursiveNormalImage.view };
+            ImageAndView portalRecursiveDepthTarget{ mPortalRecursiveDepthImage.image, mPortalRecursiveDepthImage.view };
             ImageAndView portal2ColorTarget{ mPortal2ColorImage.image, mPortal2ColorImage.view };
             ImageAndView portal2BrightTarget{ mPortal2BrightImage.image, mPortal2BrightImage.view };
             ImageAndView portal2NormalTarget{ mPortal2NormalImage.image, mPortal2NormalImage.view };
             ImageAndView portal2DepthTarget{ mPortal2DepthImage.image, mPortal2DepthImage.view };
+            ImageAndView portal2RecursiveColorTarget{ mPortal2RecursiveColorImage.image, mPortal2RecursiveColorImage.view };
+            ImageAndView portal2RecursiveBrightTarget{ mPortal2RecursiveBrightImage.image, mPortal2RecursiveBrightImage.view };
+            ImageAndView portal2RecursiveNormalTarget{ mPortal2RecursiveNormalImage.image, mPortal2RecursiveNormalImage.view };
+            ImageAndView portal2RecursiveDepthTarget{ mPortal2RecursiveDepthImage.image, mPortal2RecursiveDepthImage.view };
             // =========================================================
             // Record and submit commands for this frame
             // 在 Update 函数末尾找到 record_commands 调用，修改如下：
@@ -1956,25 +2096,45 @@ namespace engine {
                 mSkyboxVBO.buffer,
                 portalVisibleForFrame,
                 &portalSceneUniform,
+                portalRecursiveSceneUniforms.data(),
+                portalRecursiveSceneUniformCount,
                 &portalBatches,
                 &portalColorTarget,
                 &portalBrightTarget,
                 &portalNormalTarget,
                 &portalDepthTarget,
+                &portalRecursiveColorTarget,
+                &portalRecursiveBrightTarget,
+                &portalRecursiveNormalTarget,
+                &portalRecursiveDepthTarget,
                 mPortalSurfacePipe.handle,
                 mPortalSurfaceDesc,
+                mPortalRecursiveSurfaceDesc,
                 mPortalMeshIndex,
                 &mPortalSurfaceTransform,
                 portal2VisibleForFrame,
                 &portal2SceneUniform,
+                portal2RecursiveSceneUniforms.data(),
+                portal2RecursiveSceneUniformCount,
                 &portal2Batches,
                 &portal2ColorTarget,
                 &portal2BrightTarget,
                 &portal2NormalTarget,
                 &portal2DepthTarget,
+                &portal2RecursiveColorTarget,
+                &portal2RecursiveBrightTarget,
+                &portal2RecursiveNormalTarget,
+                &portal2RecursiveDepthTarget,
                 mPortal2SurfaceDesc,
+                mPortal2RecursiveSurfaceDesc,
                 &mPortal2SurfaceTransform,
-                portalEffectTime
+                portalEffectTime,
+                portalMainVisibleForFrame,
+                portal2MainVisibleForFrame,
+                portalVisibleInPortalView,
+                portalVisibleInPortal2View,
+                portal2VisibleInPortalView,
+                portal2VisibleInPortal2View
             );
 			//clear debug renderer data after uploading
             mDebugRenderer.Clear();
@@ -2327,7 +2487,7 @@ namespace engine {
         }
     private:
 
-        bool IsPortalSurfaceVisibleToMainCamera(
+        bool IsPortalSurfaceVisibleToCamera(
             const glm::mat4& surfaceTransform,
             const glsl::SceneUniform& sceneUniform,
             const Frustum& mainCameraFrustum) const
@@ -2563,9 +2723,17 @@ namespace engine {
 
         glm::mat4 BuildLinkedPortalCameraWorld(const glm::mat4& sourceSurface, const glm::mat4& destinationSurface) const
         {
+            return BuildLinkedPortalCameraWorldFromCamera(sourceSurface, destinationSurface, mState->camera2world);
+        }
+
+        glm::mat4 BuildLinkedPortalCameraWorldFromCamera(
+            const glm::mat4& sourceSurface,
+            const glm::mat4& destinationSurface,
+            const glm::mat4& cameraWorld) const
+        {
             const glm::mat4 sourceFrame = PortalRigidFrame(sourceSurface);
             const glm::mat4 destinationFrame = PortalRigidFrame(destinationSurface);
-            return destinationFrame * PortalHalfTurn() * glm::inverse(sourceFrame) * mState->camera2world;
+            return destinationFrame * PortalHalfTurn() * glm::inverse(sourceFrame) * cameraWorld;
         }
 
         float LivePortalFovDegrees(float fallbackFovDegrees) const
@@ -3211,11 +3379,21 @@ void InitSkybox()
         lut::ImageWithView mPortalNormalImage;
         lut::ImageWithView mPortalDepthImage;
         VkDescriptorSet    mPortalSurfaceDesc = VK_NULL_HANDLE;
+        lut::ImageWithView mPortalRecursiveColorImage;
+        lut::ImageWithView mPortalRecursiveBrightImage;
+        lut::ImageWithView mPortalRecursiveNormalImage;
+        lut::ImageWithView mPortalRecursiveDepthImage;
+        VkDescriptorSet    mPortalRecursiveSurfaceDesc = VK_NULL_HANDLE;
         lut::ImageWithView mPortal2ColorImage;
         lut::ImageWithView mPortal2BrightImage;
         lut::ImageWithView mPortal2NormalImage;
         lut::ImageWithView mPortal2DepthImage;
         VkDescriptorSet    mPortal2SurfaceDesc = VK_NULL_HANDLE;
+        lut::ImageWithView mPortal2RecursiveColorImage;
+        lut::ImageWithView mPortal2RecursiveBrightImage;
+        lut::ImageWithView mPortal2RecursiveNormalImage;
+        lut::ImageWithView mPortal2RecursiveDepthImage;
+        VkDescriptorSet    mPortal2RecursiveSurfaceDesc = VK_NULL_HANDLE;
         uint32_t           mPortalMeshIndex = UINT32_MAX;
         bool               mPortalEnabled = false;
         bool               mPortalPreviewPairLinked = false;

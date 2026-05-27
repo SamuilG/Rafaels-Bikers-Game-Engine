@@ -13,6 +13,8 @@
 #include "../../UI/ui.hpp"
 #include "../../UserState/UserState.hpp"
 
+#include <algorithm>
+
 struct alignas(16) PortalSurfacePC {
 	glm::mat4 transform;
 	glm::vec4 portalParams;
@@ -123,25 +125,45 @@ void record_commands(
 	VkBuffer skyboxVBO,
 	bool aPortalEnabled,
 	glsl::SceneUniform const* aPortalSceneUniform,
+	glsl::SceneUniform const* aPortalRecursiveSceneUniforms,
+	uint32_t aPortalRecursiveSceneUniformCount,
 	const std::vector<RenderBatch>* aPortalBatches,
 	ImageAndView const* aPortalColor,
 	ImageAndView const* aPortalBright,
 	ImageAndView const* aPortalNormal,
 	ImageAndView const* aPortalDepth,
+	ImageAndView const* aPortalRecursiveColor,
+	ImageAndView const* aPortalRecursiveBright,
+	ImageAndView const* aPortalRecursiveNormal,
+	ImageAndView const* aPortalRecursiveDepth,
 	VkPipeline aPortalSurfacePipe,
 	VkDescriptorSet aPortalSurfaceDesc,
+	VkDescriptorSet aPortalRecursiveSurfaceDesc,
 	uint32_t aPortalMeshIndex,
 	glm::mat4 const* aPortalSurfaceTransform,
 	bool aPortal2Enabled,
 	glsl::SceneUniform const* aPortal2SceneUniform,
+	glsl::SceneUniform const* aPortal2RecursiveSceneUniforms,
+	uint32_t aPortal2RecursiveSceneUniformCount,
 	const std::vector<RenderBatch>* aPortal2Batches,
 	ImageAndView const* aPortal2Color,
 	ImageAndView const* aPortal2Bright,
 	ImageAndView const* aPortal2Normal,
 	ImageAndView const* aPortal2Depth,
+	ImageAndView const* aPortal2RecursiveColor,
+	ImageAndView const* aPortal2RecursiveBright,
+	ImageAndView const* aPortal2RecursiveNormal,
+	ImageAndView const* aPortal2RecursiveDepth,
 	VkDescriptorSet aPortal2SurfaceDesc,
+	VkDescriptorSet aPortal2RecursiveSurfaceDesc,
 	glm::mat4 const* aPortal2SurfaceTransform,
-	float aPortalEffectTime
+	float aPortalEffectTime,
+	bool aPortalMainVisible,
+	bool aPortal2MainVisible,
+	bool aPortalVisibleInPortalView,
+	bool aPortalVisibleInPortal2View,
+	bool aPortal2VisibleInPortalView,
+	bool aPortal2VisibleInPortal2View
 )
 {
 	// Begin command buffer
@@ -349,12 +371,48 @@ void record_commands(
 		aPortal2SurfaceDesc,
 		aPortal2SurfaceTransform);
 
+	const bool portalScratchReady = portalReadyFor(
+		aPortalEnabled,
+		aPortalSceneUniform,
+		aPortalRecursiveColor,
+		aPortalRecursiveBright,
+		aPortalRecursiveNormal,
+		aPortalRecursiveDepth,
+		aPortalRecursiveSurfaceDesc,
+		aPortalSurfaceTransform);
+	const bool portal2ScratchReady = portalReadyFor(
+		aPortal2Enabled,
+		aPortal2SceneUniform,
+		aPortal2RecursiveColor,
+		aPortal2RecursiveBright,
+		aPortal2RecursiveNormal,
+		aPortal2RecursiveDepth,
+		aPortal2RecursiveSurfaceDesc,
+		aPortal2SurfaceTransform);
+
+	struct PortalTargetSet {
+		ImageAndView const* color = nullptr;
+		ImageAndView const* bright = nullptr;
+		ImageAndView const* normal = nullptr;
+		ImageAndView const* depth = nullptr;
+		VkDescriptorSet surfaceDesc = VK_NULL_HANDLE;
+	};
+
+	struct NestedPortalSurface {
+		bool draw = false;
+		VkDescriptorSet surfaceDesc = VK_NULL_HANDLE;
+		glm::mat4 const* surfaceTransform = nullptr;
+		float phase = 0.0f;
+	};
+
 	auto renderPortalView = [&](glsl::SceneUniform const& portalSceneUniform,
 		const std::vector<RenderBatch>* portalBatches,
 		ImageAndView const& portalColor,
 		ImageAndView const& portalBright,
 		ImageAndView const& portalNormal,
-		ImageAndView const& portalDepth) {
+		ImageAndView const& portalDepth,
+		NestedPortalSurface const& nestedPortalA,
+		NestedPortalSurface const& nestedPortalB) {
 		uploadSceneUniform(portalSceneUniform);
 
 		VkImageSubresourceRange portalColorRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
@@ -536,6 +594,33 @@ void record_commands(
 			}
 		}
 
+		auto drawNestedPortalSurface = [&](NestedPortalSurface const& nestedPortal) {
+			if (!nestedPortal.draw ||
+				aPortalSurfacePipe == VK_NULL_HANDLE ||
+				nestedPortal.surfaceDesc == VK_NULL_HANDLE ||
+				nestedPortal.surfaceTransform == nullptr ||
+				aPortalMeshIndex >= aMeshInfos.size())
+			{
+				return;
+			}
+
+			const uint32_t meshIdx = aPortalMeshIndex;
+			PortalSurfacePC portalPc{};
+			portalPc.transform = *nestedPortal.surfaceTransform;
+			portalPc.portalParams = glm::vec4(aPortalEffectTime, nestedPortal.phase, 0.0f, 0.0f);
+			vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aPortalSurfacePipe);
+			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
+			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &nestedPortal.surfaceDesc, 0, nullptr);
+			vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PortalSurfacePC), &portalPc);
+			vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &portalZeroOffset);
+			vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &portalZeroOffset);
+			vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &portalZeroOffset);
+			vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
+			vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(aMeshInfos[meshIdx].indices.size()), 1, 0, 0, 0);
+		};
+		drawNestedPortalSurface(nestedPortalA);
+		drawNestedPortalSurface(nestedPortalB);
+
 		if (skyboxPipe != VK_NULL_HANDLE && skyboxVBO != VK_NULL_HANDLE) {
 			vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipe);
 			vkCmdSetViewport(aCmdBuff, 0, 1, &portalVp);
@@ -555,15 +640,164 @@ void record_commands(
 			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, portalColorRange);
 	};
 
-	if (portalReady) {
+	const PortalTargetSet portalFinalTarget{
+		aPortalColor,
+		aPortalBright,
+		aPortalNormal,
+		aPortalDepth,
+		aPortalSurfaceDesc
+	};
+	const PortalTargetSet portalScratchTarget{
+		aPortalRecursiveColor,
+		aPortalRecursiveBright,
+		aPortalRecursiveNormal,
+		aPortalRecursiveDepth,
+		aPortalRecursiveSurfaceDesc
+	};
+	const PortalTargetSet portal2FinalTarget{
+		aPortal2Color,
+		aPortal2Bright,
+		aPortal2Normal,
+		aPortal2Depth,
+		aPortal2SurfaceDesc
+	};
+	const PortalTargetSet portal2ScratchTarget{
+		aPortal2RecursiveColor,
+		aPortal2RecursiveBright,
+		aPortal2RecursiveNormal,
+		aPortal2RecursiveDepth,
+		aPortal2RecursiveSurfaceDesc
+	};
+
+	auto portalLayerUniform = [&](uint32_t layer) -> glsl::SceneUniform const& {
+		if (aPortalRecursiveSceneUniforms && layer < aPortalRecursiveSceneUniformCount) {
+			return aPortalRecursiveSceneUniforms[layer];
+		}
+		return *aPortalSceneUniform;
+	};
+
+	auto portal2LayerUniform = [&](uint32_t layer) -> glsl::SceneUniform const& {
+		if (aPortal2RecursiveSceneUniforms && layer < aPortal2RecursiveSceneUniformCount) {
+			return aPortal2RecursiveSceneUniforms[layer];
+		}
+		return *aPortal2SceneUniform;
+	};
+
+	auto renderPortalOne = [&](PortalTargetSet const& target,
+		glsl::SceneUniform const& sceneUniform,
+		NestedPortalSurface const& nestedPortal1,
+		NestedPortalSurface const& nestedPortal2) {
 		const auto& portalShadowBatches = aPortalBatches ? *aPortalBatches : aBatches;
-		renderShadowMap(*aPortalSceneUniform, portalShadowBatches);
-		renderPortalView(*aPortalSceneUniform, aPortalBatches, *aPortalColor, *aPortalBright, *aPortalNormal, *aPortalDepth);
-	}
-	if (portal2Ready) {
+		renderShadowMap(sceneUniform, portalShadowBatches);
+		renderPortalView(
+			sceneUniform,
+			aPortalBatches,
+			*target.color,
+			*target.bright,
+			*target.normal,
+			*target.depth,
+			nestedPortal1,
+			nestedPortal2);
+	};
+
+	auto renderPortalTwo = [&](PortalTargetSet const& target,
+		glsl::SceneUniform const& sceneUniform,
+		NestedPortalSurface const& nestedPortal1,
+		NestedPortalSurface const& nestedPortal2) {
 		const auto& portal2ShadowBatches = aPortal2Batches ? *aPortal2Batches : aBatches;
-		renderShadowMap(*aPortal2SceneUniform, portal2ShadowBatches);
-		renderPortalView(*aPortal2SceneUniform, aPortal2Batches, *aPortal2Color, *aPortal2Bright, *aPortal2Normal, *aPortal2Depth);
+		renderShadowMap(sceneUniform, portal2ShadowBatches);
+		renderPortalView(
+			sceneUniform,
+			aPortal2Batches,
+			*target.color,
+			*target.bright,
+			*target.normal,
+			*target.depth,
+			nestedPortal1,
+			nestedPortal2);
+	};
+
+	constexpr uint32_t kPortalRecursionLayers = 4;
+	const uint32_t portalLayerCount = std::max(1u, std::min(kPortalRecursionLayers, aPortalRecursiveSceneUniformCount));
+	const uint32_t portal2LayerCount = std::max(1u, std::min(kPortalRecursionLayers, aPortal2RecursiveSceneUniformCount));
+	const uint32_t layerCount = std::max(portalLayerCount, portal2LayerCount);
+	const bool portalRecursionRequested = layerCount > 1u && (
+		(portalReady && (aPortalVisibleInPortalView || aPortal2VisibleInPortalView)) ||
+		(portal2Ready && (aPortalVisibleInPortal2View || aPortal2VisibleInPortal2View)));
+	const bool portalRecursionReady =
+		(!portalReady || portalScratchReady) &&
+		(!portal2Ready || portal2ScratchReady);
+
+	if (portalRecursionRequested && portalRecursionReady) {
+		const PortalTargetSet portalTargets[2] = { portalFinalTarget, portalScratchTarget };
+		const PortalTargetSet portal2Targets[2] = { portal2FinalTarget, portal2ScratchTarget };
+		const uint32_t deepestLayer = layerCount - 1u;
+
+		uint32_t readIndex = 1;
+		if (portalReady) {
+			renderPortalOne(portalTargets[readIndex], portalLayerUniform(std::min(deepestLayer, portalLayerCount - 1u)), {}, {});
+		}
+		if (portal2Ready) {
+			renderPortalTwo(portal2Targets[readIndex], portal2LayerUniform(std::min(deepestLayer, portal2LayerCount - 1u)), {}, {});
+		}
+
+		uint32_t writeIndex = 0;
+		for (uint32_t step = 1; step < layerCount; ++step) {
+			const uint32_t layer = deepestLayer - step;
+			if (portalReady) {
+				NestedPortalSurface nestedPortal1{
+					aPortalVisibleInPortalView && portalReady,
+					portalTargets[readIndex].surfaceDesc,
+					aPortalSurfaceTransform,
+					0.0f
+				};
+				NestedPortalSurface nestedPortal2{
+					aPortal2VisibleInPortalView && portal2Ready,
+					portal2Targets[readIndex].surfaceDesc,
+					aPortal2SurfaceTransform,
+					5.37f
+				};
+				renderPortalOne(portalTargets[writeIndex], portalLayerUniform(std::min(layer, portalLayerCount - 1u)), nestedPortal1, nestedPortal2);
+			}
+			if (portal2Ready) {
+				NestedPortalSurface nestedPortal1{
+					aPortalVisibleInPortal2View && portalReady,
+					portalTargets[readIndex].surfaceDesc,
+					aPortalSurfaceTransform,
+					0.0f
+				};
+				NestedPortalSurface nestedPortal2{
+					aPortal2VisibleInPortal2View && portal2Ready,
+					portal2Targets[readIndex].surfaceDesc,
+					aPortal2SurfaceTransform,
+					5.37f
+				};
+				renderPortalTwo(portal2Targets[writeIndex], portal2LayerUniform(std::min(layer, portal2LayerCount - 1u)), nestedPortal1, nestedPortal2);
+			}
+
+			readIndex = writeIndex;
+			writeIndex = 1 - writeIndex;
+		}
+	}
+	else {
+		if (portalReady) {
+			NestedPortalSurface nestedPortal2{
+				aPortal2VisibleInPortalView && portal2Ready,
+				aPortal2SurfaceDesc,
+				aPortal2SurfaceTransform,
+				5.37f
+			};
+			renderPortalOne(portalFinalTarget, *aPortalSceneUniform, {}, nestedPortal2);
+		}
+		if (portal2Ready) {
+			NestedPortalSurface nestedPortal1{
+				aPortalVisibleInPortal2View && portalReady,
+				aPortalSurfaceDesc,
+				aPortalSurfaceTransform,
+				0.0f
+			};
+			renderPortalTwo(portal2FinalTarget, *aPortal2SceneUniform, nestedPortal1, {});
+		}
 	}
 	renderShadowMap(aSceneUniform, aBatches);
 	uploadSceneUniform(aSceneUniform);
@@ -712,19 +946,7 @@ void record_commands(
 		vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(meshInfo.indices.size()), 1, 0, 0, 0);
 	}
 
-	auto portalVisibleToMainCamera = [&](const glm::mat4* surfaceTransform) {
-		if (!surfaceTransform) {
-			return false;
-		}
-
-		const glm::vec3 cameraPos = glm::vec3(aSceneUniform.cameraPos);
-		const glm::vec3 portalLocalPos = glm::vec3(glm::inverse(*surfaceTransform) * glm::vec4(cameraPos, 1.0f));
-		constexpr float kPortalDrawSafetyDistance =
-			cfg::kPortalSurfaceHalfDepth + cfg::kCameraNear + cfg::kPortalCameraClipSafetyMargin;
-		return portalLocalPos.z > kPortalDrawSafetyDistance;
-	};
-
-	if (portalReady && portalVisibleToMainCamera(aPortalSurfaceTransform))
+	if (portalReady && aPortalMainVisible)
 	{
 		uint32_t meshIdx = aPortalMeshIndex;
 		PortalSurfacePC portalPc{};
@@ -740,7 +962,7 @@ void record_commands(
 		vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
 		vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(aMeshInfos[meshIdx].indices.size()), 1, 0, 0, 0);
 	}
-	if (portal2Ready && portalVisibleToMainCamera(aPortal2SurfaceTransform))
+	if (portal2Ready && aPortal2MainVisible)
 	{
 		uint32_t meshIdx = aPortalMeshIndex;
 		PortalSurfacePC portalPc{};
