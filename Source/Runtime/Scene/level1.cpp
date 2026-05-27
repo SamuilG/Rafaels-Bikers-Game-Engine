@@ -246,6 +246,12 @@ namespace engine {
 		m_deployPortalEntryNormal = glm::vec3(0.0f, 0.0f, 1.0f);
 		m_deployPortalCheckpointBodyPos = glm::vec3(0.0f);
 		m_deployPortalCheckpointForward = glm::vec3(0.0f, 0.0f, -1.0f);
+		m_portals = {};
+		m_portalPairCooldown = 0.0f;
+		ResetPortalCameraState();
+		if (m_render) {
+			m_render->DisablePortalPreview();
+		}
 
 		m_audio->LoadSound("NextSong", "Assets/Sounds/Button.mp3");
 		m_audio->SetVolume("NextSong", 0.7f);
@@ -326,83 +332,6 @@ namespace engine {
 		glm::mat4 tbpos = glm::translate(BikeSpawnPos, glm::vec3(2,4,-157));\
 		glm::mat4 FinalPos = glm::translate(glm::mat4(1.0f), glm::vec3(218.83, 91.0f, -197.74f));
 		glm::mat4 bikeAnchorWorld = glm::mat4(0.0f); // sentinel: [3][3]==0 means anchor not found
-
-		constexpr float kPortalFloorY = 3.0f;
-		constexpr float kPortalWidth = 8.4f;
-		constexpr float kPortalHeight = 8.4f;
-		constexpr float kPortalExitOffset = 4.0f;
-		const float portalCenterY = kPortalFloorY + kPortalHeight * 0.5f + kDeployPortalVerticalOffset;
-		const float portalYawRadians = glm::radians(180.0f);
-		const glm::vec3 leftPortalCenter = glm::vec3(-158.0f, portalCenterY, -72.0f);
-		const glm::vec3 rightPortalCenter = glm::vec3(-146.0f, portalCenterY, -72.0f);
-
-		auto makePortalSurface = [&](const glm::vec3& center) {
-			return glm::translate(glm::mat4(1.0f), center) *
-				glm::rotate(glm::mat4(1.0f), portalYawRadians, glm::vec3(0.0f, 1.0f, 0.0f)) *
-				glm::scale(glm::mat4(1.0f), glm::vec3(kPortalWidth, kPortalHeight, 1.0f));
-		};
-		auto portalForward = [](const glm::mat4& surface) {
-			glm::vec3 forward = glm::vec3(surface * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f));
-			forward.y = 0.0f;
-			if (glm::dot(forward, forward) < 0.0001f) {
-				forward = glm::vec3(0.0f, 0.0f, -1.0f);
-			}
-			return glm::normalize(forward);
-		};
-		auto yawFromForward = [](glm::vec3 forward) {
-			forward.y = 0.0f;
-			if (glm::dot(forward, forward) < 0.0001f) {
-				forward = glm::vec3(0.0f, 0.0f, -1.0f);
-			}
-			forward = glm::normalize(forward);
-			return std::atan2(-forward.x, -forward.z);
-		};
-
-		const glm::mat4 leftPortalSurface = makePortalSurface(leftPortalCenter);
-		const glm::mat4 rightPortalSurface = makePortalSurface(rightPortalCenter);
-		const glm::vec3 leftPortalForward = portalForward(leftPortalSurface);
-		const glm::vec3 rightPortalForward = portalForward(rightPortalSurface);
-		const glm::vec3 leftExitPosition = glm::vec3(
-			leftPortalCenter.x + leftPortalForward.x * kPortalExitOffset,
-			kPortalFloorY,
-			leftPortalCenter.z + leftPortalForward.z * kPortalExitOffset);
-		const glm::vec3 rightExitPosition = glm::vec3(
-			rightPortalCenter.x + rightPortalForward.x * kPortalExitOffset,
-			kPortalFloorY,
-			rightPortalCenter.z + rightPortalForward.z * kPortalExitOffset);
-
-		m_portals[0].enabled = true;
-		m_portals[0].surfaceTransform = leftPortalSurface;
-		m_portals[0].inverseSurfaceTransform = glm::inverse(leftPortalSurface);
-		m_portals[0].exitSurfaceTransform = rightPortalSurface;
-		m_portals[0].inverseExitSurfaceTransform = glm::inverse(rightPortalSurface);
-		m_portals[0].exitPosition = rightExitPosition;
-		m_portals[0].exitYaw = yawFromForward(rightPortalForward);
-		m_portals[0].previousLocalZ = 0.0f;
-		m_portals[0].hasPreviousSample = false;
-
-		m_portals[1].enabled = true;
-		m_portals[1].surfaceTransform = rightPortalSurface;
-		m_portals[1].inverseSurfaceTransform = glm::inverse(rightPortalSurface);
-		m_portals[1].exitSurfaceTransform = leftPortalSurface;
-		m_portals[1].inverseExitSurfaceTransform = glm::inverse(leftPortalSurface);
-		m_portals[1].exitPosition = leftExitPosition;
-		m_portals[1].exitYaw = yawFromForward(leftPortalForward);
-		m_portals[1].previousLocalZ = 0.0f;
-		m_portals[1].hasPreviousSample = false;
-		m_portalPairCooldown = 0.0f;
-
-		const glm::vec3 leftPortalCamera = leftPortalCenter + leftPortalForward * 2.0f + glm::vec3(0.0f, 0.8f, 0.0f);
-		const glm::vec3 rightPortalCamera = rightPortalCenter + rightPortalForward * 2.0f + glm::vec3(0.0f, 0.8f, 0.0f);
-		m_render->SetPortalPreviewPair(
-			leftPortalSurface,
-			rightPortalCamera,
-			rightPortalCamera + rightPortalForward * 18.0f,
-			rightPortalSurface,
-			leftPortalCamera,
-			leftPortalCamera + leftPortalForward * 18.0f,
-			glm::vec3(0.0f, 1.0f, 0.0f),
-			80.0f);
 
 		m_render->load_animated_model("Assets/Models/character.glb", FinalPos);
 		flecs::entity playerBike = m_scene->LoadModel(m_render, "Assets/Models/tbikeWithAnchor.glb", engine::ModelPhysicsType::CustomC, 90.0f, BikeSpawnPos);

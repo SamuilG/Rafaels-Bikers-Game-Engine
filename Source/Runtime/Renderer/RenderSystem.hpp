@@ -1810,13 +1810,27 @@ namespace engine {
                 vmaUnmapMemory(mAllocator.allocator, mBoneSSBO.allocation);
             }
 
-            glsl::SceneUniform portalSceneUniform = BuildPortalSceneUniform(sceneUniforms, finalWidth, finalHeight);
-            glsl::SceneUniform portal2SceneUniform = BuildPortal2SceneUniform(sceneUniforms, finalWidth, finalHeight);
             const bool portalEnabledForFrame = mPortalEnabled && mState->renderMode == 0;
             const bool portal2EnabledForFrame = mPortal2Enabled && mState->renderMode == 0;
+            Frustum portalVisibilityFrustum{};
+            if (portalEnabledForFrame || portal2EnabledForFrame) {
+                portalVisibilityFrustum = BuildFrustum(sceneUniforms.projCam);
+            }
+            const bool portalVisibleForFrame = portalEnabledForFrame &&
+                IsPortalSurfaceVisibleToMainCamera(mPortalSurfaceTransform, sceneUniforms, portalVisibilityFrustum);
+            const bool portal2VisibleForFrame = portal2EnabledForFrame &&
+                IsPortalSurfaceVisibleToMainCamera(mPortal2SurfaceTransform, sceneUniforms, portalVisibilityFrustum);
+            glsl::SceneUniform portalSceneUniform = sceneUniforms;
+            glsl::SceneUniform portal2SceneUniform = sceneUniforms;
+            if (portalVisibleForFrame) {
+                portalSceneUniform = BuildPortalSceneUniform(sceneUniforms, finalWidth, finalHeight);
+            }
+            if (portal2VisibleForFrame) {
+                portal2SceneUniform = BuildPortal2SceneUniform(sceneUniforms, finalWidth, finalHeight);
+            }
             std::vector<RenderBatch> portalBatches = finalBatches;
             std::vector<RenderBatch> portal2Batches = finalBatches;
-            if (mSceneManager && portalEnabledForFrame) {
+            if (mSceneManager && portalVisibleForFrame) {
                 Frustum portalFrustum = BuildFrustum(portalSceneUniform.projCam);
                 const Frustum* portalActiveFrustum = mState->frustumCullingEnabled ? &portalFrustum : nullptr;
                 portalBatches = mSceneManager->get_render_batches(
@@ -1825,7 +1839,7 @@ namespace engine {
                     glm::vec3(portalSceneUniform.cameraPos));
                 appendPreviewBatches(portalBatches);
             }
-            if (mSceneManager && portal2EnabledForFrame) {
+            if (mSceneManager && portal2VisibleForFrame) {
                 Frustum portal2Frustum = BuildFrustum(portal2SceneUniform.projCam);
                 const Frustum* portal2ActiveFrustum = mState->frustumCullingEnabled ? &portal2Frustum : nullptr;
                 portal2Batches = mSceneManager->get_render_batches(
@@ -1940,7 +1954,7 @@ namespace engine {
                 mSkyboxPipeLayout.handle,
                 mSkyboxDescSet,
                 mSkyboxVBO.buffer,
-                portalEnabledForFrame,
+                portalVisibleForFrame,
                 &portalSceneUniform,
                 &portalBatches,
                 &portalColorTarget,
@@ -1951,7 +1965,7 @@ namespace engine {
                 mPortalSurfaceDesc,
                 mPortalMeshIndex,
                 &mPortalSurfaceTransform,
-                portal2EnabledForFrame,
+                portal2VisibleForFrame,
                 &portal2SceneUniform,
                 &portal2Batches,
                 &portal2ColorTarget,
@@ -2312,6 +2326,32 @@ namespace engine {
             vkUpdateDescriptorSets(mWindow.device, 1, &write, 0, nullptr);
         }
     private:
+
+        bool IsPortalSurfaceVisibleToMainCamera(
+            const glm::mat4& surfaceTransform,
+            const glsl::SceneUniform& sceneUniform,
+            const Frustum& mainCameraFrustum) const
+        {
+            const glm::vec3 cameraPos = glm::vec3(sceneUniform.cameraPos);
+            const glm::vec3 portalLocalPos = glm::vec3(glm::inverse(surfaceTransform) * glm::vec4(cameraPos, 1.0f));
+            constexpr float kPortalDrawSafetyDistance =
+                cfg::kPortalSurfaceHalfDepth + cfg::kCameraNear + cfg::kPortalCameraClipSafetyMargin;
+            if (portalLocalPos.z <= kPortalDrawSafetyDistance) {
+                return false;
+            }
+
+            glm::vec3 worldMin;
+            glm::vec3 worldMax;
+            TransformAabb(
+                glm::vec3(-0.5f, -0.5f, -cfg::kPortalSurfaceHalfDepth),
+                glm::vec3(0.5f, 0.5f, cfg::kPortalSurfaceHalfDepth),
+                surfaceTransform,
+                worldMin,
+                worldMax);
+
+            constexpr float kPortalVisibilityPadding = 1.0f;
+            return IntersectsAabb(mainCameraFrustum, worldMin, worldMax, kPortalVisibilityPadding);
+        }
 
         void CreatePortalSurfaceMesh()
         {
