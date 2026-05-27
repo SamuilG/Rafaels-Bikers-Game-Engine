@@ -21,10 +21,12 @@ layout(push_constant) uniform PushConstants {
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) out vec3 vWorldNormal;
 layout(location = 2) out float vSurfaceAspect;
+layout(location = 3) out float vLocalNormalZ;
 
 void main() {
     vTexCoord = inTexCoord;
     vWorldNormal = normalize(mat3(pc.transform) * inNormal);
+    vLocalNormalZ = inNormal.z;
     vec3 worldRight = mat3(pc.transform) * vec3(1.0, 0.0, 0.0);
     vec3 worldUp = mat3(pc.transform) * vec3(0.0, 1.0, 0.0);
     vSurfaceAspect = max(length(worldRight), 0.0001) / max(length(worldUp), 0.0001);

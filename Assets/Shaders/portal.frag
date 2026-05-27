@@ -3,6 +3,7 @@
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) in vec3 vWorldNormal;
 layout(location = 2) in float vSurfaceAspect;
+layout(location = 3) in float vLocalNormalZ;
 
 layout(location = 0) out vec4 oColor;
 layout(location = 1) out vec4 oBrightColor;
@@ -46,6 +47,10 @@ float Fbm(vec2 p) {
 }
 
 void main() {
+    if (vLocalNormalZ < 0.5) {
+        discard;
+    }
+
     float time = pc.portalParams.x;
     float phase = pc.portalParams.y;
     const float portalRadius = 1.12;
