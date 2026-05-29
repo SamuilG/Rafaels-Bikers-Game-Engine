@@ -72,6 +72,7 @@ namespace engine {
 		bool portalTransitionRealAtExit = false;
 		glm::mat4 portalTransitionEntrySurface = glm::identity<glm::mat4>();
 		glm::mat4 portalTransitionExitSurface = glm::identity<glm::mat4>();
+		glm::vec3 portalTransitionExitCorrection = glm::vec3(0.0f);
 
 		//================Game Flow================================
 		GameFlowState gameFlowState = GameFlowState::MainMenu;

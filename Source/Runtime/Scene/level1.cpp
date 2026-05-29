@@ -1431,6 +1431,7 @@ namespace engine {
 		mState->portalTransitionRealAtExit = false;
 		mState->portalTransitionEntrySurface = glm::identity<glm::mat4>();
 		mState->portalTransitionExitSurface = glm::identity<glm::mat4>();
+		mState->portalTransitionExitCorrection = glm::vec3(0.0f);
 	}
 
 	void level::CloseActivePortals(bool showFeedback) {
@@ -1539,6 +1540,7 @@ namespace engine {
 				mState->portalTransitionRealAtExit = false;
 				mState->portalTransitionEntrySurface = portal.surfaceTransform;
 				mState->portalTransitionExitSurface = portal.exitSurfaceTransform;
+				mState->portalTransitionExitCorrection = glm::vec3(0.0f);
 			}
 			bool crossedPlane = false;
 			if (portal.hasPreviousSample) {
@@ -1689,6 +1691,7 @@ namespace engine {
 				mState->portalTransitionRealAtExit = true;
 				mState->portalTransitionEntrySurface = portal.surfaceTransform;
 				mState->portalTransitionExitSurface = portal.exitSurfaceTransform;
+				mState->portalTransitionExitCorrection = exitCorrection;
 
 				bi.SetPositionAndRotation(id, exitPos, exitRot, JPH::EActivation::Activate);
 				bi.SetLinearVelocity(id, exitVel);

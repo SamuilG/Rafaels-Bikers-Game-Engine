@@ -1869,13 +1869,14 @@ namespace engine {
                 const glm::mat4 exitToEntry = entryFrame * PortalHalfTurn() * glm::inverse(exitFrame);
 
                 const glm::vec4 entryFrontClip = makePortalTransitionClipPlane(mState->portalTransitionEntrySurface, true);
-                const glm::vec4 entryBackClip = makePortalTransitionClipPlane(mState->portalTransitionEntrySurface, false);
                 const glm::vec4 exitFrontClip = makePortalTransitionClipPlane(mState->portalTransitionExitSurface, true);
 
                 if (mState->portalTransitionRealAtExit) {
                     portalTransitionRealClipPlane = exitFrontClip;
-                    portalTransitionCloneClipPlane = entryBackClip;
-                    portalTransitionCloneMap = exitToEntry;
+                    portalTransitionCloneClipPlane = entryFrontClip;
+                    portalTransitionCloneMap =
+                        exitToEntry *
+                        glm::translate(glm::mat4(1.0f), -mState->portalTransitionExitCorrection);
                 }
                 else {
                     portalTransitionRealClipPlane = entryFrontClip;
