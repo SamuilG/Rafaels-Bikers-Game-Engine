@@ -2523,10 +2523,6 @@ namespace engine {
 
             EngineMesh mesh{};
             mesh.positions = {
-                {-0.5f, -0.5f,  kPortalHalfDepth},
-                { 0.5f, -0.5f,  kPortalHalfDepth},
-                { 0.5f,  0.5f,  kPortalHalfDepth},
-                {-0.5f,  0.5f,  kPortalHalfDepth},
                 {-0.5f, -0.5f, -kPortalHalfDepth},
                 { 0.5f, -0.5f, -kPortalHalfDepth},
                 { 0.5f,  0.5f, -kPortalHalfDepth},
@@ -2536,25 +2532,16 @@ namespace engine {
                 {0.0f, 1.0f},
                 {1.0f, 1.0f},
                 {1.0f, 0.0f},
-                {0.0f, 0.0f},
-                {0.0f, 1.0f},
-                {1.0f, 1.0f},
-                {1.0f, 0.0f},
                 {0.0f, 0.0f}
             };
             mesh.normals = {
                 {0.0f, 0.0f, 1.0f},
                 {0.0f, 0.0f, 1.0f},
                 {0.0f, 0.0f, 1.0f},
-                {0.0f, 0.0f, 1.0f},
-                {0.0f, 0.0f, -1.0f},
-                {0.0f, 0.0f, -1.0f},
-                {0.0f, 0.0f, -1.0f},
-                {0.0f, 0.0f, -1.0f}
+                {0.0f, 0.0f, 1.0f}
             };
             mesh.indices = {
-                0, 1, 2, 2, 3, 0,
-                6, 5, 4, 4, 7, 6
+                0, 1, 2, 2, 3, 0
             };
             mesh.localAabbMin = glm::vec3(-0.5f, -0.5f, -kPortalHalfDepth);
             mesh.localAabbMax = glm::vec3(0.5f, 0.5f, kPortalHalfDepth);
