@@ -1830,6 +1830,125 @@ namespace engine {
                 vmaUnmapMemory(mAllocator.allocator, mBoneSSBO.allocation);
             }
 
+            uint32_t portalTransitionPlayerBodyID = UINT32_MAX;
+            uint64_t portalTransitionPlayerEntityID = 0;
+            std::vector<RenderBatch> portalTransitionStaticCloneSources;
+
+            auto makePortalTransitionClipPlane = [](const glm::mat4& surfaceTransform, bool keepPortalFrontSide) {
+                const glm::mat4 frame = PortalRigidFrame(surfaceTransform);
+                const glm::vec3 portalNormal = NormalizeOr(glm::vec3(frame[2]), glm::vec3(0.0f, 0.0f, 1.0f));
+                const glm::vec3 normal = keepPortalFrontSide ? portalNormal : -portalNormal;
+                const glm::vec3 point = glm::vec3(frame[3]) + normal * 0.025f;
+                return glm::vec4(normal, -glm::dot(normal, point));
+            };
+
+            glm::vec4 portalTransitionRealClipPlane(0.0f);
+            glm::vec4 portalTransitionCloneClipPlane(0.0f);
+            glm::mat4 portalTransitionCloneMap(1.0f);
+
+            const bool portalTransitionVisualActive =
+                mState &&
+                mState->portalTransitionVisualActive &&
+                mPortalPreviewPairLinked;
+
+            if (portalTransitionVisualActive && mSceneManager) {
+                auto playerEntity = mSceneManager->find_entity(player);
+                if (playerEntity.is_valid()) {
+                    portalTransitionPlayerEntityID = playerEntity.id();
+                    if (playerEntity.has<CompoundParent>()) {
+                        portalTransitionPlayerBodyID = playerEntity.get<CompoundParent>().bodyID;
+                    }
+                    else if (playerEntity.has<PhysicsBody>()) {
+                        portalTransitionPlayerBodyID = playerEntity.get<PhysicsBody>().bodyID;
+                    }
+                }
+
+                const glm::mat4 entryFrame = PortalRigidFrame(mState->portalTransitionEntrySurface);
+                const glm::mat4 exitFrame = PortalRigidFrame(mState->portalTransitionExitSurface);
+                const glm::mat4 entryToExit = exitFrame * PortalHalfTurn() * glm::inverse(entryFrame);
+                const glm::mat4 exitToEntry = entryFrame * PortalHalfTurn() * glm::inverse(exitFrame);
+
+                const glm::vec4 entryFrontClip = makePortalTransitionClipPlane(mState->portalTransitionEntrySurface, true);
+                const glm::vec4 entryBackClip = makePortalTransitionClipPlane(mState->portalTransitionEntrySurface, false);
+                const glm::vec4 exitFrontClip = makePortalTransitionClipPlane(mState->portalTransitionExitSurface, true);
+
+                if (mState->portalTransitionRealAtExit) {
+                    portalTransitionRealClipPlane = exitFrontClip;
+                    portalTransitionCloneClipPlane = entryBackClip;
+                    portalTransitionCloneMap = exitToEntry;
+                }
+                else {
+                    portalTransitionRealClipPlane = entryFrontClip;
+                    portalTransitionCloneClipPlane = exitFrontClip;
+                    portalTransitionCloneMap = entryToExit;
+                }
+
+                if (portalTransitionPlayerBodyID != UINT32_MAX) {
+                    const std::vector<RenderBatch> unculledBatches =
+                        mSceneManager->get_render_batches(nullptr, 0.0f, camPosWorld);
+                    for (const auto& batch : unculledBatches) {
+                        if (batch.compoundBodyID == portalTransitionPlayerBodyID) {
+                            portalTransitionStaticCloneSources.push_back(batch);
+                        }
+                    }
+                }
+            }
+
+            auto applyPortalTransitionVisual = [&](std::vector<RenderBatch>& batches) {
+                if (!portalTransitionVisualActive ||
+                    portalTransitionPlayerBodyID == UINT32_MAX) {
+                    return;
+                }
+
+                std::vector<RenderBatch> cloneSources = portalTransitionStaticCloneSources;
+                if (cloneSources.empty()) {
+                    for (const auto& batch : batches) {
+                        if (!batch.isPortalClone && batch.compoundBodyID == portalTransitionPlayerBodyID) {
+                            cloneSources.push_back(batch);
+                        }
+                    }
+                }
+
+                for (auto& batch : batches) {
+                    if (!batch.isPortalClone && batch.compoundBodyID == portalTransitionPlayerBodyID) {
+                        batch.clipPlane = portalTransitionRealClipPlane;
+                    }
+                }
+
+                std::vector<RenderBatch> clones;
+                clones.reserve(cloneSources.size());
+                for (const auto& source : cloneSources) {
+                    RenderBatch clone = source;
+                    clone.transform = portalTransitionCloneMap * source.transform;
+                    clone.clipPlane = portalTransitionCloneClipPlane;
+                    clone.castShadow = false;
+                    clone.isPortalClone = true;
+                    clones.push_back(clone);
+                }
+
+                batches.insert(batches.end(), clones.begin(), clones.end());
+            };
+
+            if (portalTransitionVisualActive) {
+                applyPortalTransitionVisual(finalBatches);
+
+                if (portalTransitionPlayerEntityID != 0) {
+                    std::vector<RenderBatch> skinnedClones;
+                    for (auto& batch : skinnedBatches) {
+                        if (!batch.isPortalClone && batch.riderBikeEntityId == portalTransitionPlayerEntityID) {
+                            RenderBatch clone = batch;
+                            batch.clipPlane = portalTransitionRealClipPlane;
+                            clone.transform = portalTransitionCloneMap * batch.transform;
+                            clone.clipPlane = portalTransitionCloneClipPlane;
+                            clone.castShadow = false;
+                            clone.isPortalClone = true;
+                            skinnedClones.push_back(clone);
+                        }
+                    }
+                    skinnedBatches.insert(skinnedBatches.end(), skinnedClones.begin(), skinnedClones.end());
+                }
+            }
+
             const bool portalEnabledForFrame = mPortalEnabled && mState->renderMode == 0;
             const bool portal2EnabledForFrame = mPortal2Enabled && mState->renderMode == 0;
             Frustum portalVisibilityFrustum{};
@@ -1893,6 +2012,8 @@ namespace engine {
             }
             std::vector<RenderBatch> portalBatches = finalBatches;
             std::vector<RenderBatch> portal2Batches = finalBatches;
+            bool portalBatchesRefetched = false;
+            bool portal2BatchesRefetched = false;
             if (mSceneManager && portalVisibleForFrame) {
                 Frustum portalFrustum = BuildFrustum(portalSceneUniform.projCam);
                 const Frustum* portalActiveFrustum = mState->frustumCullingEnabled ? &portalFrustum : nullptr;
@@ -1901,6 +2022,7 @@ namespace engine {
                     mState->frustumCullingPadding,
                     glm::vec3(portalSceneUniform.cameraPos));
                 appendPreviewBatches(portalBatches);
+                portalBatchesRefetched = true;
             }
             if (mSceneManager && portal2VisibleForFrame) {
                 Frustum portal2Frustum = BuildFrustum(portal2SceneUniform.projCam);
@@ -1910,6 +2032,15 @@ namespace engine {
                     mState->frustumCullingPadding,
                     glm::vec3(portal2SceneUniform.cameraPos));
                 appendPreviewBatches(portal2Batches);
+                portal2BatchesRefetched = true;
+            }
+            if (portalTransitionVisualActive) {
+                if (portalBatchesRefetched) {
+                    applyPortalTransitionVisual(portalBatches);
+                }
+                if (portal2BatchesRefetched) {
+                    applyPortalTransitionVisual(portal2Batches);
+                }
             }
             constexpr uint32_t kPortalRecursionLayers = 4;
             std::array<glsl::SceneUniform, kPortalRecursionLayers> portalRecursiveSceneUniforms{};

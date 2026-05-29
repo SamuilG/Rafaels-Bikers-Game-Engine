@@ -66,6 +66,12 @@ namespace engine {
 		glm::mat4 portalCameraEntrySurface = glm::identity<glm::mat4>();
 		glm::mat4 portalCameraExitSurface = glm::identity<glm::mat4>();
 		glm::mat4 portalCameraInverseExitSurface = glm::identity<glm::mat4>();
+		bool portalTransitionVisualActive = false;
+		float portalTransitionVisualTimer = 0.0f;
+		float portalTransitionVisualDuration = 0.35f;
+		bool portalTransitionRealAtExit = false;
+		glm::mat4 portalTransitionEntrySurface = glm::identity<glm::mat4>();
+		glm::mat4 portalTransitionExitSurface = glm::identity<glm::mat4>();
 
 		//================Game Flow================================
 		GameFlowState gameFlowState = GameFlowState::MainMenu;

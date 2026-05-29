@@ -48,6 +48,7 @@ layout(push_constant) uniform PushConstants {
     float roughnessFactor;   //   4 bytes - offset 100
     float alphaCutoff;       //   4 bytes - offset 104
     uint  boneBaseIndex;     //   4 bytes - offset 108
+    vec4  clipPlane;         //  16 bytes - offset 112
 } pc;
 
 layout(location = 0) out vec2 v2fTexCoord;

@@ -4,7 +4,7 @@
 #include "../../Rhi/synch.hpp"
 #include "../../Rhi/error.hpp"
 #include "../../Rhi/to_string.hpp"
-#include "setup.hpp"	
+#include "setup.hpp"
 
 #include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
@@ -25,18 +25,19 @@ struct alignas(16) PortalSurfacePC {
 // apply post processing and render to swapchain
 // function definition
 
-// 在 rendering.cpp 顶部或者 record_commands 函数外定义：
-// 严格对齐 Shader 的 PushConstants 布局
+// 鍦?rendering.cpp 椤堕儴鎴栬€?record_commands 鍑芥暟澶栧畾涔夛細
+// 涓ユ牸瀵归綈 Shader 鐨?PushConstants 甯冨眬
 struct alignas(16) ObjectPC {
 	glm::mat4 transform;        // Offset: 0   Size: 64
 	glm::vec4 baseColorFactor;  // Offset: 64  Size: 16
-	glm::vec4 emissiveFactor;   // Offset: 80  Size: 16  <-- 补上这个，方块就不绿了
+	glm::vec4 emissiveFactor;   // Offset: 80  Size: 16  <-- 琛ヤ笂杩欎釜锛屾柟鍧楀氨涓嶇豢浜?
 	float metallicFactor;       // Offset: 96  Size: 4
 	float roughnessFactor;      // Offset: 100 Size: 4
 	float alphaCutoff;          // Offset: 104 Size: 4
-	float _pad;                 // Offset: 108 Size: 4  <-- 补齐到 16 字节边界
+	float _pad;                 // Offset: 108 Size: 4
+	glm::vec4 clipPlane;        // Offset: 112 Size: 16
 };
-// 在 rendering.cpp 顶部定义：
+// 鍦?rendering.cpp 椤堕儴瀹氫箟锛?
 void record_commands(
 	VkCommandBuffer aCmdBuff,
 	VkPipeline aGraphicsPipe,
@@ -66,17 +67,17 @@ void record_commands(
 	VkDescriptorSet aCompositeDS,
 	ImageAndView const& aOffscreenColor,
 	ImageAndView const& aBrightColor,
-	ImageAndView const& aNormalImage,   // <--- 【新增】法线缓冲
-	ImageAndView const& aSsrOutput,     // <--- 【新增】SSR 结果输出缓冲
-	VkPipeline aSsrPipe,                // <--- 【新增】
-	VkPipelineLayout aSsrLayout,        // <--- 【新增】
-	VkDescriptorSet aSsrDS,             // <--- 【新增】
+	ImageAndView const& aNormalImage,   // <--- 銆愭柊澧炪€戞硶绾跨紦鍐?
+	ImageAndView const& aSsrOutput,     // <--- 銆愭柊澧炪€慡SR 缁撴灉杈撳嚭缂撳啿
+	VkPipeline aSsrPipe,                // <--- 銆愭柊澧炪€?
+	VkPipelineLayout aSsrLayout,        // <--- 銆愭柊澧炪€?
+	VkDescriptorSet aSsrDS,             // <--- 銆愭柊澧炪€?
 	// ==============================================================
-	ImageAndView const& aSsaoRawOutput, // SSAO 原始噪点图输出目标
-	VkPipeline aSsaoPipe,               // SSAO 渲染管线
-	VkPipelineLayout aSsaoLayout,       // SSAO 管线布局 (用于传 PushConstants)
-	VkDescriptorSet aSsaoDS,            // SSAO 描述符集 (绑定了深度、法线、噪声贴图和采样核)
-	bool aSsaoEnabled,                  // SSAO 开关
+	ImageAndView const& aSsaoRawOutput, // SSAO 鍘熷鍣偣鍥捐緭鍑虹洰鏍?
+	VkPipeline aSsaoPipe,               // SSAO 娓叉煋绠＄嚎
+	VkPipelineLayout aSsaoLayout,       // SSAO 绠＄嚎甯冨眬 (鐢ㄤ簬浼?PushConstants)
+	VkDescriptorSet aSsaoDS,            // SSAO 鎻忚堪绗﹂泦 (缁戝畾浜嗘繁搴︺€佹硶绾裤€佸櫔澹拌创鍥惧拰閲囨牱鏍?
+	bool aSsaoEnabled,                  // SSAO 寮€鍏?
 	// ==============================================================
 	bool aSsrEnabled,
 	ImageAndView const& aBlurTemp,
@@ -86,18 +87,18 @@ void record_commands(
 	float aBloomStrength,
 
 	// ==============================================================
-	// 极速后处理效果
+	// 鏋侀€熷悗澶勭悊鏁堟灉
 	// ==============================================================
 	VkPipeline aSpeedPipe,
 	VkPipelineLayout aSpeedLayout,
 	VkDescriptorSet aSpeedDesc,
 	float aSpeedFactor,
-	bool isAlive,       // <--- 直接把 userState 里的变量喂给渲染器！
+	bool isAlive,       // <--- 鐩存帴鎶?userState 閲岀殑鍙橀噺鍠傜粰娓叉煋鍣紒
 	float deathFactor,
-	ImageAndView const& aFinalSceneColor, // 最终场景渲染缓冲区（输出到 ImGui）
+	ImageAndView const& aFinalSceneColor, // 鏈€缁堝満鏅覆鏌撶紦鍐插尯锛堣緭鍑哄埌 ImGui锛?
 	// ==============================================================
 
-	// --- 原有后处理/阴影/粒子参数 ---
+	// --- 鍘熸湁鍚庡鐞?闃村奖/绮掑瓙鍙傛暟 ---
 	VkPipeline aPostProcPipe,
 	VkDescriptorSet aPostProcDescriptors,
 	VkPipelineLayout aPostProcLayout,
@@ -118,7 +119,7 @@ void record_commands(
 	const std::unordered_map<uint32_t, lut::Buffer>* aMeshWeights,
 	const std::vector<RenderBatch>* aSkinnedBatches,
 	VkPipeline aSkinnedShadowPipe,
-	// 在 record_commands 的最后追加：
+	// 鍦?record_commands 鐨勬渶鍚庤拷鍔狅細
 	VkPipeline skyboxPipe,
 	VkPipelineLayout skyboxPipeLayout,
 	VkDescriptorSet skyboxDescSet,
@@ -189,7 +190,7 @@ void record_commands(
 	VkImageLayout shadowMapLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
 	// ---------------------------
-	// Shadow pass (保持原实现)
+	// Shadow pass (淇濇寔鍘熷疄鐜?
 	// ---------------------------
 	auto renderShadowMap = [&](glsl::SceneUniform const& shadowSceneUniform,
 		const std::vector<RenderBatch>& shadowBatches) {
@@ -239,24 +240,24 @@ void record_commands(
 			VkRect2D shadowScissor{ {0,0}, {kShadowMapResolution, kShadowMapResolution} };
 			vkCmdSetScissor(aCmdBuff, 0, 1, &shadowScissor);
 
-			// 深度偏移（可调）
+			// 娣卞害鍋忕Щ锛堝彲璋冿級
 			vkCmdSetDepthBias(aCmdBuff, 1.5f, 0.f, 1.85f);
 
 			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
 
 			VkDeviceSize kZeroOffset = 0;
 			for (const auto& batch : shadowBatches) {
-				// 【新增】：如果这个批次被标记为不投射阴影（比如它是发光体），直接跳过它的阴影绘制！
+				// 銆愭柊澧炪€戯細濡傛灉杩欎釜鎵规琚爣璁颁负涓嶆姇灏勯槾褰憋紙姣斿瀹冩槸鍙戝厜浣擄級锛岀洿鎺ヨ烦杩囧畠鐨勯槾褰辩粯鍒讹紒
 				if (!batch.castShadow) {
 					continue;
 				}
 				uint32_t meshIdx = batch.meshIndex;
 				uint32_t matIdx = batch.materialIndex;
 				//if (batch.alphaMultiplier < 0.99f) continue;
-				// 【关键】：这里一定要乘上 lightVP，算出投影空间矩阵！
+				// 銆愬叧閿€戯細杩欓噷涓€瀹氳涔樹笂 lightVP锛岀畻鍑烘姇褰辩┖闂寸煩闃碉紒
 				glm::mat4 lightModel = shadowSceneUniform.lightVP[i] * batch.transform;
 
-				// 【关键】：这里只推送 64 字节 (sizeof(glm::mat4))！不要传整个 128 字节！
+				// 銆愬叧閿€戯細杩欓噷鍙帹閫?64 瀛楄妭 (sizeof(glm::mat4))锛佷笉瑕佷紶鏁翠釜 128 瀛楄妭锛?
 				vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(glm::mat4), &lightModel);
 
 
@@ -289,6 +290,9 @@ void record_commands(
 
 				for (const auto& batch : *aSkinnedBatches)
 				{
+					if (!batch.castShadow) {
+						continue;
+					}
 					uint32_t meshIdx = batch.meshIndex;
 					uint32_t matIdx = batch.materialIndex;
 
@@ -499,6 +503,7 @@ void record_commands(
 
 			ObjectPC pcData{};
 			pcData.transform = batch.transform;
+			pcData.clipPlane = batch.clipPlane;
 			if (matIdx < aMaterials.size()) {
 				pcData.baseColorFactor = aMaterials[matIdx].baseColorFactor;
 				pcData.emissiveFactor = aMaterials[matIdx].emissiveFactor;
@@ -536,6 +541,7 @@ void record_commands(
 				float roughnessFactor;
 				float alphaCutoff;
 				uint32_t boneBaseIndex;
+				glm::vec4 clipPlane;
 			};
 
 			vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipe);
@@ -565,6 +571,7 @@ void record_commands(
 				SkinnedPC pc{};
 				pc.transform = batch.transform;
 				pc.boneBaseIndex = batch.boneBaseIndex;
+				pc.clipPlane = batch.clipPlane;
 				if (matIdx < aMaterials.size()) {
 					pc.baseColorFactor = aMaterials[matIdx].baseColorFactor;
 					pc.emissiveFactor = aMaterials[matIdx].emissiveFactor;
@@ -721,7 +728,7 @@ void record_commands(
 	const uint32_t portalLayerCount = std::max(1u, std::min(kPortalRecursionLayers, aPortalRecursiveSceneUniformCount));
 	const uint32_t portal2LayerCount = std::max(1u, std::min(kPortalRecursionLayers, aPortal2RecursiveSceneUniformCount));
 	const uint32_t layerCount = std::max(portalLayerCount, portal2LayerCount);
-	constexpr bool kDrawNestedPortalSurfaces = false;
+	constexpr bool kDrawNestedPortalSurfaces = true;
 	const bool portalRecursionRequested = kDrawNestedPortalSurfaces && layerCount > 1u && (
 		(portalReady && (aPortalVisibleInPortalView || aPortal2VisibleInPortalView)) ||
 		(portal2Ready && (aPortalVisibleInPortal2View || aPortal2VisibleInPortal2View)));
@@ -792,7 +799,7 @@ void record_commands(
 	uploadSceneUniform(aSceneUniform);
 
 	// ==========================================================
-	// PASS 1: 场景渲染 + 亮度提取 (MRT -> Offscreen + Bright)
+	// PASS 1: 鍦烘櫙娓叉煋 + 浜害鎻愬彇 (MRT -> Offscreen + Bright)
 	// ==========================================================
 	// Transition offscreen + bright targets to color attachment layouts
 	lut::image_barrier(aCmdBuff, aOffscreenColor.image,
@@ -814,14 +821,14 @@ void record_commands(
 		VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
 	);
 
-	// 【新增补漏 1】：将法线缓冲重置为可写入状态
+	// 銆愭柊澧炶ˉ婕?1銆戯細灏嗘硶绾跨紦鍐查噸缃负鍙啓鍏ョ姸鎬?
 	lut::image_barrier(aCmdBuff, aNormalImage.image,
 		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
 	);
 
-	// 【新增补漏 2】：将深度缓冲重置为可读写状态！(极其关键，否则深度测试全崩)
+	// 銆愭柊澧炶ˉ婕?2銆戯細灏嗘繁搴︾紦鍐查噸缃负鍙鍐欑姸鎬侊紒(鏋佸叾鍏抽敭锛屽惁鍒欐繁搴︽祴璇曞叏宕?
 	lut::image_barrier(aCmdBuff, aDepthAttach.image,
 		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
@@ -841,7 +848,7 @@ void record_commands(
 
 	VkRenderingAttachmentInfo colorAtts[3]{};
 
-	// 附件 0: Scene Color
+	// 闄勪欢 0: Scene Color
 	colorAtts[0].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
 	colorAtts[0].imageView = aOffscreenColor.view;
 	colorAtts[0].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -849,20 +856,20 @@ void record_commands(
 	colorAtts[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 	colorAtts[0].clearValue.color = aClearColor;
 
-	// 附件 1: Bright Color
+	// 闄勪欢 1: Bright Color
 	colorAtts[1] = colorAtts[0];
 	colorAtts[1].imageView = aBrightColor.view;
 	colorAtts[1].clearValue.color = { 0.f, 0.f, 0.f, 1.f };
 
-	// 【新增】附件 2: Normal Buffer
+	// 銆愭柊澧炪€戦檮浠?2: Normal Buffer
 	colorAtts[2] = colorAtts[0];
 	colorAtts[2].imageView = aNormalImage.view;
-	colorAtts[2].clearValue.color = { 0.f, 0.f, 0.f, 0.f }; // 默认背景无法线且绝对光滑(0)
+	colorAtts[2].clearValue.color = { 0.f, 0.f, 0.f, 0.f }; // 榛樿鑳屾櫙鏃犳硶绾夸笖缁濆鍏夋粦(0)
 
 	VkRenderingInfo mrtInfo{ VK_STRUCTURE_TYPE_RENDERING_INFO };
 	mrtInfo.renderArea.extent = aImageExtent;
 	mrtInfo.layerCount = 1;
-	mrtInfo.colorAttachmentCount = 3; // <-- 改为 3
+	mrtInfo.colorAttachmentCount = 3; // <-- 鏀逛负 3
 	mrtInfo.pColorAttachments = colorAtts;
 	mrtInfo.pDepthAttachment = &depthAttachmentInfo;
 
@@ -883,7 +890,7 @@ void record_commands(
 
 	VkPipeline currentPipeline = aGraphicsPipe;
 	VkDeviceSize kZeroOffset = 0;
-	// 阶段 1：先画【实心】物体 (包括树叶 Mask)
+	// 闃舵 1锛氬厛鐢汇€愬疄蹇冦€戠墿浣?(鍖呮嫭鏍戝彾 Mask)
 	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsPipe);
 	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
 
@@ -901,9 +908,10 @@ void record_commands(
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsPipe);
 		auto const& meshInfo = aMeshInfos[meshIdx];
 
-		// --- 完全、干净地初始化 ObjectPC ---
+		// --- 瀹屽叏銆佸共鍑€鍦板垵濮嬪寲 ObjectPC ---
 		ObjectPC pcData{};
 		pcData.transform = batch.transform;
+		pcData.clipPlane = batch.clipPlane;
 
 		if (matIdx < aMaterials.size()) {
 			pcData.baseColorFactor = aMaterials[matIdx].baseColorFactor;
@@ -913,7 +921,7 @@ void record_commands(
 			pcData.alphaCutoff = aMaterials[matIdx].alphaCutoff;
 		}
 		else {
-			// 安全回退：默认非金属、粗糙、无自发光
+			// 瀹夊叏鍥為€€锛氶粯璁ら潪閲戝睘銆佺矖绯欍€佹棤鑷彂鍏?
 			pcData.baseColorFactor = glm::vec4(1.0f);
 			pcData.emissiveFactor = glm::vec4(0.0f);
 			pcData.metallicFactor = 0.0f;
@@ -923,7 +931,7 @@ void record_commands(
 
 		pcData.baseColorFactor.a *= batch.alphaMultiplier;
 
-		// 压入管线
+		// 鍘嬪叆绠＄嚎
 		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ObjectPC), &pcData);
 
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
@@ -969,12 +977,12 @@ void record_commands(
 	}
 
 	// =====================================================================
-	// 阶段 1.5：画【天空盒】 (此时利用 Early-Z 剔除被建筑挡住的天空像素，性能极高！)
+	// 闃舵 1.5锛氱敾銆愬ぉ绌虹洅銆?(姝ゆ椂鍒╃敤 Early-Z 鍓旈櫎琚缓绛戞尅浣忕殑澶╃┖鍍忕礌锛屾€ц兘鏋侀珮锛?
 	// =====================================================================
 	if (skyboxPipe != VK_NULL_HANDLE && skyboxVBO != VK_NULL_HANDLE) {
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipe);
 
-		// 显式设置视口和裁剪区域
+		// 鏄惧紡璁剧疆瑙嗗彛鍜岃鍓尯鍩?
 		VkViewport viewport{};
 		viewport.x = 0.0f;
 		viewport.y = 0.0f;
@@ -989,7 +997,7 @@ void record_commands(
 		scissor.extent = aImageExtent;
 		vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
 
-		// 绑定天空盒的管线布局和描述符，占用 Set 0
+		// 缁戝畾澶╃┖鐩掔殑绠＄嚎甯冨眬鍜屾弿杩扮锛屽崰鐢?Set 0
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipeLayout, 0, 1, &skyboxDescSet, 0, nullptr);
 		VkDeviceSize offsets[1] = { 0 };
 		vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &skyboxVBO, offsets);
@@ -998,8 +1006,8 @@ void record_commands(
 	}
 
 	// =====================================================================
-	// 【新增】：在 MRT 结束前，补上不透明的骨骼动画！
-	// 这样它们才能把深度和法线写入 G-Buffer，参与 SSR 和 SSAO
+	// 銆愭柊澧炪€戯細鍦?MRT 缁撴潫鍓嶏紝琛ヤ笂涓嶉€忔槑鐨勯楠煎姩鐢伙紒
+	// 杩欐牱瀹冧滑鎵嶈兘鎶婃繁搴﹀拰娉曠嚎鍐欏叆 G-Buffer锛屽弬涓?SSR 鍜?SSAO
 	// =====================================================================
 	if (aSkinnedPipe != VK_NULL_HANDLE && aSkinnedBatches && !aSkinnedBatches->empty() && aMeshJoints && aMeshWeights && aBoneDescriptorSet != VK_NULL_HANDLE)
 	{
@@ -1011,6 +1019,7 @@ void record_commands(
 			float roughnessFactor;      // offset 100
 			float alphaCutoff;          // offset 104
 			uint32_t boneBaseIndex;     // offset 108
+			glm::vec4 clipPlane;        // offset 112
 		};
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipe);
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
@@ -1018,7 +1027,7 @@ void record_commands(
 
 		for (const auto& batch : *aSkinnedBatches) {
 			uint32_t meshIdx = batch.meshIndex; uint32_t matIdx = batch.materialIndex;
-			// 只画不透明的
+			// 鍙敾涓嶉€忔槑鐨?
 			bool isAlpha = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0) || (batch.alphaMultiplier < 0.99f);
 			if (isAlpha) continue;
 
@@ -1027,6 +1036,7 @@ void record_commands(
 
 			SkinnedPC pc{};
 			pc.transform = batch.transform; pc.boneBaseIndex = batch.boneBaseIndex;
+			pc.clipPlane = batch.clipPlane;
 			if (matIdx < aMaterials.size()) {
 				pc.baseColorFactor = aMaterials[matIdx].baseColorFactor;
 				pc.emissiveFactor = aMaterials[matIdx].emissiveFactor;
@@ -1049,43 +1059,43 @@ void record_commands(
 		}
 	}
 
-	vkCmdEndRendering(aCmdBuff); // <---- 真正的 MRT 阶段结束！
+	vkCmdEndRendering(aCmdBuff); // <---- 鐪熸鐨?MRT 闃舵缁撴潫锛?
 
 	// ==========================================================
-	// 准备进入 SSR 阶段：将刚刚画好的法线、深度、颜色转为只读采样状态
+	// 鍑嗗杩涘叆 SSR 闃舵锛氬皢鍒氬垰鐢诲ソ鐨勬硶绾裤€佹繁搴︺€侀鑹茶浆涓哄彧璇婚噰鏍风姸鎬?
 	// ==========================================================
 	VkImageSubresourceRange range{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 	VkImageSubresourceRange depthRange{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
 
-	// 1. 法线 -> Read
+	// 1. 娉曠嚎 -> Read
 	lut::image_barrier(aCmdBuff, aNormalImage.image,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
 
-	// 2. 场景颜色 -> Read (因为 SSR 要采原本的画面颜色当倒影)
+	// 2. 鍦烘櫙棰滆壊 -> Read (鍥犱负 SSR 瑕侀噰鍘熸湰鐨勭敾闈㈤鑹插綋鍊掑奖)
 	lut::image_barrier(aCmdBuff, aOffscreenColor.image,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
 
-	// 3. 深度图 -> Read (因为 SSR 要靠深度重建 3D 坐标)
+	// 3. 娣卞害鍥?-> Read (鍥犱负 SSR 瑕侀潬娣卞害閲嶅缓 3D 鍧愭爣)
 	lut::image_barrier(aCmdBuff, aDepthAttach.image,
 		VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, depthRange);
 
-	// 4. SSR Output -> Write (作为 SSR Pass 的画板)
+	// 4. SSR Output -> Write (浣滀负 SSR Pass 鐨勭敾鏉?
 	lut::image_barrier(aCmdBuff, aSsrOutput.image,
 		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
 	// ==========================================================
-	// 执行 SSR Pass
+	// 鎵ц SSR Pass
 	// ==========================================================
 	VkRenderingAttachmentInfo ssrAtt{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
 	ssrAtt.imageView = aSsrOutput.view;
 	ssrAtt.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	// 顺手把这里改成 CLEAR，以防万一残留垃圾数据
+	// 椤烘墜鎶婅繖閲屾敼鎴?CLEAR锛屼互闃蹭竾涓€娈嬬暀鍨冨溇鏁版嵁
 	ssrAtt.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	ssrAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	//ssrAtt.clearValue.color = { 0.0f, 0.0f, 0.0f, 0.0f }; // 清空为纯黑
+	//ssrAtt.clearValue.color = { 0.0f, 0.0f, 0.0f, 0.0f }; // 娓呯┖涓虹函榛?
 
 	VkRenderingInfo ssrRenderInfo{ VK_STRUCTURE_TYPE_RENDERING_INFO };
 	ssrRenderInfo.renderArea.extent = aImageExtent;
@@ -1094,41 +1104,41 @@ void record_commands(
 	ssrRenderInfo.pColorAttachments = &ssrAtt;
 
 	vkCmdBeginRendering(aCmdBuff, &ssrRenderInfo);
-	// 【核心修改】：只有开启了 SSR，才给 GPU 下发绘制指令！
+	// 銆愭牳蹇冧慨鏀广€戯細鍙湁寮€鍚簡 SSR锛屾墠缁?GPU 涓嬪彂缁樺埗鎸囦护锛?
 	if (aSsrEnabled) {
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsrPipe);
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsrLayout, 0, 1, &aSsrDS, 0, nullptr);
 
-		//float ssrParams[4] = { 0.2f /*步长*/, 100.0f /*最大步数*/, 0.1f /*厚度*/, 0.0f /*留白*/ };
-		// 缩小步长让射线更密，增加厚度防止射线“穿模”漏判
+		//float ssrParams[4] = { 0.2f /*姝ラ暱*/, 100.0f /*鏈€澶ф鏁?/, 0.1f /*鍘氬害*/, 0.0f /*鐣欑櫧*/ };
+		// 缂╁皬姝ラ暱璁╁皠绾挎洿瀵嗭紝澧炲姞鍘氬害闃叉灏勭嚎鈥滅┛妯♀€濇紡鍒?
 
-		// 在 rendering.cpp 中修改 ssrParams：
+		// 鍦?rendering.cpp 涓慨鏀?ssrParams锛?
 		float ssrParams[4] = {
-			0.05f,  /* 步长：稍微调密一点，配合二分查找精度极高 */
-			128.0f, /* 最大步数 */
-			0.3f,   /* 🔴 厚度：0.12 太薄会导致大面积漏判，0.5 会拖影，0.3 是最完美的黄金点 */
-			100.0f  /* 最大反射距离 */
+			0.05f,  /* 姝ラ暱锛氱◢寰皟瀵嗕竴鐐癸紝閰嶅悎浜屽垎鏌ユ壘绮惧害鏋侀珮 */
+			128.0f, /* 鏈€澶ф鏁?*/
+			0.3f,   /* 馃敶 鍘氬害锛?.12 澶杽浼氬鑷村ぇ闈㈢Н婕忓垽锛?.5 浼氭嫋褰憋紝0.3 鏄渶瀹岀編鐨勯粍閲戠偣 */
+			100.0f  /* 鏈€澶у弽灏勮窛绂?*/
 		};
 		vkCmdPushConstants(aCmdBuff, aSsrLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float) * 4, ssrParams);
 		vkCmdSetViewport(aCmdBuff, 0, 1, &vp);
 		vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
 
-		vkCmdDraw(aCmdBuff, 3, 1, 0, 0); // 触发全屏四边形
+		vkCmdDraw(aCmdBuff, 3, 1, 0, 0); // 瑙﹀彂鍏ㄥ睆鍥涜竟褰?
 	}
 	vkCmdEndRendering(aCmdBuff);
-	// SSR 输出完毕，转为只读，留给 Composite 阶段去混合！
+	// SSR 杈撳嚭瀹屾瘯锛岃浆涓哄彧璇伙紝鐣欑粰 Composite 闃舵鍘绘贩鍚堬紒
 	lut::image_barrier(aCmdBuff, aSsrOutput.image,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
 
 	// ==========================================================
-	// SSAO Pass (流程同 SSR，先转状态、再渲染、最后转回只读)
+	// SSAO Pass (娴佺▼鍚?SSR锛屽厛杞姸鎬併€佸啀娓叉煋銆佹渶鍚庤浆鍥炲彧璇?
 	// ==========================================================
 	// ==========================================================
-	// 执行 SSAO Pass
+	// 鎵ц SSAO Pass
 	// ==========================================================
 
-	// 【修正】：只把 SSAO 的画板转为可写状态！不要碰 SSR！
+	// 銆愪慨姝ｃ€戯細鍙妸 SSAO 鐨勭敾鏉胯浆涓哄彲鍐欑姸鎬侊紒涓嶈纰?SSR锛?
 	lut::image_barrier(aCmdBuff, aSsaoRawOutput.image,
 		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
@@ -1138,7 +1148,7 @@ void record_commands(
 	ssaoAtt.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	ssaoAtt.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	ssaoAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	// 默认清空为纯白 (1.0)，表示没有遮蔽
+	// 榛樿娓呯┖涓虹函鐧?(1.0)锛岃〃绀烘病鏈夐伄钄?
 	ssaoAtt.clearValue.color = { 1.0f, 1.0f, 1.0f, 1.0f };
 
 	VkRenderingInfo ssaoRenderInfo{ VK_STRUCTURE_TYPE_RENDERING_INFO };
@@ -1152,7 +1162,7 @@ void record_commands(
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsaoPipe);
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsaoLayout, 0, 1, &aSsaoDS, 0, nullptr);
 
-		// 推送 SSAO 参数：[采样半径, 偏移容差, 阴影强度, 占位符]
+		// 鎺ㄩ€?SSAO 鍙傛暟锛歔閲囨牱鍗婂緞, 鍋忕Щ瀹瑰樊, 闃村奖寮哄害, 鍗犱綅绗
 		float ssaoParams[4] = { 0.5f, 0.025f, 1.5f, 0.0f };
 		vkCmdPushConstants(aCmdBuff, aSsaoLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float) * 4, ssaoParams);
 
@@ -1163,7 +1173,7 @@ void record_commands(
 	}
 	vkCmdEndRendering(aCmdBuff);
 
-	// SSAO 输出完毕，转为只读，准备给下个阶段（Blur 或者 Composite）使用
+	// SSAO 杈撳嚭瀹屾瘯锛岃浆涓哄彧璇伙紝鍑嗗缁欎笅涓樁娈碉紙Blur 鎴栬€?Composite锛変娇鐢?
 	lut::image_barrier(aCmdBuff, aSsaoRawOutput.image,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
@@ -1253,7 +1263,7 @@ void record_commands(
 
 
 	// ==========================================================
-	// 为 Composite 画板准备屏障 (极其重要，防 Vulkan 报错)
+	// 涓?Composite 鐢绘澘鍑嗗灞忛殰 (鏋佸叾閲嶈锛岄槻 Vulkan 鎶ラ敊)
 	// ==========================================================
 	//VkImageSubresourceRange range{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 	lut::image_barrier(aCmdBuff, aCompositeOutput.image,
@@ -1261,10 +1271,10 @@ void record_commands(
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
 
 	// ==========================================================
-	// 1. Composite Pass (终极合成阶段: 场景底色 + Bloom + 所有半透明物体)
+	// 1. Composite Pass (缁堟瀬鍚堟垚闃舵: 鍦烘櫙搴曡壊 + Bloom + 鎵€鏈夊崐閫忔槑鐗╀綋)
 	// ==========================================================
 
-	// 【核心修复】：将深度图转为“只读深度测试”状态！
+	// 銆愭牳蹇冧慨澶嶃€戯細灏嗘繁搴﹀浘杞负鈥滃彧璇绘繁搴︽祴璇曗€濈姸鎬侊紒
 	lut::image_barrier(aCmdBuff, aDepthAttach.image,
 		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
@@ -1276,12 +1286,12 @@ void record_commands(
 	compDepthAtt.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
 	compDepthAtt.imageView = aDepthAttach.view;
 	compDepthAtt.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-	compDepthAtt.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;   // 保留不透明物体的深度！
-	compDepthAtt.storeOp = VK_ATTACHMENT_STORE_OP_NONE; // 半透明不写深度
+	compDepthAtt.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;   // 淇濈暀涓嶉€忔槑鐗╀綋鐨勬繁搴︼紒
+	compDepthAtt.storeOp = VK_ATTACHMENT_STORE_OP_NONE; // 鍗婇€忔槑涓嶅啓娣卞害
 
 	VkRenderingAttachmentInfo compAtt{};
 	compAtt.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-	compAtt.imageView = aCompositeOutput.view; // 阶段 1 画到中转缓冲
+	compAtt.imageView = aCompositeOutput.view; // 闃舵 1 鐢诲埌涓浆缂撳啿
 	compAtt.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	compAtt.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	compAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -1293,11 +1303,11 @@ void record_commands(
 	compInfo.layerCount = 1;
 	compInfo.colorAttachmentCount = 1;
 	compInfo.pColorAttachments = &compAtt;
-	compInfo.pDepthAttachment = &compDepthAtt; // 挂载深度画板！
+	compInfo.pDepthAttachment = &compDepthAtt; // 鎸傝浇娣卞害鐢绘澘锛?
 
 	vkCmdBeginRendering(aCmdBuff, &compInfo);
 
-	// --- 1. 画全屏背景合成 (SSAO + SSR + 场景底色) ---
+	// --- 1. 鐢诲叏灞忚儗鏅悎鎴?(SSAO + SSR + 鍦烘櫙搴曡壊) ---
 	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aCompositePipe);
 	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aCompositeLayout, 0, 1, &aCompositeDS, 0, nullptr);
 	struct BloomPC { float exposure; float strength; float _pad[2]; } bloomPC{ 1.0f, aBloomStrength, {0.0f,0.0f} };
@@ -1306,11 +1316,11 @@ void record_commands(
 	vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
 	vkCmdDraw(aCmdBuff, 3, 1, 0, 0);
 
-	// --- 2. 画半透明静态物体 ---
+	// --- 2. 鐢诲崐閫忔槑闈欐€佺墿浣?---
 	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aAlphaPipe);
 	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
 
-	 kZeroOffset = 0; // 【修复 1】：补上类型声明
+	 kZeroOffset = 0; // 銆愪慨澶?1銆戯細琛ヤ笂绫诲瀷澹版槑
 	for (const auto& batch : aBatches) {
 		uint32_t meshIdx = batch.meshIndex; uint32_t matIdx = batch.materialIndex;
 		bool isMatMasked = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0);
@@ -1320,6 +1330,7 @@ void record_commands(
 		auto const& meshInfo = aMeshInfos[meshIdx];
 		ObjectPC pcData{};
 		pcData.transform = batch.transform;
+		pcData.clipPlane = batch.clipPlane;
 		if (matIdx < aMaterials.size()) {
 			pcData.baseColorFactor = aMaterials[matIdx].baseColorFactor; pcData.emissiveFactor = aMaterials[matIdx].emissiveFactor;
 			pcData.metallicFactor = aMaterials[matIdx].metallicFactor; pcData.roughnessFactor = aMaterials[matIdx].roughnessFactor;
@@ -1341,7 +1352,7 @@ void record_commands(
 		vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(meshInfo.indices.size()), 1, 0, 0, 0);
 	}
 
-	// --- 3. 画半透明骨骼动画 ---
+	// --- 3. 鐢诲崐閫忔槑楠ㄩ鍔ㄧ敾 ---
 	if (aSkinnedAlphaPipe != VK_NULL_HANDLE && aSkinnedBatches && !aSkinnedBatches->empty() && aBoneDescriptorSet != VK_NULL_HANDLE) {
 		struct alignas(16) SkinnedPC {
 			glm::mat4 transform;        // offset 0
@@ -1351,6 +1362,7 @@ void record_commands(
 			float roughnessFactor;      // offset 100
 			float alphaCutoff;          // offset 104
 			uint32_t boneBaseIndex;     // offset 108
+			glm::vec4 clipPlane;        // offset 112
 		};
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedAlphaPipe);
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
@@ -1366,6 +1378,7 @@ void record_commands(
 
 			SkinnedPC pc{};
 			pc.transform = batch.transform; pc.boneBaseIndex = batch.boneBaseIndex;
+			pc.clipPlane = batch.clipPlane;
 			if (matIdx < aMaterials.size()) {
 				pc.baseColorFactor = aMaterials[matIdx].baseColorFactor;
 				pc.emissiveFactor = aMaterials[matIdx].emissiveFactor;
@@ -1389,7 +1402,7 @@ void record_commands(
 		}
 	}
 
-	// --- 4. 画粒子系统 ---
+	// --- 4. 鐢荤矑瀛愮郴缁?---
 	if (particlesEnabled) {
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, particlePipe);
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
@@ -1409,21 +1422,21 @@ void record_commands(
 		}
 	}
 
-	// --- 5. 画调试线 ---
+	// --- 5. 鐢昏皟璇曠嚎 ---
 	aDebugRenderer.Render(aCmdBuff, aDebugLinePipe, aGraphicsLayout, aSceneDescriptors);
 
-	// 最终合成渲染通道结束！
+	// 鏈€缁堝悎鎴愭覆鏌撻€氶亾缁撴潫锛?
 	vkCmdEndRendering(aCmdBuff);
 
 	// ==========================================================
-	// 2. 【解开注释并修复】：Speed Post-Process Pass 
+	// 2. 銆愯В寮€娉ㄩ噴骞朵慨澶嶃€戯細Speed Post-Process Pass
 	// ==========================================================
-	// 将 aCompositeOutput (上一层的成品) 转换为只读，准备作为纹理被采样
+	// 灏?aCompositeOutput (涓婁竴灞傜殑鎴愬搧) 杞崲涓哄彧璇伙紝鍑嗗浣滀负绾圭悊琚噰鏍?
 	lut::image_barrier(aCmdBuff, aCompositeOutput.image,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
 
-	// 为 aFinalSceneColor (终极载体) 准备写入状态
+	// 涓?aFinalSceneColor (缁堟瀬杞戒綋) 鍑嗗鍐欏叆鐘舵€?
 	lut::image_barrier(aCmdBuff, aFinalSceneColor.image,
 		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
@@ -1446,18 +1459,18 @@ void record_commands(
 	vkCmdBeginRendering(aCmdBuff, &speedInfo);
 	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSpeedPipe);
 	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSpeedLayout, 0, 1, &aSpeedDesc, 0, nullptr);
-	// 1. 组装一个包含所有后处理参数的结构体 (注意 16 字节对齐)
+	// 1. 缁勮涓€涓寘鍚墍鏈夊悗澶勭悊鍙傛暟鐨勭粨鏋勪綋 (娉ㄦ剰 16 瀛楄妭瀵归綈)
 	struct alignas(16) PostProcessPC {
-		float speedFactor; // 极速特效比例
-		float deathFactor; // 死亡滤镜比例 (0.0 = 活, 1.0 = 死)
-		float _pad[2];     // 补齐到 16 字节，防止 Vulkan 报错
+		float speedFactor; // 鏋侀€熺壒鏁堟瘮渚?
+		float deathFactor; // 姝讳骸婊ら暅姣斾緥 (0.0 = 娲? 1.0 = 姝?
+		float _pad[2];     // 琛ラ綈鍒?16 瀛楄妭锛岄槻姝?Vulkan 鎶ラ敊
 	};
 
 	PostProcessPC ppData{};
 	ppData.speedFactor = aSpeedFactor;
-	ppData.deathFactor = deathFactor; // <--- 这里直接传入 0.0 到 1.0 之间的插值
+	ppData.deathFactor = deathFactor; // <--- 杩欓噷鐩存帴浼犲叆 0.0 鍒?1.0 涔嬮棿鐨勬彃鍊?
 
-	// 2. 将打包好的结构体推送给 Shader
+	// 2. 灏嗘墦鍖呭ソ鐨勭粨鏋勪綋鎺ㄩ€佺粰 Shader
 	vkCmdPushConstants(aCmdBuff, aSpeedLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PostProcessPC), &ppData);
 	vkCmdSetViewport(aCmdBuff, 0, 1, &vp);
 	vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
@@ -1468,22 +1481,22 @@ void record_commands(
 	// 3. UI Render Pass: Render everything onto the actual Swapchain
 	// ==========================================================
 
-	// 转换 aFinalSceneColor 的状态，因为它现在是 3D 场景的载体，ImGui 需要把它当贴图读
+	// 杞崲 aFinalSceneColor 鐨勭姸鎬侊紝鍥犱负瀹冪幇鍦ㄦ槸 3D 鍦烘櫙鐨勮浇浣擄紝ImGui 闇€瑕佹妸瀹冨綋璐村浘璇?
 	lut::image_barrier(aCmdBuff, aFinalSceneColor.image,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
 
-	// 准备物理屏幕 (Swapchain) 接收 UI 渲染
+	// 鍑嗗鐗╃悊灞忓箷 (Swapchain) 鎺ユ敹 UI 娓叉煋
 	lut::image_barrier(aCmdBuff, aSwapchainAttach.image,
 		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
 
 	VkRenderingAttachmentInfo uiColorAttach{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
-	uiColorAttach.imageView = aSwapchainAttach.view; // 真正绘制到屏幕
+	uiColorAttach.imageView = aSwapchainAttach.view; // 鐪熸缁樺埗鍒板睆骞?
 	uiColorAttach.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	uiColorAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	uiColorAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	uiColorAttach.clearValue.color = { 0.12f, 0.12f, 0.12f, 1.0f }; // UI 背景板的底色，可改
+	uiColorAttach.clearValue.color = { 0.12f, 0.12f, 0.12f, 1.0f }; // UI 鑳屾櫙鏉跨殑搴曡壊锛屽彲鏀?
 
 	VkRenderingInfo uiRenderInfo{ VK_STRUCTURE_TYPE_RENDERING_INFO };
 	uiRenderInfo.renderArea.offset = { 0, 0 };
@@ -1494,7 +1507,7 @@ void record_commands(
 
 	vkCmdBeginRendering(aCmdBuff, &uiRenderInfo);
 
-	// 真正触发 ImGui 的渲染！
+	// 鐪熸瑙﹀彂 ImGui 鐨勬覆鏌擄紒
 	extern ImGuiRenderer imguiRenderer;
 	imguiRenderer.Render(aCmdBuff);
 

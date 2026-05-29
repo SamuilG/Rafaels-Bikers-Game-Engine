@@ -263,10 +263,14 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 				const glm::mat4 entryToExit = aState.portalCameraExitSurface *
 					portal_half_turn() *
 					entryInverse;
-				const glm::vec3 exitCamPos = transform_point(entryToExit, cam_pos);
+				glm::vec3 exitCamPos = transform_point(entryToExit, cam_pos);
 				glm::vec3 exitOffset = exitCamPos - realTargetPos;
-				const float exitDistance = std::max(0.1f, glm::length(exitOffset));
-				exitOffset /= exitDistance;
+				const float rawExitDistance = std::max(0.1f, glm::length(exitOffset));
+				const float exitDistance = std::min(rawExitDistance, std::max(0.1f, aState.Distance));
+				exitOffset /= rawExitDistance;
+				if (rawExitDistance > exitDistance) {
+					exitCamPos = realTargetPos + exitOffset * exitDistance;
+				}
 
 				aState.Distance = exitDistance;
 				aState.targetDistance = exitDistance;

@@ -474,8 +474,12 @@ namespace engine {
                     batch.materialIndex = matc.materialIndex;
                     batch.transform = wt.matrix;
                     batch.alphaMultiplier = 1.0f;
+                    batch.entityId = e.id();
                     batch.isSkinned = true;
                     batch.boneBaseIndex = static_cast<uint32_t>(boneOffset);
+                    if (e.has<RiderBinding>()) {
+                        batch.riderBikeEntityId = e.get<RiderBinding>().bikeEntityId;
+                    }
                     batches.push_back(batch);
 
                     boneOffset += boneCount;
@@ -598,7 +602,20 @@ namespace engine {
                 }
             }
 
-            batches.push_back({ selectedMesh, matc.materialIndex, wt.matrix, alpha, castsShadow });
+            RenderBatch batch{};
+            batch.meshIndex = selectedMesh;
+            batch.materialIndex = matc.materialIndex;
+            batch.transform = wt.matrix;
+            batch.alphaMultiplier = alpha;
+            batch.entityId = e.id();
+            batch.castShadow = castsShadow;
+            if (e.has<CompoundParent>()) {
+                batch.compoundBodyID = e.get<CompoundParent>().bodyID;
+            }
+            else if (e.has<PhysicsBody>()) {
+                batch.compoundBodyID = e.get<PhysicsBody>().bodyID;
+            }
+            batches.push_back(batch);
                 });
         return batches;
     }

@@ -1426,6 +1426,11 @@ namespace engine {
 		mState->portalCameraEntrySurface = glm::identity<glm::mat4>();
 		mState->portalCameraExitSurface = glm::identity<glm::mat4>();
 		mState->portalCameraInverseExitSurface = glm::identity<glm::mat4>();
+		mState->portalTransitionVisualActive = false;
+		mState->portalTransitionVisualTimer = 0.0f;
+		mState->portalTransitionRealAtExit = false;
+		mState->portalTransitionEntrySurface = glm::identity<glm::mat4>();
+		mState->portalTransitionExitSurface = glm::identity<glm::mat4>();
 	}
 
 	void level::CloseActivePortals(bool showFeedback) {
@@ -1459,6 +1464,14 @@ namespace engine {
 				portal.hasPreviousSample = false;
 			}
 		};
+
+		if (mState && mState->portalTransitionVisualActive) {
+			mState->portalTransitionVisualTimer = std::max(0.0f, mState->portalTransitionVisualTimer - dt);
+			if (mState->portalTransitionVisualTimer <= 0.0f) {
+				mState->portalTransitionVisualActive = false;
+				mState->portalTransitionRealAtExit = false;
+			}
+		}
 
 		const bool anyPortalEnabled = m_portals[0].enabled || m_portals[1].enabled;
 		if (!anyPortalEnabled || !m_physics || !mState || !mState->isAlive) {
@@ -1515,6 +1528,18 @@ namespace engine {
 				isInsidePortalDisc(portalLocal, kPortalCollisionSoftMargin) &&
 				portalLocal.z <= kPortalVolumeHalfDepth + kPortalPlaneEnterEpsilon &&
 				portalLocal.z >= -kPortalVolumeHalfDepth - kPortalPlaneExitEpsilon;
+			const bool nearRenderedPortalSide =
+				isInsidePortalDisc(portalLocal, kPortalCollisionSoftMargin) &&
+				portalLocal.z <= kPortalVolumeHalfDepth + 1.4f &&
+				portalLocal.z >= -kPortalVolumeHalfDepth - 0.25f;
+			if (nearRenderedPortalSide && m_portalPairCooldown <= 0.0f &&
+				!(mState->portalTransitionVisualActive && mState->portalTransitionRealAtExit)) {
+				mState->portalTransitionVisualActive = true;
+				mState->portalTransitionVisualTimer = mState->portalTransitionVisualDuration;
+				mState->portalTransitionRealAtExit = false;
+				mState->portalTransitionEntrySurface = portal.surfaceTransform;
+				mState->portalTransitionExitSurface = portal.exitSurfaceTransform;
+			}
 			bool crossedPlane = false;
 			if (portal.hasPreviousSample) {
 				const bool enteredPortalVolumeFromRenderedSide =
@@ -1599,15 +1624,22 @@ namespace engine {
 					mappedAngularVelocity.y,
 					mappedAngularVelocity.z);
 
+				const float portalCameraDistanceCap = std::max(
+					0.1f,
+					mState->Distance > 0.1f ? mState->Distance : mState->targetDistance);
 				const bool teleportCameraWithBike =
 					mState->isExtremeSpeed || currentSpeed >= kDeployExtremeSpeedThreshold;
 				if (teleportCameraWithBike) {
-					const glm::mat4 mappedCamera = portalMap * mState->camera2world;
+					glm::mat4 mappedCamera = portalMap * mState->camera2world;
 					const glm::vec3 mappedCameraPos = glm::vec3(mappedCamera[3]);
 					const glm::vec3 mappedCameraTarget = mappedFollowTarget + glm::vec3(0.0f, 1.6f, 0.0f);
 					glm::vec3 mappedCameraOffset = mappedCameraPos - mappedCameraTarget;
-					const float mappedCameraDistance = std::max(0.1f, glm::length(mappedCameraOffset));
-					mappedCameraOffset /= mappedCameraDistance;
+					const float rawMappedCameraDistance = std::max(0.1f, glm::length(mappedCameraOffset));
+					const float mappedCameraDistance = std::min(rawMappedCameraDistance, portalCameraDistanceCap);
+					mappedCameraOffset /= rawMappedCameraDistance;
+					if (rawMappedCameraDistance > portalCameraDistanceCap) {
+						mappedCamera[3] = glm::vec4(mappedCameraTarget + mappedCameraOffset * mappedCameraDistance, 1.0f);
+					}
 
 					ResetPortalCameraState();
 					mState->camera2world = mappedCamera;
@@ -1628,8 +1660,14 @@ namespace engine {
 						exitToEntry,
 						mappedFollowTarget + glm::vec3(0.0f, 1.6f, 0.0f));
 					mState->portalCameraBoomOffset = mState->portalCameraPosition - mState->portalCameraTargetPosition;
-					const float portalBoomDistance = std::max(0.1f, glm::length(mState->portalCameraBoomOffset));
-					const glm::vec3 portalBoomDir = mState->portalCameraBoomOffset / portalBoomDistance;
+					const float rawPortalBoomDistance = std::max(0.1f, glm::length(mState->portalCameraBoomOffset));
+					const float portalBoomDistance = std::min(rawPortalBoomDistance, portalCameraDistanceCap);
+					const glm::vec3 portalBoomDir = mState->portalCameraBoomOffset / rawPortalBoomDistance;
+					if (rawPortalBoomDistance > portalCameraDistanceCap) {
+						mState->portalCameraPosition =
+							mState->portalCameraTargetPosition + portalBoomDir * portalBoomDistance;
+						mState->portalCameraBoomOffset = portalBoomDir * portalBoomDistance;
+					}
 					mState->portalCameraBoomLength = portalBoomDistance;
 					mState->Distance = portalBoomDistance;
 					mState->targetDistance = portalBoomDistance;
@@ -1645,6 +1683,12 @@ namespace engine {
 						glm::vec4(mState->portalCameraPosition, 1.0f)).z;
 					mState->portalCameraStartSide = cameraEntryLocalZ < 0.0f ? -1.0f : 1.0f;
 				}
+
+				mState->portalTransitionVisualActive = true;
+				mState->portalTransitionVisualTimer = mState->portalTransitionVisualDuration;
+				mState->portalTransitionRealAtExit = true;
+				mState->portalTransitionEntrySurface = portal.surfaceTransform;
+				mState->portalTransitionExitSurface = portal.exitSurfaceTransform;
 
 				bi.SetPositionAndRotation(id, exitPos, exitRot, JPH::EActivation::Activate);
 				bi.SetLinearVelocity(id, exitVel);

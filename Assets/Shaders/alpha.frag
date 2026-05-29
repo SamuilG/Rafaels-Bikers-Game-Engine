@@ -10,6 +10,17 @@ layout( set = 1, binding = 0 ) uniform sampler2D uTexColor;
 layout( set = 1, binding = 1 ) uniform sampler2D uTexRoughness;
 layout( set = 1, binding = 2 ) uniform sampler2D uTexMetalness;
 
+layout(push_constant) uniform PushConstants {
+	mat4 transform;
+	vec4 baseColorFactor;
+	vec4 emissiveFactor;
+	float metallicFactor;
+	float roughnessFactor;
+	float alphaCutoff;
+	float _pad;
+	vec4 clipPlane;
+} pc;
+
 layout( scalar, set = 0, binding = 0 ) uniform UScene
 {
 	mat4 camera;
@@ -66,6 +77,11 @@ float G_CookTorrance(float NdotL, float NdotV, float NdotH, float VdotH)
 
 void main()
 {
+	if (dot(pc.clipPlane.xyz, pc.clipPlane.xyz) > 0.0001 &&
+		dot(vec4(v2fPos, 1.0), pc.clipPlane) < 0.0) {
+		discard;
+	}
+
 	vec4 color = texture( uTexColor, v2fTexCoord );
 	if( color.a < 0.5 )
 		discard;

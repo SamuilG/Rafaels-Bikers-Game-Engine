@@ -1,5 +1,6 @@
 #pragma once
 #include <vector>
+#include <cstdint>
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
 #include <numbers>
@@ -84,11 +85,16 @@ struct RenderBatch {
     uint32_t  materialIndex;
     glm::mat4 transform;
     float     alphaMultiplier = 1.0f;
+    uint64_t  entityId = 0;
+    uint32_t  compoundBodyID = UINT32_MAX;
     bool      castShadow = true; // ������Ⱦ���������Ҫ��Ҫ����Ӱ
 
     // Skinning (only valid when isSkinned == true)
     bool      isSkinned = false;
     uint32_t  boneBaseIndex = 0;  // offset into the bone SSBO
+    uint64_t  riderBikeEntityId = 0;
+    glm::vec4 clipPlane = glm::vec4(0.0f);
+    bool      isPortalClone = false;
 };
 
 // forward declare EngineModel to avoid including engine_model.hpp here

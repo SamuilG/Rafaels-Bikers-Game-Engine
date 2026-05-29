@@ -34,9 +34,12 @@ layout( location = 3 ) out vec4 v2fLightProjPos; // p_1.5
 layout(push_constant) uniform PushConstants {
     mat4 transform;
     vec4 baseColorFactor;
+    vec4 emissiveFactor;
     float metallicFactor;
     float roughnessFactor;
-    vec2 pad;
+    float alphaCutoff;
+    float _pad;
+    vec4 clipPlane;
 } pc;
 
 
