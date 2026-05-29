@@ -2494,9 +2494,7 @@ namespace engine {
         {
             const glm::vec3 cameraPos = glm::vec3(sceneUniform.cameraPos);
             const glm::vec3 portalLocalPos = glm::vec3(glm::inverse(surfaceTransform) * glm::vec4(cameraPos, 1.0f));
-            constexpr float kPortalDrawSafetyDistance =
-                cfg::kPortalSurfaceHalfDepth + cfg::kCameraNear + cfg::kPortalCameraClipSafetyMargin;
-            if (portalLocalPos.z <= kPortalDrawSafetyDistance) {
+            if (portalLocalPos.z < -cfg::kPortalSurfaceHalfDepth) {
                 return false;
             }
 
@@ -2522,11 +2520,13 @@ namespace engine {
             constexpr float kPortalHalfDepth = cfg::kPortalSurfaceHalfDepth;
 
             EngineMesh mesh{};
+            // Keep the visible screen flat and centered. The AABB and gameplay
+            // logic provide the invisible volume used for camera handoff.
             mesh.positions = {
-                {-0.5f, -0.5f, -kPortalHalfDepth},
-                { 0.5f, -0.5f, -kPortalHalfDepth},
-                { 0.5f,  0.5f, -kPortalHalfDepth},
-                {-0.5f,  0.5f, -kPortalHalfDepth}
+                {-0.5f, -0.5f, 0.0f},
+                { 0.5f, -0.5f, 0.0f},
+                { 0.5f,  0.5f, 0.0f},
+                {-0.5f,  0.5f, 0.0f}
             };
             mesh.texcoords = {
                 {0.0f, 1.0f},

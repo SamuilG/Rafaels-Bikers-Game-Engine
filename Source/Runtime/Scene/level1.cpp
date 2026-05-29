@@ -39,7 +39,7 @@ namespace engine {
 		constexpr float kPortalPlaneEnterEpsilon = 0.08f;
 		constexpr float kPortalPlaneExitEpsilon = 0.02f;
 		constexpr float kPortalCollisionSoftMargin = 0.08f;
-		constexpr float kPortalExitClearance = 0.28f;
+		constexpr float kPortalExitClearance = cfg::kPortalSurfaceHalfDepth + 0.28f;
 		constexpr float kPortalTeleportCooldown = 0.25f;
 
 		glm::vec3 NormalizeFlat(glm::vec3 value, glm::vec3 fallback = glm::vec3(0.0f, 0.0f, -1.0f)) {
@@ -1493,7 +1493,7 @@ namespace engine {
 			static_cast<float>(bodyPos.GetY()) + 2.5f,
 			static_cast<float>(bodyPos.GetZ()));
 
-		constexpr float kPlaneDepth = 1.25f;
+		constexpr float kPortalVolumeHalfDepth = cfg::kPortalSurfaceHalfDepth;
 		for (auto& portal : m_portals) {
 			if (!portal.enabled) {
 				portal.hasPreviousSample = false;
@@ -1511,27 +1511,28 @@ namespace engine {
 				return glm::dot(portalDiscPos, portalDiscPos) <= radius * radius;
 			};
 
-			const bool currentInsidePortalFace =
+			const bool currentInsidePortalVolume =
 				isInsidePortalDisc(portalLocal, kPortalCollisionSoftMargin) &&
-				std::abs(portalLocal.z) <= kPlaneDepth;
+				portalLocal.z <= kPortalVolumeHalfDepth + kPortalPlaneEnterEpsilon &&
+				portalLocal.z >= -kPortalVolumeHalfDepth - kPortalPlaneExitEpsilon;
 			bool crossedPlane = false;
 			if (portal.hasPreviousSample) {
-				const bool crossedFromRenderedSide =
-					portal.previousLocalPos.z > kPortalPlaneEnterEpsilon &&
-					portalLocal.z <= -kPortalPlaneExitEpsilon;
-				if (crossedFromRenderedSide) {
+				const bool enteredPortalVolumeFromRenderedSide =
+					portal.previousLocalPos.z > kPortalVolumeHalfDepth + kPortalPlaneEnterEpsilon &&
+					portalLocal.z <= kPortalVolumeHalfDepth + kPortalPlaneEnterEpsilon;
+				if (enteredPortalVolumeFromRenderedSide) {
 					const float denom = portal.previousLocalPos.z - portalLocal.z;
 					if (std::abs(denom) > 0.0001f) {
-						const float t = std::clamp(portal.previousLocalPos.z / denom, 0.0f, 1.0f);
+						const float t = std::clamp((portal.previousLocalPos.z - kPortalVolumeHalfDepth) / denom, 0.0f, 1.0f);
 						const glm::vec3 hitLocal = portal.previousLocalPos + (portalLocal - portal.previousLocalPos) * t;
 						crossedPlane = isInsidePortalDisc(hitLocal, kPortalCollisionSoftMargin);
 					}
 				}
 			}
-			crossedPlane = crossedPlane || (currentInsidePortalFace && portal.hasPreviousSample &&
+			crossedPlane = crossedPlane || (currentInsidePortalVolume && portal.hasPreviousSample &&
 				std::abs(portal.previousLocalPos.z - portalLocal.z) > kPortalPlaneEnterEpsilon &&
-				portal.previousLocalPos.z > 0.0f &&
-				portalLocal.z <= 0.0f);
+				portal.previousLocalPos.z > kPortalVolumeHalfDepth &&
+				portalLocal.z <= kPortalVolumeHalfDepth);
 
 			if (crossedPlane && m_portalPairCooldown <= 0.0f) {
 				const JPH::Quat currentRot = bi.GetRotation(id);

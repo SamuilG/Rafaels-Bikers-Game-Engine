@@ -721,7 +721,8 @@ void record_commands(
 	const uint32_t portalLayerCount = std::max(1u, std::min(kPortalRecursionLayers, aPortalRecursiveSceneUniformCount));
 	const uint32_t portal2LayerCount = std::max(1u, std::min(kPortalRecursionLayers, aPortal2RecursiveSceneUniformCount));
 	const uint32_t layerCount = std::max(portalLayerCount, portal2LayerCount);
-	const bool portalRecursionRequested = layerCount > 1u && (
+	constexpr bool kDrawNestedPortalSurfaces = false;
+	const bool portalRecursionRequested = kDrawNestedPortalSurfaces && layerCount > 1u && (
 		(portalReady && (aPortalVisibleInPortalView || aPortal2VisibleInPortalView)) ||
 		(portal2Ready && (aPortalVisibleInPortal2View || aPortal2VisibleInPortal2View)));
 	const bool portalRecursionReady =
@@ -781,22 +782,10 @@ void record_commands(
 	}
 	else {
 		if (portalReady) {
-			NestedPortalSurface nestedPortal2{
-				aPortal2VisibleInPortalView && portal2Ready,
-				aPortal2SurfaceDesc,
-				aPortal2SurfaceTransform,
-				5.37f
-			};
-			renderPortalOne(portalFinalTarget, *aPortalSceneUniform, {}, nestedPortal2);
+			renderPortalOne(portalFinalTarget, *aPortalSceneUniform, {}, {});
 		}
 		if (portal2Ready) {
-			NestedPortalSurface nestedPortal1{
-				aPortalVisibleInPortal2View && portalReady,
-				aPortalSurfaceDesc,
-				aPortalSurfaceTransform,
-				0.0f
-			};
-			renderPortalTwo(portal2FinalTarget, *aPortal2SceneUniform, nestedPortal1, {});
+			renderPortalTwo(portal2FinalTarget, *aPortal2SceneUniform, {}, {});
 		}
 	}
 	renderShadowMap(aSceneUniform, aBatches);
