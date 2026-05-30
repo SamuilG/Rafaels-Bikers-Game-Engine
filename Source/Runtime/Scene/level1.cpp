@@ -1633,13 +1633,17 @@ namespace engine {
 					mState->isExtremeSpeed || currentSpeed >= kDeployExtremeSpeedThreshold;
 				if (teleportCameraWithBike) {
 					glm::mat4 mappedCamera = portalMap * mState->camera2world;
+					mappedCamera[3] += glm::vec4(exitCorrection, 0.0f);
 					const glm::vec3 mappedCameraPos = glm::vec3(mappedCamera[3]);
 					const glm::vec3 mappedCameraTarget = mappedFollowTarget + glm::vec3(0.0f, 1.6f, 0.0f);
 					glm::vec3 mappedCameraOffset = mappedCameraPos - mappedCameraTarget;
-					const float rawMappedCameraDistance = std::max(0.1f, glm::length(mappedCameraOffset));
-					const float mappedCameraDistance = std::min(rawMappedCameraDistance, portalCameraDistanceCap);
-					mappedCameraOffset /= rawMappedCameraDistance;
-					if (rawMappedCameraDistance > portalCameraDistanceCap) {
+					const float rawMappedCameraDistance = glm::length(mappedCameraOffset);
+					const float mappedCameraDistance = std::min(std::max(rawMappedCameraDistance, 0.1f), portalCameraDistanceCap);
+					const glm::vec3 mappedCameraBack = Normalize3(
+						glm::vec3(mappedCamera * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f)),
+						glm::vec3(0.0f, 0.0f, 1.0f));
+					mappedCameraOffset = Normalize3(mappedCameraOffset, mappedCameraBack);
+					if (rawMappedCameraDistance > portalCameraDistanceCap || rawMappedCameraDistance < 0.1f) {
 						mappedCamera[3] = glm::vec4(mappedCameraTarget + mappedCameraOffset * mappedCameraDistance, 1.0f);
 					}
 
@@ -1662,10 +1666,13 @@ namespace engine {
 						exitToEntry,
 						mappedFollowTarget + glm::vec3(0.0f, 1.6f, 0.0f));
 					mState->portalCameraBoomOffset = mState->portalCameraPosition - mState->portalCameraTargetPosition;
-					const float rawPortalBoomDistance = std::max(0.1f, glm::length(mState->portalCameraBoomOffset));
-					const float portalBoomDistance = std::min(rawPortalBoomDistance, portalCameraDistanceCap);
-					const glm::vec3 portalBoomDir = mState->portalCameraBoomOffset / rawPortalBoomDistance;
-					if (rawPortalBoomDistance > portalCameraDistanceCap) {
+					const float rawPortalBoomDistance = glm::length(mState->portalCameraBoomOffset);
+					const float portalBoomDistance = std::min(std::max(rawPortalBoomDistance, 0.1f), portalCameraDistanceCap);
+					const glm::vec3 cameraBack = Normalize3(
+						glm::vec3(mState->camera2world * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f)),
+						glm::vec3(0.0f, 0.0f, 1.0f));
+					const glm::vec3 portalBoomDir = Normalize3(mState->portalCameraBoomOffset, cameraBack);
+					if (rawPortalBoomDistance > portalCameraDistanceCap || rawPortalBoomDistance < 0.1f) {
 						mState->portalCameraPosition =
 							mState->portalCameraTargetPosition + portalBoomDir * portalBoomDistance;
 						mState->portalCameraBoomOffset = portalBoomDir * portalBoomDistance;

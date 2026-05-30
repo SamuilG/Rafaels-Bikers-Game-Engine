@@ -36,6 +36,26 @@ namespace {
 	{
 		return glm::vec3(transform * glm::vec4(point, 1.0f));
 	}
+
+	glm::vec3 transform_vector(const glm::mat4& transform, const glm::vec3& vector)
+	{
+		return glm::vec3(transform * glm::vec4(vector, 0.0f));
+	}
+
+	glm::vec3 normalize_or(const glm::vec3& value, const glm::vec3& fallback)
+	{
+		const float lenSq = glm::dot(value, value);
+		if (lenSq > 0.0001f) {
+			return value / std::sqrt(lenSq);
+		}
+
+		const float fallbackLenSq = glm::dot(fallback, fallback);
+		if (fallbackLenSq > 0.0001f) {
+			return fallback / std::sqrt(fallbackLenSq);
+		}
+
+		return glm::vec3(0.0f, 0.0f, 1.0f);
+	}
 }
 
 // Removed callbacks, now fully handled by engine::InputSystem
@@ -241,14 +261,26 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 			const glm::vec3 perceivedTargetPos = transform_point(exitToEntry, realTargetPos);
 
 			aState.portalCameraTargetPosition = perceivedTargetPos;
-			aState.portalCameraBoomOffset = offset;
-			if (aState.portalCameraBoomLength <= 0.1f) {
-				aState.portalCameraBoomLength = std::max(0.1f, glm::length(offset));
+			const glm::vec3 requestedBoomOffset = offset;
+			const float requestedBoomLength = std::max(0.1f, glm::length(requestedBoomOffset));
+			const float storedBoomLength = glm::length(aState.portalCameraBoomOffset);
+			glm::vec3 boomDir = normalize_or(aState.portalCameraBoomOffset, requestedBoomOffset);
+			if (hasCameraInput) {
+				boomDir = normalize_or(requestedBoomOffset, aState.portalCameraBoomOffset);
 			}
 
+			float lockedBoomLength = aState.portalCameraBoomLength > 0.1f ?
+				aState.portalCameraBoomLength :
+				std::max(0.1f, storedBoomLength > 0.1f ? storedBoomLength : requestedBoomLength);
+			lockedBoomLength = std::min(lockedBoomLength, std::max(0.1f, aState.Distance));
+
+			aState.portalCameraBoomLength = lockedBoomLength;
+			aState.portalCameraBoomOffset = boomDir * lockedBoomLength;
+			aState.Distance = lockedBoomLength;
+			aState.targetDistance = std::min(aState.targetDistance, lockedBoomLength);
+
 			const glm::vec3 portalSideCamPos = aState.portalCameraTargetPosition + aState.portalCameraBoomOffset;
-			const float cameraFollow = 1.0f - std::exp(-18.0f * aElapsedTime);
-			aState.portalCameraPosition += (portalSideCamPos - aState.portalCameraPosition) * cameraFollow;
+			aState.portalCameraPosition = portalSideCamPos;
 
 			target_pos = aState.portalCameraTargetPosition;
 			cam_pos = aState.portalCameraPosition;
@@ -265,12 +297,16 @@ void update_user_state(engine::UserState& aState, float aElapsedTime, engine::In
 					entryInverse;
 				glm::vec3 exitCamPos = transform_point(entryToExit, cam_pos);
 				glm::vec3 exitOffset = exitCamPos - realTargetPos;
-				const float rawExitDistance = std::max(0.1f, glm::length(exitOffset));
-				const float exitDistance = std::min(rawExitDistance, std::max(0.1f, aState.Distance));
-				exitOffset /= rawExitDistance;
-				if (rawExitDistance > exitDistance) {
-					exitCamPos = realTargetPos + exitOffset * exitDistance;
-				}
+				const float rawExitDistance = glm::length(exitOffset);
+				const glm::vec3 fallbackExitOffset = transform_vector(entryToExit, aState.portalCameraBoomOffset);
+				exitOffset = normalize_or(exitOffset, fallbackExitOffset);
+				const float currentBoomDistance = std::max(
+					0.1f,
+					std::min(
+						aState.Distance,
+						aState.portalCameraBoomLength > 0.1f ? aState.portalCameraBoomLength : aState.Distance));
+				const float exitDistance = std::min(std::max(rawExitDistance, 0.1f), currentBoomDistance);
+				exitCamPos = realTargetPos + exitOffset * exitDistance;
 
 				aState.Distance = exitDistance;
 				aState.targetDistance = exitDistance;
