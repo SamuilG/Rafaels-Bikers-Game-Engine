@@ -42,6 +42,24 @@ namespace engine {
 		constexpr float kPortalExitClearance = cfg::kPortalSurfaceHalfDepth + 0.28f;
 		constexpr float kPortalTeleportCooldown = 0.25f;
 
+		class ScopedFlecsDefer {
+		public:
+			explicit ScopedFlecsDefer(flecs::world& world)
+				: m_world(world) {
+				m_world.defer_begin();
+			}
+
+			~ScopedFlecsDefer() {
+				m_world.defer_end();
+			}
+
+			ScopedFlecsDefer(const ScopedFlecsDefer&) = delete;
+			ScopedFlecsDefer& operator=(const ScopedFlecsDefer&) = delete;
+
+		private:
+			flecs::world& m_world;
+		};
+
 		glm::vec3 NormalizeFlat(glm::vec3 value, glm::vec3 fallback = glm::vec3(0.0f, 0.0f, -1.0f)) {
 			value.y = 0.0f;
 			if (glm::dot(value, value) < 0.0001f) {
@@ -274,7 +292,9 @@ namespace engine {
 		// 如果你确定这个模型不需要任何物理碰撞，可以加上这几行把它剥掉
 		// 如果你希望玩家能撞到复活点，那就把这几行注释掉
 		if (m_checkpointBeacon.is_valid()) {
-			m_scene->get_world().query<const PhysicsBody>()
+			auto& world = m_scene->get_world();
+			ScopedFlecsDefer defer(world);
+			world.query<const PhysicsBody>()
 				.each([&](flecs::entity e, const PhysicsBody& pb) {
 				// 只清理属于这个信标的物理体（这里假设信标比较简单，只有一个 Mesh）
 				// 为安全起见，这里提供一个简单的剥离：
@@ -532,14 +552,17 @@ namespace engine {
 				if (mState->isGameOver) return; // already dead, ignore further events
 
 				// --- Physics-based impact thresholds (SI units: m/s) ---
-				// 15 km/h = 4.17 m/s  -> light hit
-				// 30 km/h = 8.33 m/s  -> fatal
-				constexpr float kLightHitSpeed = 8.33f;
-				constexpr float kFatalSpeed = 12.0f;
+				// 36 km/h = 10.0 m/s -> ignore bumps below this
+				// 100 km/h = 27.78 m/s -> fatal only on a hard frontal hit
+				constexpr float kLightHitSpeed = 10.0f;
+				constexpr float kFatalSpeed = 27.78f;
+				constexpr float kStepForgivenessSpeed = 41.67f; // 150 km/h: still allow wheel/step bumps below this
+				constexpr float kStepNormalYThreshold = 0.25f;
+				constexpr float kLowContactHeight = 0.75f;
 				// normalAlignment: fraction of total bike speed directed into the surface
 				//   ~1.0 = head-on (perpendicular), ~0.0 = pure side-scrape (tangential)
-				constexpr float kScrapeThreshold = 0.35f; // below this -> side scrape, no damage
-				constexpr float kFrontalThreshold = 0.50f; // above this -> counts as frontal for fatal
+				constexpr float kScrapeThreshold = 0.65f; // below this -> side scrape, no damage
+				constexpr float kFrontalThreshold = 0.80f; // above this -> counts as frontal for fatal
 
 				float impactSpeed = col.GetRelativeSpeed(); // approach speed along normal (m/s)
 				float bikeSpeed = mState->bikeSpeed;     // horizontal speed (m/s)
@@ -555,6 +578,33 @@ namespace engine {
 					// Side scrape: tangential contact, no damage
 					printf("[Collision] Side scrape ignored: speed=%.2f m/s align=%.2f\n",
 						impactSpeed, normalAlignment);
+					return;
+				}
+
+				const glm::vec3 contactNormal = col.GetContactNormal();
+				const bool stepLikeNormal =
+					glm::dot(contactNormal, contactNormal) > 0.0001f &&
+					std::abs(glm::normalize(contactNormal).y) > kStepNormalYThreshold;
+
+				bool lowBikeContact = false;
+				const uint32_t currentBikeBodyID = GetBikeBodyID();
+				if (col.HasContactPoint() &&
+					currentBikeBodyID != JPH::BodyID::cInvalidBodyID &&
+					m_physics) {
+					JPH::BodyID bikeId(currentBikeBodyID);
+					if (JPH::PhysicsSystem* jolt = m_physics->GetJoltSystem()) {
+						JPH::BodyInterface& bi = jolt->GetBodyInterface();
+						if (bi.IsAdded(bikeId)) {
+							const JPH::RVec3 bikePos = bi.GetPosition(bikeId);
+							const float contactHeight = col.GetContactPoint().y - static_cast<float>(bikePos.GetY());
+							lowBikeContact = contactHeight < kLowContactHeight;
+						}
+					}
+				}
+
+				if ((stepLikeNormal || lowBikeContact) && impactSpeed < kStepForgivenessSpeed) {
+					printf("[Collision] Step/low contact ignored: speed=%.2f m/s align=%.2f normalY=%.2f\n",
+						impactSpeed, normalAlignment, contactNormal.y);
 					return;
 				}
 
@@ -654,7 +704,9 @@ namespace engine {
 				if (gasAsset.has<MeshComponent>())     collectMeshIdx = gasAsset.get<MeshComponent>().meshIndex;
 				if (gasAsset.has<MaterialComponent>()) collectMatIdx  = gasAsset.get<MaterialComponent>().materialIndex;
 
-				m_scene->get_world().query<const MeshComponent>()
+				auto& world = m_scene->get_world();
+				ScopedFlecsDefer defer(world);
+				world.query<const MeshComponent>()
 					.each([&](flecs::entity e, const MeshComponent& mc) {
 						if (mc.meshIndex < collectMeshIdx) return;
 						e.set<EntityStatus>({ false, false });
@@ -722,6 +774,7 @@ namespace engine {
 				// ... 前面的代码保持不变 ...
 				m_render->GetTriggerSystem().SetTriggerCallbacks(tid,
 					[this, i, collectedCount, kTotalCollectibles]() mutable {
+						ScopedFlecsDefer defer(m_scene->get_world());
 						if (i < static_cast<int>(m_gasPickupEntities.size()) && m_gasPickupEntities[i].is_valid()) {
 
 							// 关闭绑定的子光源
@@ -891,7 +944,9 @@ namespace engine {
 			if (springAsset.is_valid()) {
 				if (springAsset.has<MeshComponent>())     springMeshIdx = springAsset.get<MeshComponent>().meshIndex;
 				if (springAsset.has<MaterialComponent>()) springMatIdx  = springAsset.get<MaterialComponent>().materialIndex;
-				m_scene->get_world().query<const MeshComponent>()
+				auto& world = m_scene->get_world();
+				ScopedFlecsDefer defer(world);
+				world.query<const MeshComponent>()
 					.each([&](flecs::entity e, const MeshComponent& mc) {
 						if (mc.meshIndex < springMeshIdx) return;
 						e.set<EntityStatus>({ false, false });
@@ -917,6 +972,7 @@ namespace engine {
 			);
 			m_render->GetTriggerSystem().SetTriggerCallbacks(jumpPickupTrigger,
 				[this]() {
+					ScopedFlecsDefer defer(m_scene->get_world());
 					mState->jumpEnabled = true;
 					RefreshAbilityHintUi();
 					if (m_springPickupEntity.is_valid() && m_bikeEntity.is_valid()) {
@@ -967,7 +1023,9 @@ namespace engine {
 			if (hornAsset.is_valid()) {
 				if (hornAsset.has<MeshComponent>())     hornMeshIdx = hornAsset.get<MeshComponent>().meshIndex;
 				if (hornAsset.has<MaterialComponent>()) hornMatIdx  = hornAsset.get<MaterialComponent>().materialIndex;
-				m_scene->get_world().query<const MeshComponent>()
+				auto& world = m_scene->get_world();
+				ScopedFlecsDefer defer(world);
+				world.query<const MeshComponent>()
 					.each([&](flecs::entity e, const MeshComponent& mc) {
 						if (mc.meshIndex < hornMeshIdx) return;
 						e.set<EntityStatus>({ false, false });
@@ -993,6 +1051,7 @@ namespace engine {
 			);
 			m_render->GetTriggerSystem().SetTriggerCallbacks(hornPickupTrigger,
 				[this]() {
+					ScopedFlecsDefer defer(m_scene->get_world());
 					mState->hornEnabled = true;
 					RefreshAbilityHintUi();//刷新提示UI
 					if (m_hornPickupEntity.is_valid() && m_bikeEntity.is_valid()) {
@@ -1084,6 +1143,7 @@ namespace engine {
 			);
 			m_render->GetTriggerSystem().SetTriggerCallbacks(radioTrigger,
 				[this]() {
+					ScopedFlecsDefer defer(m_scene->get_world());
 					mState->radioEnabled = true;
 					for (auto& re : m_radioPickupEntities)
 						if (re.is_valid()) re.set<EntityStatus>({ false, false });
@@ -1142,7 +1202,9 @@ namespace engine {
 			if (newsAsset.is_valid()) {
 				if (newsAsset.has<MeshComponent>())     newsMeshIdx = newsAsset.get<MeshComponent>().meshIndex;
 				if (newsAsset.has<MaterialComponent>()) newsMatIdx  = newsAsset.get<MaterialComponent>().materialIndex;
-				m_scene->get_world().query<const MeshComponent>()
+				auto& world = m_scene->get_world();
+				ScopedFlecsDefer defer(world);
+				world.query<const MeshComponent>()
 					.each([&](flecs::entity e, const MeshComponent& mc) {
 						if (mc.meshIndex < newsMeshIdx) return;
 						e.set<EntityStatus>({ false, false });
@@ -1168,6 +1230,7 @@ namespace engine {
 			);
 			m_render->GetTriggerSystem().SetTriggerCallbacks(newsTrigger,
 				[this]() {
+					ScopedFlecsDefer defer(m_scene->get_world());
 					// Play flip sound
 					m_audio->LoadSound("Flip", "Assets/Sounds/flip.mp3");
 					m_audio->PlayOneShot("Flip");
@@ -1195,7 +1258,9 @@ namespace engine {
 			if (satAsset.is_valid()) {
 				if (satAsset.has<MeshComponent>())     satMeshIdx = satAsset.get<MeshComponent>().meshIndex;
 				if (satAsset.has<MaterialComponent>()) satMatIdx  = satAsset.get<MaterialComponent>().materialIndex;
-				m_scene->get_world().query<const MeshComponent>()
+				auto& world = m_scene->get_world();
+				ScopedFlecsDefer defer(world);
+				world.query<const MeshComponent>()
 					.each([&](flecs::entity e, const MeshComponent& mc) {
 						if (mc.meshIndex < satMeshIdx) return;
 						e.set<EntityStatus>({ false, false });
@@ -1325,6 +1390,7 @@ namespace engine {
 			);
 			m_render->GetTriggerSystem().SetTriggerCallbacks(rocketLaunchTrigger,
 				[this]() {
+					ScopedFlecsDefer defer(m_scene->get_world());
 					if (!m_rocket2Entities.empty()) {
 						m_rocket2Launching   = true;
 						m_rocket2LaunchTimer = 0.0f;

@@ -119,8 +119,8 @@ namespace engine
         // ==========================================
         bool isLosingStrength = false;
 
-        // ����ٶȼ��� (����С�� 0.5) �� ��������б�� (�����¶ȴ��� 10�� / 0.17����)
-        if (std::abs(signedSpeed) < 3.5f && std::abs(currentPitch) > 0.45f && m_state->isAlive == true && isLosingStrength == false) {
+        // Only treat near-stationary, heavily tipped bikes as a death state.
+        if (std::abs(signedSpeed) < 2.0f && std::abs(currentPitch) > 0.85f && m_state->isAlive == true && isLosingStrength == false) {
             isLosingStrength = true;
             m_state->isAlive = false; // ��������/����״̬
 			m_state->deathTimer = 0.0f; // ����������ʱ��

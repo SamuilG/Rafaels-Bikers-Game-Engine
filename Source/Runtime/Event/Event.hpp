@@ -68,9 +68,12 @@ namespace engine {
         // using strings for an abstract functional representation
         CollisionEvent(const std::string& entityA, const std::string& entityB,
                        float relativeSpeed = 0.0f,
-                       glm::vec3 contactNormal = glm::vec3(0.0f))
+                       glm::vec3 contactNormal = glm::vec3(0.0f),
+                       glm::vec3 contactPoint = glm::vec3(0.0f),
+                       bool hasContactPoint = false)
             : m_EntityA(entityA), m_EntityB(entityB),
-              m_RelativeSpeed(relativeSpeed), m_ContactNormal(contactNormal) {}
+              m_RelativeSpeed(relativeSpeed), m_ContactNormal(contactNormal),
+              m_ContactPoint(contactPoint), m_HasContactPoint(hasContactPoint) {}
 
         const std::string& GetEntityA() const { return m_EntityA; }
         const std::string& GetEntityB() const { return m_EntityB; }
@@ -79,6 +82,9 @@ namespace engine {
         float GetRelativeSpeed() const { return m_RelativeSpeed; }
         // World-space contact normal (from body2 surface toward body1)
         const glm::vec3& GetContactNormal() const { return m_ContactNormal; }
+        // Average world-space contact point when supplied by the physics backend.
+        const glm::vec3& GetContactPoint() const { return m_ContactPoint; }
+        bool HasContactPoint() const { return m_HasContactPoint; }
 
         EventType GetType() const override { return EventType::Collision; }
         const char* GetName() const override { return "CollisionEvent"; }
@@ -88,6 +94,8 @@ namespace engine {
         std::string m_EntityB;
         float       m_RelativeSpeed  = 0.0f;
         glm::vec3   m_ContactNormal  = glm::vec3(0.0f);
+        glm::vec3   m_ContactPoint   = glm::vec3(0.0f);
+        bool        m_HasContactPoint = false;
     };
 
 

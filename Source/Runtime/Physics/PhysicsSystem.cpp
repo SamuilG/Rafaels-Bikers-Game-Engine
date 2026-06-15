@@ -19,6 +19,7 @@
 #include <iostream>
 #include <cstdarg>
 #include <thread>
+#include <algorithm>
 
 #include <Jolt/Physics/Body/BodyFilter.h>
 // callback for traces
@@ -144,8 +145,26 @@ public:
 			float impactSpeed = dot < 0.0f ? -dot : dot;
 
 			glm::vec3 contactNormal(jNormal.GetX(), jNormal.GetY(), jNormal.GetZ());
+			glm::vec3 contactPoint(0.0f);
+			bool hasContactPoint = false;
+			const size_t contactCount = std::min(
+				inManifold.mRelativeContactPointsOn1.size(),
+				inManifold.mRelativeContactPointsOn2.size());
+			if (contactCount > 0) {
+				for (size_t i = 0; i < contactCount; ++i) {
+					const JPH::RVec3 pointOn1 = inManifold.GetWorldSpaceContactPointOn1(static_cast<JPH::uint>(i));
+					const JPH::RVec3 pointOn2 = inManifold.GetWorldSpaceContactPointOn2(static_cast<JPH::uint>(i));
+					contactPoint += glm::vec3(
+						static_cast<float>((pointOn1.GetX() + pointOn2.GetX()) * 0.5),
+						static_cast<float>((pointOn1.GetY() + pointOn2.GetY()) * 0.5),
+						static_cast<float>((pointOn1.GetZ() + pointOn2.GetZ()) * 0.5));
+				}
+				contactPoint /= static_cast<float>(contactCount);
+				hasContactPoint = true;
+			}
 
-			auto event = std::make_unique<CollisionEvent>(nameA, nameB, impactSpeed, contactNormal);
+			auto event = std::make_unique<CollisionEvent>(
+				nameA, nameB, impactSpeed, contactNormal, contactPoint, hasContactPoint);
 			m_sys->m_eventSystem->QueueEvent(std::move(event));
 		}
 	}
