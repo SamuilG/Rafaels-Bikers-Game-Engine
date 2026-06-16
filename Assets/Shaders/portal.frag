@@ -47,11 +47,7 @@ float Fbm(vec2 p) {
 }
 
 void main() {
-    if (!gl_FrontFacing) {
-        discard;
-    }
-
-    if (vLocalNormalZ < 0.5) {
+    if (abs(vLocalNormalZ) < 0.5) {
         discard;
     }
 

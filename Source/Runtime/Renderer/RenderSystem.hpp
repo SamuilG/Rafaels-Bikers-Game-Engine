@@ -2652,15 +2652,24 @@ namespace engine {
             constexpr float kPortalHalfDepth = cfg::kPortalSurfaceHalfDepth;
 
             EngineMesh mesh{};
-            // Keep the visible screen flat and centered. The AABB and gameplay
-            // logic provide the invisible volume used for camera handoff.
+            // Render the portal screen as two separated caps. When the camera
+            // near plane cuts the cap closest to the viewer, the far cap keeps
+            // the portal image filled, avoiding a one-frame clipping flash.
             mesh.positions = {
-                {-0.5f, -0.5f, 0.0f},
-                { 0.5f, -0.5f, 0.0f},
-                { 0.5f,  0.5f, 0.0f},
-                {-0.5f,  0.5f, 0.0f}
+                {-0.5f, -0.5f,  kPortalHalfDepth},
+                { 0.5f, -0.5f,  kPortalHalfDepth},
+                { 0.5f,  0.5f,  kPortalHalfDepth},
+                {-0.5f,  0.5f,  kPortalHalfDepth},
+                {-0.5f, -0.5f, -kPortalHalfDepth},
+                { 0.5f, -0.5f, -kPortalHalfDepth},
+                { 0.5f,  0.5f, -kPortalHalfDepth},
+                {-0.5f,  0.5f, -kPortalHalfDepth}
             };
             mesh.texcoords = {
+                {0.0f, 1.0f},
+                {1.0f, 1.0f},
+                {1.0f, 0.0f},
+                {0.0f, 0.0f},
                 {0.0f, 1.0f},
                 {1.0f, 1.0f},
                 {1.0f, 0.0f},
@@ -2670,10 +2679,15 @@ namespace engine {
                 {0.0f, 0.0f, 1.0f},
                 {0.0f, 0.0f, 1.0f},
                 {0.0f, 0.0f, 1.0f},
-                {0.0f, 0.0f, 1.0f}
+                {0.0f, 0.0f, 1.0f},
+                {0.0f, 0.0f, -1.0f},
+                {0.0f, 0.0f, -1.0f},
+                {0.0f, 0.0f, -1.0f},
+                {0.0f, 0.0f, -1.0f}
             };
             mesh.indices = {
-                0, 1, 2, 2, 3, 0
+                0, 1, 2, 2, 3, 0,
+                4, 7, 6, 6, 5, 4
             };
             mesh.localAabbMin = glm::vec3(-0.5f, -0.5f, -kPortalHalfDepth);
             mesh.localAabbMax = glm::vec3(0.5f, 0.5f, kPortalHalfDepth);

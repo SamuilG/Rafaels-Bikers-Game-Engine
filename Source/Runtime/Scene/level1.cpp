@@ -558,6 +558,9 @@ namespace engine {
 				constexpr float kFatalSpeed = 27.78f;
 				constexpr float kStepForgivenessSpeed = 41.67f; // 150 km/h: still allow wheel/step bumps below this
 				constexpr float kStepNormalYThreshold = 0.25f;
+				constexpr float kWallNormalYThreshold = 0.18f;
+				constexpr float kWallFatalSpeed = 22.0f; // ~80 km/h: vertical head-on wall hits should be lethal
+				constexpr float kWallFrontalThreshold = 0.72f;
 				constexpr float kLowContactHeight = 0.75f;
 				// normalAlignment: fraction of total bike speed directed into the surface
 				//   ~1.0 = head-on (perpendicular), ~0.0 = pure side-scrape (tangential)
@@ -582,9 +585,16 @@ namespace engine {
 				}
 
 				const glm::vec3 contactNormal = col.GetContactNormal();
+				const float normalLenSq = glm::dot(contactNormal, contactNormal);
+				const glm::vec3 contactNormalN =
+					normalLenSq > 0.0001f ? glm::normalize(contactNormal) : glm::vec3(0.0f, 1.0f, 0.0f);
+				const float normalAbsY = std::abs(contactNormalN.y);
 				const bool stepLikeNormal =
-					glm::dot(contactNormal, contactNormal) > 0.0001f &&
-					std::abs(glm::normalize(contactNormal).y) > kStepNormalYThreshold;
+					normalLenSq > 0.0001f &&
+					normalAbsY > kStepNormalYThreshold;
+				const bool wallLikeNormal =
+					normalLenSq > 0.0001f &&
+					normalAbsY < kWallNormalYThreshold;
 
 				bool lowBikeContact = false;
 				const uint32_t currentBikeBodyID = GetBikeBodyID();
@@ -602,22 +612,37 @@ namespace engine {
 					}
 				}
 
-				if ((stepLikeNormal || lowBikeContact) && impactSpeed < kStepForgivenessSpeed) {
-					printf("[Collision] Step/low contact ignored: speed=%.2f m/s align=%.2f normalY=%.2f\n",
-						impactSpeed, normalAlignment, contactNormal.y);
-					return;
-				}
-
-				if (impactSpeed >= kFatalSpeed && normalAlignment >= kFrontalThreshold) {
-					// Fatal frontal collision -> game over
+				auto killFromCollision = [&]() {
 					mState->isAlive = false;
-
 
 					m_audio->LoadSound("wasted", "Assets/Sounds/wasted.mp3");
 					m_audio->SetVolume("wasted", 1.5f);
 					m_audio->PlayOneShot("wasted");
 					mState->deathTimer = 0.0f;
 					mState->thirdPersonMode = false;
+				};
+
+				const bool hardFrontalWallImpact =
+					wallLikeNormal &&
+					impactSpeed >= kWallFatalSpeed &&
+					normalAlignment >= kWallFrontalThreshold;
+				if (hardFrontalWallImpact) {
+					killFromCollision();
+					printf("[Collision] FATAL WALL: speed=%.2f m/s align=%.2f normalY=%.2f low=%d | %s vs %s\n",
+						impactSpeed, normalAlignment, contactNormalN.y, lowBikeContact ? 1 : 0,
+						col.GetEntityA().c_str(), col.GetEntityB().c_str());
+					return;
+				}
+
+				if ((stepLikeNormal || lowBikeContact) && impactSpeed < kStepForgivenessSpeed) {
+					printf("[Collision] Step/low contact ignored: speed=%.2f m/s align=%.2f normalY=%.2f\n",
+						impactSpeed, normalAlignment, contactNormalN.y);
+					return;
+				}
+
+				if (impactSpeed >= kFatalSpeed && normalAlignment >= kFrontalThreshold) {
+					// Fatal frontal collision -> game over
+					killFromCollision();
 					printf("[Collision] FATAL: speed=%.2f m/s align=%.2f | %s vs %s\n",
 						impactSpeed, normalAlignment,
 						col.GetEntityA().c_str(), col.GetEntityB().c_str());
