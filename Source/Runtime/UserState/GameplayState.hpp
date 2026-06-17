@@ -87,7 +87,7 @@ namespace engine {
 		bool thirdPersonMode = true;
 		bool isAlive = true;
 
-		bool jumpEnabled =true;
+		bool jumpEnabled =false;
 		bool hornEnabled = false;
 		bool radioEnabled = false;
 		bool showHints = true;
