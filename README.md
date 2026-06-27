@@ -27,6 +27,20 @@ The engine currently powers a fast-paced bicycle action game requiring high-spee
 
 ## Project Media
 
+### Engine Showcase Video
+<a href="./Docs/Steer-Engine-THE-MOVIE.mp4">
+  <img src="./Docs/SteerEngineThumbnail.png" alt="Steer Engine Showcase Video" width="500">
+</a><br>
+*Click the image above to watch the full high-resolution engine showcase.*
+
+### Academic Poster
+<a href="./Docs/SteerEnginePoster.pdf">
+  <img src="./Docs/SteerEnginePoster.png" alt="Steer Engine Academic Poster" width="500">
+</a><br>
+*Click the image above to view the full PDF poster.*
+
+### Full Technical Documentation
+[Read the full Steer Engine Group Report (PDF)](./Docs/Rafael_s_Bikers-2.pdf)
 
 ***
 *Developed by Sicheng Chen, Samuil georgiev, Qidan Guo, Junxian Li, and Chenghao Zhu under the supervision of Rafael Kuffner dos Anjos at the University of Leeds.*
