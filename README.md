@@ -39,4 +39,4 @@ The engine currently powers a fast-paced bicycle action game requiring high-spee
 [Read the full Steer Engine Group Report (PDF)](./Docs/Rafael_s_Bikers-2.pdf)
 
 ***
-*Developed by Sicheng Chen, Samuil georgiev, Qidan Guo, Junxian Li, and Chenghao Zhu under the supervision of Rafael Kuffner dos Anjos at the University of Leeds.*
+*Developed by Sicheng Chen, Samuil Georgiev, Qidan Guo, Junxian Li, and Chenghao Zhu under the supervision of Rafael Kuffner dos Anjos at the University of Leeds.*
