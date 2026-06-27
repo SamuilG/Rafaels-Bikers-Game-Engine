@@ -28,7 +28,7 @@ The engine currently powers a fast-paced bicycle action game requiring high-spee
 ## Project Media
 
 ### Engine Showcase Video
-[![Steer Engine Presentation](./Docs/SteerEngineThumbnail.png)](https://youtu.be/cVQplTH5PKc)
+[![Steer Engine Presentation](./Docs/SteerEngineThumbnail.png)](https://youtu.be/cVQpITH5PKc)
 *Click the image above to watch the full high-resolution engine showcase.*
 
 ### Academic Poster
