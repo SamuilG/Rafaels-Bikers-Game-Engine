@@ -26,7 +26,9 @@ workspace "EngineWorkspace"
     filter "toolset:msc-*"
         cppdialect "C++latest"
         defines { "_CRT_SECURE_NO_WARNINGS=1", "_SCL_SECURE_NO_WARNINGS=1" }
-        buildoptions { "/utf-8" } 
+        -- Multiple compiler processes otherwise race to write one project PDB.
+        -- /FS serializes those PDB writes while keeping parallel compilation.
+        buildoptions { "/utf-8", "/FS" }
     
     filter "system:linux"
         links { "dl", "pthread", "m" }
@@ -241,7 +243,23 @@ workspace "EngineWorkspace"
         filter "*"
 
     -- ==========================================
-    -- Project 5: Automatic Shader Compilation
+    -- Project 5: Snapshot regression tests
+    -- ==========================================
+    project "EngineSnapshotTests"
+        location "Intermediate/Projects"
+        kind "ConsoleApp"
+        targetdir "Bin/Tests"
+        debugdir "%{wks.location}"
+
+        includedirs {
+            "Source",
+            "ThirdParty/glm/include"
+        }
+
+        files { "Tests/RenderSnapshotRegressionTests.cpp" }
+
+    -- ==========================================
+    -- Project 6: Automatic Shader Compilation
     -- ==========================================
     project "Shaders"
         -- [Garbage] Hide the Shaders project file in the Intermediate folder
@@ -256,29 +274,14 @@ workspace "EngineWorkspace"
             "Assets/Shaders/*.geom"
         }
 
-        -- Platform-specific variables for compiler path and directory creation
-        local glslc_path = ""
-        local mkdir_cmd = ""
-
-        filter "system:windows"
-            glslc_path = "\"%{wks.location}/glslc.exe\""
-            mkdir_cmd = "if not exist \"%{wks.location}\\Assets\\Shaders\\spirv\" mkdir \"%{wks.location}\\Assets\\Shaders\\spirv\""
-            
-        filter "system:linux"
-            glslc_path = "glslc"
-            mkdir_cmd = "mkdir -p \"%{wks.location}/Assets/Shaders/spirv\""
-            
-        filter "*" 
-
         -- Custom build commands for compiling shaders
-        filter "files:Assets/Shaders/*.vert or files:Assets/Shaders/*.frag or files:Assets/Shaders/*.comp or files:Assets/Shaders/*.geom"
+        filter { "system:windows", "files:Assets/Shaders/*.vert or files:Assets/Shaders/*.frag or files:Assets/Shaders/*.comp or files:Assets/Shaders/*.geom" }
             buildmessage "Compiling shader %{file.name}..."
-            
             buildcommands {
-                mkdir_cmd,
-                glslc_path .. " \"%{file.abspath}\" -o \"%{wks.location}/Assets/Shaders/spirv/%{file.name}.spv\""
+                "if not exist \"%{wks.basedir}\\Assets\\Shaders\\spirv\" mkdir \"%{wks.basedir}\\Assets\\Shaders\\spirv\"",
+                "\"%{wks.basedir}\\glslc.exe\" \"%{file.abspath}\" -o \"%{wks.basedir}\\Assets\\Shaders\\spirv\\%{file.name}.spv\""
             }
             
             -- Enable fast incremental builds
-            buildoutputs { "%{wks.location}/Assets/Shaders/spirv/%{file.name}.spv" }
+            buildoutputs { "%{wks.basedir}/Assets/Shaders/spirv/%{file.name}.spv" }
         filter "*"

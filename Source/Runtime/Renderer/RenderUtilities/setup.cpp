@@ -14,11 +14,12 @@
 #include "../Scene/model_loader/engine_model.hpp" 
 #include "../UserState/UserState.hpp"
 
-lut::PipelineLayout create_triangle_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aSceneLayout, VkDescriptorSetLayout aObjectLayout)
+lut::PipelineLayout create_triangle_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aSceneLayout, VkDescriptorSetLayout aObjectLayout, VkDescriptorSetLayout aInstanceLayout)
 {
 	VkDescriptorSetLayout layouts[] = {
 		aSceneLayout, // set 0
-		aObjectLayout // set 1
+		aObjectLayout, // set 1
+		aInstanceLayout // set 2: RenderSnapshot instance SSBO
 	};
 
 	VkPushConstantRange pushConstant{};
@@ -30,7 +31,7 @@ lut::PipelineLayout create_triangle_pipeline_layout(lut::VulkanContext const& aC
 
 	VkPipelineLayoutCreateInfo layoutInfo{};
 	layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	layoutInfo.setLayoutCount = 2;
+	layoutInfo.setLayoutCount = 3;
 	layoutInfo.pSetLayouts = layouts;
 	layoutInfo.pushConstantRangeCount = 1;
 	layoutInfo.pPushConstantRanges = &pushConstant;
@@ -773,6 +774,27 @@ lut::DescriptorSetLayout create_object_descriptor_layout(lut::VulkanWindow const
 		);
 	}
 
+	return lut::DescriptorSetLayout(aWindow.device, layout);
+}
+
+lut::DescriptorSetLayout create_instance_descriptor_layout(lut::VulkanWindow const& aWindow)
+{
+	VkDescriptorSetLayoutBinding binding{};
+	binding.binding = 0;
+	binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	binding.descriptorCount = 1;
+	binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+	VkDescriptorSetLayoutCreateInfo layoutInfo{};
+	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	layoutInfo.bindingCount = 1;
+	layoutInfo.pBindings = &binding;
+
+	VkDescriptorSetLayout layout = VK_NULL_HANDLE;
+	if (auto const res = vkCreateDescriptorSetLayout(aWindow.device, &layoutInfo, nullptr, &layout); VK_SUCCESS != res) {
+		throw lut::Error("Unable to create instance descriptor set layout\n"
+			"vkCreateDescriptorSetLayout() returned {}", lut::to_string(res));
+	}
 	return lut::DescriptorSetLayout(aWindow.device, layout);
 }
 lut::DescriptorSetLayout create_post_proc_descriptor_layout(lut::VulkanWindow const& aWindow)
@@ -3835,7 +3857,8 @@ static lut::Pipeline make_skinned_pipeline(
 	lut::VulkanWindow const& aWindow,
 	VkPipelineLayout aPipelineLayout,
 	bool alphaBlend,
-	VkFormat aColorFormat) // <--- 新增
+	VkFormat aColorFormat,
+	uint32_t colorAttachmentCount = 3) // <--- 新增
 {
 	auto const vertSpirV = lut::load_file_u32(cfg::kSkinnedVertShaderPath);
 	auto const fragSpirV = lut::load_file_u32(cfg::kFragShaderPath);
@@ -3896,7 +3919,10 @@ static lut::Pipeline make_skinned_pipeline(
 	VkPipelineRasterizationStateCreateInfo raster{};
 	raster.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
 	raster.polygonMode = VK_POLYGON_MODE_FILL;
-	raster.cullMode = VK_CULL_MODE_BACK_BIT;
+	// Skinned glTF assets may be authored with a mirrored node transform.  Keep
+	// the skinned path consistent with the regular mesh path so that a valid
+	// character is not entirely rejected by winding-based back-face culling.
+	raster.cullMode = VK_CULL_MODE_NONE;
 	raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	raster.lineWidth = 1.f;
 
@@ -3927,7 +3953,7 @@ static lut::Pipeline make_skinned_pipeline(
 
 	VkPipelineColorBlendStateCreateInfo blendInfo{};
 	blendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-	blendInfo.attachmentCount = 3; // <--- 必须为 3
+	blendInfo.attachmentCount = colorAttachmentCount;
 	blendInfo.pAttachments = blendAtt;
 
 	// =================================================================
@@ -3941,7 +3967,7 @@ static lut::Pipeline make_skinned_pipeline(
 
 	VkPipelineRenderingCreateInfo renderInfo{};
 	renderInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-	renderInfo.colorAttachmentCount = 3; // <--- 必须为 3
+	renderInfo.colorAttachmentCount = colorAttachmentCount;
 	renderInfo.pColorAttachmentFormats = colorFmts;
 	renderInfo.depthAttachmentFormat = cfg::kDepthFormat;
 
@@ -3992,5 +4018,7 @@ lut::Pipeline create_skinned_alpha_pipeline(lut::VulkanWindow const& aWindow,
 	VkPipelineLayout aPipelineLayout,
 	VkFormat aColorFormat)
 {
-	return make_skinned_pipeline(aWindow, aPipelineLayout, true, aColorFormat);
+	// Transparent skinned meshes are rendered in the composite pass, which has
+	// exactly one color attachment.
+	return make_skinned_pipeline(aWindow, aPipelineLayout, true, aColorFormat, 1);
 }

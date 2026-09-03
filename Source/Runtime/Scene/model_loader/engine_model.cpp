@@ -458,6 +458,7 @@ static glm::mat4 getNodeTransform(const tinygltf::Node& node) {
 static void processNode(
     const tinygltf::Model& gltf,
     int nodeIdx,
+    int parentNodeIdx,
     const glm::mat4& parentMatrix,
     const std::vector<std::vector<uint32_t>>& meshMap,
     std::vector<EngineInstance>& outInstances,
@@ -482,12 +483,13 @@ static void processNode(
             instance.name       = node.name.empty() ? ("Node_" + std::to_string(nodeIdx)) : node.name;
             instance.skinIndex  = node.skin;   // -1 if no skin
             instance.nodeIndex  = nodeIdx;
+            instance.parentNodeIndex = parentNodeIdx;
             outInstances.push_back(instance);
         }
     }
 
     for (int childIdx : node.children) {
-        processNode(gltf, childIdx, globalMatrix, meshMap, outInstances, namedTransforms);
+        processNode(gltf, childIdx, nodeIdx, globalMatrix, meshMap, outInstances, namedTransforms);
     }
 }
 
@@ -569,7 +571,7 @@ EngineModel load_engine_model_glb(const char* path)
     if (!gltf.scenes.empty()) {
         int sceneIdx = gltf.defaultScene > -1 ? gltf.defaultScene : 0;
         for (int nodeIdx : gltf.scenes[sceneIdx].nodes)
-            processNode(gltf, nodeIdx, glm::mat4(1.0f), meshMap, model.scenes, model.namedTransforms);
+            processNode(gltf, nodeIdx, -1, glm::mat4(1.0f), meshMap, model.scenes, model.namedTransforms);
     }
     else {
         for (size_t i = 0; i < model.meshes.size(); ++i) {

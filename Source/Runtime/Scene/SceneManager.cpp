@@ -1,8 +1,13 @@
 #include "SceneManager.hpp"
+#include "SceneRenderExtraction.hpp"
+#include "SceneTransformProgression.hpp"
+#include "SceneCameraView.hpp"
+#include <algorithm>
 #include <flecs.h>
 #include <print>
 #include <cmath>
 #include <cstring>
+#include <unordered_map>
 
 #include "../Physics/PhysicsSystem.hpp"
 #include "../Animation/AnimationSystem.hpp" // for RiderIKComponent + IKChainConfig
@@ -55,6 +60,13 @@ EngineMesh generate_uv_sphere(float radius, uint32_t rings, uint32_t sectors)
 
 namespace engine {
 
+    namespace {
+        std::uint64_t renderable_asset_key(uint32_t meshIndex, uint32_t materialIndex)
+        {
+            return (static_cast<std::uint64_t>(meshIndex) << 32) | materialIndex;
+        }
+    }
+
     SceneManager::SceneManager(PhysicsSystem* physics_system)
         : m_physics_system(physics_system) {
     }
@@ -77,10 +89,10 @@ namespace engine {
 
             if (parent.is_valid() && parent.has<WorldTransform>()) {
                 const WorldTransform* pwt = &parent.get<WorldTransform>();
-                wt.matrix = pwt->matrix * lt.matrix;
+				wt.matrix = scene_transform::ComposeWorldTransform(&pwt->matrix, lt.matrix);
             }
             else {
-                wt.matrix = lt.matrix;
+				wt.matrix = scene_transform::ComposeWorldTransform(nullptr, lt.matrix);
             }
                 });
         speed = 0.0f;
@@ -101,46 +113,133 @@ namespace engine {
             mModel.meshes.resize(baseMeshIdx);
         }
 
-        for (const auto& material : model.materials) {
-            mModel.materials.push_back(material);
+        if (mModel.materials.size() == baseMatIdx) {
+            for (const auto& material : model.materials) {
+                mModel.materials.push_back(material);
+            }
         }
-
-        for (auto mesh : model.meshes) {
-            mesh.materialIndex += baseMatIdx;
-            mModel.meshes.push_back(std::move(mesh));
-        }
-
-        for (auto instance : model.scenes) {
-            instance.meshIndex += baseMeshIdx;
-            mModel.scenes.push_back(std::move(instance));
+        if (mModel.meshes.size() == baseMeshIdx) {
+            for (auto mesh : model.meshes) {
+                mesh.materialIndex += baseMatIdx;
+                mModel.meshes.push_back(std::move(mesh));
+            }
         }
     }
 
-    // =========================================================================
-    // 模型加载 API
-    // =========================================================================
+
 
     flecs::entity SceneManager::LoadModel(engine::RenderSystem* renderSystem, const char* path, ModelPhysicsType physicsType, float mass, const glm::mat4& initialTransform, RenderLayer layer)
     {
-        EngineModel newModel = load_engine_model_glb(path);
+        const std::string normalizedPath = std::filesystem::absolute(path)
+            .lexically_normal().generic_string();
+        auto [assetIt, inserted] = mCpuModelAssets.try_emplace(normalizedPath);
+        if (inserted) {
+            assetIt->second = load_engine_model_glb(path);
+        }
+        EngineModel newModel = assetIt->second;
 
         for (auto& instance : newModel.scenes) {
             instance.transform = initialTransform * instance.transform;
         }
 
-        auto offsets = renderSystem->RegisterModelAssets(newModel);
+        auto offsets = renderSystem->RegisterModelAssets(normalizedPath, newModel);
 
+        flecs::entity root = flecs::entity::null();
         switch (physicsType) {
         case ModelPhysicsType::Compound:
-            return load_compound_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer);
+            root = load_compound_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer);
+            break;
         case ModelPhysicsType::CustomC:
-            return load_C_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer);
+            root = load_C_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx, initialTransform, layer);
+            break;
         case ModelPhysicsType::Static:
-            return load_static_model(newModel, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer);
+            root = load_static_model(newModel, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer);
+            break;
         case ModelPhysicsType::Dynamic:
-            return load_dynamic_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer);
+            root = load_dynamic_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer);
+            break;
         }
-        return flecs::entity::null();
+
+        if (!root.is_valid()) {
+            return root;
+        }
+
+        const uint32_t firstMesh = offsets.baseMeshIdx;
+        const uint32_t endMesh = firstMesh + static_cast<uint32_t>(newModel.meshes.size());
+        static uint32_t modelRootCounter = 0;
+        const std::string rootName = "ModelRoot_" + std::to_string(modelRootCounter++);
+        flecs::entity modelRoot = m_world->entity(rootName.c_str())
+            .set<LocalTransform>({ initialTransform })
+            .set<WorldTransform>({ initialTransform });
+        modelRoot.set<ModelRootComponent>({ root.id() });
+        std::unordered_map<int, flecs::entity> importedNodes;
+        for (size_t index = 0; index < newModel.nodes.size(); ++index) {
+            const EngineNode& node = newModel.nodes[index];
+            const std::string nodeName = rootName + "_Node_" + std::to_string(index);
+            auto nodeEntity = m_world->entity(nodeName.c_str())
+                .set<LocalTransform>({ node.localTransform })
+                .set<WorldTransform>({ node.localTransform });
+            importedNodes.emplace(static_cast<int>(index), nodeEntity);
+        }
+        for (size_t index = 0; index < newModel.nodes.size(); ++index) {
+            const int parentIndex = newModel.nodes[index].parentIndex;
+            importedNodes.at(static_cast<int>(index)).child_of(
+                parentIndex >= 0 ? importedNodes.at(parentIndex) : modelRoot);
+        }
+        struct PendingImportBinding {
+            flecs::entity entity;
+            flecs::entity parent;
+            bool resetLocalTransform = false;
+        };
+        // Compound bodies are already expressed in world space by the physics
+        // synchronisation pass.  Parenting their mesh parts below the imported
+        // glTF hierarchy would make UpdateWorldTransform multiply the model
+        // root/node transforms a second time, scattering the bike parts.
+        const bool physicsOwnsPartTransforms =
+            physicsType == ModelPhysicsType::Compound ||
+            physicsType == ModelPhysicsType::CustomC;
+
+        std::vector<PendingImportBinding> pendingBindings;
+        m_world->query<MeshComponent, const MaterialComponent, const ImportedNodeIndex>()
+            .each([&](flecs::entity entity, MeshComponent& mesh,
+                      const MaterialComponent& material, const ImportedNodeIndex& importedNode) {
+                if (mesh.meshIndex < firstMesh || mesh.meshIndex >= endMesh) {
+                    return;
+                }
+                const bool hasImportedNode = importedNode.nodeIndex >= 0 &&
+                    importedNodes.contains(importedNode.nodeIndex);
+                if (!physicsOwnsPartTransforms) {
+                    pendingBindings.push_back({
+                        entity,
+                        hasImportedNode ? importedNodes.at(importedNode.nodeIndex) : modelRoot,
+                        hasImportedNode
+                    });
+                }
+                if (const auto id = renderSystem->FindRenderableAssetId(
+                        mesh.meshIndex, material.materialIndex)) {
+                    mesh.renderableAssetId = *id;
+                    RegisterRenderableAssetId(mesh.meshIndex, material.materialIndex, *id);
+                }
+            });
+
+        // Structural ECS changes must happen after the query releases its table lock.
+        for (const PendingImportBinding& binding : pendingBindings) {
+            binding.entity.child_of(binding.parent);
+            if (binding.resetLocalTransform) {
+                binding.entity.set<LocalTransform>({ glm::mat4(1.0f) });
+            }
+        }
+
+        return modelRoot;
+    }
+
+    flecs::entity SceneManager::GetFirstRenderableEntity(flecs::entity modelRoot) const
+    {
+        if (!modelRoot.is_valid() || !modelRoot.has<ModelRootComponent>()) {
+            return flecs::entity::null();
+        }
+        const auto entityId = modelRoot.get<ModelRootComponent>().firstRenderableEntityId;
+        return entityId != 0 ? m_world->entity(entityId) : flecs::entity::null();
     }
 
     flecs::entity SceneManager::load_static_model(const EngineModel& model, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer) {
@@ -159,7 +258,8 @@ namespace engine {
                 .set<LayerComponent>({ layer })
                 .set<LocalTransform>({ instance.transform })
                 .set<WorldTransform>({ instance.transform })
-                .set<MeshComponent>({ instance.meshIndex + baseMeshIdx });
+                .set<MeshComponent>({ instance.meshIndex + baseMeshIdx })
+                .set<ImportedNodeIndex>({ instance.nodeIndex });
 
             uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
             e.set<MaterialComponent>({ matIdx });
@@ -194,7 +294,8 @@ namespace engine {
                 .set<LayerComponent>({ layer })
                 .set<LocalTransform>({ instance.transform })
                 .set<WorldTransform>({ instance.transform })
-                .set<MeshComponent>({ instance.meshIndex + baseMeshIdx });
+                .set<MeshComponent>({ instance.meshIndex + baseMeshIdx })
+                .set<ImportedNodeIndex>({ instance.nodeIndex });
 
             uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
             e.set<MaterialComponent>({ matIdx });
@@ -250,6 +351,7 @@ namespace engine {
                 .set<LocalTransform>({ instance.transform })
                 .set<WorldTransform>({ instance.transform })
                 .set<MeshComponent>({ instance.meshIndex + baseMeshIdx })
+                .set<ImportedNodeIndex>({ instance.nodeIndex })
                 .set<CompoundParent>({ compoundBodyID.GetIndexAndSequenceNumber(), localOffset });
 
             uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
@@ -262,19 +364,23 @@ namespace engine {
         return firstEntity;
     }
 
-    flecs::entity SceneManager::load_C_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer) {
+    flecs::entity SceneManager::load_C_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx,
+        const glm::mat4& initialTransform, RenderLayer layer) {
         std::print("Loading C model with {} instances\n", model.scenes.size());
         flecs::entity firstEntity = flecs::entity::null();
         cache_model_for_culling(model, baseMeshIdx, baseMatIdx);
 
         glm::mat4 bodyWorldTransform = glm::mat4(1.0f);
 
-        if (!model.scenes.empty()) {
+        {
             glm::vec3 scale, translation, skew;
             glm::quat rotation;
             glm::vec4 perspective;
 
-            glm::decompose(model.scenes[0].transform, scale, rotation, translation, skew, perspective);
+            // A compound body needs one stable model root.  The first imported
+            // mesh is merely one part of the model (often a wheel), so using it
+            // as the body root offsets every other part during physics sync.
+            glm::decompose(initialTransform, scale, rotation, translation, skew, perspective);
             rotation = glm::normalize(rotation);
 
             bodyWorldTransform = glm::translate(glm::mat4(1.0f), translation) * glm::mat4_cast(rotation);
@@ -308,6 +414,7 @@ namespace engine {
                 .set<LocalTransform>({ instance.transform })
                 .set<WorldTransform>({ instance.transform })
                 .set<MeshComponent>({ instance.meshIndex + baseMeshIdx })
+                .set<ImportedNodeIndex>({ instance.nodeIndex })
                 .set<CompoundParent>({ compoundBodyID.GetIndexAndSequenceNumber(), localOffset });
 
             uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
@@ -355,7 +462,11 @@ namespace engine {
             .set<EntityStatus>({ true, true })
             .set<LocalTransform>({ transform })
             .set<WorldTransform>({ transform })
-            .set<MeshComponent>({ meshIndex })
+            .set<MeshComponent>({ meshIndex,
+                [&] {
+                    const auto it = mRenderableAssetIds.find(renderable_asset_key(meshIndex, matIndex));
+                    return it == mRenderableAssetIds.end() ? kInvalidRenderableAssetId : it->second;
+                }() })
             .set<MaterialComponent>({ matIndex });
 
         if (physicsBodyID != ~0u) {
@@ -363,6 +474,12 @@ namespace engine {
         }
 
         return e;
+    }
+
+    void SceneManager::RegisterRenderableAssetId(uint32_t meshIndex, uint32_t materialIndex,
+                                                  RenderableAssetId assetId)
+    {
+        mRenderableAssetIds[renderable_asset_key(meshIndex, materialIndex)] = assetId;
     }
 
     flecs::entity SceneManager::raycast_entity(const glm::vec3& origin, const glm::vec3& direction, float max_distance)
@@ -389,7 +506,8 @@ namespace engine {
     void SceneManager::load_animated_model(
         const EngineModel& model,
         uint32_t baseMeshIdx, uint32_t baseMatIdx,
-        uint32_t baseSkinIdx, uint32_t baseAnimIdx)
+        uint32_t baseSkinIdx, uint32_t baseAnimIdx,
+        const glm::mat4& initialTransform)
     {
         std::print("Loading animated model with {} instances, {} skins, {} anims\n",
             model.scenes.size(), model.skins.size(), model.animations.size());
@@ -408,14 +526,21 @@ namespace engine {
             name += "_" + std::to_string(counter++);
 
             uint32_t globalMeshIdx = instance.meshIndex + baseMeshIdx;
+            uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
+            const auto assetIt = mRenderableAssetIds.find(
+                renderable_asset_key(globalMeshIdx, matIdx));
+            const RenderableAssetId assetId = assetIt == mRenderableAssetIds.end()
+                ? kInvalidRenderableAssetId
+                : assetIt->second;
             auto e = m_world->entity(name.c_str())
                 .add<DynamicObject>()
                 .set<EntityStatus>({ true, false })  // no individual physics by default
-                .set<LocalTransform>({ instance.transform })
-                .set<WorldTransform>({ instance.transform })
-                .set<MeshComponent>({ globalMeshIdx });
+                .set<LocalTransform>({ initialTransform * instance.transform })
+                .set<WorldTransform>({ initialTransform * instance.transform })
+                .set<ImportedLocalTransform>({ instance.transform })
+                .set<MeshComponent>({ globalMeshIdx, assetId })
+                .set<ImportedNodeIndex>({ instance.nodeIndex });
 
-            uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
             e.set<MaterialComponent>({ matIdx });
 
             std::print("  entity '{}': globalMesh={}, mat={}, skinIdx={}\n",
@@ -605,6 +730,7 @@ namespace engine {
             RenderBatch batch{};
             batch.meshIndex = selectedMesh;
             batch.materialIndex = matc.materialIndex;
+            batch.renderableAssetId = mc.renderableAssetId;
             batch.transform = wt.matrix;
             batch.alphaMultiplier = alpha;
             batch.entityId = e.id();
@@ -619,6 +745,98 @@ namespace engine {
                 });
         return batches;
     }
+
+    void SceneManager::PrepareRenderSnapshot(const Frustum* frustum,
+                                             float frustumPadding,
+                                             glm::vec3 cameraPos)
+    {
+        const auto batches = get_render_batches(frustum, frustumPadding, cameraPos);
+        mRenderSnapshot.instances.clear();
+        mRenderSnapshot.skinnedInstances.clear();
+        mAnimationRenderData.skinPalettes.clear();
+        mRenderSnapshot.instances.reserve(batches.size());
+
+        for (const RenderBatch& batch : batches) {
+			const auto instance = scene_render_extraction::MakeRenderInstance(
+				batch.renderableAssetId, batch.transform, batch.alphaMultiplier, batch.castShadow);
+			if (!instance) {
+				if (batch.renderableAssetId == kInvalidRenderableAssetId) {
+					std::println("Scene skipped renderable with no RenderableAssetId");
+				}
+				continue;
+			}
+			mRenderSnapshot.instances.push_back(*instance);
+        }
+
+        m_world->query<const WorldTransform, const MeshComponent, const EntityStatus,
+                       const OpacityComponent*, const SkinComponent>()
+            .each([&](const WorldTransform& worldTransform,
+                       const MeshComponent& mesh,
+                       const EntityStatus& status,
+                       const OpacityComponent* opacity,
+                       const SkinComponent& skin) {
+                if (!status.should_render || skin.boneMatrices.empty() ||
+                    mesh.renderableAssetId == kInvalidRenderableAssetId) {
+                    std::println("Scene skipped skinned renderable with invalid skin or asset data");
+                    return;
+                }
+
+				const SkinInstanceId skinInstanceId =
+					static_cast<SkinInstanceId>(mAnimationRenderData.skinPalettes.size());
+				const auto instance = scene_render_extraction::MakeSkinnedRenderInstance(
+					mesh.renderableAssetId, worldTransform.matrix,
+					opacity ? opacity->currentAlpha : 1.0f, true,
+					skinInstanceId, !skin.boneMatrices.empty());
+				if (!instance) return;
+				mAnimationRenderData.skinPalettes.push_back(skin.boneMatrices);
+				mRenderSnapshot.skinnedInstances.push_back(*instance);
+            });
+
+    }
+
+    void SceneManager::SynchronizePrimaryCamera(const glm::mat4& worldTransform,
+                                                float verticalFovDegrees)
+    {
+        flecs::entity camera = m_world->lookup("PrimaryCamera");
+        if (!camera.is_valid()) {
+            camera = m_world->entity("PrimaryCamera")
+                .add<PrimaryCamera>()
+                .set<WorldTransform>({ glm::mat4(1.0f) });
+        }
+        camera.set<LocalTransform>({ worldTransform });
+        camera.set<CameraComponent>({ std::clamp(verticalFovDegrees, 10.0f, 120.0f),
+                                      0.1f, 1000.0f });
+    }
+
+    bool SceneManager::PrepareCameraView(float aspectRatio)
+    {
+        auto camera = m_world->lookup("PrimaryCamera");
+        if (!camera.is_valid() || !camera.has<PrimaryCamera>() ||
+            !camera.has<CameraComponent>() || !camera.has<WorldTransform>()) {
+			if (!mWarnedMissingPrimaryCamera) {
+				std::println("Scene has no valid PrimaryCamera; skipping scene render");
+				mWarnedMissingPrimaryCamera = true;
+			}
+            mRenderSnapshot.hasCamera = false;
+            return false;
+        }
+		mWarnedMissingPrimaryCamera = false;
+        const auto& cameraComponent = camera.get<CameraComponent>();
+        const auto& worldTransform = camera.get<WorldTransform>();
+        mRenderSnapshot.camera = *scene_camera::MakeCameraView(
+            &worldTransform.matrix, cameraComponent.verticalFovDegrees,
+            cameraComponent.nearPlane, cameraComponent.farPlane, aspectRatio);
+        mRenderSnapshot.hasCamera = true;
+        return true;
+    }
+
+	void SceneManager::ProgressTransforms()
+	{
+		// This is intentionally not part of SceneManager::Update(). Application
+		// runs AnimationSystem after SceneManager, while final WorldTransform
+		// values must include animation and physics writes from this frame.
+		m_world->progress(0.0f);
+	}
 
     void SceneManager::SetupEntityLOD(flecs::entity e,
                                        std::initializer_list<uint32_t> lodMeshIndices,
@@ -807,12 +1025,22 @@ namespace engine {
                 }
             }
         }
-        m_world->query<LocalTransform, const RiderBinding>()
-            .each([&](flecs::entity /*e*/, LocalTransform& lt, const RiderBinding& rb) {
+        m_world->query<LocalTransform, const RiderBinding, const ImportedLocalTransform*>()
+            .each([&](flecs::entity /*e*/, LocalTransform& lt, const RiderBinding& rb,
+                      const ImportedLocalTransform* importedLocal) {
             flecs::entity bikeEnt = m_world->entity(rb.bikeEntityId);
             // Use LocalTransform (updated above from physics) so there is no 1-frame lag
             if (bikeEnt.is_valid() && bikeEnt.has<LocalTransform>()) {
-                lt.matrix = bikeEnt.get<LocalTransform>().matrix * rb.seatOffset;
+                glm::mat4 bikeRootWorld = bikeEnt.get<LocalTransform>().matrix;
+                // The rider is attached to the vehicle's rigid body, not to an
+                // arbitrary mesh part such as Bike_0. Recover that body-space
+                // transform from the part's current transform and local offset.
+                if (bikeEnt.has<CompoundParent>()) {
+                    const CompoundParent& parent = bikeEnt.get<CompoundParent>();
+                    bikeRootWorld = bikeRootWorld * glm::inverse(parent.localOffset);
+                }
+                lt.matrix = bikeRootWorld * rb.seatOffset
+                    * (importedLocal ? importedLocal->matrix : glm::mat4(1.0f));
             }
                 });
 
@@ -843,7 +1071,8 @@ namespace engine {
                 chain.worldTarget = glm::vec3(bikeWorld * glm::vec4(chain.localBikeTarget, 1.0f));
             }
                 });
-        m_world->progress(dt);
+		// Transform progression happens in ProgressTransforms(), after
+		// AnimationSystem::Update() and immediately before render extraction.
     }
 
     void SceneManager::print_all_entities() {

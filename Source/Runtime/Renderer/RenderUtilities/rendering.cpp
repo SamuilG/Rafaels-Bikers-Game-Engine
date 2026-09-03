@@ -1,4 +1,6 @@
 #include "rendering.hpp"
+#include "../RenderSnapshotGpuData.hpp"
+#include "../StaticInstanceBatching.hpp"
 
 #include "../../Rhi/commands.hpp"
 #include "../../Rhi/synch.hpp"
@@ -49,6 +51,7 @@ void record_commands(
 	glsl::SceneUniform const& aSceneUniform,
 	VkPipelineLayout aGraphicsLayout,
 	VkDescriptorSet aSceneDescriptors,
+	VkDescriptorSet aInstanceDescriptor,
 	std::vector<lut::Buffer> const& aMeshPositions,
 	std::vector<lut::Buffer> const& aMeshTexCoords,
 	std::vector<lut::Buffer> const& aMeshNormals,
@@ -496,8 +499,8 @@ void record_commands(
 				continue;
 			}
 
-			bool isMasked = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0);
-			if (!isMasked && batch.alphaMultiplier < 0.99f) {
+			bool isAlphaBlend = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaBlend);
+			if (isAlphaBlend || batch.alphaMultiplier < 0.99f) {
 				continue;
 			}
 
@@ -556,7 +559,7 @@ void record_commands(
 				}
 
 				const bool isAlpha =
-					(matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0) ||
+					(matIdx < aMaterials.size() && aMaterials[matIdx].alphaBlend) ||
 					(batch.alphaMultiplier < 0.99f);
 				if (isAlpha) {
 					continue;
@@ -878,6 +881,7 @@ void record_commands(
 	// Bind pipelines / descriptors and draw scene as before (render to offscreen + bright)
 	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsPipe);
 	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
+	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 2, 1, &aInstanceDescriptor, 0, nullptr);
 
 	// Viewport / scissor
 	VkViewport vp{};
@@ -894,16 +898,61 @@ void record_commands(
 	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsPipe);
 	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
 
+	std::vector<engine::rendering::StaticInstanceCandidate> staticCandidates;
+	staticCandidates.reserve(aBatches.size());
+	for (const RenderBatch& batch : aBatches) {
+		const bool materialAlphaBlend = batch.materialIndex < aMaterials.size() &&
+			aMaterials[batch.materialIndex].alphaBlend;
+		staticCandidates.push_back({
+			batch.meshIndex,
+			batch.materialIndex,
+			batch.renderableAssetId,
+			batch.instanceIndex,
+			materialAlphaBlend || batch.alphaMultiplier != 1.0f
+		});
+	}
+	const auto instanceDrawGroups = engine::rendering::BuildStaticInstanceDrawGroups(staticCandidates);
+	for (const auto& group : instanceDrawGroups) {
+		if (group.meshIndex >= aMeshInfos.size() || group.materialIndex >= aMaterialDescriptors.size()) continue;
+
+		const auto& meshInfo = aMeshInfos[group.meshIndex];
+		ObjectPC pcData{};
+		pcData._pad = 1.0f;
+		if (group.materialIndex < aMaterials.size()) {
+			pcData.baseColorFactor = aMaterials[group.materialIndex].baseColorFactor;
+			pcData.emissiveFactor = aMaterials[group.materialIndex].emissiveFactor;
+			pcData.metallicFactor = aMaterials[group.materialIndex].metallicFactor;
+			pcData.roughnessFactor = aMaterials[group.materialIndex].roughnessFactor;
+			pcData.alphaCutoff = aMaterials[group.materialIndex].alphaCutoff;
+		} else {
+			pcData.baseColorFactor = glm::vec4(1.0f);
+			pcData.emissiveFactor = glm::vec4(0.0f);
+			pcData.roughnessFactor = 0.8f;
+			pcData.alphaCutoff = 0.5f;
+		}
+
+		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ObjectPC), &pcData);
+		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[group.materialIndex], 0, nullptr);
+		vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[group.meshIndex].buffer, &kZeroOffset);
+		vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[group.meshIndex].buffer, &kZeroOffset);
+		vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[group.meshIndex].buffer, &kZeroOffset);
+		vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[group.meshIndex].buffer, 0, VK_INDEX_TYPE_UINT32);
+		vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(meshInfo.indices.size()), group.instanceCount, 0, 0, group.firstInstance);
+	}
+
 	for (const auto& batch : aBatches)
 	{
 		uint32_t matIdx = batch.materialIndex;
 		uint32_t meshIdx = batch.meshIndex;
 
-		bool isMasked = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0);
+		bool isAlphaBlend = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaBlend);
 
-		if (!isMasked && batch.alphaMultiplier < 0.99f) {
+		if (isAlphaBlend || batch.alphaMultiplier < 0.99f) {
 			continue;
 		}
+		// Snapshot instances were handled by the instanced draw groups above.
+		// Portal and editor-preview batches keep this compatibility path.
+		if (engine::rendering::UsesSnapshotInstance(batch.instanceIndex)) continue;
 
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsPipe);
 		auto const& meshInfo = aMeshInfos[meshIdx];
@@ -911,6 +960,7 @@ void record_commands(
 		// --- 瀹屽叏銆佸共鍑€鍦板垵濮嬪寲 ObjectPC ---
 		ObjectPC pcData{};
 		pcData.transform = batch.transform;
+		pcData._pad = engine::rendering::UsesSnapshotInstance(batch.instanceIndex) ? 1.0f : 0.0f;
 		pcData.clipPlane = batch.clipPlane;
 
 		if (matIdx < aMaterials.size()) {
@@ -940,7 +990,7 @@ void record_commands(
 		vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &kZeroOffset);
 
 		vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
-		vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(meshInfo.indices.size()), 1, 0, 0, 0);
+		vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(meshInfo.indices.size()), 1, 0, 0, engine::rendering::DrawFirstInstance(batch.instanceIndex));
 	}
 
 	if (portalReady && aPortalMainVisible)
@@ -1027,8 +1077,7 @@ void record_commands(
 
 		for (const auto& batch : *aSkinnedBatches) {
 			uint32_t meshIdx = batch.meshIndex; uint32_t matIdx = batch.materialIndex;
-			// 鍙敾涓嶉€忔槑鐨?
-			bool isAlpha = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0) || (batch.alphaMultiplier < 0.99f);
+			bool isAlpha = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaBlend) || (batch.alphaMultiplier < 0.99f);
 			if (isAlpha) continue;
 
 			auto jIt = aMeshJoints->find(meshIdx); auto wIt = aMeshWeights->find(meshIdx);
@@ -1321,15 +1370,16 @@ void record_commands(
 	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
 
 	 kZeroOffset = 0; // 銆愪慨澶?1銆戯細琛ヤ笂绫诲瀷澹版槑
+	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 2, 1, &aInstanceDescriptor, 0, nullptr);
 	for (const auto& batch : aBatches) {
 		uint32_t meshIdx = batch.meshIndex; uint32_t matIdx = batch.materialIndex;
-		bool isMatMasked = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0);
-		if (isMatMasked) continue;
-		if (batch.alphaMultiplier >= 0.99f) continue;
+		bool isAlphaBlend = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaBlend);
+		if (!isAlphaBlend && batch.alphaMultiplier >= 0.99f) continue;
 
 		auto const& meshInfo = aMeshInfos[meshIdx];
 		ObjectPC pcData{};
 		pcData.transform = batch.transform;
+		pcData._pad = engine::rendering::UsesSnapshotInstance(batch.instanceIndex) ? 1.0f : 0.0f;
 		pcData.clipPlane = batch.clipPlane;
 		if (matIdx < aMaterials.size()) {
 			pcData.baseColorFactor = aMaterials[matIdx].baseColorFactor; pcData.emissiveFactor = aMaterials[matIdx].emissiveFactor;
@@ -1349,7 +1399,7 @@ void record_commands(
 		vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &kZeroOffset);
 		vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &kZeroOffset);
 		vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
-		vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(meshInfo.indices.size()), 1, 0, 0, 0);
+		vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(meshInfo.indices.size()), 1, 0, 0, engine::rendering::DrawFirstInstance(batch.instanceIndex));
 	}
 
 	// --- 3. 鐢诲崐閫忔槑楠ㄩ鍔ㄧ敾 ---
@@ -1370,7 +1420,7 @@ void record_commands(
 
 		for (const auto& batch : *aSkinnedBatches) {
 			uint32_t meshIdx = batch.meshIndex; uint32_t matIdx = batch.materialIndex;
-			bool isAlpha = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0) || (batch.alphaMultiplier < 0.99f);
+			bool isAlpha = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaBlend) || (batch.alphaMultiplier < 0.99f);
 			if (!isAlpha) continue;
 
 			auto jIt = aMeshJoints->find(meshIdx); auto wIt = aMeshWeights->find(meshIdx);

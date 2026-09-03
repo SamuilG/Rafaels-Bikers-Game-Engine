@@ -1,0 +1,170 @@
+{
+  "input": "D:\\tools\\xwechat_files\\wxid_tv257izcdtfg11_875e\\msg\\file\\2026-08\\\u718a\u4eff\u67707.27(1).docx",
+  "fonts_by_char_count": {
+    "\u5b8b\u4f53": 5066
+  },
+  "direct_run_formatting_runs": 1557,
+  "direct_paragraph_formatting_paragraphs": 82,
+  "heading_like_paragraphs_not_heading_style": [
+    {
+      "para_index": 1,
+      "text": "\t\u718a\u4eff\u6770\u7684\u4e2a\u6848\u62a4\u7406",
+      "style": "Normal"
+    },
+    {
+      "para_index": 4,
+      "text": "\u75c5\u533a",
+      "style": "Normal"
+    },
+    {
+      "para_index": 7,
+      "text": "\u5e8a\u53f7",
+      "style": "Normal"
+    },
+    {
+      "para_index": 9,
+      "text": "\u59d3\u540d",
+      "style": "Normal"
+    },
+    {
+      "para_index": 10,
+      "text": "\u59d3\u540d",
+      "style": "Normal"
+    },
+    {
+      "para_index": 11,
+      "text": "\u59d3\u540d",
+      "style": "Normal"
+    },
+    {
+      "para_index": 13,
+      "text": "\u6027\u522b",
+      "style": "Normal"
+    },
+    {
+      "para_index": 16,
+      "text": "\u5e74\u9f84",
+      "style": "Normal"
+    },
+    {
+      "para_index": 19,
+      "text": "\u4f4f\u9662\u53f7",
+      "style": "Normal"
+    },
+    {
+      "para_index": 22,
+      "text": "\u8bca\u65ad",
+      "style": "Normal"
+    },
+    {
+      "para_index": 31,
+      "text": "\u4e00\u3001\u4e3b\u8981\u75c5\u60c5",
+      "style": "Normal"
+    },
+    {
+      "para_index": 32,
+      "text": "\u4e00\u3001\u4e3b\u8981\u75c5\u60c5",
+      "style": "Normal"
+    },
+    {
+      "para_index": 33,
+      "text": "\u4e00\u3001\u4e3b\u8981\u75c5\u60c5",
+      "style": "Normal"
+    },
+    {
+      "para_index": 34,
+      "text": "\u4e00\u3001\u4e3b\u8981\u75c5\u60c5",
+      "style": "Normal"
+    },
+    {
+      "para_index": 35,
+      "text": "\u4e00\u3001\u4e3b\u8981\u75c5\u60c5",
+      "style": "Normal"
+    },
+    {
+      "para_index": 36,
+      "text": "\u4e00\u3001\u4e3b\u8981\u75c5\u60c5",
+      "style": "Normal"
+    },
+    {
+      "para_index": 37,
+      "text": "\u4e00\u3001\u4e3b\u8981\u75c5\u60c5",
+      "style": "Normal"
+    },
+    {
+      "para_index": 38,
+      "text": "\u4e00\u3001\u4e3b\u8981\u75c5\u60c5",
+      "style": "Normal"
+    },
+    {
+      "para_index": 39,
+      "text": "\u4e00\u3001\u4e3b\u8981\u75c5\u60c5",
+      "style": "Normal"
+    },
+    {
+      "para_index": 40,
+      "text": "1.\u73b0\u75c5\u53f2",
+      "style": "Normal"
+    }
+  ],
+  "examples": {
+    "direct_run_formatting": [
+      {
+        "para_index": 1,
+        "run_text": "\t",
+        "style": "Normal"
+      },
+      {
+        "para_index": 1,
+        "run_text": "\u718a\u4eff\u6770",
+        "style": "Normal"
+      },
+      {
+        "para_index": 1,
+        "run_text": "\u7684\u4e2a\u6848\u62a4\u7406",
+        "style": "Normal"
+      },
+      {
+        "para_index": 4,
+        "run_text": "\u75c5\u533a",
+        "style": "Normal"
+      },
+      {
+        "para_index": 5,
+        "run_text": "65W",
+        "style": "Normal"
+      }
+    ],
+    "direct_paragraph_formatting": [
+      {
+        "para_index": 14,
+        "text": "\u7537",
+        "style": "Normal"
+      },
+      {
+        "para_index": 15,
+        "text": "\u7537",
+        "style": "Normal"
+      },
+      {
+        "para_index": 74,
+        "text": "\u75be\u75c5\u53f2\uff1a",
+        "style": "Normal"
+      },
+      {
+        "para_index": 78,
+        "text": "4.\u6162\u6027\u80be\u529f\u80fd\u4e0d\u5168\uff0c\u957f\u671f\u53e3\u670d\u80be\u4fdd\u62a4\u836f\u7269\uff1b\u9ad8\u5c3f\u9178\u8840\u75c7\uff1b",
+        "style": "Normal"
+      },
+      {
+        "para_index": 79,
+        "text": "5.\u6162\u6027\u80c3\u708e\u3001\u7ed3\u80a0\u606f\u8089\u53f2\uff1b\u524d\u5217\u817a\u589e\u751f\u3002",
+        "style": "Normal"
+      }
+    ]
+  },
+  "notes": [
+    "Direct formatting is not always wrong, but it often causes inconsistent output when templates change.",
+    "Heading-like paragraphs not using Heading styles can break TOC and accessibility."
+  ]
+}

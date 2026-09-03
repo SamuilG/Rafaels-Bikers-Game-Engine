@@ -4,6 +4,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
 #include <numbers>
+#include <filesystem>
+#include <unordered_map>
 
 // X11 defines macros that conflict with flecs
 #ifdef Bool
@@ -16,9 +18,10 @@
 #include <flecs.h>
 #include "../Core/System.h"
 #include "model_loader/engine_model.hpp"
+#include "RenderSnapshot.hpp"
 #include "../Renderer/RenderUtilities/light.hpp"
 #include "../UserState/UserState.hpp"
-#include "../Renderer/RenderUtilities/frustum.hpp"
+#include "SceneFrustumCulling.hpp"
 
 // Forward declare EngineModel to avoid including engine_model.hpp here
 // 1. Avoid circular dependency
@@ -57,8 +60,28 @@ namespace engine {
 // Basic components definition (kept in header as they might be queried by other systems)
 struct LocalTransform { glm::mat4 matrix; };
 struct WorldTransform { glm::mat4 matrix; };
-struct MeshComponent { uint32_t meshIndex; };
+struct MeshComponent {
+    uint32_t meshIndex;
+    RenderableAssetId renderableAssetId = kInvalidRenderableAssetId;
+};
 struct MaterialComponent { uint32_t materialIndex; };
+struct ImportedNodeIndex { int nodeIndex = -1; };
+
+// A model root is intentionally non-rendering.  Legacy gameplay that needs a
+// representative mesh must ask SceneManager explicitly instead of treating a
+// model instance handle as though it were a drawable entity.
+struct ModelRootComponent {
+    uint64_t firstRenderableEntityId = 0;
+};
+
+// Camera state is scene data. Renderer receives the derived view/projection,
+// not an ECS handle.
+struct CameraComponent {
+    float verticalFovDegrees = 60.0f;
+    float nearPlane = 0.1f;
+    float farPlane = 1000.0f;
+};
+struct PrimaryCamera {};
 
 struct PhysicsBody {
     uint32_t bodyID;
@@ -94,7 +117,11 @@ struct RenderBatch {
     uint32_t  boneBaseIndex = 0;  // offset into the bone SSBO
     uint64_t  riderBikeEntityId = 0;
     glm::vec4 clipPlane = glm::vec4(0.0f);
-    bool      isPortalClone = false;
+	bool      isPortalClone = false;
+	RenderableAssetId renderableAssetId = kInvalidRenderableAssetId;
+	// Index into the RenderSnapshot instance array. UINT32_MAX denotes a
+	// legacy batch (portal/preview) that still uses its push-constant transform.
+	uint32_t instanceIndex = UINT32_MAX;
 };
 
 // forward declare EngineModel to avoid including engine_model.hpp here
@@ -132,6 +159,12 @@ struct RiderBinding {
     glm::mat4 seatOffset = glm::mat4(1.0f); // character root in bike-local space
 };
 
+// The imported node transform of a renderable part. It must survive runtime
+// attachment (for example, attaching a multi-part character to a bike).
+struct ImportedLocalTransform {
+    glm::mat4 matrix = glm::mat4(1.0f);
+};
+
 // Controls which animation clip plays and at what time
 struct AnimationComponent {
     int   animIndex = -1;   // index into AnimationSystem's animation list
@@ -166,16 +199,19 @@ namespace engine {
     public:
         // Core Model Loading API (returning flecs::entity handle and supporting RenderLayer)
         flecs::entity LoadModel(engine::RenderSystem* renderSystem, const char* path, ModelPhysicsType physicsType, float mass = 1.0f, const glm::mat4& initialTransform = glm::mat4(1.0f), RenderLayer layer = RenderLayer::Default);
+        flecs::entity GetFirstRenderableEntity(flecs::entity modelRoot) const;
 
         flecs::entity load_static_model(const EngineModel& model, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer);
         flecs::entity load_dynamic_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer);
         flecs::entity load_compound_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer);
-        flecs::entity load_C_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer);
+        flecs::entity load_C_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx,
+            const glm::mat4& initialTransform, RenderLayer layer);
 
         // Load a skinned/animated model: creates entities with AnimationComponent + SkinComponent.
         void load_animated_model(const EngineModel& model,
             uint32_t baseMeshIdx, uint32_t baseMatIdx,
-            uint32_t baseSkinIdx, uint32_t baseAnimIdx);
+            uint32_t baseSkinIdx, uint32_t baseAnimIdx,
+            const glm::mat4& initialTransform = glm::mat4(1.0f));
 
         // Build render batches for skinned entities.
         std::vector<RenderBatch> get_skinned_batches(glm::mat4* boneBuffer, size_t maxBones, size_t& outBoneCount);
@@ -185,6 +221,18 @@ namespace engine {
         // Get render batches for the current frame with Frustum Culling and LOD selection.
         // cameraPos: world-space camera position used for distance-based LOD (ignored when lodEnabled is false).
         std::vector<RenderBatch> get_render_batches(const Frustum* frustum = nullptr, float frustumPadding = 0.0f, glm::vec3 cameraPos = glm::vec3(0.0f));
+        void PrepareRenderSnapshot(const Frustum* frustum = nullptr,
+                                   float frustumPadding = 0.0f,
+                                   glm::vec3 cameraPos = glm::vec3(0.0f));
+        const RenderSnapshot& GetRenderSnapshot() const { return mRenderSnapshot; }
+        const AnimationRenderData& GetAnimationRenderData() const { return mAnimationRenderData; }
+		// Runs the LocalTransform -> WorldTransform hierarchy pass. It is kept
+		// explicit because physics, animation, and scene logic do not all run
+		// adjacent to SceneManager::Update(). Call it once after those writers
+		// finish and immediately before render extraction.
+		void ProgressTransforms();
+        void SynchronizePrimaryCamera(const glm::mat4& worldTransform, float verticalFovDegrees);
+        bool PrepareCameraView(float aspectRatio);
 
         // Attach LOD levels to an existing entity.
         // lodMeshIndices: globally-registered mesh indices for LOD1, LOD2, ... (LOD0 = MeshComponent::meshIndex).
@@ -199,6 +247,10 @@ namespace engine {
         // dynamic entity backed by a runtime mesh + optional physics body
         flecs::entity create_dynamic_entity(const char* name, uint32_t meshIndex, uint32_t matIndex,
             const glm::mat4& transform, uint32_t physicsBodyID = ~0u);
+
+        // Scene stores this opaque identity only; the renderer remains the GPU owner.
+        void RegisterRenderableAssetId(uint32_t meshIndex, uint32_t materialIndex,
+                                       RenderableAssetId assetId);
 
         // 1. Find entity by name (Flecs supports entity naming)
         flecs::entity find_entity(const char* name);
@@ -248,12 +300,17 @@ namespace engine {
     private:
         flecs::world* m_world;
         EngineModel mModel;
+        std::unordered_map<std::string, EngineModel> mCpuModelAssets;
+        std::unordered_map<std::uint64_t, RenderableAssetId> mRenderableAssetIds;
         PhysicsSystem* m_physics_system; // Optional dependency
 
         void cache_model_for_culling(const EngineModel& model, uint32_t baseMeshIdx, uint32_t baseMatIdx);
 
         uint32_t mLastFrustumCullingCandidates = 0;
         uint32_t mLastFrustumCullingVisible = 0;
+        RenderSnapshot mRenderSnapshot;
+        AnimationRenderData mAnimationRenderData;
+		bool mWarnedMissingPrimaryCamera = false;
     };
 
 } // namespace engine

@@ -145,6 +145,8 @@ struct IblResources {
 // 如果你要从外部加载单独的 HDR/Cube 纹理作为 PBR 采样，可以在此处添加辅助创建声明：
 lut::ImageWithView create_skybox_cubemap(lut::VulkanWindow const& aWindow, lut::Allocator const& aAllocator, std::string const& aPath);
 lut::DescriptorSetLayout create_object_descriptor_layout( lut::VulkanWindow const& );
+// Per-frame RenderSnapshot instance data, visible to the static vertex shader.
+lut::DescriptorSetLayout create_instance_descriptor_layout( lut::VulkanWindow const& );
 lut::DescriptorSetLayout create_post_proc_descriptor_layout( lut::VulkanWindow const& );
 
 lut::ImageWithView create_depth_buffer( lut::VulkanWindow const&, lut::Allocator const& );
@@ -163,7 +165,7 @@ lut::ImageWithView create_vis_image( lut::VulkanWindow const&, lut::Allocator co
 lut::ImageWithView create_shadow_map( lut::VulkanWindow const&, lut::Allocator const& );
 lut::Sampler create_shadow_sampler( lut::VulkanWindow const& );
 
-lut::PipelineLayout create_triangle_pipeline_layout( lut::VulkanContext const&, VkDescriptorSetLayout, VkDescriptorSetLayout );
+lut::PipelineLayout create_triangle_pipeline_layout( lut::VulkanContext const&, VkDescriptorSetLayout, VkDescriptorSetLayout, VkDescriptorSetLayout );
 lut::PipelineLayout create_post_proc_pipeline_layout( lut::VulkanContext const&, VkDescriptorSetLayout );
 lut::PipelineLayout create_blur_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aDescriptorLayout);
 lut::PipelineLayout create_composite_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aDescriptorLayout);

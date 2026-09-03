@@ -1,6 +1,7 @@
 #version 450
 
 #extension GL_EXT_scalar_block_layout : require
+#extension GL_ARB_shader_draw_parameters : require
 
 layout( location = 0 ) in vec3 iPosition;
 layout( location = 1 ) in vec2 iTexCoord;
@@ -27,6 +28,15 @@ layout( location = 1 ) out vec3 v2fNormal;
 layout( location = 2 ) out vec3 v2fPos;
 layout( location = 3 ) out vec4 v2fLightProjPos; // p_1.5
 
+struct GpuInstanceData {
+	mat4 worldTransform;
+	vec4 opacityAndPadding;
+};
+
+layout(std430, set = 2, binding = 0) readonly buffer InstanceBuffer {
+	GpuInstanceData instances[];
+};
+
 //import modelmatrix in glb
 
 
@@ -45,13 +55,16 @@ layout(push_constant) uniform PushConstants {
 
 void main()
 {
+	mat4 modelTransform = pc._pad > 0.5
+		? instances[gl_BaseInstanceARB].worldTransform
+		: pc.transform;
 	v2fTexCoord = iTexCoord;
 	
-	v2fNormal = normalize(mat3(pc.transform) * iNormal);
+	v2fNormal = normalize(mat3(modelTransform) * iNormal);
 	// Pass original normal
 	// object space = world space for static
 
-	vec4 worldPos = pc.transform * vec4(iPosition, 1.f);
+	vec4 worldPos = modelTransform * vec4(iPosition, 1.f);
 	v2fPos = worldPos.xyz;
 
 	gl_Position = uScene.projCam * worldPos;

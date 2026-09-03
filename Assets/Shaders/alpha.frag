@@ -83,7 +83,7 @@ void main()
 	}
 
 	vec4 color = texture( uTexColor, v2fTexCoord );
-	if( color.a < 0.5 )
+	if( pc.alphaCutoff >= 0.0 && color.a * pc.baseColorFactor.a < pc.alphaCutoff )
 		discard;
 
 	// material properties

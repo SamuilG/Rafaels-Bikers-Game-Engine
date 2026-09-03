@@ -29,6 +29,7 @@ void record_commands(
 	glsl::SceneUniform const& aSceneUniform,
 	VkPipelineLayout aGraphicsLayout,
 	VkDescriptorSet aSceneDescriptors,
+	VkDescriptorSet aInstanceDescriptor,
 	std::vector<lut::Buffer> const& aMeshPositions,
 	std::vector<lut::Buffer> const& aMeshTexCoords,
 	std::vector<lut::Buffer> const& aMeshNormals,

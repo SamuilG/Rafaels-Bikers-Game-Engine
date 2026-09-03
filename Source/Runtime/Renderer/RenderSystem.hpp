@@ -23,10 +23,13 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <chrono>
 #include <functional>
 #include <string_view>
 #include <array>
+#include <unordered_map>
+#include <unordered_set>
 #define GLFW_INCLUDE_NONE
 
 #include <GLFW/glfw3.h>
@@ -34,6 +37,7 @@
 
 #include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
+#include <glm/gtx/norm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "../Rhi/angle.hpp"
@@ -61,6 +65,7 @@ namespace lut = labut2;
 #include "RenderUtilities/setup.hpp"
 #include "RenderUtilities/light.hpp"
 #include "RenderUtilities/rendering.hpp"
+#include "RenderSnapshotGpuData.hpp"
 
 #include "../Input/InputSystem.hpp"
 
@@ -89,6 +94,7 @@ namespace lut = labut2;
 #include "../Animation/AnimationSystem.hpp"
 #include <unordered_map>
 #include "RenderUtilities/frustum.hpp"
+#include "RenderBatchOrdering.hpp"
 #include "RenderUtilities/SSAO.hpp"
 namespace glsl {
     struct MosaicUniform {
@@ -415,8 +421,9 @@ namespace engine {
             // ==========================================
             mSceneLayout = create_scene_descriptor_layout(mWindow);
             mObjectLayout = create_object_descriptor_layout(mWindow);
+			mInstanceLayout = create_instance_descriptor_layout(mWindow);
             mPostLayout = create_post_proc_descriptor_layout(mWindow);
-            mPipeLayout = create_triangle_pipeline_layout(mWindow, mSceneLayout.handle, mObjectLayout.handle);
+			mPipeLayout = create_triangle_pipeline_layout(mWindow, mSceneLayout.handle, mObjectLayout.handle, mInstanceLayout.handle);
             mPostPipeLayout = create_post_proc_pipeline_layout(mWindow, mPostLayout.handle);
             ReportInitProgress(0.24f, "Creating descriptor layouts...");
             // ==========================================
@@ -497,7 +504,9 @@ namespace engine {
             }
 
             mPipe = create_triangle_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
-            mAlphaPipe = create_alpha_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+            // Transparent geometry is drawn later in the single-target composite
+            // pass, so it must not use the three-target MRT pipeline.
+            mAlphaPipe = create_alpha_pipeline_1_attachment(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
             mPortalSurfacePipe = create_portal_surface_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
             mThumbnailAlphaPipe = create_alpha_pipeline_1_attachment(mWindow, mPipeLayout.handle, VK_FORMAT_R8G8B8A8_UNORM);
             mMipPipe = create_debug_pipeline(mWindow, mPipeLayout.handle, cfg::kDebugVertShaderPath, cfg::kDebugMipFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT);
@@ -523,6 +532,16 @@ namespace engine {
             mShadowSkinnedPipe = create_shadow_skinned_pipeline(mWindow, mSkinnedPipeLayout.handle);
 
             mBoneSSBO = lut::create_buffer(mAllocator, kMaxBoneMatrices * sizeof(glm::mat4), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+            for (auto& buffer : mInstanceBuffers) {
+                buffer = lut::create_buffer(mAllocator,
+                    mInstanceBufferCapacity * sizeof(rendering::GpuInstanceData),
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+            }
+			for (size_t index = 0; index < mInstanceBuffers.size(); ++index) {
+				mInstanceDescriptorSets[index] = lut::alloc_desc_set(mWindow, mDescPool.handle, mInstanceLayout.handle);
+				UpdateInstanceDescriptor(index);
+			}
             {
                 mBoneDescriptorSet = lut::alloc_desc_set(mWindow, mDescPool.handle, mBoneLayout.handle);
                 VkDescriptorBufferInfo boneBI{ mBoneSSBO.buffer, 0, kMaxBoneMatrices * sizeof(glm::mat4) };
@@ -1312,7 +1331,7 @@ namespace engine {
 
                 if (changes.changedFormat) {
                     mPipe = create_triangle_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
-                    mAlphaPipe = create_alpha_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+                    mAlphaPipe = create_alpha_pipeline_1_attachment(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
                     mPortalSurfacePipe = create_portal_surface_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
                     mThumbnailAlphaPipe = create_alpha_pipeline_1_attachment(mWindow, mPipeLayout.handle, VK_FORMAT_R8G8B8A8_UNORM);
                     mMipPipe = create_debug_pipeline(mWindow, mPipeLayout.handle, cfg::kDebugVertShaderPath, cfg::kDebugMipFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT);
@@ -1606,6 +1625,25 @@ namespace engine {
                 *mState
             );
 
+            // Compatibility bridge: input still updates UserState, while Scene
+            // owns the primary camera consumed by render extraction.
+            bool hasPreparedPrimaryCamera = false;
+            if (mSceneManager) {
+                mSceneManager->SynchronizePrimaryCamera(mState->camera2world, mState->cameraFov);
+				// RenderSystem runs after AnimationSystem. This is the single final
+				// transform pass for the frame, so camera extraction and the later
+				// RenderSnapshot observe the same ECS state.
+				mSceneManager->ProgressTransforms();
+                if (mSceneManager->PrepareCameraView(finalWidth / finalHeight)) {
+					hasPreparedPrimaryCamera = true;
+                    const CameraView& camera = mSceneManager->GetRenderSnapshot().camera;
+                    sceneUniforms.camera = camera.view;
+                    sceneUniforms.projection = camera.projection;
+                    sceneUniforms.projCam = camera.projView;
+                    sceneUniforms.cameraPos = glm::vec4(camera.worldPosition, 1.0f);
+                }
+            }
+
             // 【新增】：将 IBL 状态同步给 Shader
             sceneUniforms.iblEnabled = mState->iblEnabled ? 1 : 0;
             //frustum culling: keep separate smoothed FPS samples for culling ON vs OFF.
@@ -1751,7 +1789,13 @@ namespace engine {
 
             //std::vector<RenderBatch> finalBatches = mSceneManager ? mSceneManager->get_render_batches(activeFrustum) : std::vector<RenderBatch>{};
             glm::vec3 camPosWorld = glm::vec3(sceneUniforms.cameraPos);
-            std::vector<RenderBatch> finalBatches = mSceneManager ? mSceneManager->get_render_batches(activeFrustum, mState->frustumCullingPadding, camPosWorld) : std::vector<RenderBatch>{};
+            std::vector<RenderBatch> finalBatches;
+            if (mSceneManager && hasPreparedPrimaryCamera) {
+                mSceneManager->PrepareRenderSnapshot(
+                    activeFrustum, mState->frustumCullingPadding, camPosWorld);
+                finalBatches = BuildRenderBatches(mSceneManager->GetRenderSnapshot());
+                UploadInstanceData(finalBatches);
+            }
             if (mSceneManager) {
                 mState->frustumCullingTotalCandidates = mSceneManager->get_last_frustum_culling_candidates(); // new frustum culling
                 mState->frustumCullingVisibleCandidates = mSceneManager->get_last_frustum_culling_visible(); // new frustum culling
@@ -1765,6 +1809,10 @@ namespace engine {
                     RenderBatch previewBatch = originalBatch;
                     // 用鼠标的矩阵 * 模型部件自身的原始偏移矩阵
                     previewBatch.transform = m_previewTransform * originalBatch.transform;
+					// Preview transforms are authored by the editor, not by the
+					// current RenderSnapshot. Never let an old cached index select
+					// a frame-local GPU instance transform.
+					previewBatch.instanceIndex = UINT32_MAX;
                     batches.push_back(previewBatch);
                 }
             };
@@ -1821,12 +1869,14 @@ namespace engine {
             static float smoothedSpeedFactor = 1.0f;
             smoothedSpeedFactor += (targetSpeedFactor - smoothedSpeedFactor) * 5.0f * dt;
             std::vector<RenderBatch> skinnedBatches;
-            if (mSceneManager && mBoneSSBO.buffer != VK_NULL_HANDLE) {
+            if (mSceneManager && hasPreparedPrimaryCamera && mBoneSSBO.buffer != VK_NULL_HANDLE) {
                 void* ptr;
                 vmaMapMemory(mAllocator.allocator, mBoneSSBO.allocation, &ptr);
                 size_t boneCount = 0;
-                skinnedBatches = mSceneManager->get_skinned_batches(
-                    static_cast<glm::mat4*>(ptr), kMaxBoneMatrices, boneCount);
+                skinnedBatches = BuildSkinnedRenderBatches(
+                    mSceneManager->GetRenderSnapshot(), mSceneManager->GetAnimationRenderData(),
+                    static_cast<glm::mat4*>(ptr),
+                    kMaxBoneMatrices, boneCount);
                 vmaUnmapMemory(mAllocator.allocator, mBoneSSBO.allocation);
             }
 
@@ -1921,6 +1971,9 @@ namespace engine {
                 for (const auto& source : cloneSources) {
                     RenderBatch clone = source;
                     clone.transform = portalTransitionCloneMap * source.transform;
+					// The clone has a derived transform and therefore cannot reuse
+					// the source Snapshot's GPU instance entry.
+					clone.instanceIndex = UINT32_MAX;
                     clone.clipPlane = portalTransitionCloneClipPlane;
                     clone.castShadow = false;
                     clone.isPortalClone = true;
@@ -2144,6 +2197,7 @@ namespace engine {
                 sceneUniforms,
                 mPipeLayout.handle,
                 mSceneDescriptors,
+				mInstanceDescriptorSets[mFrameIndex % mInstanceDescriptorSets.size()],
                 mMeshPositions,
                 mMeshTexCoords,
                 mMeshNormals,
@@ -2329,9 +2383,170 @@ namespace engine {
             uint32_t baseMaterialIdx;
         };
 
-        // 【新增】：专注 GPU 上传的纯粹渲染接口
-        ModelAssetOffsets RegisterModelAssets(EngineModel& newModel)
+        struct RenderableAssetRecord {
+            uint32_t meshIndex = 0;
+            uint32_t materialIndex = 0;
+        };
+
+        // Resolve the stable scene-facing identity to the renderer's current
+        // mesh/material indices. GPU handles remain private to Renderer.
+        const RenderableAssetRecord* ResolveRenderableAsset(RenderableAssetId id) const
         {
+            if (id >= mRenderableAssets.size()) {
+                return nullptr;
+            }
+            return &mRenderableAssets[id];
+        }
+
+        std::optional<RenderableAssetId> FindRenderableAssetId(
+            uint32_t meshIndex,
+            uint32_t materialIndex) const
+        {
+            const auto it = mRenderableAssetIds.find(
+                MakeRenderableAssetKey(meshIndex, materialIndex));
+            if (it == mRenderableAssetIds.end()) {
+                return std::nullopt;
+            }
+            return it->second;
+        }
+
+        std::vector<RenderBatch> BuildRenderBatches(const RenderSnapshot& snapshot)
+        {
+            std::vector<RenderBatch> batches;
+            batches.reserve(snapshot.instances.size());
+			for (size_t instanceIndex = 0; instanceIndex < snapshot.instances.size(); ++instanceIndex) {
+				const RenderInstance& instance = snapshot.instances[instanceIndex];
+                const RenderableAssetRecord* asset = ResolveRenderableAsset(
+                    instance.renderableAssetId);
+                if (!asset) {
+                    std::println("Renderer skipped missing renderable asset {}", instance.renderableAssetId);
+                    continue;
+                }
+
+                RenderBatch batch{};
+                batch.meshIndex = asset->meshIndex;
+                batch.materialIndex = asset->materialIndex;
+                batch.transform = instance.worldTransform;
+                batch.alphaMultiplier = instance.opacity;
+                batch.castShadow = instance.castShadow;
+                batch.renderableAssetId = instance.renderableAssetId;
+				batch.instanceIndex = static_cast<uint32_t>(instanceIndex);
+                batches.push_back(batch);
+            }
+
+            const glm::vec3 cameraPosition = snapshot.hasCamera
+                ? snapshot.camera.worldPosition : glm::vec3(0.0f);
+            std::stable_sort(batches.begin(), batches.end(), [&](const RenderBatch& left,
+                                                                 const RenderBatch& right) {
+                const auto makeOrderingInput = [&](const RenderBatch& batch) {
+                    return rendering::RenderOrderingInput{
+                        batch.renderableAssetId,
+                        batch.transform,
+                        batch.alphaMultiplier,
+                        batch.materialIndex < mModel.materials.size() &&
+                            mModel.materials[batch.materialIndex].alphaBlend
+                    };
+                };
+                return rendering::DrawsBefore(
+                    makeOrderingInput(left), makeOrderingInput(right), cameraPosition);
+            });
+            for (uint32_t instanceIndex = 0; instanceIndex < batches.size(); ++instanceIndex) {
+                batches[instanceIndex].instanceIndex = instanceIndex;
+            }
+            return batches;
+        }
+
+        void UploadInstanceData(const std::vector<RenderBatch>& batches)
+        {
+            const size_t required = batches.size();
+            if (required > mInstanceBufferCapacity) {
+                // A resize is only allowed after the GPU has finished all
+                // frames that could still reference the old host buffer.
+                vkDeviceWaitIdle(mWindow.device);
+                while (mInstanceBufferCapacity < required) mInstanceBufferCapacity *= 2;
+                for (auto& buffer : mInstanceBuffers) {
+                    buffer = lut::create_buffer(mAllocator,
+                        mInstanceBufferCapacity * sizeof(rendering::GpuInstanceData),
+                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+                }
+				for (size_t index = 0; index < mInstanceBuffers.size(); ++index) {
+					UpdateInstanceDescriptor(index);
+				}
+            }
+            lut::Buffer& buffer = mInstanceBuffers[mFrameIndex % mInstanceBuffers.size()];
+            void* mapped = nullptr;
+            vmaMapMemory(mAllocator.allocator, buffer.allocation, &mapped);
+            auto* output = static_cast<rendering::GpuInstanceData*>(mapped);
+            for (size_t index = 0; index < required; ++index) {
+                RenderInstance instance{};
+                instance.worldTransform = batches[index].transform;
+                instance.opacity = batches[index].alphaMultiplier;
+                output[index] = rendering::MakeGpuInstanceData(instance);
+            }
+            vmaUnmapMemory(mAllocator.allocator, buffer.allocation);
+        }
+
+		void UpdateInstanceDescriptor(size_t index)
+		{
+			VkDescriptorBufferInfo bufferInfo{ mInstanceBuffers[index].buffer, 0, VK_WHOLE_SIZE };
+			VkWriteDescriptorSet write{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+			write.dstSet = mInstanceDescriptorSets[index];
+			write.dstBinding = 0;
+			write.descriptorCount = 1;
+			write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+			write.pBufferInfo = &bufferInfo;
+			vkUpdateDescriptorSets(mWindow.device, 1, &write, 0, nullptr);
+		}
+
+        std::vector<RenderBatch> BuildSkinnedRenderBatches(
+            const RenderSnapshot& snapshot, const AnimationRenderData& animationData,
+            glm::mat4* boneBuffer,
+            size_t maxBones, size_t& outBoneCount) const
+        {
+            std::vector<RenderBatch> batches;
+            batches.reserve(snapshot.skinnedInstances.size());
+            size_t boneOffset = 0;
+
+            for (const SkinnedRenderInstance& instance : snapshot.skinnedInstances) {
+                const RenderableAssetRecord* asset = ResolveRenderableAsset(instance.renderableAssetId);
+                if (!asset || instance.skinInstanceId >= animationData.skinPalettes.size()) {
+                    std::println("Renderer skipped skinned renderable with invalid asset or skin data");
+                    continue;
+                }
+                const std::vector<glm::mat4>& palette =
+                    animationData.skinPalettes[instance.skinInstanceId];
+                const size_t boneCount = palette.size();
+                if (boneCount == 0 || boneOffset + boneCount > maxBones) continue;
+
+                if (boneBuffer) {
+                    std::memcpy(boneBuffer + boneOffset, palette.data(),
+                                boneCount * sizeof(glm::mat4));
+                }
+                RenderBatch batch{};
+                batch.meshIndex = asset->meshIndex;
+                batch.materialIndex = asset->materialIndex;
+                batch.transform = instance.worldTransform;
+                batch.alphaMultiplier = instance.opacity;
+                batch.castShadow = instance.castShadow;
+                batch.isSkinned = true;
+                batch.boneBaseIndex = static_cast<uint32_t>(boneOffset);
+                batch.renderableAssetId = instance.renderableAssetId;
+                batches.push_back(batch);
+                boneOffset += boneCount;
+            }
+            outBoneCount = boneOffset;
+            return batches;
+        }
+
+        // 【新增】：专注 GPU 上传的纯粹渲染接口
+        ModelAssetOffsets RegisterModelAssets(const std::string& normalizedPath,
+                                              EngineModel& newModel)
+        {
+            if (const auto existing = mModelAssetOffsets.find(normalizedPath);
+                existing != mModelAssetOffsets.end()) {
+                return existing->second;
+            }
             uint32_t baseTextureIdx = static_cast<uint32_t>(mModelTextures.size());
             uint32_t baseMaterialIdx = static_cast<uint32_t>(mModel.materials.size());
             uint32_t baseMeshIdx = static_cast<uint32_t>(mModel.meshes.size());
@@ -2363,6 +2578,14 @@ namespace engine {
                 mesh.materialIndex += baseMaterialIdx;
                 mModel.meshes.push_back(mesh);
                 UploadSingleMesh(mesh);
+
+                const uint32_t globalMeshIndex =
+                    static_cast<uint32_t>(mModel.meshes.size() - 1);
+                const RenderableAssetId id =
+                    static_cast<RenderableAssetId>(mRenderableAssets.size());
+                mRenderableAssets.push_back({ globalMeshIndex, mesh.materialIndex });
+                mRenderableAssetIds.emplace(
+                    MakeRenderableAssetKey(globalMeshIndex, mesh.materialIndex), id);
             }
 
             // 4. 更新渲染器维护的全局场景实例列表 (剥离了物理逻辑)
@@ -2373,7 +2596,9 @@ namespace engine {
             }
 
             // 把偏移量返回给外面的 SceneManager，让它去配置 ECS
-            return { baseMeshIdx, baseMaterialIdx };
+            const ModelAssetOffsets offsets{ baseMeshIdx, baseMaterialIdx };
+            mModelAssetOffsets.emplace(normalizedPath, offsets);
+            return offsets;
         }
         // add an entire model file to the renderer and physics scene
     //    void load_additional_model(const char* path, bool isStatic, float mass = 1.0f, const glm::mat4& initialTransform = glm::mat4(1.0f), bool isCompound = false, bool isC = false)
@@ -2565,13 +2790,17 @@ namespace engine {
                 if (mesh.isSkinned) {
                     UploadSkinningBuffers(mesh, meshIdx);
                 }
+                const RenderableAssetId assetId =
+                    static_cast<RenderableAssetId>(mRenderableAssets.size());
+                mRenderableAssets.push_back({ meshIdx, mesh.materialIndex });
+                mRenderableAssetIds.emplace(
+                    MakeRenderableAssetKey(meshIdx, mesh.materialIndex), assetId);
+                if (mSceneManager) {
+                    mSceneManager->RegisterRenderableAssetId(meshIdx, mesh.materialIndex, assetId);
+                }
             }
 
-            // 4. Apply initial transform
-            for (auto& inst : newModel.scenes)
-                inst.transform = initialTransform * inst.transform;
-
-            // 5. Register with AnimationSystem and create ECS entities
+            // 4. Register with AnimationSystem and create ECS entities
             uint32_t baseSkinIdx = 0, baseAnimIdx = 0;
             if (mAnimationSystem) {
                 auto reg = mAnimationSystem->register_model(newModel);
@@ -2579,11 +2808,12 @@ namespace engine {
                 baseAnimIdx = reg.baseAnimIndex;
             }
 
-            if (mSceneManager)
+            if (mSceneManager) {
                 mSceneManager->load_animated_model(newModel, baseMeshIdx, baseMatIdx,
-                    baseSkinIdx, baseAnimIdx);
+                    baseSkinIdx, baseAnimIdx, initialTransform);
+            }
 
-            // 6. Merge scenes into global model
+            // 5. Merge scenes into global model
             for (auto& inst : newModel.scenes) {
                 inst.meshIndex += baseMeshIdx;
                 mModel.scenes.push_back(inst);
@@ -3431,7 +3661,7 @@ void InitSkybox()
         std::vector<lut::Semaphore>   mImageAvailable;
         std::vector<lut::Semaphore>   mRenderFinished;
 
-        lut::DescriptorSetLayout mSceneLayout, mObjectLayout, mPostLayout;
+        lut::DescriptorSetLayout mSceneLayout, mObjectLayout, mInstanceLayout, mPostLayout;
         lut::PipelineLayout      mPipeLayout, mPostPipeLayout;
 
         lut::Pipeline mPipe, mAlphaPipe;
@@ -3447,6 +3677,14 @@ void InitSkybox()
         EngineModel                    mModel;
         std::vector<lut::Image>        mModelTextures;
         std::vector<lut::ImageView>    mModelTextureViews;
+        std::vector<RenderableAssetRecord> mRenderableAssets;
+        std::unordered_map<uint64_t, RenderableAssetId> mRenderableAssetIds;
+        std::unordered_map<std::string, ModelAssetOffsets> mModelAssetOffsets;
+
+        static uint64_t MakeRenderableAssetKey(uint32_t meshIndex, uint32_t materialIndex)
+        {
+            return (static_cast<uint64_t>(meshIndex) << 32) | materialIndex;
+        }
 
         lut::Image     mDefaultGrayTex;
         lut::ImageView mDefaultGrayView;
@@ -3496,6 +3734,11 @@ void InitSkybox()
         // UBOs
         lut::Buffer              mSceneUBO;
         std::vector<lut::Buffer> mMosaicUBOs;
+
+        static constexpr size_t kFramesInFlight = 2;
+        size_t mInstanceBufferCapacity = 256;
+        std::array<lut::Buffer, kFramesInFlight> mInstanceBuffers;
+		std::array<VkDescriptorSet, kFramesInFlight> mInstanceDescriptorSets{};
 
         // Descriptor sets
         VkDescriptorSet                mSceneDescriptors = VK_NULL_HANDLE;
@@ -3698,6 +3941,11 @@ void InitSkybox()
         private:
             // 存储每个模型专属的照片
             std::unordered_map<std::string, ThumbnailAsset> mThumbnailAssets;
+			// Content Browser must never synchronously render every missing model
+			// thumbnail while ImGui is drawing a directory. Cache misses use the
+			// fallback icon until a future background thumbnail worker populates
+			// the disk cache.
+			std::unordered_set<std::string> mModelThumbnailCacheMisses;
             std::unordered_map<std::string, ThumbnailAsset> mContentBrowserImageAssets; //缓存内容浏览器按路径加载的普通图片
 
             // 共用的深度缓冲

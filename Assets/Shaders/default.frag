@@ -226,7 +226,7 @@ void main()
 
     float finalAlpha = texColor.a * pc.baseColorFactor.a;
 
-    if (finalAlpha < pc.alphaCutoff) {
+    if (pc.alphaCutoff >= 0.0 && finalAlpha < pc.alphaCutoff) {
         discard;
     }
 

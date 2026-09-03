@@ -292,13 +292,14 @@ namespace engine {
 		// 如果你确定这个模型不需要任何物理碰撞，可以加上这几行把它剥掉
 		// 如果你希望玩家能撞到复活点，那就把这几行注释掉
 		if (m_checkpointBeacon.is_valid()) {
+			auto checkpointRenderable = m_scene->GetFirstRenderableEntity(m_checkpointBeacon);
 			auto& world = m_scene->get_world();
 			ScopedFlecsDefer defer(world);
 			world.query<const PhysicsBody>()
 				.each([&](flecs::entity e, const PhysicsBody& pb) {
 				// 只清理属于这个信标的物理体（这里假设信标比较简单，只有一个 Mesh）
 				// 为安全起见，这里提供一个简单的剥离：
-				if (e.has<PhysicsBody>() && e.id() == m_checkpointBeacon.id()) {
+				if (checkpointRenderable.is_valid() && e.id() == checkpointRenderable.id()) {
 					JPH::BodyID bid(e.get<PhysicsBody>().bodyID);
 					JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
 					if (bi.IsAdded(bid)) {
@@ -354,7 +355,7 @@ namespace engine {
 		glm::mat4 bikeAnchorWorld = glm::mat4(0.0f); // sentinel: [3][3]==0 means anchor not found
 
 		m_render->load_animated_model("Assets/Models/character.glb", FinalPos);
-		flecs::entity playerBike = m_scene->LoadModel(m_render, "Assets/Models/tbikeWithAnchor.glb", engine::ModelPhysicsType::CustomC, 90.0f, BikeSpawnPos);
+		m_scene->LoadModel(m_render, "Assets/Models/tbikeWithAnchor.glb", engine::ModelPhysicsType::CustomC, 90.0f, BikeSpawnPos);
 
 		// 3. ��ʼ������������
 		m_bikeController = std::make_unique<BikeController>(m_physics->GetJoltSystem(), m_input, mState);
@@ -373,6 +374,14 @@ namespace engine {
 
 		m_bikeController->SetAudioSystem(m_audio);
 		flecs::entity bikeEntity = m_scene->find_entity("Bike_0");
+		if (!bikeEntity.is_valid()) {
+			m_scene->get_world().query<const CompoundParent>()
+				.each([&](flecs::entity entity, const CompoundParent&) {
+					if (!bikeEntity.is_valid()) {
+						bikeEntity = entity;
+					}
+				});
+		}
 		m_bikeEntity = bikeEntity;
 		if (bikeEntity.is_valid()) {
 			uint32_t bikeBodyID = JPH::BodyID::cInvalidBodyID;
@@ -518,7 +527,14 @@ namespace engine {
 				world.query<SkinComponent>()
 					.each([&](flecs::entity e, SkinComponent&) {
 					e.set<RiderBinding>({ bikeEntity.id(), seatOffset });
-					e.set<RiderIKComponent>(rik);   // copy to each mesh part
+					// The imported bike currently has no usable Anchor node.  Its
+					// part transforms are therefore not valid IK targets; applying
+					// the rider IK in that state can collapse the whole skeleton.
+					// Keep the character in its valid glTF rest pose until the
+					// anchor import is wired up.
+					if (anchorFound) {
+						e.set<RiderIKComponent>(rik);
+					}
 					if (!e.has<AnimationComponent>()) {
 						AnimationComponent ac{};
 						ac.animIndex = -1;   // no clip �� rest pose; IK still runs
@@ -533,6 +549,9 @@ namespace engine {
 
 				printf("[App] Rider bound (2 mesh parts) -> bike '%s'\n",
 					bikeEntity.name() ? bikeEntity.name() : "?");
+				if (!anchorFound) {
+					printf("[App] Rider IK disabled: bike Anchor node is unavailable.\n");
+				}
 			}
 			else {
 				printf("[App] Warning: rider bind failed (char=%d bike=%d)\n",
@@ -543,7 +562,7 @@ namespace engine {
 		//collision event test
 		{
 			std::string bikeBodyIDStr;
-			if (bikeEntity.has<CompoundParent>())
+			if (bikeEntity.is_valid() && bikeEntity.has<CompoundParent>())
 				bikeBodyIDStr = std::to_string(bikeEntity.get<CompoundParent>().bodyID);
 
 			m_event->Subscribe(EventType::Collision, [this, bikeBodyIDStr](Event& e) {
@@ -667,7 +686,7 @@ namespace engine {
 		//light
 		glm::mat4 localLightOffset = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.7f, 1.7f));
 		flecs::entity headlight = m_scene->create_light_entity("headlight", engine::LightType::Spot, glm::vec3(1.0f, 0.95f, 0.85f), 15.0f, localLightOffset, 40.0f, glm::vec3(0.0f, 0, 1.0f), 15.0f, 25.0f);
-		flecs::entity playerLight = m_scene->create_light_entity("playerLight", engine::LightType::Point, glm::vec3(1.0f, 1.0f, 1.0f), 1.0f, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 0.0f)), 20.0f, glm::vec3(0, -1, 0), 0, 0, playerBike);
+		flecs::entity playerLight = m_scene->create_light_entity("playerLight", engine::LightType::Point, glm::vec3(1.0f, 1.0f, 1.0f), 1.0f, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 0.0f)), 20.0f, glm::vec3(0, -1, 0), 0, 0, bikeEntity);
 		playerLight.get_mut<engine::LightComponent>().specularMultiplier = 0.0f;
 		if (bikeEntity.is_valid())
 		{
@@ -724,10 +743,11 @@ namespace engine {
 			
 			uint32_t collectMeshIdx = 0;
 			uint32_t collectMatIdx  = 0;
-			if (gasAsset.is_valid()) {
+			flecs::entity gasRenderable = m_scene->GetFirstRenderableEntity(gasAsset);
+			if (gasRenderable.is_valid()) {
 
-				if (gasAsset.has<MeshComponent>())     collectMeshIdx = gasAsset.get<MeshComponent>().meshIndex;
-				if (gasAsset.has<MaterialComponent>()) collectMatIdx  = gasAsset.get<MaterialComponent>().materialIndex;
+				collectMeshIdx = gasRenderable.get<MeshComponent>().meshIndex;
+				collectMatIdx = gasRenderable.get<MaterialComponent>().materialIndex;
 
 				auto& world = m_scene->get_world();
 				ScopedFlecsDefer defer(world);
@@ -966,9 +986,10 @@ namespace engine {
 			// Get base mesh/mat indices from the first entity, then hide & strip physics
 			// from ALL entities this load created (one per GLB mesh node)
 			uint32_t springMeshIdx = 0, springMatIdx = 0;
-			if (springAsset.is_valid()) {
-				if (springAsset.has<MeshComponent>())     springMeshIdx = springAsset.get<MeshComponent>().meshIndex;
-				if (springAsset.has<MaterialComponent>()) springMatIdx  = springAsset.get<MaterialComponent>().materialIndex;
+			flecs::entity springRenderable = m_scene->GetFirstRenderableEntity(springAsset);
+			if (springRenderable.is_valid()) {
+				springMeshIdx = springRenderable.get<MeshComponent>().meshIndex;
+				springMatIdx = springRenderable.get<MaterialComponent>().materialIndex;
 				auto& world = m_scene->get_world();
 				ScopedFlecsDefer defer(world);
 				world.query<const MeshComponent>()
@@ -1045,9 +1066,10 @@ namespace engine {
 			// Get base mesh/mat indices from the first entity, then hide & strip physics
 			// from ALL entities this load created (one per GLB mesh node)
 			uint32_t hornMeshIdx = 0, hornMatIdx = 0;
-			if (hornAsset.is_valid()) {
-				if (hornAsset.has<MeshComponent>())     hornMeshIdx = hornAsset.get<MeshComponent>().meshIndex;
-				if (hornAsset.has<MaterialComponent>()) hornMatIdx  = hornAsset.get<MaterialComponent>().materialIndex;
+			flecs::entity hornRenderable = m_scene->GetFirstRenderableEntity(hornAsset);
+			if (hornRenderable.is_valid()) {
+				hornMeshIdx = hornRenderable.get<MeshComponent>().meshIndex;
+				hornMatIdx = hornRenderable.get<MaterialComponent>().materialIndex;
 				auto& world = m_scene->get_world();
 				ScopedFlecsDefer defer(world);
 				world.query<const MeshComponent>()
@@ -1124,8 +1146,8 @@ namespace engine {
 
 			// Collect ALL mesh nodes of the radio (base meshIdx and above) so the
 			// entire model disappears on pickup, not just the first node.
-			if (m_radioPickupEntity.is_valid() && m_radioPickupEntity.has<MeshComponent>()) {
-				uint32_t radioBaseMesh = m_radioPickupEntity.get<MeshComponent>().meshIndex;
+			if (auto radioRenderable = m_scene->GetFirstRenderableEntity(m_radioPickupEntity); radioRenderable.is_valid()) {
+				uint32_t radioBaseMesh = radioRenderable.get<MeshComponent>().meshIndex;
 				m_scene->get_world().query<const MeshComponent>()
 					.each([&](flecs::entity e, const MeshComponent& mc) {
 						if (mc.meshIndex >= radioBaseMesh)
@@ -1224,9 +1246,10 @@ namespace engine {
 				engine::ModelPhysicsType::Static, 0.0f, kNewsTransform);
 
 			uint32_t newsMeshIdx = 0, newsMatIdx = 0;
-			if (newsAsset.is_valid()) {
-				if (newsAsset.has<MeshComponent>())     newsMeshIdx = newsAsset.get<MeshComponent>().meshIndex;
-				if (newsAsset.has<MaterialComponent>()) newsMatIdx  = newsAsset.get<MaterialComponent>().materialIndex;
+			flecs::entity newsRenderable = m_scene->GetFirstRenderableEntity(newsAsset);
+			if (newsRenderable.is_valid()) {
+				newsMeshIdx = newsRenderable.get<MeshComponent>().meshIndex;
+				newsMatIdx = newsRenderable.get<MaterialComponent>().materialIndex;
 				auto& world = m_scene->get_world();
 				ScopedFlecsDefer defer(world);
 				world.query<const MeshComponent>()
@@ -1280,9 +1303,10 @@ namespace engine {
 				engine::ModelPhysicsType::Static, 0.0f, glm::mat4(1.0f));
 
 			uint32_t satMeshIdx = 0, satMatIdx = 0;
-			if (satAsset.is_valid()) {
-				if (satAsset.has<MeshComponent>())     satMeshIdx = satAsset.get<MeshComponent>().meshIndex;
-				if (satAsset.has<MaterialComponent>()) satMatIdx  = satAsset.get<MaterialComponent>().materialIndex;
+			flecs::entity satRenderable = m_scene->GetFirstRenderableEntity(satAsset);
+			if (satRenderable.is_valid()) {
+				satMeshIdx = satRenderable.get<MeshComponent>().meshIndex;
+				satMatIdx = satRenderable.get<MaterialComponent>().materialIndex;
 				auto& world = m_scene->get_world();
 				ScopedFlecsDefer defer(world);
 				world.query<const MeshComponent>()

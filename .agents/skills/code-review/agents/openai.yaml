@@ -1,0 +1,3 @@
+interface:
+  display_name: "代码审查"
+  short_description: "按规范和 spec 审查 diff"

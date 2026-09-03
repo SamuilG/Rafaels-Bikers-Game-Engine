@@ -665,6 +665,13 @@ namespace engine {
         vkCmdSetScissor(cmd, 0, 1, &sc);
 
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mPipeLayout.handle, 0, 1, &mSceneDescriptors, 0, nullptr);
+		// default.vert now declares the frame instance SSBO at set 2. Thumbnail
+		// draws keep pc._pad at zero and use their push-constant transform, but
+		// Vulkan still requires the statically-used descriptor to be bound.
+		VkDescriptorSet thumbnailInstanceDescriptor =
+			mInstanceDescriptorSets[mFrameIndex % mInstanceDescriptorSets.size()];
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mPipeLayout.handle,
+			2, 1, &thumbnailInstanceDescriptor, 0, nullptr);
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mThumbnailAlphaPipe.handle);
 
         const VkDeviceSize offset = 0;
@@ -830,22 +837,22 @@ namespace engine {
         auto it = mThumbnailAssets.find(modelPath);
         if (it != mThumbnailAssets.end()) return it->second.guiSet;
 
+		const VkDescriptorSet fallback = GetImGuiTextureDescriptor(cfg::ParticleTextures[0]);
+		if (mModelThumbnailCacheMisses.contains(modelPath)) {
+			return fallback;
+		}
+
         if (TryLoadModelThumbnailFromCache(modelPath)) {
             return mThumbnailAssets[modelPath].guiSet;
         }
 
-        try {
-            GenerateModelThumbnail(modelPath);
-        }
-        catch (const std::exception&) {
-            // 缩略图生成失败时退回默认图标，避免整个内容浏览器崩掉
-            return GetImGuiTextureDescriptor(cfg::ParticleTextures[0]);
-        }
-
-        it = mThumbnailAssets.find(modelPath);
-        if (it != mThumbnailAssets.end()) return it->second.guiSet;
-
-        return GetImGuiTextureDescriptor(cfg::ParticleTextures[0]);
+		// Generating a model thumbnail waits for the graphics queue so that it
+		// can read pixels back to disk. Doing that once per tile freezes the UI
+		// when a directory first contains many models. Keep the browser live and
+		// show the fallback; thumbnail baking belongs to an explicit/background
+		// workflow, never this immediate-mode UI query.
+		mModelThumbnailCacheMisses.insert(modelPath);
+		return fallback;
     }
 
     // 获取内容浏览器资源缩略图：

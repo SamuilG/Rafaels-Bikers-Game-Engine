@@ -1,0 +1,11 @@
+<Project>
+  <!--
+    This repository builds and links its vendored GLFW project as a static
+    library.  The machine-wide vcpkg MSBuild integration otherwise injects
+    every installed debug library (including dynamic glfw3.lib), which makes
+    Engine.exe depend on glfw3.dll at runtime.
+  -->
+  <PropertyGroup>
+    <VcpkgEnabled>false</VcpkgEnabled>
+  </PropertyGroup>
+</Project>

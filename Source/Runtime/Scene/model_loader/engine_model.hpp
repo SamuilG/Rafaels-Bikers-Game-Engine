@@ -38,7 +38,10 @@ struct EngineMaterial {
 
     float metallicFactor = 1.0f;
     float roughnessFactor = 1.0f;
-    float alphaCutoff = 0.5f;
+    // Negative means that this material is not alpha-masked.  glTF only
+    // supplies a meaningful cutoff for alphaMode == MASK; applying the
+    // default 0.5 cutoff to opaque materials can discard an entire mesh.
+    float alphaCutoff = -1.0f;
     float _pad2;
 
     bool  alphaBlend = false;
@@ -64,6 +67,7 @@ struct EngineInstance {
     std::string name;    // for entity naming in SceneManager
     int skinIndex = -1;  // index into EngineModel::skins (-1 = not skinned)
     int nodeIndex = -1;  // gltf node index (for animation mapping)
+    int parentNodeIndex = -1;
 };
 
 // One node in the GLTF node hierarchy (needed for joint matrix computation)
