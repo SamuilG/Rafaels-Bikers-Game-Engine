@@ -1,4 +1,5 @@
 #include "bikeController.hpp"
+#include "BikeLateralGrip.hpp"
 #include "../AudioSystem/AudioSystem.hpp"
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Physics/Body/BodyInterface.h>
@@ -182,8 +183,17 @@ namespace engine
 
         JPH::Vec3 currentVel = bi.GetLinearVelocity(id);
         float lateralSpeed = currentVel.Dot(rightDirJPH);
-        float lateralGripStiffness = 5000.0f; 
-        bi.AddForce(id, rightDirJPH * (-lateralSpeed * lateralGripStiffness));
+        float inverseMass = 0.0f;
+        {
+            JPH::BodyLockRead lock(m_joltPhysics->GetBodyLockInterface(), id);
+            if (lock.Succeeded() && lock.GetBody().IsDynamic()) {
+                inverseMass = lock.GetBody().GetMotionProperties()->GetInverseMass();
+            }
+        }
+        const float lateralImpulse = CalculateBikeLateralGripImpulse(lateralSpeed, inverseMass, dt);
+        if (lateralImpulse != 0.0f) {
+            bi.AddImpulse(id, rightDirJPH * lateralImpulse);
+        }
 
         // =========================================================
         // �������淨�������ҽ�������� (Pedal Mashing Mechanic)

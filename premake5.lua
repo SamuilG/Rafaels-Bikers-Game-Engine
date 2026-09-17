@@ -256,29 +256,24 @@ workspace "EngineWorkspace"
             "Assets/Shaders/*.geom"
         }
 
-        -- Platform-specific variables for compiler path and directory creation
-        local glslc_path = ""
-        local mkdir_cmd = ""
-
-        filter "system:windows"
-            glslc_path = "\"%{wks.location}/glslc.exe\""
-            mkdir_cmd = "if not exist \"%{wks.location}\\Assets\\Shaders\\spirv\" mkdir \"%{wks.location}\\Assets\\Shaders\\spirv\""
-            
-        filter "system:linux"
-            glslc_path = "glslc"
-            mkdir_cmd = "mkdir -p \"%{wks.location}/Assets/Shaders/spirv\""
-            
-        filter "*" 
-
         -- Custom build commands for compiling shaders
-        filter "files:Assets/Shaders/*.vert or files:Assets/Shaders/*.frag or files:Assets/Shaders/*.comp or files:Assets/Shaders/*.geom"
+        local shader_filter = "files:Assets/Shaders/*.vert or files:Assets/Shaders/*.frag or files:Assets/Shaders/*.comp or files:Assets/Shaders/*.geom"
+        filter (shader_filter)
             buildmessage "Compiling shader %{file.name}..."
-            
-            buildcommands {
-                mkdir_cmd,
-                glslc_path .. " \"%{file.abspath}\" -o \"%{wks.location}/Assets/Shaders/spirv/%{file.name}.spv\""
-            }
-            
+
             -- Enable fast incremental builds
             buildoutputs { "%{wks.location}/Assets/Shaders/spirv/%{file.name}.spv" }
+
+        -- Filters select Premake settings; they do not condition Lua assignments.
+        filter { "system:windows", shader_filter }
+            buildcommands {
+                "{MKDIR} \"%{wks.location}/Assets/Shaders/spirv\"",
+                "\"%{wks.location}/glslc.exe\" \"%{file.abspath}\" -o \"%{wks.location}/Assets/Shaders/spirv/%{file.name}.spv\""
+            }
+
+        filter { "system:linux", shader_filter }
+            buildcommands {
+                "{MKDIR} \"%{wks.location}/Assets/Shaders/spirv\"",
+                "glslc \"%{file.abspath}\" -o \"%{wks.location}/Assets/Shaders/spirv/%{file.name}.spv\""
+            }
         filter "*"

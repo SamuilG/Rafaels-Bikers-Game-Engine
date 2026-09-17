@@ -15,6 +15,19 @@ The engine currently powers a fast-paced bicycle action game requiring high-spee
 * **Audio**: Miniaudio
 * **UI/Tooling**: Dear ImGui
 
+## Building on Windows
+
+Install Visual Studio with the **Desktop development with C++** workload and a Windows SDK. Run the bundled Premake from the repository root in PowerShell:
+
+```powershell
+# Visual Studio 2026 (v145 toolset)
+.\premake5.exe vs2026
+```
+
+Open `EngineWorkspace.slnx` in Visual Studio 2026, select `Debug | x64`, and build the solution. The bundled `glslc.exe` compiles shaders automatically. The executable is written to `Bin/Engine.exe`; the generated debugger settings use the repository root as the working directory to locate assets.
+
+For Visual Studio 2022, use `.\premake5.exe vs2022` and open `EngineWorkspace.sln`; this requires the v143 C++ toolset. An MSB8020 error naming v143 means that toolset is missing. If using Visual Studio 2026 with v145, regenerate with `vs2026` instead of editing generated project files. Regenerate after changing `premake5.lua` or switching Visual Studio versions.
+
 ## Technical Highlights
 
 | Subsystem | Key Capabilities |

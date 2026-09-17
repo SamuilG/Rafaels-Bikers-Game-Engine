@@ -8,4 +8,5 @@ Cache/
 *.spv
 .xmake/
 *.sln
+*.slnx
 *.vcxproj
