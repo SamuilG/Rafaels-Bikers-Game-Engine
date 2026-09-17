@@ -142,6 +142,17 @@ namespace engine {
 	level::level() = default;
 	level::~level() = default;
 
+	void level::OnParticleGroupRemoved(size_t particleIndex) {
+		const size_t noParticle = static_cast<size_t>(-1);
+		if (particleIndex == noParticle || m_rocketFlameParticleIndex == noParticle) return;
+		if (m_rocketFlameParticleIndex == particleIndex) {
+			m_rocketFlameParticleIndex = noParticle;
+		}
+		else if (m_rocketFlameParticleIndex > particleIndex) {
+			--m_rocketFlameParticleIndex;
+		}
+	}
+
 	RuntimeUiController* level::GetRuntimeUiController() const {
 		return m_render ? m_render->GetRuntimeUiController() : nullptr;
 	}
@@ -239,6 +250,15 @@ namespace engine {
 	void level::Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, GameplayState* state, AnimationSystem* anima, AudioSystem* audio) {
 		InitBase(render);
 		m_render = render;
+		m_rocketFlameParticleIndex = static_cast<size_t>(-1);
+		if (m_render) {
+			m_render->SetParticleGroupRemovedCallback([this](size_t particleIndex) {
+				OnParticleGroupRemoved(particleIndex);
+			});
+			m_render->SetParticleGroupOwnershipQuery([this](size_t particleIndex) {
+				return particleIndex != static_cast<size_t>(-1) && particleIndex == m_rocketFlameParticleIndex;
+			});
+		}
 		m_scene = scene;
 		m_physics = physics;
 		m_input = input;
@@ -2496,6 +2516,11 @@ namespace engine {
 	}
 
 	void level::Shutdown() {
+		if (m_render) {
+			m_render->SetParticleGroupRemovedCallback({});
+			m_render->SetParticleGroupOwnershipQuery({});
+		}
+		m_rocketFlameParticleIndex = static_cast<size_t>(-1);
 
 		RemoveWidget(kRespawnPromptUiPath);
 		RemoveWidget(kAbilityUnlockUiPath);

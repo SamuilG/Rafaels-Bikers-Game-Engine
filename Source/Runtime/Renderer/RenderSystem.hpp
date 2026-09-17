@@ -15,6 +15,7 @@
 #include <print>
 #include <chrono>
 #include <limits>
+#include <iterator>
 #include <vector>
 #include <stdexcept>
 #include <cassert>
@@ -331,6 +332,16 @@ namespace engine {
         std::vector<std::unique_ptr<ParticleSystem>>& GetParticles() { return allParticles; }
         // trigger:
         TriggerSystem& GetTriggerSystem() { return mTriggerSystem; }
+
+        void SetParticleGroupRemovedCallback(std::function<void(size_t)> callback) {
+            mParticleGroupRemovedCallback = std::move(callback);
+        }
+        void SetParticleGroupOwnershipQuery(std::function<bool(size_t)> query) {
+            mParticleGroupOwnershipQuery = std::move(query);
+        }
+        bool IsParticleGroupSceneControlled(size_t index) const {
+            return mParticleGroupOwnershipQuery && mParticleGroupOwnershipQuery(index);
+        }
         //动态安全创建粒子组
         //create particle group
         void AddParticleGroup() {
@@ -390,6 +401,8 @@ namespace engine {
         void RemoveParticleGroup(size_t index) {
             if (index < allParticles.size()) {
                 vkDeviceWaitIdle(mWindow.device);
+                mTriggerSystem.OnParticleGroupRemoved(index);
+                if (mParticleGroupRemovedCallback) mParticleGroupRemovedCallback(index);
                 allParticles.erase(allParticles.begin() + index);
             }
         }
@@ -929,7 +942,7 @@ namespace engine {
             }
             //===========================UI System================================
             // game over debug
-            if (ImGui::IsKeyPressed(ImGuiKey_G))
+            if (!mState->showEngineUi && ImGui::IsKeyPressed(ImGuiKey_G))
             {
                 mState->isGameOver = !mState->isGameOver; // 切换死亡状态进行测试// Toggle game over state for testing
 
@@ -944,7 +957,7 @@ namespace engine {
                 }
             }// game over debug
             // game pause debug
-            if (ImGui::IsKeyPressed(ImGuiKey_H))
+            if (!mState->showEngineUi && ImGui::IsKeyPressed(ImGuiKey_H))
             {
                 mState->isGamePause = !mState->isGamePause; // 切换死亡状态进行测试// Toggle game pause state for testing
 
@@ -970,14 +983,6 @@ namespace engine {
             }
 
 
-            // 1. Ctrl + S 保存项目
-            // io.KeyCtrl 会在左 Ctrl 或右 Ctrl 按下时为 true
-            if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S)) {
-                // 调用我们刚刚写好的高精度 JSON 保存函数
-                EngineUi::SaveProject(mSceneManager, this, "Assets/MySceneSave.json");
-                EngineUi::ShowToast("[ Project Saved Successfully ]");
-                engine::EngineUi::LogPrintf("Project Saved \n");
-            }
 			//debug draw box
             //mDebugRenderer.DrawBox(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
@@ -986,32 +991,25 @@ namespace engine {
             //启动 ImGui 帧// Start ImGui frame
             imguiRenderer.BeginFrame();
 
-            //铺设全屏底层 DockSpace
-            // 必须在绘制任何其他 ImGui 窗口（如 MainMenu, ContentBrowser）之前调用！传 0 表示让 ImGui 自动为我们生成主窗口的 ID
-            if (mState->showEngineUi)
-            {
-                ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
-            }
-
-            //ImGui::DockSpace(ImGui::GetID("MyDockSpace"), ImVec2(0, 0), ImGuiDockNodeFlags_PassthruCentralNode);
-            //调用顶部菜单栏！
-            if (mState->showEngineUi) 
-            {
+            if (mState->showEngineUi) {
                 EngineUi::DrawMainMenuBar(this, mSceneManager, *mState, mAppRunning);
+                if (mState->showEngineUi) {
+                    EngineUi::DrawEditorWorkspace();
+                }
             }
 
             const bool runtimeUiViewportActive = ShouldRenderRuntimeUi();
 
             //start gmae menu
            // 如果游戏还没开始，只画主菜单
-            if (!mState->isGameStarted) {
+            if (!mState->isGameStarted && !mState->showEngineUi) {
                 //EngineUi::DrawMainMenu(this, mAppRunning, mState->isGameStarted);
             }
-            else if (mState->isGameOver) {
+            else if (mState->isGameOver && !mState->showEngineUi) {
                 // gameover UI
                 //EngineUi::DrawGameOver(this, *mState, mAppRunning);
             }
-            else if (mState->isGamePause) {
+            else if (mState->isGamePause && !mState->showEngineUi) {
                 // gameover UI 
                 //EngineUi::DrawGamePause(this, *mState, mAppRunning);
             }
@@ -1080,6 +1078,8 @@ namespace engine {
             // debug: 选中更换材质（方便观察==============
 
                 // 获取全局鼠标位置和 Viewport 数据
+                EngineUi::DrawSceneViewport(m_sceneViewportTexId, this, mSceneManager, view, gizmoProj, mSelectedEntityId, *mState);
+                vpSize = EngineUi::GetSceneViewportSize();
                 ImVec2 mousePosAbs = ImGui::GetMousePos();
                 ImVec2 vpPos = EngineUi::GetSceneViewportPos();
                 //ImVec2 vpSize = EngineUi::GetSceneViewportSize();
@@ -1089,14 +1089,15 @@ namespace engine {
                 float localMouseY = mousePosAbs.y - vpPos.y;
 
                 //判断鼠标是不是真的悬停在 3D 画面内部
-                bool isMouseInViewport = (localMouseX >= 0.0f && localMouseX <= vpSize.x &&
-                    localMouseY >= 0.0f && localMouseY <= vpSize.y);
+                const bool isMouseInViewport = mState->isSceneViewportHovered &&
+                    localMouseX >= 0.0f && localMouseX <= vpSize.x &&
+                    localMouseY >= 0.0f && localMouseY <= vpSize.y;
 
-                //EngineUi::DrawSceneViewport(m_sceneViewportTexId, this, mSceneManager, view, gizmoProj, mSelectedEntityId);
-                EngineUi::DrawSceneViewport(m_sceneViewportTexId, this, mSceneManager, view, gizmoProj, mSelectedEntityId, *mState);
 				
 				//game HUD============================
-                GameUi::DrawHud(this, *mState, EngineUi::GetSceneViewportPos(), EngineUi::GetSceneViewportSize());
+                if (!mState->showEngineUi) {
+                    GameUi::DrawHud(this, *mState, EngineUi::GetSceneViewportPos(), EngineUi::GetSceneViewportSize());
+                }
 
 
                 // Runtime UI
@@ -1110,12 +1111,20 @@ namespace engine {
                 glm::vec3 cameraPos = glm::vec3(glm::inverse(view)[3]); // 提取逆 view 矩阵第 4 列作为位置
 
                 // 给面板加上开关判断：
-                if (mState->showEngineUi && mState->showControlPanel) {
-                    EngineUi::DrawControlPanel(*mState, this, mSceneManager);
+                if (mState->showEngineUi && mState->showRenderSettings) {
+                    EngineUi::DrawRenderSettings(*mState);
+                }
+
+                if (mState->showEngineUi && mState->showParticlePanel) {
+                    EngineUi::DrawParticlePanel(*mState, this, mSelectedEntityId);
+                }
+
+                if (mState->showEngineUi && mState->showConsole) {
+                    EngineUi::DrawConsole(*mState);
                 }
 
                 if (mState->showEngineUi && mState->showContentBrowser) {
-                    EngineUi::DrawContentBrowser(this, mSceneManager);
+                    EngineUi::DrawContentBrowser(this, mSceneManager, *mState);
                 }
 
                 if (mState->showEngineUi && (mState->showSceneHierarchy || mState->showEntityInspector)) {
@@ -1132,6 +1141,8 @@ namespace engine {
 				//debug UI
                 if (mState->showEngineUi && mState->showDebugPanel) {
                     EngineUi::DrawDebugPanel(*mState);
+                }
+                if (mState->showEngineUi && mState->showRuntimeUiDebugPanel) {
                     DrawRuntimeUiDebugPanel();
                 }
 				//audio UI
@@ -1143,17 +1154,21 @@ namespace engine {
                 render_system_ui_editor::Draw(*mState);
 
                 // mouse capture
+                const bool viewportCanPick = isMouseInViewport &&
+                    !ImGui::IsAnyItemActive() &&
+                    !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel) &&
+                    !ImGuizmo::IsUsing();
                 const bool runtimeUiDebugSelectionConsumed =
                     mState->showEngineUi &&
-                    !render_system_ui_editor::WantsMouseCapture() &&
-                    isMouseInViewport &&
+                    !(mState->showGameUiEditor && render_system_ui_editor::WantsMouseCapture()) &&
+                    viewportCanPick &&
                     HandleRuntimeUiDebugSelection();
 
                 if (mState->showEngineUi &&
-                    !render_system_ui_editor::WantsMouseCapture() &&
+                    !(mState->showGameUiEditor && render_system_ui_editor::WantsMouseCapture()) &&
                     !runtimeUiDebugSelectionConsumed &&
                     ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
-                    isMouseInViewport &&
+                    viewportCanPick &&
                     !ImGuizmo::IsOver())
                 {
                     flecs::entity hitEntity = MousePicker::PickEntity(
@@ -1272,26 +1287,29 @@ namespace engine {
             //保存成功提示
             EngineUi::DrawToast(dt);
 
+            const bool editorCapturesKeyboard = mState->showEngineUi &&
+                (ImGui::GetIO().WantCaptureKeyboard || ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeyAlt || ImGui::GetIO().KeySuper ||
+                 (mState->showGameUiEditor && UIEditorWindow::WantsKeyboardCapture()));
             if (mInputSystem && mInputSystem->IsActionPressed("Quit")) {
                 glfwSetWindowShouldClose(mWindow.window, GLFW_TRUE);
             }
 
-            if (mInputSystem->IsActionPressed("BloomToggle")) {
+            if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("BloomToggle")) {
                 mState->bloomEnabled = !mState->bloomEnabled;
                 std::printf("Bloom Effect: %s\n", mState->bloomEnabled ? "ON" : "OFF");
             }
             // 【新增】：处理 IBL 开关
-            if (mInputSystem->IsActionPressed("IBLToggle")) {
+            if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("IBLToggle")) {
                 mState->iblEnabled = !mState->iblEnabled;
                 std::printf("IBL Reflection: %s\n", mState->iblEnabled ? "ON" : "OFF");
             }
             // 【新增】：处理 SSR 开关
-            if (mInputSystem->IsActionPressed("SSRToggle")) {
+            if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("SSRToggle")) {
                 mState->ssrEnabled = !mState->ssrEnabled;
                 std::printf("Screen Space Reflection (SSR): %s\n", mState->ssrEnabled ? "ON" : "OFF");
             }
 
-            if (mInputSystem->IsActionPressed("SSAOToggle")) {
+            if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("SSAOToggle")) {
                 mState->ssaoEnabled = !mState->ssaoEnabled;
                 std::printf("Screen Space Ambient Occlusion (SSAO): %s\n", mState->ssaoEnabled ? "ON" : "OFF");
             }
@@ -1528,11 +1546,11 @@ namespace engine {
 
             // --- Toggle Inputs via InputSystem ---
             if (mInputSystem) {
-                if (mInputSystem->IsActionPressed("ToggleParticles")) {
+                if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("ToggleParticles")) {
                     mState->particlesEnabled = !mState->particlesEnabled;
                     std::printf("Particles: %s\n", mState->particlesEnabled ? "ON" : "OFF");
                 }
-                if (mInputSystem->IsActionPressed("CameraThirdPersonToggle" ) ) {
+                if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("CameraThirdPersonToggle" ) ) {
                     // T
                     mState->thirdPersonMode = !mState->thirdPersonMode;
                     std::printf("Camera: %s\n", mState->thirdPersonMode ? "Third Person" : "Free Fly");
@@ -1551,7 +1569,7 @@ namespace engine {
                 const bool menuBackPressed = menuBackDown && !mMenuBackWasDown;
                 mMenuBackWasDown = menuBackDown;
 
-                if (menuBackPressed && mRuntimeUiController && mRuntimeUiManager) {
+                if (menuBackPressed && !mState->showEngineUi && mRuntimeUiController && mRuntimeUiManager) {
                     constexpr std::string_view kSettingsUiPath = "Assets/ui/Settings.ui.json";
 
                     if (mRuntimeUiController->IsWidgetVisible(kSettingsUiPath)) {
@@ -1564,16 +1582,15 @@ namespace engine {
                 
 #ifndef GAME_ONLY
                 // Debug Render Modes
-                if (mInputSystem->IsActionPressed("Default")) mState->renderMode = 0;
-                if (mInputSystem->IsActionPressed("DebugMipmap")) mState->renderMode = 1;
-                if (mInputSystem->IsActionPressed("DebugDepth")) mState->renderMode = 2;
-                if (mInputSystem->IsActionPressed("DebugDerivatives")) mState->renderMode = 3;
-                if (mInputSystem->IsActionPressed("DebugMosaic")) mState->mosaicEnabled = !mState->mosaicEnabled;
-                if (mInputSystem->IsActionPressed("DebugOverdraw")) mState->renderMode = 4;
-                if (mInputSystem->IsActionPressed("DebugOvershading")) mState->renderMode = 5;
-                if (mInputSystem->IsActionPressed("DebugShadows")) mState->renderMode = 6;
+                if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("Default")) mState->renderMode = 0;
+                if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugMipmap")) mState->renderMode = 1;
+                if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugDepth")) mState->renderMode = 2;
+                if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugDerivatives")) mState->renderMode = 3;
+                if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugMosaic")) mState->mosaicEnabled = !mState->mosaicEnabled;
+                if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugOverdraw")) mState->renderMode = 4;
+                if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugOvershading")) mState->renderMode = 5;
 
-                if (mInputSystem->IsActionPressed("PrintCameraPos")) {
+                if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("PrintCameraPos")) {
                     auto const pos = mState->camera2world[3];
                     std::printf("Camera Pos: %.4f, %.4f, %.4f\n", pos.x, pos.y, pos.z);
                 }
@@ -1582,7 +1599,8 @@ namespace engine {
             //
 
             // Update state
-            update_user_state(*mState, dt, mInputSystem);
+            if (!(mState->showEngineUi && ImGui::GetIO().WantTextInput))
+                update_user_state(*mState, dt, mInputSystem);
 
             //// Prepare data for this frame
             //glsl::SceneUniform sceneUniforms{};
@@ -1773,8 +1791,8 @@ namespace engine {
             std::vector<engine::GpuLight> lights;
             if (mSceneManager) {
                 mSceneManager->get_light_data(lights);
-                sceneUniforms.lightCount = static_cast<uint32_t>(lights.size());
-                for (size_t i = 0; i < lights.size() && i < 16; ++i) {
+                sceneUniforms.lightCount = static_cast<uint32_t>(std::min(lights.size(), std::size(sceneUniforms.lights)));
+                for (size_t i = 0; i < sceneUniforms.lightCount; ++i) {
                     sceneUniforms.lights[i] = lights[i];
                 }
             }
@@ -1798,7 +1816,7 @@ namespace engine {
             // 1. 在提交命令前，把这一帧收集的线上传到 GPU
             mDebugRenderer.Upload(mAllocator);
 
-            float currentBloomStrength = mState->bloomEnabled ? 2.2f : 0.0f;
+            float currentBloomStrength = mState->bloomEnabled ? mState->bloomStrength : 0.0f;
 
             // =========================================================
             // 计算极速特效的平滑系数 (Speed Factor)
@@ -2191,6 +2209,7 @@ namespace engine {
 
                 clearColor,                    // VkClearColorValue aClearColor
                 currentBloomStrength,
+                mState->bloomExposure,
 
                 // 【新增】：将极速管线和目标传给 rendering.cpp
                 mSpeedPostPipe.handle,
@@ -3749,6 +3768,10 @@ void InitSkybox()
         DebugRenderer mDebugRenderer;
         // trigger
         TriggerSystem mTriggerSystem;
+
+    private:
+        std::function<void(size_t)> mParticleGroupRemovedCallback;
+        std::function<bool(size_t)> mParticleGroupOwnershipQuery;
     
     };
 

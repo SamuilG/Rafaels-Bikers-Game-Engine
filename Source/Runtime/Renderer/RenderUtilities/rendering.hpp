@@ -67,6 +67,7 @@ void record_commands(
 	ImageAndView const& aCompositeOutput, // modified from aFinalSceneColor; used for bloom transfer
 	VkClearColorValue aClearColor,
 	float aBloomStrength,
+	float aExposure,
 
 	// ==============================================================
 	// 极速后处理效果

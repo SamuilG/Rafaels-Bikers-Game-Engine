@@ -80,6 +80,26 @@ namespace engine {
         mTriggers.clear();
     }
 
+    void TriggerSystem::OnParticleGroupRemoved(size_t particleIndex) {
+        const size_t noParticle = static_cast<size_t>(-1);
+        if (particleIndex == noParticle) return;
+        for (auto& trigger : mTriggers) {
+            if (trigger.particleIndex == particleIndex) {
+                trigger.particleIndex = noParticle;
+            }
+            else if (trigger.particleIndex != noParticle && trigger.particleIndex > particleIndex) {
+                --trigger.particleIndex;
+            }
+        }
+    }
+
+    bool TriggerSystem::HasParticleBinding(size_t particleIndex) const {
+        if (particleIndex == static_cast<size_t>(-1)) return false;
+        return std::any_of(mTriggers.begin(), mTriggers.end(), [particleIndex](const TriggerVolume& trigger) {
+            return trigger.particleIndex == particleIndex;
+        });
+    }
+
     
     void TriggerSystem::ProcessParticleTriggers(const glm::vec3& probePosition, std::vector<std::unique_ptr<ParticleSystem>>& particles) {
         if (particles.empty()) return;

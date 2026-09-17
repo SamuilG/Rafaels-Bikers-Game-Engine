@@ -55,7 +55,7 @@ void main() {
     // ==========================================
     // 3. 叠加 Bloom 并进行色调映射
     // ==========================================
-    vec3 hdrColor = sceneColor + bloomColor * params.bloomStrength; 
+    vec3 hdrColor = (sceneColor + bloomColor * params.bloomStrength) * params.exposure;
 
     // Reinhard 色调映射
     vec3 mapped = hdrColor / (hdrColor + vec3(1.0));

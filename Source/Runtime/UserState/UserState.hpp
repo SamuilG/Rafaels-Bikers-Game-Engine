@@ -12,18 +12,20 @@ namespace engine {
 
 		bool showEngineUi = false;//engine UI toggle with key F1
 
-		bool particlesEnabled = true;//particle system toggle with key R
+		bool particlesEnabled = true; // Shared simulation/rendering switch.
 
 		//UI 窗口的显示开关
-		bool showControlPanel = true;
+		bool showRenderSettings = true;
 		bool showContentBrowser = true;
 		bool showSceneHierarchy = true;
 		bool showEntityInspector = true;
 		bool showConsole = true;
-		bool showLightPanel = true;
-		bool showCameraPanel = true;
-		bool showDebugPanel = true;
-		bool showAudioPanel = true;
+		bool showLightPanel = false;
+		bool showCameraPanel = false;
+		bool showDebugPanel = false;
+		bool showAudioPanel = false;
+		bool showParticlePanel = false;
+		bool showRuntimeUiDebugPanel = false;
 		bool showGameUiEditor = false;
 
 		bool debugSelectionBounds = false;
@@ -53,10 +55,7 @@ namespace engine {
 
 		// ----- 后处理（可在 UI 实时调节） -----
 		float bloomExposure = 1.0f;      // 合成阶段曝光（传给 composite shader）
-		float bloomStrength = 1.2f;      // Bloom 强度倍数（传给 composite shader）
-		float bloomThreshold = 1.0f;     // 亮度提取阈值（preview / reserved）
-		int   bloomKernelRadius = 7;     // 模糊核半径提示（仅作为 shader 调整参考）
-		bool  bloomUseACES = true;       // 是否使用 ACES 风格色调映射（reserved）
+		float bloomStrength = 2.2f;      // Preserve the renderer's original composite strength.
 		//================Graphic================================
 	};
 } // namespace engine

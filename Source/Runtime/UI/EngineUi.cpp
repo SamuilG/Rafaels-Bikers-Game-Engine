@@ -1,6 +1,8 @@
 #pragma execution_character_set("utf-8")
 
 #include "EngineUi.hpp"
+#include "EditorLayout.hpp"
+#include "EditorTransform.hpp"
 
 #include <cstdio>
 #include <cstdarg>
@@ -45,6 +47,12 @@ using json = nlohmann::json;
 namespace engine {
 
 	namespace {
+        bool s_ResetEditorLayout = false;
+
+        std::string PanelTitle(const char* label, const char* id) {
+            return std::string(_SL(label)) + "###" + id;
+        }
+
 		glm::vec3 NormalizeOrFallback(const glm::vec3& value, const glm::vec3& fallback) {
 			float length = glm::length(value);
 			if (length <= 0.0001f) {
@@ -303,7 +311,7 @@ namespace engine {
 
 		void Draw(const char* title, bool* p_open = nullptr) {
 			if (p_open && !*p_open) return;
-			ImGui::Begin(title, p_open);
+			if (!ImGui::Begin(title, p_open)) { ImGui::End(); return; }
 
 			// 清空日志按钮//Clear logs button
 			if (ImGui::Button("Clear Logs")) {
@@ -445,7 +453,7 @@ namespace engine {
 
 
 	// ========== project save&load==========
-	void EngineUi::SaveProject(SceneManager* sceneManager, RenderSystem* renderSys, const std::string& filepath) {
+	bool EngineUi::SaveProject(SceneManager* sceneManager, RenderSystem* renderSys, const std::string& filepath) {
 		json root;
 
 
@@ -529,18 +537,21 @@ namespace engine {
 		if (file.is_open()) {
 			file << root.dump(4);
 			file.close();
-			LogPrintf("Project saved to %s\n", filepath.c_str());
+			if (!file) return false;
+            LogPrintf("Scene snapshot saved to %s\n", filepath.c_str());
+            return true;
 		}
 		else {
 			LogPrintf("[Error] Could not open %s for saving.\n", filepath.c_str());
+            return false;
 		}
 	}
 
-	void EngineUi::LoadProject(SceneManager* sceneManager, RenderSystem* renderSys, const std::string& filepath) {
+	bool EngineUi::LoadProject(SceneManager* sceneManager, RenderSystem* renderSys, const std::string& filepath) {
 		std::ifstream file(filepath);
 		if (!file.is_open()) {
 			LogPrintf("[Serialization] No save file found at %s\n", filepath.c_str());
-			return;
+			return false;
 		}
 
 		json root;
@@ -549,7 +560,7 @@ namespace engine {
 		}
 		catch (json::parse_error& e) {
 			LogPrintf("[Error] JSON parsing failed: %s\n", e.what());
-			return;
+			return false;
 		}
 
 		//读取并应用实体// Read and apply entities
@@ -639,7 +650,8 @@ namespace engine {
 			}
 		}
 
-		LogPrint("Project loaded from %s\n", filepath.c_str());
+		LogPrintf("Scene snapshot loaded from %s\n", filepath.c_str());
+        return true;
 	}
 
 
@@ -681,7 +693,12 @@ namespace engine {
 				| ImGuiWindowFlags_NoNavFocus;
 		}
 
-		ImGui::Begin(viewportWindowName, nullptr, viewportFlags);
+		if (!ImGui::Begin(viewportWindowName, nullptr, viewportFlags)) {
+            state.isSceneViewportHovered = false;
+            s_SceneViewportDrawList = nullptr;
+            ImGui::End();
+            return;
+        }
 		s_SceneViewportDrawList = ImGui::GetWindowDrawList();
 
 		// 1. 获取视口绝大坐标和尺寸// Get the absolute position and size of the viewport
@@ -805,6 +822,7 @@ namespace engine {
 				//InvisibleButton
 				if (ImGui::InvisibleButton("ParticleIcon", ImVec2(hitRadius * 2, hitRadius * 2))) {
 					state.activeParticleIndex = i;
+                    state.showParticlePanel = true;
 					selected_id = 0; // clear
 					LogPrint("[BillboardPick] Hit Particle Group %d\n", i + 1);
 				}
@@ -814,7 +832,7 @@ namespace engine {
 					ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
 					ImGui::BeginTooltip();
 					ImGui::Text("[ Particle Group %d ]", i + 1);
-					ImGui::Text("Click to Select & Enable Gizmo");
+					ImGui::Text("Click to inspect particle settings");
 					ImGui::EndTooltip();
 				}
 				ImGui::PopID();
@@ -829,14 +847,18 @@ namespace engine {
 		bool drawGizmo = false;
 		glm::mat4 gizmoMatrix = glm::mat4(1.0f);
 		if (state.showEngineUi && renderSys && state.particlesEnabled && state.activeParticleIndex >= 0 && state.activeParticleIndex < renderSys->GetParticles().size()) {
-			drawGizmo = true;
-			gizmoMatrix = glm::translate(glm::mat4(1.0f), renderSys->GetParticles()[state.activeParticleIndex]->config.emitterPos);
+			auto& particle = *renderSys->GetParticles()[state.activeParticleIndex];
+            drawGizmo = !renderSys->IsParticleGroupSceneControlled(state.activeParticleIndex) &&
+                (particle.getEmitterShape() != EmitterShape::Sphere || particle.config.triggerControlled);
+            gizmoMatrix = glm::translate(glm::mat4(1.0f), particle.config.emitterPos);
 		}
 		else if (state.showEngineUi && selected_id != 0 && sceneManager) {
 			flecs::entity selectedEntity = sceneManager->get_world().entity(selected_id);
 			if (selectedEntity.is_alive() && selectedEntity.has<LocalTransform>()) {
 				drawGizmo = true;
 				gizmoMatrix = selectedEntity.get<LocalTransform>().matrix;
+                if (m_current_inspected_id != selectedEntity.id() || (!ImGuizmo::IsUsing() && !ImGui::IsAnyItemActive()))
+                    drawGizmo = SyncTransformCache(selectedEntity.id(), gizmoMatrix);
 			}
 		}
 
@@ -848,9 +870,13 @@ namespace engine {
 			ImGuizmo::SetRect(s_SceneViewportPos.x, s_SceneViewportPos.y, s_SceneViewportSize.x, s_SceneViewportSize.y);
 
 			static ImGuizmo::OPERATION currentOp = ImGuizmo::TRANSLATE;
-			if (ImGui::IsKeyPressed(ImGuiKey_W)) currentOp = ImGuizmo::TRANSLATE;
-			if (ImGui::IsKeyPressed(ImGuiKey_E)) currentOp = ImGuizmo::ROTATE;
-			if (ImGui::IsKeyPressed(ImGuiKey_R)) currentOp = ImGuizmo::SCALE;
+			if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && !ImGui::GetIO().WantTextInput &&
+                !ImGui::GetIO().KeyCtrl && !ImGui::IsAnyItemActive() && !(state.showGameUiEditor && UIEditorWindow::WantsKeyboardCapture())) {
+                if (ImGui::IsKeyPressed(ImGuiKey_W)) currentOp = ImGuizmo::TRANSLATE;
+                if (ImGui::IsKeyPressed(ImGuiKey_E)) currentOp = ImGuizmo::ROTATE;
+                if (ImGui::IsKeyPressed(ImGuiKey_R)) currentOp = ImGuizmo::SCALE;
+            }
+            if (state.activeParticleIndex >= 0) currentOp = ImGuizmo::TRANSLATE;
 
 			ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(proj), currentOp, ImGuizmo::LOCAL, glm::value_ptr(gizmoMatrix));
 
@@ -861,15 +887,8 @@ namespace engine {
 				else if (selected_id != 0 && sceneManager) {
 					flecs::entity selectedEntity = sceneManager->get_world().entity(selected_id);
 					LocalTransform* lt = &selectedEntity.get_mut<LocalTransform>();
-					float t[3], r[3], s[3];
-					ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(gizmoMatrix), t, r, s);
-					if (currentOp == ImGuizmo::SCALE) {
-						for (int i = 0; i < 3; ++i) m_ui_scale[i] = (std::abs(r[i] - m_ui_rotation[i]) > 90.f) ? -s[i] : std::abs(s[i]);
-					}
-					else {
-						for (int i = 0; i < 3; ++i) { m_ui_translation[i] = t[i]; m_ui_rotation[i] = r[i]; }
-					}
-					ImGuizmo::RecomposeMatrixFromComponents(m_ui_translation, m_ui_rotation, m_ui_scale, glm::value_ptr(lt->matrix));
+                    lt->matrix = gizmoMatrix;
+                    SyncTransformCache(selectedEntity.id(), gizmoMatrix);
 					selectedEntity.modified<LocalTransform>();
 				}
 			}
@@ -884,69 +903,8 @@ namespace engine {
 	}
 
 
-	//void EngineUi::DrawContentBrowser(RenderSystem* renderSys, SceneManager* sceneManager) {
-	//	// 设置初始窗口大小和位置
-	//	ImGui::SetNextWindowPos(ImVec2(20, ImGui::GetIO().DisplaySize.y - 300), ImGuiCond_FirstUseEver);
-	//	ImGui::SetNextWindowSize(ImVec2(800, 250), ImGuiCond_FirstUseEver);
-
-	//	if (ImGui::Begin(_SL("Content Browser"))) {
-	//		// 设定格子的宽度// Set the width of each cell
-	//		float cellSize = 110.0f;
-	//		float panelWidth = ImGui::GetContentRegionAvail().x;
-	//		int columnCount = std::max(1, (int)(panelWidth / cellSize));// 计算数量Calculate the number of columns based on available width
-
-	//		if (ImGui::BeginTable("ContentGrid", columnCount)) {
-	//			// 遍历 Assets/Models
-	//			std::string path = "Assets/Models";
-	//			if (fs::exists(path) && fs::is_directory(path)) {
-	//				for (const auto& entry : fs::directory_iterator(path)) {
-	//					// 显示show .glb 模型
-	//					if (entry.path().extension() == ".glb") {
-	//						ImGui::TableNextColumn();
-
-	//						std::string filename = entry.path().filename().string();
-	//						std::string relativePath = entry.path().string();
-	//						// Windows 的 \ 替换为 /
-	//						std::replace(relativePath.begin(), relativePath.end(), '\\', '/');
-
-	//						VkDescriptorSet fileIcon = renderSys->GetModelThumbnail(relativePath);
-
-	//						// 1. 画图标按钮// Draw the icon button
-	//						ImGui::PushID(filename.c_str());
-	//						if (fileIcon) {
-	//							ImGui::ImageButton(filename.c_str(), (ImTextureID)fileIcon, ImVec2(100, 100));// 显示缩略图按钮
-	//						}
-	//						else {
-	//							ImGui::Button("MODEL\nICON", ImVec2(70, 70));
-	//						}
-
-	//						// 2.设定拖拽源 (Drag Source)
-	//						if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
-	//							
-	//							ImGui::SetDragDropPayload("CONTENT_BROWSER_MODEL", relativePath.c_str(), relativePath.size() + 1);
-
-	//							// 拖拽时悬浮在鼠标旁边的提示
-	//							ImGui::Text("Drop %s to Scene", filename.c_str());
-	//							if (fileIcon) ImGui::Image((ImTextureID)fileIcon, ImVec2(40, 40));
-
-	//							ImGui::EndDragDropSource();
-	//						}
-
-	//						// 3.图标下方的文字// The text below the icon
-	//						ImGui::TextWrapped("%s", filename.c_str());
-	//						ImGui::PopID();
-	//					}
-	//				}
-	//			}
-	//			else {
-	//				ImGui::TextColored(ImVec4(1, 0, 0, 1), "Folder Assets/Models not found!");
-	//			}
-	//			ImGui::EndTable();
-	//		}
-	//	}
-	//	ImGui::End();
-	//}
-	void EngineUi::DrawContentBrowser(RenderSystem* renderSys, SceneManager* sceneManager) {
+	void EngineUi::DrawContentBrowser(RenderSystem* renderSys, SceneManager* sceneManager, UserState& state) {
+        if (!state.showContentBrowser) return;
 		(void)sceneManager; //The browser only needs asset browsing and drag/drop here.
 		static std::string s_CurrentDirectory = "Assets"; //当前浏览的文件夹路径//Track the active folder inside Assets.
 		static char s_NewFolderName[128] = "NewFolder"; //Buffer for the create-folder popup.
@@ -955,10 +913,10 @@ namespace engine {
 		const std::string folderIconPath = "Assets/Textures/Folder.png"; //文件夹图标// Use Folder.png as the shared folder thumbnail source.
 
 		// 设置初始窗口大小和位置
-		ImGui::SetNextWindowPos(ImVec2(20, ImGui::GetIO().DisplaySize.y - 300), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(980, 320), ImGuiCond_FirstUseEver);
 
-		if (ImGui::Begin(_SL("Content Browser"))) //开始绘制窗口// Begin drawing the window
+
+
+		if (ImGui::Begin(PanelTitle("Assets", "ContentBrowser").c_str(), &state.showContentBrowser)) //开始绘制窗口// Begin drawing the window
 		{
 			if (!fs::exists(assetsRoot) || !fs::is_directory(assetsRoot)) { //Fail clearly when the Assets root is missing.
 				ImGui::TextColored(ImVec4(1, 0, 0, 1), "Folder Assets not found!");
@@ -969,7 +927,7 @@ namespace engine {
 				}
 
 				if (ImGui::BeginTable("ContentBrowserLayout", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV)) {
-					ImGui::TableSetupColumn("FolderTree", ImGuiTableColumnFlags_WidthFixed, 240.0f);
+					ImGui::TableSetupColumn("FolderTree", ImGuiTableColumnFlags_WidthFixed, 160.0f);
 					ImGui::TableSetupColumn("AssetGrid", ImGuiTableColumnFlags_WidthStretch);
 
 					ImGui::TableNextColumn();
@@ -1236,340 +1194,247 @@ namespace engine {
 	}
 
 
-	void EngineUi::DrawControlPanel(UserState& state, RenderSystem* renderSys, SceneManager* sceneManager)
-	{
 
-		if (ImGui::Begin(_SL("Engine Control Panel")))
-		{
-			// switch language button 切换语言按钮
-			if (ImGui::Button(_SL("Switch Language"))) {
-				if (Translator::CurrentLanguage == Language::English) {
-					Translator::SetLanguage(Language::Chinese);
-				}
-				else {
-					Translator::SetLanguage(Language::English);
-				}
-			}
-			ImGui::Separator();
-			//project data 项目数据
-			//float btnWidth = (ImGui::GetContentRegionAvail().x - 10.0f) * 0.5f;
+    bool EngineUi::SyncTransformCache(flecs::entity_t id, const glm::mat4& matrix) {
+        glm::mat4 cached(1.0f);
+        ImGuizmo::RecomposeMatrixFromComponents(m_ui_translation, m_ui_rotation, m_ui_scale, glm::value_ptr(cached));
+        bool changed = id != m_current_inspected_id;
+        for (int col = 0; col < 4; ++col)
+            for (int row = 0; row < 4; ++row)
+                changed = changed || std::abs(matrix[col][row] - cached[col][row]) > 0.0001f;
+        if (changed) {
+            if (!editor_transform::Decompose(matrix, m_ui_translation, m_ui_rotation, m_ui_scale)) return false;
+            m_current_inspected_id = id;
+        }
+        return true;
+    }
 
-			//          // 1. 保存按钮
-			//          if (ImGui::Button(_SL("Save Project"), ImVec2(btnWidth, 30))) {
-			//              SaveProject(sceneManager, renderSys, "Assets/MySceneSave.json");
-			//          }
+    void EngineUi::DrawEditorWorkspace() {
+        editor_layout::DrawDockspace(s_ResetEditorLayout);
+        s_ResetEditorLayout = false;
+    }
 
-			//          ImGui::SameLine();
+    void EngineUi::DrawConsole(UserState& state) {
+        if (state.showConsole)
+            s_Console.Draw(PanelTitle("Console", "OutputConsole").c_str(), &state.showConsole);
+    }
 
-			//          // 2. 读取按钮
-			//          if (ImGui::Button(_SL("Load Project"), ImVec2(btnWidth, 30))) {
-			//              LoadProject(sceneManager, renderSys, "Assets/MySceneSave.json");
-			//          }
-			//ImGui::Separator();
-			//project data 项目数据end
+    void EngineUi::DrawRenderSettings(UserState& state) {
+        if (!state.showRenderSettings) return;
+        if (ImGui::Begin(PanelTitle("Render Settings", "RenderSettings").c_str(), &state.showRenderSettings)) {
+            ImGui::TextDisabled("Changes apply to the current session.");
+            ImGui::SeparatorText("Rendering");
+            ImGui::Checkbox("Image-based Lighting (IBL)", &state.iblEnabled);
+            ImGui::Checkbox("Screen-space Reflections (SSR)", &state.ssrEnabled);
+            ImGui::Checkbox("Ambient Occlusion (SSAO)", &state.ssaoEnabled);
+            ImGui::Checkbox(_SL("Particle System"), &state.particlesEnabled);
+            ImGui::SeparatorText("Post-processing");
+            ImGui::Checkbox(_SL("Enable Bloom"), &state.bloomEnabled);
+            ImGui::BeginDisabled(!state.bloomEnabled);
+            ImGui::SliderFloat(_SL("Bloom Strength"), &state.bloomStrength, 0.0f, 5.0f, "%.2f");
+            ImGui::EndDisabled();
+            ImGui::SliderFloat(_SL("Exposure"), &state.bloomExposure, 0.1f, 5.0f, "%.2f");
+            ImGui::Checkbox(_SL("Enable Mosaic Post-Process"), &state.mosaicEnabled);
+            ImGui::SeparatorText("Visibility & detail");
+            ImGui::Checkbox("Frustum Culling", &state.frustumCullingEnabled);
+            ImGui::BeginDisabled(!state.frustumCullingEnabled);
+            ImGui::SliderFloat("Frustum Padding", &state.frustumCullingPadding, 0.0f, 10.0f, "%.2f");
+            ImGui::EndDisabled();
 
-			//Performance 性能
-			ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), _SL("[ Performance ]"));
-			ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
-			ImGui::Text(_SL("FPS: %.3f ms"), 1000.0f / ImGui::GetIO().Framerate);
+        }
+        ImGui::End();
+    }
 
-			//render mode 渲染模式
-			const char* modes[] = { "Default", "Mipmaps", "Depth", "Derivatives", "Overdraw", "Overshading" };
-			ImGui::Combo(_SL("View Mode"), &state.renderMode, modes, IM_ARRAYSIZE(modes));
+    void EngineUi::DrawParticlePanel(UserState& state, RenderSystem* renderSys, flecs::entity_t& selected_id) {
+        if (!state.showParticlePanel) return;
+        if (!ImGui::Begin(PanelTitle("Particles", "Particles").c_str(), &state.showParticlePanel)) {
+            ImGui::End();
+            return;
+        }
+        if (!renderSys) {
+            ImGui::TextDisabled("Renderer unavailable.");
+            ImGui::End();
+            return;
+        }
+        ImGui::Checkbox(_SL("Particle System"), &state.particlesEnabled);
+        if (!state.particlesEnabled)
+            ImGui::TextWrapped("Simulation and rendering are disabled. Parameters can still be edited.");
 
-			// switches 开关
-			ImGui::Checkbox(_SL("Particle System"), &state.particlesEnabled);
-			ImGui::Checkbox(_SL("Enable Mosaic Post-Process"), &state.mosaicEnabled);
+        static const ParticleSystem* countOwner = nullptr;
+        static uint32_t previousCapacity = 0;
+        static int newCount = 0;
+        auto& particles = renderSys->GetParticles();
+        int& selectedParticle = state.activeParticleIndex;
+        if (selectedParticle >= static_cast<int>(particles.size())) selectedParticle = -1;
+        if (ImGui::Button(_SL("Add Group"))) {
+            renderSys->AddParticleGroup();
+            selected_id = 0;
+            countOwner = nullptr;
+            selectedParticle = static_cast<int>(particles.size()) - 1;
+            // A new editor emitter starts independent of the demo's sphere-follow behavior.
+            particles[selectedParticle]->setEmitterShape(EmitterShape::Cone);
+        }
+        ImGui::SameLine();
+        ImGui::BeginDisabled(selectedParticle < 0);
+        if (ImGui::Button(_SL("Delete Group"))) {
+            renderSys->RemoveParticleGroup(selectedParticle);
+            countOwner = nullptr;
+            selectedParticle = -1;
+        }
+        ImGui::EndDisabled();
 
-			// --------------------------
-			// Post-Processing controls
-			// --------------------------
-			if (ImGui::CollapsingHeader(_SL("Post-Processing"), ImGuiTreeNodeFlags_DefaultOpen))
-			{
-				ImGui::Checkbox(_SL("Enable Bloom"), &state.bloomEnabled);
-				ImGui::Spacing();
-				ImGui::SliderFloat(_SL("Exposure"), &state.bloomExposure, 0.1f, 5.0f, "%.2f");
-				ImGui::SliderFloat(_SL("Bloom Strength"), &state.bloomStrength, 0.0f, 5.0f, "%.2f");
-				ImGui::SliderFloat(_SL("Bloom Threshold (preview)"), &state.bloomThreshold, 0.0f, 10.0f, "%.2f");
-				ImGui::SliderInt(_SL("Blur Kernel Radius (hint)"), &state.bloomKernelRadius, 1, 15);
-				ImGui::Checkbox(_SL("Use ACES ToneMap"), &state.bloomUseACES);
-				ImGui::TextDisabled("Exposure & Strength are applied immediately. Threshold/Radius are reserved for shader tuning.");
-			}
+        const char* preview = selectedParticle >= 0 ? particles[selectedParticle]->config.name : "Select a particle group";
+        if (ImGui::BeginCombo(_SL("Select Particle"), preview)) {
+            for (int i = 0; i < static_cast<int>(particles.size()); ++i) {
+                ImGui::PushID(i);
+                if (ImGui::Selectable(particles[i]->config.name, selectedParticle == i)) { selectedParticle = i; selected_id = 0; }
+                ImGui::PopID();
+            }
+            ImGui::EndCombo();
+        }
+        if (selectedParticle < 0) {
+            ImGui::TextWrapped("Select a group here or click its icon in the scene viewport.");
+            ImGui::End();
+            return;
+        }
 
-			ImGui::Separator();
+        auto& config = particles[selectedParticle]->config;
+        ImGui::InputText(_SL("Name"), config.name, IM_ARRAYSIZE(config.name));
+        const bool triggerOwned = renderSys->GetTriggerSystem().HasParticleBinding(selectedParticle);
+        const bool sceneOwned = renderSys->IsParticleGroupSceneControlled(selectedParticle);
+        ImGui::BeginDisabled(triggerOwned || sceneOwned);
+        ImGui::Checkbox(_SL("Visible"), &config.isVisible);
+        ImGui::EndDisabled();
+        if (triggerOwned) ImGui::TextWrapped("Visibility is controlled by a scene trigger.");
+        if (sceneOwned) ImGui::TextWrapped("The scene controls this emitter's visibility, shape, position and direction.");
+        ImGui::TextWrapped("Initial size, speed, rotation and lifetime apply to newly spawned particles.");
 
-			//UI system for bike===============================
-			ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.6f, 1.0f), _SL("[ Bicycle Tuning ]"));
-			ImGui::Text(_SL("Speed: %.2f"), state.bikeSpeed);
-			ImGui::Text(_SL("Steer Angle: %.1f deg"), glm::degrees(state.bikeSteerAngle));
+        // Tie the pending count to the selected group and its current capacity.
+        const auto* group = particles[selectedParticle].get();
+        if (countOwner != group || previousCapacity != group->count()) {
+            countOwner = group;
+            previousCapacity = group->count();
+            newCount = static_cast<int>(previousCapacity);
+        }
+        ImGui::InputInt(_SL("Max Particles"), &newCount);
+        ImGui::BeginDisabled(newCount < 1 || newCount > 100000 || newCount == static_cast<int>(group->count()));
+        if (ImGui::Button(_SL("Apply Changes")))
+            renderSys->ResizeParticleGroup(selectedParticle, static_cast<uint32_t>(newCount));
+        ImGui::EndDisabled();
+        if (newCount < 1 || newCount > 100000) ImGui::TextDisabled("Capacity must be 1 - 100000.");
 
-			////reset button 重置按钮
-			//if (ImGui::Button(_SL("Reset Bike Tuning"))) {
-			//	state.bikeTuning = BikeTuning{};
-			//}
+        if (ImGui::CollapsingHeader(_SL("Emitter Settings"), ImGuiTreeNodeFlags_DefaultOpen)) {
+            const bool diskEmitter = particles[selectedParticle]->getEmitterShape() == EmitterShape::Disk;
+            ImGui::BeginDisabled(diskEmitter);
+            ImGui::Checkbox(_SL("Show Debug Wireframe"), &config.particleDebug);
+            ImGui::EndDisabled();
+            if (diskEmitter) ImGui::TextDisabled("Disk wireframe is not implemented.");
+            ImGui::BeginDisabled(sceneOwned);
+            const char* shapeNames[] = { "Cone", "Sphere", "Box", "Disk" };
+            int currentShape = static_cast<int>(particles[selectedParticle]->getEmitterShape());
+            if (ImGui::Combo(_SL("Emitter Shape"), &currentShape, shapeNames, IM_ARRAYSIZE(shapeNames)))
+                particles[selectedParticle]->setEmitterShape(static_cast<EmitterShape>(currentShape));
+            const bool followsDemoEntity = currentShape == static_cast<int>(EmitterShape::Sphere) && !config.triggerControlled;
+            ImGui::BeginDisabled(followsDemoEntity);
+            ImGui::DragFloat3(_SL("Emitter Pos"), &config.emitterPos.x, 0.1f);
+            ImGui::EndDisabled();
+            if (followsDemoEntity)
+                ImGui::TextWrapped("This sphere emitter is driven by the demo's bat. Use Cone, Box or Disk for an independent emitter.");
+            if (currentShape == static_cast<int>(EmitterShape::Cone))
+                ImGui::SliderFloat(_SL("Cone Spread"), &config.coneSpread, 0.01f, 3.14f);
+            if (currentShape == static_cast<int>(EmitterShape::Sphere) || currentShape == static_cast<int>(EmitterShape::Disk))
+                ImGui::SliderFloat(_SL("Sphere Radius"), &config.sphereRadius, 0.01f, 10.0f);
+            if (currentShape == static_cast<int>(EmitterShape::Box))
+                ImGui::DragFloat3(_SL("Box Area"), &config.boxArea.x, 0.1f, 0.1f, 100.0f);
+            if (currentShape == static_cast<int>(EmitterShape::Cone) || currentShape == static_cast<int>(EmitterShape::Disk)) {
+                if (ImGui::DragFloat3("Emission Direction", &config.emitDir.x, 0.01f, -1.0f, 1.0f))
+                    config.emitDir = NormalizeOrFallback(config.emitDir, glm::vec3(0, 1, 0));
+            }
+            ImGui::EndDisabled();
+        }
+        if (ImGui::CollapsingHeader(_SL("Physics & Movement"))) {
+            ImGui::DragFloat3(_SL("Gravity"), &config.gravity.x, 0.001f);
+            ImGui::DragFloatRange2("Speed (min / max)", &config.speedMin, &config.speedMax, 0.1f, 0.0f, 20.0f);
+            ImGui::DragFloatRange2("Rotation (min / max)", &config.rotationMin, &config.rotationMax, 1.0f, -360.0f, 360.0f);
+        }
+        if (ImGui::CollapsingHeader(_SL("Appearance & Color"))) {
+            ImGui::DragFloatRange2("Size (min / max)", &config.sizeMin, &config.sizeMax, 1.0f, 1.0f, 1000.0f);
+            ImGui::SliderFloat(_SL("Start Size Scale"), &config.startSizeScale, 0.0f, 10.0f);
+            ImGui::SliderFloat(_SL("End Size Scale"), &config.endSizeScale, 0.0f, 10.0f);
+            ImGui::ColorEdit4(_SL("Start Color"), &config.startColor.x, ImGuiColorEditFlags_AlphaBar);
+            ImGui::ColorEdit4(_SL("End Color"), &config.endColor.x, ImGuiColorEditFlags_AlphaBar);
+            bool useTexBool = (config.useTexture != 0);
+            if (ImGui::Checkbox(_SL("Use Texture"), &useTexBool)) {
+                config.useTexture = useTexBool ? 1 : 0;
+            }
+            //select texture 选择贴图
+            if (useTexBool)
+            {
+                ImGui::TextDisabled(_SL("Select Texture"));
+                ImGui::Spacing();
 
-			// sliders 滑动条
-			ImGui::SliderFloat(_SL("Max Steer Angle (deg)"), &state.bikeTuning.maxSteerAngleDeg, 1.0f, 60.0f);
-			ImGui::SliderFloat(_SL("Steer Speed (deg/s)"), &state.bikeTuning.steerSpeedDeg, 1.0f, 360.0f);
-			ImGui::SliderFloat(_SL("Max Lean Angle (deg)"), &state.bikeTuning.maxLeanAngleDeg, 0.0f, 60.0f);
-			ImGui::SliderFloat(_SL("Lean Speed (deg/s)"), &state.bikeTuning.leanSpeedDeg, 1.0f, 360.0f);
-			ImGui::SliderFloat(_SL("Wheel Base"), &state.bikeTuning.wheelBase, 0.1f, 5.0f);
-			ImGui::SliderFloat(_SL("Drive Force"), &state.bikeTuning.driveForce, 0.0f, 5000.0f);
-			ImGui::SliderFloat(_SL("Brake Force"), &state.bikeTuning.brakeForce, 0.0f, 500.0f);
-			ImGui::SliderFloat(_SL("Max Speed"), &state.bikeTuning.maxSpeed, 0.1f, 200.0f);
-			ImGui::SliderFloat(_SL("Gravity Factor"), &state.bikeTuning.gravityFactor, 0.0f, 5.0f);
+                std::vector<std::string> texNames = renderSys->GetParticleTextureNames();
 
-			ImGui::Separator();
-			//UI system for bike===============================
+                // 遍历所有贴图，生成一个横向排列的图片网格
+                for (int i = 0; i < texNames.size(); ++i)
+                {
+                    const std::string& path = texNames[i];
+                    VkDescriptorSet engineDesc = renderSys->GetParticleTextureDescriptor(path);
+                    VkDescriptorSet imguiDesc = renderSys->GetImGuiTextureDescriptor(path);
 
+                    if (imguiDesc)
+                    {
+                        //if this texture is currently selected in the config
+                        bool isSelected = (config.textureDescriptor == engineDesc);
 
-			//generator 生成器
-			ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), _SL("[ generator ]"));
+                        // 如果被选中，按钮加上背景高亮
+                        if (isSelected) {
+                            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1.0f, 0.6f, 0.2f, 0.6f));
+                        }
+                        else {
+                            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.1f, 0.1f, 0.1f, 0.0f));
+                        }
 
-			static float spawnHeight = 25.0f;
-			ImGui::SliderFloat(_SL("Height"), &spawnHeight, 0.0f, 100.0f);
+                        // image button 显示贴图按钮
+                        if (ImGui::ImageButton(path.c_str(), (ImTextureID)imguiDesc, ImVec2(64, 64))) {
+                            config.textureDescriptor = engineDesc;
+                        }
 
-			// 物品选择下拉菜单// Item selection dropdown
-			const char* itemNames[] = { "BaseballBat", "Car", "Missile", "Police Car","Animated Character Base","Helicopter","Roman Centurion" };
-			static int selectedItem = 1;
-			ImGui::Combo(_SL("select"), &selectedItem, itemNames, IM_ARRAYSIZE(itemNames));
+                        ImGui::PopStyleColor();
 
-			// spawn button 生成按钮
-			if (ImGui::Button(_SL("Spawn!!!!"), ImVec2(200, 40)))
-			{
-				if (renderSys) {
-					LogPrint("Spawning %s at Y = %.1f\n", itemNames[selectedItem], spawnHeight);
+                        // 每行显示 4 个图标，没满 4 个就用 SameLine() 横向排列
+                        if (ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + 64.0f + ImGui::GetStyle().FramePadding.x * 2.0f < ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x && i != texNames.size() - 1) {
+                            ImGui::SameLine();
+                        }
+                    }
+                }
 
-					glm::mat4 spawnPos = glm::translate(glm::mat4(1.0f), glm::vec3(20.0f, spawnHeight, 20.0f));
+                ImGui::Spacing();
+                ImGui::Separator();
 
-					if (selectedItem == 0) {
-						//renderSys->load_additional_model("Assets/Models/BaseballBat.glb", false, 1.5f, spawnPos);
-					}
-					else if (selectedItem == 1) {
-						glm::mat4 carPos = spawnPos * glm::scale(glm::mat4(1.0f), glm::vec3(0.1f));
-						//renderSys->load_additional_model("Assets/Models/Car.glb", false, 1500.0f, carPos);
-					}
-					else if (selectedItem == 2) {
-						//renderSys->load_additional_model("Assets/Models/Missile.glb", false, 50.0f, spawnPos);
-					}
-					else if (selectedItem == 3) {
-						//renderSys->load_additional_model("Assets/Models/Police Car.glb", false, 1600.0f, spawnPos);
-					}
-					else if (selectedItem == 4) {
-						//renderSys->load_additional_model("Assets/Models/Animated Character Base.glb", false, 1600.0f, spawnPos);
-					}
-					else if (selectedItem == 5) {
-						//renderSys->load_additional_model("Assets/Models/Helicopter.glb", false, 1600.0f, spawnPos);
-					}
-					else if (selectedItem == 6) {
-						//renderSys->load_additional_model("Assets/Models/Roman Centurion.glb", false, 1600.0f, spawnPos);
-					}
-				}
-			}
-
-			ImGui::Separator();
-
-			//particle editor 粒子编辑器
-			ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), _SL("[ Particle Editor ]"));
-
-			if (renderSys && state.particlesEnabled)
-			{
-				auto& particles = renderSys->GetParticles();
-				static int selectedParticle = 0;
-
-				//add/remove group buttons 添加/删除粒子组按钮
-				if (ImGui::Button(_SL("Add Group"))) {
-					renderSys->AddParticleGroup();
-					selectedParticle = (int)particles.size() - 1; // 自动选中最新创建的
-				}
-				ImGui::SameLine();
-				if (ImGui::Button(_SL("Delete Group")) && !particles.empty()) {
-					renderSys->RemoveParticleGroup(selectedParticle);
-					selectedParticle = 0;
-				}
-
-				if (!particles.empty())
-				{
-					static int selectedParticle = 0;
-					if (selectedParticle >= particles.size()) selectedParticle = (int)particles.size() - 1;
-
-					// 下拉菜单粒子组
-					std::string currentName = "Group " + std::to_string(selectedParticle + 1);
-					if (ImGui::BeginCombo(_SL("Select Particle"), currentName.c_str()))
-					{
-						for (int i = 0; i < particles.size(); ++i)
-						{
-							bool is_selected = (selectedParticle == i);
-							std::string pName = "Group " + std::to_string(i + 1);
-							if (ImGui::Selectable(pName.c_str(), is_selected)) selectedParticle = i;
-							if (is_selected) ImGui::SetItemDefaultFocus();
-						}
-						ImGui::EndCombo();
-					}
-
-					auto& config = particles[selectedParticle]->config;
-
-					//visible checkbox 可见 选框
-					ImGui::Checkbox(_SL("Visible"), &config.isVisible);
-
-					//particle count adjustment粒子数量调整
-					static int newCount = 0;
-					if (newCount == 0) newCount = (int)particles[selectedParticle]->count();
-
-					ImGui::SetNextItemWidth(150);
-					ImGui::InputInt(_SL("Max Particles"), &newCount);
-					ImGui::SameLine();
-
-					if (ImGui::Button(_SL("Apply Changes"))) {
-						if (newCount > 0 && newCount < 100000) {
-							renderSys->ResizeParticleGroup(selectedParticle, (uint32_t)newCount);
-						}
-					}
-
-					ImGui::SameLine();
-					// InputText for particle group name 粒子组名称输入框
-					ImGui::InputText(_SL("Name"), config.name, IM_ARRAYSIZE(config.name));
-
-
-					//发射器设置 (Emitter Settings)
-					if (ImGui::CollapsingHeader(_SL("Emitter Settings"), ImGuiTreeNodeFlags_DefaultOpen))
-					{
-						ImGui::Checkbox(_SL("Show Debug Wireframe"), &config.particleDebug);// show paticle debug 显示粒子调试线框
-						ImGui::DragFloat3(_SL("Emitter Pos"), &config.emitterPos.x, 0.1f);
-
-						const char* shapeNames[] = { "Cone", "Sphere", "Box" };
-						int currentShape = (int)particles[selectedParticle]->getEmitterShape();
-						if (ImGui::Combo(_SL("Emitter Shape"), &currentShape, shapeNames, IM_ARRAYSIZE(shapeNames))) {
-							particles[selectedParticle]->setEmitterShape((EmitterShape)currentShape);
-						}
-
-						//default emmiter 默认发射器参数
-						if (currentShape == (int)EmitterShape::Cone) {
-							ImGui::SliderFloat(_SL("Cone Spread"), &config.coneSpread, 0.01f, 3.14f);
-						}
-						else if (currentShape == (int)EmitterShape::Sphere) {
-							ImGui::SliderFloat(_SL("Sphere Radius"), &config.sphereRadius, 0.01f, 10.0f);
-						}
-						else if (currentShape == (int)EmitterShape::Box) {
-							ImGui::DragFloat3(_SL("Box Area"), &config.boxArea.x, 0.1f, 0.1f, 100.0f);
-						}
-					}
-
-					//particle physics parameters 粒子物理参数
-					if (ImGui::CollapsingHeader(_SL("Physics & Movement")))
-					{
-						ImGui::DragFloat3(_SL("Gravity"), &config.gravity.x, 0.001f);
-						ImGui::SliderFloat(_SL("Speed Min"), &config.speedMin, 0.0f, 20.0f);
-						ImGui::SliderFloat(_SL("Speed Max"), &config.speedMax, 0.0f, 20.0f);
-						ImGui::SliderFloat(_SL("Rotation Min"), &config.rotationMin, -360.0f, 360.0f);
-						ImGui::SliderFloat(_SL("Rotation Max"), &config.rotationMax, -360.0f, 360.0f);
-					}
-
-					//particle appearance parameters 粒子外观参数
-					if (ImGui::CollapsingHeader(_SL("Appearance & Color")))
-					{
-						ImGui::SliderFloat(_SL("Size Min"), &config.sizeMin, 1.0f, 1000.0f);
-						ImGui::SliderFloat(_SL("Size Max"), &config.sizeMax, 1.0f, 1000.0f);
-						ImGui::SliderFloat(_SL("Start Size Scale"), &config.startSizeScale, 0.0f, 10.0f);
-						ImGui::SliderFloat(_SL("End Size Scale"), &config.endSizeScale, 0.0f, 10.0f);
-
-						ImGui::ColorEdit4(_SL("Start Color"), &config.startColor.x, ImGuiColorEditFlags_AlphaBar);
-						ImGui::ColorEdit4(_SL("End Color"), &config.endColor.x, ImGuiColorEditFlags_AlphaBar);
-
-						ImGui::Separator();
-						//useTexture? 是否使用贴图
-						bool useTexBool = (config.useTexture != 0);
-						if (ImGui::Checkbox(_SL("Use Texture"), &useTexBool)) {
-							config.useTexture = useTexBool ? 1 : 0;
-						}
-						//select texture 选择贴图
-						if (useTexBool)
-						{
-							ImGui::TextDisabled(_SL("Select Texture"));
-							ImGui::Spacing();
-
-							std::vector<std::string> texNames = renderSys->GetParticleTextureNames();
-
-							// 遍历所有贴图，生成一个横向排列的图片网格
-							for (int i = 0; i < texNames.size(); ++i)
-							{
-								const std::string& path = texNames[i];
-								VkDescriptorSet engineDesc = renderSys->GetParticleTextureDescriptor(path);
-								VkDescriptorSet imguiDesc = renderSys->GetImGuiTextureDescriptor(path);
-
-								if (imguiDesc)
-								{
-									//if this texture is currently selected in the config
-									bool isSelected = (config.textureDescriptor == engineDesc);
-
-									// 如果被选中，按钮加上背景高亮
-									if (isSelected) {
-										ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1.0f, 0.6f, 0.2f, 0.6f));
-									}
-									else {
-										ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.1f, 0.1f, 0.1f, 0.0f));
-									}
-
-									// image button 显示贴图按钮
-									if (ImGui::ImageButton(path.c_str(), (ImTextureID)imguiDesc, ImVec2(64, 64))) {
-										config.textureDescriptor = engineDesc;
-									}
-
-									ImGui::PopStyleColor();
-
-									// 每行显示 4 个图标，没满 4 个就用 SameLine() 横向排列
-									if ((i + 1) % 4 != 0 && i != texNames.size() - 1) {
-										ImGui::SameLine();
-									}
-								}
-							}
-
-							ImGui::Spacing();
-							ImGui::Separator();
-
-							ImGui::Checkbox(_SL("Animate Atlas"), &config.animateAtlas);
-							if (config.animateAtlas) {
-								ImGui::SliderInt(_SL("Atlas Cols"), &config.atlasCols, 1, 16);
-								ImGui::SliderInt(_SL("Atlas Rows"), &config.atlasRows, 1, 16);
-							}
-						}
+                ImGui::Checkbox(_SL("Animate Atlas"), &config.animateAtlas);
+                if (config.animateAtlas) {
+                    ImGui::SliderInt(_SL("Atlas Cols"), &config.atlasCols, 1, 16);
+                    ImGui::SliderInt(_SL("Atlas Rows"), &config.atlasRows, 1, 16);
+                }
+            }
 
 
-						//particle life parameters 粒子生命周期参数
-						if (ImGui::CollapsingHeader(_SL("Life Cycle")))
-						{
-							ImGui::SliderFloat(_SL("Life Min"), &config.lifeMin, 0.1f, 10.0f);
-							ImGui::SliderFloat(_SL("Life Max"), &config.lifeMax, 0.1f, 10.0f);
-						}
-					}
-				}
-				else if (!state.particlesEnabled)
-				{
-					ImGui::TextDisabled("Please check 'Particle System' above to edit.");
-				}
 
+        }
+        if (ImGui::CollapsingHeader(_SL("Life Cycle"))) {
+            ImGui::DragFloatRange2("Lifetime (min / max)", &config.lifeMin, &config.lifeMax, 0.1f, 0.1f, 10.0f);
+        }
+        ImGui::End();
+    }
 
-				ImGui::Separator();
-				if (sceneManager) {
-
-				}
-			}
-
-		}
-		ImGui::End();
-		// 控制台
-		s_Console.Draw("Output Console", &state.showConsole);
-	}
-
-	//light UI灯光调节面板
 	void EngineUi::DrawLightPanel(SceneManager* sceneManager, UserState& state)
 	{
 		if (!state.showLightPanel) return;
 
-		ImGui::SetNextWindowPos(ImVec2(40, 140), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(360, 420), ImGuiCond_FirstUseEver);
 
-		if (!ImGui::Begin("Light Panel", &state.showLightPanel)) {
+
+		if (!ImGui::Begin(PanelTitle("Lighting", "Lighting").c_str(), &state.showLightPanel)) {
 			ImGui::End();
 			return;
 		}
@@ -1630,7 +1495,7 @@ namespace engine {
 		LocalTransform* localTransform = selectedLight.has<LocalTransform>() ? &selectedLight.get_mut<LocalTransform>() : nullptr;
 
 		ImGui::Separator();
-		ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.35f, 1.0f), "[ %s ]", currentLightName);
+		ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.35f, 1.0f), "[ %s ]", selectedLight.name().c_str());
 
 		if (entityStatus) {
 			ImGui::Checkbox("Visible", &entityStatus->should_render);
@@ -1653,7 +1518,8 @@ namespace engine {
 
 		if (localTransform && lightComponent->type == LightType::Directional) {
 			//light UI（备注）方向光把方向存放在 transform 的第 4 列
-			glm::vec3 dir = NormalizeOrFallback(glm::vec3(localTransform->matrix[3]), glm::vec3(0.0f, 1.0f, 0.0f));
+			ImGui::TextWrapped("Direction changes direct lighting. Cascade shadows currently use a fixed sun direction.");
+            glm::vec3 dir = NormalizeOrFallback(glm::vec3(localTransform->matrix[3]), glm::vec3(0.0f, 1.0f, 0.0f));
 			if (ImGui::DragFloat3("Direction", &dir.x, 0.01f, -1.0f, 1.0f, "%.3f")) {
 				dir = NormalizeOrFallback(dir, glm::vec3(0.0f, 1.0f, 0.0f));
 				localTransform->matrix[3] = glm::vec4(dir, 0.0f);
@@ -1703,21 +1569,23 @@ namespace engine {
 	{
 		if (!state.showCameraPanel) return;
 
-		ImGui::SetNextWindowPos(ImVec2(420, 140), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(340, 360), ImGuiCond_FirstUseEver);
 
-		if (!ImGui::Begin("Camera Panel", &state.showCameraPanel)) {
+
+		if (!ImGui::Begin(PanelTitle("Camera", "Camera").c_str(), &state.showCameraPanel)) {
 			ImGui::End();
 			return;
 		}
 
 		//UI基础相机模式与镜头参数// Basic camera mode and lens parameters
 		ImGui::Checkbox("Third Person Mode", &state.thirdPersonMode);
-		if (ImGui::SliderFloat("FOV", &state.cameraFov, 10.0f, 120.0f, "%.1f deg")) {
+		ImGui::BeginDisabled(state.thirdPersonMode);
+        if (ImGui::SliderFloat("FOV", &state.cameraFov, 10.0f, 120.0f, "%.1f deg")) {
 			state.targetFov = state.cameraFov;
 		}
 
-		glm::vec3 cameraPos = glm::vec3(state.camera2world[3]);
+        ImGui::EndDisabled();
+        if (state.thirdPersonMode) ImGui::TextWrapped("Follow mode derives FOV and target position from the game. Switch to free camera for direct lens and transform editing.");
+        glm::vec3 cameraPos = glm::vec3(state.camera2world[3]);
 		ImGui::Text("Camera Pos: %.2f, %.2f, %.2f", cameraPos.x, cameraPos.y, cameraPos.z);
 		ImGui::SameLine();
 		if (ImGui::SmallButton("Copy##cam")) {
@@ -1737,18 +1605,24 @@ namespace engine {
 
 		if (state.thirdPersonMode) {
 			//第三人称相机参数// Third-person camera parameters
-			ImGui::DragFloat3("Follow Target", &state.followTargetPos.x, 0.1f);
-			ImGui::SliderAngle("Yaw", &state.Yaw, -180.0f, 180.0f);
-			ImGui::SliderAngle("Pitch", &state.Pitch, -85.0f, 85.0f);
-			ImGui::SliderFloat("Distance", &state.Distance, 1.5f, 30.0f, "%.2f");
+			ImGui::Text("Follow target: %.2f, %.2f, %.2f", state.followTargetPos.x, state.followTargetPos.y, state.followTargetPos.z);
+            ImGui::BeginDisabled(state.isExtremeSpeed || state.portalCameraActive);
+            bool orbitChanged = false;
+			orbitChanged |= ImGui::SliderAngle("Yaw", &state.targetYaw, -180.0f, 180.0f);
+			orbitChanged |= ImGui::SliderAngle("Pitch", &state.targetPitch, -85.0f, 85.0f);
+			orbitChanged |= ImGui::SliderFloat("Distance", &state.targetDistance, 2.0f, 70.0f, "%.2f");
 
 			if (ImGui::Button("Reset Third Person Camera")) {
-				state.Yaw = 0.0f;
-				state.Pitch = 0.0f;
-				state.Distance = 5.0f;
+				state.Yaw = state.targetYaw = 0.0f;
+                state.Pitch = state.targetPitch = 0.0f;
+                state.Distance = state.targetDistance = 5.0f;
+                orbitChanged = true;
 			}
-		}
-		else {
+            ImGui::EndDisabled();
+            if (orbitChanged || ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) state.cameraIdleTimer = 0.0f;
+            ImGui::TextWrapped("The moving game camera auto-aligns after you leave this panel. Speed and portal effects can take control of its orbit.");
+        }
+        else {
 			//自由相机直接编辑世界矩阵的位移和旋转// Free camera directly edits the translation and rotation of the world matrix
 			float cameraTranslation[3];
 			float cameraRotation[3];
@@ -1787,10 +1661,9 @@ namespace engine {
 	{
 		if (!state.showDebugPanel) return;
 
-		ImGui::SetNextWindowPos(ImVec2(780, 140), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(320, 160), ImGuiCond_FirstUseEver);
 
-		if (!ImGui::Begin("Debug Panel", &state.showDebugPanel)) {
+
+		if (!ImGui::Begin(PanelTitle("Diagnostics", "Diagnostics").c_str(), &state.showDebugPanel)) {
 			ImGui::End();
 			return;
 		}
@@ -1802,35 +1675,32 @@ namespace engine {
 		ImGui::TextWrapped("Selection Bounds draws the selected body's world-space AABB. Collision Shapes draws the selected body's physics shape wireframe.");
 		ImGui::Separator();
 
-		ImGui::TextUnformatted("Frustum Culling");
-		ImGui::Checkbox("Enable Frustum Culling", &state.frustumCullingEnabled);
-		ImGui::SliderFloat("Frustum Padding", &state.frustumCullingPadding, 0.0f, 10.0f, "%.2f"); // new frustum culling
-		ImGui::Text("Visible Batches: %u / %u", state.frustumCullingVisibleCandidates, state.frustumCullingTotalCandidates);
-		ImGui::Text("FPS (Culling Off): %.1f", state.frustumCullingOffFps);
-		ImGui::Text("FPS (Culling On): %.1f", state.frustumCullingOnFps);
-		if (state.frustumCullingOffFps > 0.0f && state.frustumCullingOnFps > 0.0f) {
-			float fpsDelta = state.frustumCullingOnFps - state.frustumCullingOffFps;
-			float fpsDeltaPercent = state.frustumCullingOffFps > 0.0f ? (fpsDelta / state.frustumCullingOffFps) * 100.0f : 0.0f;
-			ImGui::Text("Delta: %+0.1f FPS (%+0.1f%%)", fpsDelta, fpsDeltaPercent);
-		}
+        ImGui::SeparatorText("Frame & visibility");
+        const float fps = ImGui::GetIO().Framerate;
+        ImGui::Text("%.1f FPS / %.2f ms", fps, fps > 0.0f ? 1000.0f / fps : 0.0f);
+        ImGui::Text("Visible static batches: %u / %u", state.frustumCullingVisibleCandidates, state.frustumCullingTotalCandidates);
+        const char* modes[] = { "Default", "Mipmaps", "Depth", "Derivatives", "Overdraw", "Overshading" };
+        ImGui::Combo(_SL("View Mode"), &state.renderMode, modes, IM_ARRAYSIZE(modes));
+        ImGui::TextWrapped("Visibility settings are in Render Settings. Debug views omit particles and portals.");
+
 		ImGui::End();
 	}
 
 	void EngineUi::DrawSceneHierarchy(RenderSystem* renderSys, SceneManager* sceneManager, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, UserState& state)
 	{
 		// 获取当前屏幕分辨率 (Current screen resolution)
-		float screenWidth = ImGui::GetIO().DisplaySize.x;
-		float screenHeight = ImGui::GetIO().DisplaySize.y;
+
+
 
 		// 🪟 1. Scene Hierarchy Panel (场景层级面板)
 		if (state.showSceneHierarchy)
 		{
 			// 设置面板的初始位置和大小// Set initial position and size of the panel
-			ImGui::SetNextWindowPos(ImVec2(screenWidth - 320, 20), ImGuiCond_FirstUseEver);
-			ImGui::SetNextWindowSize(ImVec2(300, 400), ImGuiCond_FirstUseEver);
+
+
 
 			// &state.showSceneHierarchy，ImGui 会自动在右上角生成关闭按钮 [X]// ImGui will automatically generate a close button [X] in the top right corner when we pass &state.showSceneHierarchy
-			if (ImGui::Begin(_SL("Scene Hierarchy"), &state.showSceneHierarchy))
+			if (ImGui::Begin(PanelTitle("Scene Hierarchy", "SceneHierarchy").c_str(), &state.showSceneHierarchy))
 			{
 				if (sceneManager && &sceneManager->get_world() != nullptr) {
 					// 显示实体总数// Display total entity count
@@ -1899,6 +1769,15 @@ namespace engine {
 
 		// 🪟 2. Entity Inspector & ImGuizmo (实体属性检查器 & 3D 交互坐标轴)
 
+        if (selected_id != 0 && sceneManager && !sceneManager->get_world().entity(selected_id).is_alive()) selected_id = 0;
+        if (state.showEntityInspector && (selected_id == 0 || !sceneManager)) {
+            if (ImGui::Begin(PanelTitle("Entity Inspector", "EntityInspector").c_str(), &state.showEntityInspector)) {
+                ImGui::TextWrapped("Select an entity in the hierarchy or scene viewport to inspect its components.");
+                if (state.activeParticleIndex >= 0 && ImGui::Button("Open Particles")) state.showParticlePanel = true;
+            }
+            ImGui::End();
+        }
+
 		if (selected_id != 0 && sceneManager) {
 			auto& world = sceneManager->get_world();
 			flecs::entity selectedEntity = world.entity(selected_id); // 获取当前选中的实体
@@ -1914,10 +1793,10 @@ namespace engine {
 			if (state.showEntityInspector)
 			{
 				// 设置初始位置在 Hierarchy 的下方// Set initial position below the Hierarchy panel
-				ImGui::SetNextWindowPos(ImVec2(screenWidth - 320, 430), ImGuiCond_FirstUseEver);
-				ImGui::SetNextWindowSize(ImVec2(300, 300), ImGuiCond_FirstUseEver);
 
-				if (ImGui::Begin(_SL("Entity Inspector"), &state.showEntityInspector)) {
+
+
+				if (ImGui::Begin(PanelTitle("Entity Inspector", "EntityInspector").c_str(), &state.showEntityInspector)) {
 
 					ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "[ %s ]", selectedEntity.name().c_str());
 					ImGui::Separator();
@@ -1934,21 +1813,13 @@ namespace engine {
 					if (selectedEntity.has<LocalTransform>()) {
 						LocalTransform* localTransform = &selectedEntity.get_mut<LocalTransform>();
 						if (localTransform) {
-							float matrixTranslation[3], matrixRotation[3], matrixScale[3];
-
-							//  T/R/S (位置、旋转、缩放)
-							ImGuizmo::DecomposeMatrixToComponents(
-								glm::value_ptr(localTransform->matrix),
-								matrixTranslation, matrixRotation, matrixScale
-							);
-
-							if (m_current_inspected_id != selectedEntity.id()) {
-								m_current_inspected_id = selectedEntity.id();
-								ImGuizmo::DecomposeMatrixToComponents(
-									glm::value_ptr(localTransform->matrix),
-									m_ui_translation, m_ui_rotation, m_ui_scale
-								);
-							}
+                            bool canEditTransform = m_current_inspected_id == selectedEntity.id();
+                            if (!canEditTransform || !ImGui::IsAnyItemActive())
+                                canEditTransform = SyncTransformCache(selectedEntity.id(), localTransform->matrix);
+                            if (!canEditTransform) {
+                                ImGui::TextWrapped("This transform has zero scale, shear or invalid values and cannot be edited as TRS.");
+                            }
+                            if (canEditTransform) {
 
 							bool is_modified = false;
 
@@ -1978,7 +1849,12 @@ namespace engine {
 									glm::value_ptr(localTransform->matrix)
 								);
 								selectedEntity.modified<LocalTransform>();
+                                if (selectedEntity.has<PhysicsBody>()) {
+                                    if (auto* physics = sceneManager->get_physics_system())
+                                        physics->set_body_transform(selectedEntity.get<PhysicsBody>().bodyID, localTransform->matrix);
+                                }
 							}
+                            }
 						}
 					}
 
@@ -1992,7 +1868,7 @@ namespace engine {
 					// 键盘快捷键删除 (Delete 键)
 					if (selectedEntity.is_alive() &&
 						ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-						!UIEditorWindow::WantsKeyboardCapture() &&
+						!(state.showGameUiEditor && UIEditorWindow::WantsKeyboardCapture()) &&
 						ImGui::IsKeyPressed(ImGuiKey_Delete) &&
 						!ImGui::GetIO().WantTextInput) {
 						selectedEntity.destruct();
@@ -2011,10 +1887,9 @@ namespace engine {
 	{
 		if (!state.showAudioPanel) return;
 
-		ImGui::SetNextWindowPos(ImVec2(780, 320), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(340, 260), ImGuiCond_FirstUseEver);
 
-		if (!ImGui::Begin("Audio Panel", &state.showAudioPanel)) {
+
+		if (!ImGui::Begin(PanelTitle("Audio", "Audio").c_str(), &state.showAudioPanel)) {
 			ImGui::End();
 			return;
 		}
@@ -2071,66 +1946,85 @@ namespace engine {
 		ImGui::End();
 	}
 
-	void EngineUi::DrawMainMenuBar(RenderSystem* renderSys, SceneManager* sceneManager, UserState& state, bool& appRunning) {
-		if (!state.showEngineUi) {
-			return;
-		}
-
-
-		//绘制顶部主菜单栏 (Main Menu Bar)
-		if (ImGui::BeginMainMenuBar()) {
-			if (ImGui::BeginMenu(_SL("File"))) {
-				if (ImGui::MenuItem(_SL("Save Project"), "Ctrl+S")) {
-					SaveProject(sceneManager, renderSys, "Assets/MySceneSave.json");
-					ShowToast("[ Project Saved ]");
-				}
-				if (ImGui::MenuItem(_SL("Load Project"), "Ctrl+O")) {
-					LoadProject(sceneManager, renderSys, "Assets/MySceneSave.json");
-					ShowToast("[ Project Loaded ]");
-				}
-				ImGui::Separator();
-				if (ImGui::MenuItem(_SL("Exit Engine"), "Alt+F4")) {
-					appRunning = false;
-				}
-				ImGui::EndMenu();
-			}
-
-			if (ImGui::BeginMenu(_SL("View"))) {
-				ImGui::MenuItem("Engine UI", "F1", &state.showEngineUi);
-				
-				ImGui::Separator();
-				ImGui::MenuItem(_SL("Control Panel"), NULL, &state.showControlPanel);
-				ImGui::MenuItem(_SL("Content Browser"), NULL, &state.showContentBrowser);
-				ImGui::MenuItem(_SL("Scene Hierarchy"), NULL, &state.showSceneHierarchy);
-				ImGui::MenuItem(_SL("Entity Inspector"), NULL, &state.showEntityInspector);
-				ImGui::MenuItem(_SL("Output Console"), NULL, &state.showConsole);
-				ImGui::MenuItem(_SL("Light Panel"), NULL, &state.showLightPanel);
-				ImGui::MenuItem(_SL("Camera Panel"), NULL, &state.showCameraPanel);
-				ImGui::MenuItem("Audio Panel", NULL, &state.showAudioPanel);
-				ImGui::MenuItem("Debug Panel", NULL, &state.showDebugPanel);
-				ImGui::MenuItem("Runtime UI", NULL, &state.showRuntimeUi);
-				ImGui::EndMenu();
-			}
-
-			//UI editor menu UI 编辑器菜单
-			if (ImGui::BeginMenu("Window")) {
-				// Game UI Editor 可视化编辑器窗口
-				ImGui::MenuItem("Game UI Editor", NULL, &state.showGameUiEditor);
-				ImGui::EndMenu();
-			}
-
-			if (ImGui::BeginMenu(_SL("Help"))) {
-				if (ImGui::MenuItem(_SL("About Engine"))) {
-					LogPrint("Steer engine number one !!!\n");
-				}
-				ImGui::EndMenu();
-			}
-
-			ImGui::EndMainMenuBar();
-		}
-
-
-	}
+    void EngineUi::DrawMainMenuBar(RenderSystem* renderSys, SceneManager* sceneManager, UserState& state, bool& appRunning) {
+        if (!state.showEngineUi) return;
+        const auto snapshot = [&](bool save) {
+            try {
+                const bool ok = save ? SaveProject(sceneManager, renderSys, "Assets/MySceneSave.json")
+                                     : LoadProject(sceneManager, renderSys, "Assets/MySceneSave.json");
+                ShowToast(ok ? (save ? "Scene snapshot saved" : "Scene snapshot loaded") : "Snapshot failed - see Console");
+                if (!ok) state.showConsole = true;
+            }
+            catch (const std::exception& error) {
+                LogPrintf("[Error] Scene snapshot failed: %s\n", error.what());
+                ShowToast("Snapshot failed - see Console");
+                state.showConsole = true;
+            }
+        };
+        // UI authoring owns its own save shortcut. Do not save the scene while typing.
+        if (!ImGui::GetIO().WantTextInput && !(state.showGameUiEditor && UIEditorWindow::WantsKeyboardCapture()) && ImGui::GetIO().KeyCtrl) {
+            if (ImGui::IsKeyPressed(ImGuiKey_S, false)) snapshot(true);
+            if (ImGui::IsKeyPressed(ImGuiKey_O, false)) snapshot(false);
+        }
+        if (!ImGui::BeginMainMenuBar()) return;
+        if (ImGui::BeginMenu(_SL("File"))) {
+            if (ImGui::MenuItem(_SL("Save Scene Snapshot"), "Ctrl+S")) snapshot(true);
+            if (ImGui::MenuItem(_SL("Load Scene Snapshot"), "Ctrl+O")) snapshot(false);
+            ImGui::TextDisabled("Assets/MySceneSave.json");
+            ImGui::Separator();
+            ImGui::TextWrapped("Snapshots store named entity transforms and particle settings. They do not save a complete project.");
+            ImGui::Separator();
+            if (ImGui::MenuItem(_SL("Exit Engine"), "F4")) appRunning = false;
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu(_SL("Window"))) {
+            ImGui::MenuItem(_SL("Scene Hierarchy"), nullptr, &state.showSceneHierarchy);
+            ImGui::MenuItem(_SL("Entity Inspector"), nullptr, &state.showEntityInspector);
+            ImGui::MenuItem(_SL("Assets"), nullptr, &state.showContentBrowser);
+            ImGui::MenuItem(_SL("Console"), nullptr, &state.showConsole);
+            ImGui::Separator();
+            ImGui::MenuItem(_SL("Render Settings"), nullptr, &state.showRenderSettings);
+            ImGui::MenuItem(_SL("Lighting"), nullptr, &state.showLightPanel);
+            ImGui::MenuItem(_SL("Camera"), nullptr, &state.showCameraPanel);
+            ImGui::MenuItem(_SL("Particles"), nullptr, &state.showParticlePanel);
+            ImGui::MenuItem(_SL("Audio"), nullptr, &state.showAudioPanel);
+            ImGui::MenuItem(_SL("Diagnostics"), nullptr, &state.showDebugPanel);
+            ImGui::Separator();
+            if (ImGui::BeginMenu(_SL("Game UI Tools"))) {
+                ImGui::MenuItem(_SL("Game UI Editor"), nullptr, &state.showGameUiEditor);
+                ImGui::MenuItem(_SL("Runtime UI Debug"), nullptr, &state.showRuntimeUiDebugPanel);
+                ImGui::EndMenu();
+            }
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu(_SL("View"))) {
+            ImGui::MenuItem(_SL("Engine UI"), "F1", &state.showEngineUi);
+            if (ImGui::MenuItem(_SL("Reset Editor Layout"))) {
+                state.showSceneHierarchy = state.showEntityInspector = state.showContentBrowser = true;
+                state.showConsole = state.showRenderSettings = true;
+                state.showLightPanel = state.showCameraPanel = state.showAudioPanel = false;
+                state.showDebugPanel = state.showParticlePanel = state.showRuntimeUiDebugPanel = false;
+                state.showGameUiEditor = false;
+                s_ResetEditorLayout = true;
+            }
+            if (ImGui::BeginMenu(_SL("Language"))) {
+                if (ImGui::MenuItem("English", nullptr, Translator::CurrentLanguage == Language::English)) Translator::SetLanguage(Language::English);
+                if (ImGui::MenuItem("Chinese", nullptr, Translator::CurrentLanguage == Language::Chinese)) Translator::SetLanguage(Language::Chinese);
+                ImGui::EndMenu();
+            }
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu(_SL("Help"))) {
+            ImGui::TextUnformatted("Steer Engine Editor");
+            ImGui::Separator();
+            ImGui::TextUnformatted("F1: switch editor / game view");
+            ImGui::TextUnformatted("W / E / R: translate / rotate / scale in viewport");
+            ImGui::TextUnformatted("Drag models from Assets into the scene.");
+            ImGui::TextUnformatted("Window: open panels. View: reset docking layout.");
+            ImGui::EndMenu();
+        }
+        ImGui::EndMainMenuBar();
+    }
 
 	void EngineUi::DrawMainMenu(RenderSystem* renderSys, bool& appRunning, bool& isGameStarted) {
 

@@ -133,7 +133,6 @@ namespace engine {
         MapKeyboardAction("DebugMosaic", GLFW_KEY_5); // Mosaic Toggle
         MapKeyboardAction("DebugOverdraw", GLFW_KEY_6); // Overdraw
         MapKeyboardAction("DebugOvershading", GLFW_KEY_7); // Overshading
-        MapKeyboardAction("DebugShadows", GLFW_KEY_8);; // Shadow Debug
         MapKeyboardAction("PrintCameraPos", GLFW_KEY_P); // Print Camera Position
 
 

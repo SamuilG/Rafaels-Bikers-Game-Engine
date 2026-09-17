@@ -62,6 +62,12 @@ namespace engine {
         // trigger: clear all stored triggers when rebuilding or unloading a scene.
         void ClearTriggers();
 
+        // Keep particle indices stable when a particle group is removed.
+        void OnParticleGroupRemoved(size_t particleIndex);
+
+        // Includes disabled and completed one-shot triggers.
+        bool HasParticleBinding(size_t particleIndex) const;
+
         // trigger: test the probe position against every trigger and sync the result to particle visibility.
         void ProcessParticleTriggers(const glm::vec3& probePosition, std::vector<std::unique_ptr<ParticleSystem>>& particles);
 

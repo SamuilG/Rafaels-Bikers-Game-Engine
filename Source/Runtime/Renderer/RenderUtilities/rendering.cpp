@@ -85,6 +85,7 @@ void record_commands(
 	ImageAndView const& aCompositeOutput, // modified from aFinalSceneColor; used for bloom transfer
 	VkClearColorValue aClearColor,
 	float aBloomStrength,
+	float aExposure,
 
 	// ==============================================================
 	// 鏋侀€熷悗澶勭悊鏁堟灉
@@ -1310,7 +1311,7 @@ void record_commands(
 	// --- 1. 鐢诲叏灞忚儗鏅悎鎴?(SSAO + SSR + 鍦烘櫙搴曡壊) ---
 	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aCompositePipe);
 	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aCompositeLayout, 0, 1, &aCompositeDS, 0, nullptr);
-	struct BloomPC { float exposure; float strength; float _pad[2]; } bloomPC{ 1.0f, aBloomStrength, {0.0f,0.0f} };
+	struct BloomPC { float exposure; float strength; float _pad[2]; } bloomPC{ aExposure, aBloomStrength, {0.0f,0.0f} };
 	vkCmdPushConstants(aCmdBuff, aCompositeLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(BloomPC), &bloomPC);
 	vkCmdSetViewport(aCmdBuff, 0, 1, &vp);
 	vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);

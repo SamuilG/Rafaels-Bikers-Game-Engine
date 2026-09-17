@@ -12,7 +12,7 @@ inline bool RenderSystem::ShouldRenderRuntimeUiDebugPreview() const {
     return mState &&
         mState->showRuntimeUi &&
         mState->showEngineUi &&
-        mState->showDebugPanel &&
+        mState->showRuntimeUiDebugPanel &&
         mRuntimeUiDebugShowLivePreview &&
         HasRuntimeUiScreen();
 }
@@ -360,7 +360,7 @@ inline void RenderSystem::RenderRuntimeUi() {
 }
 
 inline bool RenderSystem::ShouldShowRuntimeUiDebugPanel() const {
-    return mState && mState->showEngineUi && mState->showDebugPanel && mRuntimeUiManager && mState->showRuntimeUi;
+    return mState && mState->showEngineUi && mState->showRuntimeUiDebugPanel && mRuntimeUiManager && mState->showRuntimeUi;
 }
 
 inline bool RenderSystem::ShouldDrawRuntimeUiDebugOverlay() const {
@@ -518,7 +518,7 @@ inline bool RenderSystem::HandleRuntimeUiDebugSelection() {
     if (!ShouldShowRuntimeUiDebugPanel() ||
         !mRuntimeUiDebugEnablePicking ||
         !ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
-        render_system_ui_editor::WantsMouseCapture() ||
+        (mState->showGameUiEditor && render_system_ui_editor::WantsMouseCapture()) ||
         ImGuizmo::IsOver()) {
         return false;
     }
@@ -556,9 +556,22 @@ inline bool RenderSystem::HandleRuntimeUiDebugSelection() {
 }
 
 inline void RenderSystem::DrawRuntimeUiDebugPanel() {
-    if (!ShouldShowRuntimeUiDebugPanel()) {
+    if (!mState || !mState->showEngineUi || !mState->showRuntimeUiDebugPanel) {
         return;
     }
+
+    if (!ImGui::Begin("Runtime UI Debug###RuntimeUiDebug", &mState->showRuntimeUiDebugPanel)) {
+        ImGui::End();
+        return;
+    }
+    if (!mRuntimeUiManager) {
+        ImGui::TextDisabled("Runtime UI is not initialized.");
+        ImGui::End();
+        return;
+    }
+    ImGui::Checkbox("Enable Runtime UI", &mState->showRuntimeUi);
+    if (!mState->showRuntimeUi)
+        ImGui::TextWrapped("Runtime UI rendering is disabled. Enable it to use the live preview and viewport picking.");
 
     if (mRuntimeUiDebugSelectedElementId != 0 && !mRuntimeUiDebugSelectedScreenName.empty()) {
         const UIScreen* selectedScreen = mRuntimeUiManager->GetScreen(mRuntimeUiDebugSelectedScreenName);
@@ -570,13 +583,6 @@ inline void RenderSystem::DrawRuntimeUiDebugPanel() {
 
     UIManager::UISettings& settings = mRuntimeUiManager->GetSettings();
     const UIDataContext& dataContext = mRuntimeUiManager->GetDataContext();
-
-    ImGui::SetNextWindowPos(ImVec2(1120, 140), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(420, 560), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("Runtime UI Debug", nullptr)) {
-        ImGui::End();
-        return;
-    }
 
     ImGui::TextUnformatted("Active Runtime UI Screens");
     for (const auto& loadedScreen : mRuntimeUiManager->GetLoadedScreens()) {

@@ -32,15 +32,17 @@ namespace engine {
         static void PushLogMessage(const std::string& msg);
 
 
-        //================Project Management 项目管理==========================
+        //================Editor workspace and scene snapshots================
 		// 绘制顶部主菜单栏//Draw the top main menu bar
         static void DrawMainMenuBar(RenderSystem* renderSys, SceneManager* sceneManager, UserState& state, bool& appRunning);
+
+        static void DrawEditorWorkspace();
 		
-        // 保存项目到 JSON//Save project to JSON
-        static void SaveProject(SceneManager* sceneManager, RenderSystem* renderSys, const std::string& filepath);
+        // Save named entity transforms and particle settings (not a full project).
+        static bool SaveProject(SceneManager* sceneManager, RenderSystem* renderSys, const std::string& filepath);
 		
-        // 从 JSON 加载项目//Load project from JSON
-        static void LoadProject(SceneManager* sceneManager, RenderSystem* renderSys, const std::string& filepath);
+        // Restore a scene snapshot onto the currently loaded scene.
+        static bool LoadProject(SceneManager* sceneManager, RenderSystem* renderSys, const std::string& filepath);
 
 
         //================Notification System 提示通知=========================
@@ -66,10 +68,12 @@ namespace engine {
 
         //================Editor Panels 编辑器面板=============================
 		//内容浏览器面板（显示 Assets 资源）//Content Browser panel (showing Assets)
-        static void DrawContentBrowser(RenderSystem* renderSys, SceneManager* sceneManager);
+        static void DrawContentBrowser(RenderSystem* renderSys, SceneManager* sceneManager, UserState& state);
 
-		//控制面板（粒子设置、渲染模式切换）//Control panel (particle settings, render mode switching)
-        static void DrawControlPanel(UserState& state, RenderSystem* renderSys, SceneManager* sceneManager);
+        // Independent editor tools; each owns its visibility/close button.
+        static void DrawRenderSettings(UserState& state);
+        static void DrawParticlePanel(UserState& state, RenderSystem* renderSys, flecs::entity_t& selected_id);
+        static void DrawConsole(UserState& state);
 
         //light UI灯光调节面板
         static void DrawLightPanel(SceneManager* sceneManager, UserState& state);
@@ -96,6 +100,7 @@ namespace engine {
 
         
     private:
+        static bool SyncTransformCache(flecs::entity_t id, const glm::mat4& matrix);
         // 编辑器 UI 的状态缓存当前选中的实体、位移、旋转、缩放的数值
 		// State cache for the editor UI: currently selected entity, translation, rotation, and scale values
         inline static flecs::entity_t m_current_inspected_id = 0;
