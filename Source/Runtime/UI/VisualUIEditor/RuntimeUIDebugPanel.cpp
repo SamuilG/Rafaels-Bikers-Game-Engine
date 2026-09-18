@@ -23,7 +23,8 @@ namespace engine {
                 case GameFlowState::MainMenu: return "MainMenu";
                 case GameFlowState::Playing:  return "Playing";
                 case GameFlowState::Paused:   return "Paused";
-                case GameFlowState::Settings: return "Settings";
+                case GameFlowState::Loading: return "Loading";
+                case GameFlowState::LoadFailed: return "LoadFailed";
                 case GameFlowState::GameOver: return "GameOver";
                 case GameFlowState::Victory: return "Victory";
                 }
@@ -338,11 +339,10 @@ namespace engine {
 
             // ---------- 游戏流程状态 + 活跃屏幕 ----------
             ImGui::TextUnformatted("Game Flow");
-            ImGui::Text("State: %s", GameFlowStateName(userState.gameFlowState));
-            ImGui::Text("Started=%s  Pause=%s  GameOver=%s",
-                userState.isGameStarted ? "true" : "false",
-                userState.isGamePause ? "true" : "false",
-                userState.isGameOver ? "true" : "false");
+            ImGui::Text("State: %s", GameFlowStateName(userState.gameFlow.State()));
+            ImGui::Text("Simulating=%s  Settings=%s",
+                userState.gameFlow.CanSimulate() ? "true" : "false",
+                userState.gameFlow.IsSettingsOpen() ? "true" : "false");
 
             ImGui::Separator();
             ImGui::TextUnformatted("Active Runtime UI Screens");

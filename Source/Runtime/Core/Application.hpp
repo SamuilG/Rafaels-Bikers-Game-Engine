@@ -37,7 +37,7 @@ namespace engine {
 
     private:
         void ReportProgress(float progress, std::string_view stage) const;
-        void ReloadCurrentScene(bool returnToMainMenu);
+        bool ReloadCurrentScene();
 
         float CalcDeltaTime() {
             auto now = std::chrono::steady_clock::now();

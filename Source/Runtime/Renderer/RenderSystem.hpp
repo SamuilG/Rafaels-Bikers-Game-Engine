@@ -232,16 +232,22 @@ namespace engine {
         RuntimeUiController* GetRuntimeUiController() const {
             return mRuntimeUiController.get();
         }
-        //Draw the main menu UI
-      
-        void DrawMainMenuUI() {
-            // 游戏未开始// Game not started
-            if (!mState->isGameStarted) {
-                // Draw the main menu UI主菜单
-                //EngineUi::DrawMainMenu(this, mAppRunning, mState->isGameStarted);
+
+        void WaitForGpuIdle() const {
+            if (const auto result = vkDeviceWaitIdle(mWindow.device); result != VK_SUCCESS) {
+                throw lut::Error("vkDeviceWaitIdle: {}", lut::to_string(result));
             }
         }
 
+        // Call after the old game scene has released its callbacks/controllers.
+        void ClearSceneTransientResources() {
+            WaitForGpuIdle();
+            mTriggerSystem.ClearTriggers();
+            allParticles.clear();
+            mSelectedEntityId = 0;
+            mPortalEnabled = false;
+            mPortal2Enabled = false;
+        }
         //==========UI System（particle）======================
         // 存储 ImGui 专用的贴图描述符// Store ImGui-specific texture descriptors
         std::unordered_map<std::string, VkDescriptorSet> particleImGuiTextureDict;
@@ -900,9 +906,10 @@ namespace engine {
             // =======================================================
        // 基于时间轴（Timeline）的死亡特效计算
        // =======================================================
+            const float effectDt = mState->gameFlow.CanSimulate() ? deltaTime : 0.0f;
             if (!mState->isAlive) {
                 // 1. 累加死亡时间
-                mState->deathTimer += deltaTime;
+                mState->deathTimer += effectDt;
 
                 // 2. 定义动画曲线参数 (导演控制台)
                 const float totalDuration = 8.0f;    // 整个特效持续 5 秒
@@ -937,61 +944,31 @@ namespace engine {
                 mState->deathTimer = 0.0f;
 
                 // 快速恢复彩色（防止复活瞬间画面突变）
-                mState->deathFactor -= deltaTime * 5.0f;
+                mState->deathFactor -= effectDt * 5.0f;
                 if (mState->deathFactor < 0.0f) {
                     mState->deathFactor = 0.0f;
                 }
             }
             //===========================UI System================================
-            // game over debug
-            if (!mState->showEngineUi && ImGui::IsKeyPressed(ImGuiKey_G))
-            {
-                mState->isGameOver = !mState->isGameOver; // 切换死亡状态进行测试// Toggle game over state for testing
+            if (mRuntimeUiController) mRuntimeUiController->SyncGameFlowUi();
+            const bool editorFreeCamera = mState->showEngineUi && !mState->thirdPersonMode;
+            if (!mState->gameFlow.CanSimulate() && !editorFreeCamera && mInputSystem) {
+                mInputSystem->SetMouseCaptured(false);
+                mState->previousMouseState = false;
+            }
 
-                if (mState->isGameOver)
-                {
-                    engine::EngineUi::LogPrintf("Test: Game Over triggered via 'G' key.\n");
-
+            imguiRenderer.BeginFrame(mState->showEngineUi);
+            // Debug shortcuts use the same validated commands as runtime buttons.
+            if (!mState->showEngineUi && !ImGui::GetIO().WantTextInput && mRuntimeUiManager) {
+                if (ImGui::IsKeyPressed(ImGuiKey_G, false)) {
+                    mRuntimeUiManager->TriggerEvent("ShowGameOver");
                 }
-                else
-                {
-                    engine::EngineUi::LogPrintf("Test: Back to Game/Menu.\n");
-                }
-            }// game over debug
-            // game pause debug
-            if (!mState->showEngineUi && ImGui::IsKeyPressed(ImGuiKey_H))
-            {
-                mState->isGamePause = !mState->isGamePause; // 切换死亡状态进行测试// Toggle game pause state for testing
-
-                if (mState->isGamePause)
-                {
-                    if (mRuntimeUiController) {
-                        mRuntimeUiController->RemoveWidgetFromViewPort("Assets/ui/Settings.ui.json");
-                        mRuntimeUiController->AddWidgetToViewPort("Assets/ui/PauseMenu.ui.json");
-                    }
-                    engine::EngineUi::LogPrintf("Test: Game pause triggered via 'H' key.\n");
-                }
-                else
-                {
-                    if (mRuntimeUiController) {
-                        mRuntimeUiController->RemoveWidgetFromViewPort("Assets/ui/Settings.ui.json");
-                        mRuntimeUiController->RemoveWidgetFromViewPort("Assets/ui/PauseMenu.ui.json");
-                        if (mRuntimeUiController->IsWidgetLoaded("Assets/ui/HUD.ui.json")) {
-                            mRuntimeUiController->AddWidgetToViewPort("Assets/ui/HUD.ui.json");
-                        }
-                    }
-                    engine::EngineUi::LogPrintf("Test: Back to Game/Menu.\n");
+                if (ImGui::IsKeyPressed(ImGuiKey_H, false)) {
+                    mRuntimeUiManager->TriggerEvent(mState->gameFlow.State() == GameFlowState::Paused
+                        ? "ResumeGame" : "PauseGame");
                 }
             }
 
-
-			//debug draw box
-            //mDebugRenderer.DrawBox(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-
-            // 
-
-            //启动 ImGui 帧// Start ImGui frame
-            imguiRenderer.BeginFrame(mState->showEngineUi);
 
             if (mState->showEngineUi) {
                 EngineUi::DrawMainMenuBar(this, mSceneManager, *mState, mAppRunning);
@@ -1000,22 +977,7 @@ namespace engine {
                 }
             }
 
-            const bool runtimeUiViewportActive = ShouldRenderRuntimeUi();
-
-            //start gmae menu
-           // 如果游戏还没开始，只画主菜单
-            if (!mState->isGameStarted && !mState->showEngineUi) {
-                //EngineUi::DrawMainMenu(this, mAppRunning, mState->isGameStarted);
-            }
-            else if (mState->isGameOver && !mState->showEngineUi) {
-                // gameover UI
-                //EngineUi::DrawGameOver(this, *mState, mAppRunning);
-            }
-            else if (mState->isGamePause && !mState->showEngineUi) {
-                // gameover UI 
-                //EngineUi::DrawGamePause(this, *mState, mAppRunning);
-            }
-            else
+            // The viewport and UI are presented in every flow state.
             {
                 // Prepare data for this frame
                 glsl::SceneUniform sceneUniforms{};
@@ -1097,7 +1059,7 @@ namespace engine {
 
 				
 				//game HUD============================
-                if (!mState->showEngineUi) {
+                if (!mState->showEngineUi && mState->gameFlow.CanSimulate()) {
                     GameUi::DrawHud(this, *mState, EngineUi::GetSceneViewportPos(), EngineUi::GetSceneViewportSize());
                 }
 
@@ -1553,7 +1515,7 @@ namespace engine {
                     mState->particlesEnabled = !mState->particlesEnabled;
                     std::printf("Particles: %s\n", mState->particlesEnabled ? "ON" : "OFF");
                 }
-                if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("CameraThirdPersonToggle" ) ) {
+                if (mState->gameFlow.CanSimulate() && !editorCapturesKeyboard && mInputSystem->IsActionPressed("CameraThirdPersonToggle")) {
                     // T
                     mState->thirdPersonMode = !mState->thirdPersonMode;
                     std::printf("Camera: %s\n", mState->thirdPersonMode ? "Third Person" : "Free Fly");
@@ -1572,17 +1534,10 @@ namespace engine {
                 const bool menuBackPressed = menuBackDown && !mMenuBackWasDown;
                 mMenuBackWasDown = menuBackDown;
 
-                if (menuBackPressed && !mState->showEngineUi && mRuntimeUiController && mRuntimeUiManager) {
-                    constexpr std::string_view kSettingsUiPath = "Assets/ui/Settings.ui.json";
-
-                    if (mRuntimeUiController->IsWidgetVisible(kSettingsUiPath)) {
-                        mRuntimeUiManager->TriggerEvent("CloseSettings");
-                    }
-                    else {
-                        mRuntimeUiManager->TriggerEvent("OpenSettings");
-                    }
+                if (menuBackPressed && !mState->showEngineUi && !editorCapturesKeyboard && mRuntimeUiManager) {
+                    mRuntimeUiManager->TriggerEvent("MenuBack");
                 }
-                
+
 #ifndef GAME_ONLY
                 // Debug Render Modes
                 if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("Default")) mState->renderMode = 0;
@@ -1602,7 +1557,8 @@ namespace engine {
             //
 
             // Update state
-            if (!(mState->showEngineUi && ImGui::GetIO().WantTextInput))
+            if ((mState->gameFlow.CanSimulate() || (mState->showEngineUi && !mState->thirdPersonMode)) &&
+                !(mState->showEngineUi && ImGui::GetIO().WantTextInput))
                 update_user_state(*mState, dt, mInputSystem);
 
             //// Prepare data for this frame
@@ -1662,9 +1618,10 @@ namespace engine {
             //================  particle system===================================================
 
              // trigger
-            mTriggerSystem.ProcessParticleTriggers(mState->followTargetPos, allParticles);
+            if (mState->gameFlow.CanSimulate())
+                mTriggerSystem.ProcessParticleTriggers(mState->followTargetPos, allParticles);
 
-            if (mState->particlesEnabled)
+            if (mState->particlesEnabled && mState->gameFlow.CanSimulate())
             {
                 for (const auto& ps  : allParticles)
                 {

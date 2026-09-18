@@ -231,7 +231,7 @@ namespace engine {
 			m_event->Subscribe(EventType::Collision, [this, bikeBodyIDStr](Event& e) {
 				auto& col = static_cast<CollisionEvent&>(e);
 				if (col.GetEntityA() != bikeBodyIDStr && col.GetEntityB() != bikeBodyIDStr) return;
-				if (mState->isGameOver) return; // already dead, ignore further events
+				if (mState->gameFlow.State() == GameFlowState::GameOver) return; // already dead, ignore further events
 
 				// --- Physics-based impact thresholds (SI units: m/s) ---
 				// 15 km/h = 4.17 m/s  -> light hit
@@ -421,7 +421,6 @@ namespace engine {
 
 							mState->isAlive = true;
 							mState->deathTimer = 0.0f;
-							mState->isGameOver = false;
 							mState->bikeLeanAngle = 0.0f;
 							mState->bikeSteerAngle = 0.0f;
 							mState->thirdPersonMode = true;

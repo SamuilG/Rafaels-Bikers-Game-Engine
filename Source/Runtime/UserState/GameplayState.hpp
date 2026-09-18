@@ -1,4 +1,5 @@
 #pragma once
+#include "GameFlowController.hpp"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -17,16 +18,6 @@ struct BikeTuning
 };
 
 namespace engine {
-
-	enum class GameFlowState
-	{
-		MainMenu,
-		Playing,
-		Paused,
-		Settings,
-		GameOver,
-		Victory
-	};
 
 	struct GameplayState
 	{
@@ -75,11 +66,7 @@ namespace engine {
 		glm::vec3 portalTransitionExitCorrection = glm::vec3(0.0f);
 
 		//================Game Flow================================
-		GameFlowState gameFlowState = GameFlowState::MainMenu;
-		bool isGameStarted = true;
-		bool isGameOver = false;
-		bool isGameWon = false;
-		bool isGamePause = false;
+		GameFlowController gameFlow;
 		bool isExtremeSpeed = false;
 
 		//================Player================================
@@ -98,8 +85,6 @@ namespace engine {
 		float engineForce = 0.0f;
 		int lastPedal = -1;
 		int deathCount = 0;
-		bool restartRequested = false;
-		bool returnToMainMenuRequested = false;
 
 		BikeTuning bikeTuning{};
 

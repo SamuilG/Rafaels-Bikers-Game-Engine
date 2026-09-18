@@ -54,7 +54,7 @@ cd /d "$repoRoot"
 cl $($arguments -join ' ')
 exit /b %errorlevel%
 "@
-Set-Content -LiteralPath $buildScript -Value $buildCommand -Encoding Ascii
+[IO.File]::WriteAllText($buildScript, $buildCommand, [Text.UTF8Encoding]::new($false))
 $buildLog = Join-Path $outputDirectory 'build.log'
 & $env:ComSpec /d /c "`"$buildScript`"" 2>&1 | Out-File -LiteralPath $buildLog -Encoding utf8
 if ($LASTEXITCODE -ne 0) {

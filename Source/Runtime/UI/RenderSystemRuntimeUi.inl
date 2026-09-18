@@ -77,11 +77,13 @@ inline void RenderSystem::RefreshRuntimeUiDataContext(float dt) {
         return;
     }
 
-    if (!mState->isGameStarted || mState->isGameOver || mState->isGameWon) {
+    if (mState->gameFlow.State() == GameFlowState::MainMenu ||
+        mState->gameFlow.State() == GameFlowState::Loading ||
+        mState->gameFlow.State() == GameFlowState::LoadFailed) {
         mRuntimeUiLapTimeSeconds = 0.0f;
         mRuntimeUiTravelDistanceMeters = 0.0f;
     }
-    else if (!mState->isGamePause) {
+    else if (mState->gameFlow.CanSimulate()) {
         mRuntimeUiLapTimeSeconds += dt;
         mRuntimeUiTravelDistanceMeters += (std::abs(mState->bikeSpeed) / 3.6f) * dt;
     }

@@ -60,9 +60,10 @@ namespace engine {
         // --- 屏幕栈操作与可见性控制 ---
         void ShowScreen(std::string_view name);     // 显示指定屏幕并播放进入动画
         void HideScreen(std::string_view name);     // 隐藏指定屏幕（可能先播放退出动画）
+        void HideScreenImmediately(std::string_view name); // Cancel transitions and release this screen's input.
         void ToggleScreen(std::string_view name);   // 切换指定屏幕的显示/隐藏状态
         void SwitchToScreen(std::string_view name);  // 隐藏其他屏幕，仅显示指定屏幕
-        void PushScreen(std::string_view name);     // 将指定屏幕推到栈顶并显示
+        void PushScreen(std::string_view name, bool restartAnimations = true);     // 将指定屏幕推到栈顶并显示
         void PopScreen();                           // 隐藏栈顶的可见屏幕
 
         // --- 每帧更新与渲染 ---

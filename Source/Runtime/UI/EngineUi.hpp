@@ -89,16 +89,6 @@ namespace engine {
         static void DrawSceneHierarchy(RenderSystem* renderSys, SceneManager* sceneManager, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, UserState& state);
 		
 
-        //================Game UI 游戏流程界面=================================
-        //Game start menu 游戏开始菜单
-        static void DrawMainMenu(RenderSystem* renderSys, bool& appRunning, bool& isGameStarted);
-		//Game over menu 游戏结束菜单
-        static void DrawGameOver(RenderSystem* renderSys, UserState& state, bool& appRunning);
-		//Pause menu 暂停菜单
-        static void DrawGamePause(RenderSystem* renderSys, UserState& state, bool& appRunning);
-
-
-        
     private:
         static bool SyncTransformCache(flecs::entity_t id, const glm::mat4& matrix);
         // 编辑器 UI 的状态缓存当前选中的实体、位移、旋转、缩放的数值

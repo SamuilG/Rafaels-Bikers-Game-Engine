@@ -68,7 +68,6 @@ namespace engine {
             runtimeUiController->PreloadWidget("Assets/ui/PauseMenu.ui.json");
             runtimeUiController->PreloadWidget("Assets/ui/Settings.ui.json");
             runtimeUiController->PreloadWidget("Assets/ui/Win.ui.json");
-            runtimeUiController->AddWidgetToViewPort("Assets/ui/MainMenu.ui.json");
         }
 
 		//audio system 初始化
@@ -109,6 +108,9 @@ namespace engine {
         m_currentScene = std::make_unique<level>();
 
         m_currentScene->Init(renderSystem, sceneManager, physicsSystem, inputSystem, eventSystem, &mState, animationSystem, audioSystem);
+        sceneManager->Update(0.0f);
+        animationSystem->Update(0.0f);
+        if (runtimeUiController) runtimeUiController->SyncGameFlowUi();
         ReportProgress(1.0f, "Ready");
     }
 
@@ -132,27 +134,44 @@ namespace engine {
             float dt = std::min(CalcDeltaTime(), kMaxDt);
 
             // 更新当前关卡
-            if (m_currentScene) {
+            if (m_currentScene && mState.gameFlow.CanSimulate()) {
                 m_currentScene->Update(dt);
             }
 
             // 更新底层引擎系统
             for (auto& sys : Systems) {
+                // UI, input and rendering keep running while session simulation is paused.
+                if (!mState.gameFlow.CanSimulate() &&
+                    (sys.get() == physicsSystem || sys.get() == animationSystem || sys.get() == eventSystem)) {
+                    continue;
+                }
                 sys->Update(dt);
             }
 
             //audio system
            // 根据自行车速度状态调整音效// Adjust bike chain sound based on bike speed
             if (audioSystem) {
-                float speed01 = std::clamp(mState.bikeSpeed / 40.0f, 0.0f, 1.0f);
+                float speed01 = mState.gameFlow.CanSimulate() ? std::clamp(mState.bikeSpeed / 40.0f, 0.0f, 1.0f) : 0.0f;
 
                 audioSystem->SetRuntimeVolume("BikeChain", speed01);
                 audioSystem->SetPitch("BikeChain", 0.75f + speed01 * 1.25f);
             }
 
-            if (mState.restartRequested || mState.returnToMainMenuRequested) {
-                const bool returnToMainMenu = mState.returnToMainMenuRequested;
-                ReloadCurrentScene(returnToMainMenu);
+            if (mState.gameFlow.TakeReloadRequest()) {
+                try {
+                    const bool loaded = ReloadCurrentScene();
+                    mState.gameFlow.CompleteReload(loaded);
+                }
+                catch (const std::exception& error) {
+                    // A subsystem or recovery failure leaves no safely renderable world.
+                    EngineUi::LogPrintf("Engine reload/recovery failed: %s\n", error.what());
+                    mState.gameFlow.CompleteReload(false);
+                    Running = false;
+                    break;
+                }
+                if (auto* ui = renderSystem->GetRuntimeUiController()) ui->SyncGameFlowUi();
+                // Loading time must not become the next simulation step.
+                mLastTime = std::chrono::steady_clock::now();
             }
         }
     }
@@ -169,17 +188,10 @@ namespace engine {
         }
     }
 
-    void Application::ReloadCurrentScene(bool returnToMainMenu) {
-        constexpr const char* kMainMenuUiPath = "Assets/ui/MainMenu.ui.json";
-        constexpr const char* kHudUiPath = "Assets/ui/HUD.ui.json";
-        constexpr const char* kPauseMenuUiPath = "Assets/ui/PauseMenu.ui.json";
-        constexpr const char* kSettingsUiPath = "Assets/ui/Settings.ui.json";
-        constexpr const char* kGameOverUiPath = "Assets/ui/GameOver.ui.json";
-        constexpr const char* kWinUiPath = "Assets/ui/Win.ui.json";
-        constexpr const char* kAbilityUnlockUiPath = "Assets/ui/AbilityUnlock.ui.json";
-        constexpr const char* kRespawnPromptUiPath = "Assets/ui/RespawnPrompt.ui.json";
-        constexpr const char* kUfoNewsUiPath = "Assets/ui/UFONews.ui.json";
-
+    bool Application::ReloadCurrentScene() {
+        renderSystem->WaitForGpuIdle();
+        // Keep the in-flight flow transaction across the existing whole-state reset.
+        const GameFlowController preserveFlow = mState.gameFlow;
         const bool preserveShowEngineUi = mState.showEngineUi;
         const bool preserveRuntimeUi = mState.showRuntimeUi;
         const float preserveMasterVolume = audioSystem ? audioSystem->GetMasterVolume() : 1.0f;
@@ -190,8 +202,7 @@ namespace engine {
         }
 
         if (renderSystem) {
-            renderSystem->GetTriggerSystem().ClearTriggers();
-            renderSystem->GetParticles().clear();
+            renderSystem->ClearSceneTransientResources();
         }
 
         if (eventSystem) {
@@ -230,15 +241,9 @@ namespace engine {
         }
 
         mState = UserState{};
+        mState.gameFlow = preserveFlow;
         mState.showEngineUi = preserveShowEngineUi;
         mState.showRuntimeUi = preserveRuntimeUi;
-        mState.isGameStarted = !returnToMainMenu;
-        mState.isGamePause = false;
-        mState.isGameOver = false;
-        mState.isGameWon = false;
-        mState.restartRequested = false;
-        mState.returnToMainMenuRequested = false;
-        mState.gameFlowState = returnToMainMenu ? GameFlowState::MainMenu : GameFlowState::Playing;
 
         if (physicsSystem) {
             physicsSystem->SetUserState(&mState);
@@ -250,29 +255,31 @@ namespace engine {
             renderSystem->SetUserState(&mState);
         }
 
-        RuntimeUiController* runtimeUiController = renderSystem ? renderSystem->GetRuntimeUiController() : nullptr;
-        if (runtimeUiController) {
-            runtimeUiController->RemoveWidgetFromViewPort(kMainMenuUiPath);
-            runtimeUiController->RemoveWidgetFromViewPort(kHudUiPath);
-            runtimeUiController->RemoveWidgetFromViewPort(kPauseMenuUiPath);
-            runtimeUiController->RemoveWidgetFromViewPort(kSettingsUiPath);
-            runtimeUiController->RemoveWidgetFromViewPort(kGameOverUiPath);
-            runtimeUiController->RemoveWidgetFromViewPort(kWinUiPath);
-            runtimeUiController->RemoveWidgetFromViewPort(kAbilityUnlockUiPath);
-            runtimeUiController->RemoveWidgetFromViewPort(kRespawnPromptUiPath);
-            runtimeUiController->RemoveWidgetFromViewPort(kUfoNewsUiPath);
+        // Only level loading failures can recover to a menu. Rebuilding an engine
+        // subsystem above must finish before another frame is allowed to render.
+        try {
+            m_currentScene = std::make_unique<level>();
+            m_currentScene->Init(renderSystem, sceneManager, physicsSystem, inputSystem, eventSystem, &mState, animationSystem, audioSystem);
+            sceneManager->Update(0.0f);
+            animationSystem->Update(0.0f);
+            return true;
         }
-
-        m_currentScene = std::make_unique<level>();
-        m_currentScene->Init(renderSystem, sceneManager, physicsSystem, inputSystem, eventSystem, &mState, animationSystem, audioSystem);
-
-        if (runtimeUiController) {
-            if (returnToMainMenu) {
-                runtimeUiController->AddWidgetToViewPort(kMainMenuUiPath);
+        catch (const std::exception& error) {
+            EngineUi::LogPrintf("Level load failed; returning to retry menu: %s\n", error.what());
+            renderSystem->WaitForGpuIdle();
+            if (m_currentScene) {
+                m_currentScene->Shutdown();
+                m_currentScene.reset();
             }
-            else {
-                runtimeUiController->AddWidgetToViewPort(kHudUiPath);
-            }
+            renderSystem->ClearSceneTransientResources();
+            eventSystem->Shutdown();
+            eventSystem->Init();
+            animationSystem->Shutdown();
+            animationSystem->Init();
+            animationSystem->set_scene_manager(sceneManager);
+            sceneManager->Shutdown();
+            sceneManager->Init();
+            return false;
         }
     }
 }

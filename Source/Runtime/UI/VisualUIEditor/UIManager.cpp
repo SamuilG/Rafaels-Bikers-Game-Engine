@@ -927,6 +927,19 @@ namespace engine {
         }
     }
 
+    void UIManager::HideScreenImmediately(std::string_view name) {
+        if (LoadedScreen* loadedScreen = FindLoadedScreen(name)) {
+            loadedScreen->screen->SetVisible(false);
+            loadedScreen->animator.StopAll();
+            loadedScreen->activeEnterAnimation.clear();
+            loadedScreen->activeExitAnimation.clear();
+            loadedScreen->pendingHideAfterExit = false;
+            ClearInputStateForScreen(loadedScreen->screen.get());
+            RefreshActiveScreenCache();
+            ClearPressedStates();
+        }
+    }
+
     void UIManager::ToggleScreen(std::string_view name) {
         if (LoadedScreen* loadedScreen = FindLoadedScreen(name)) {
             if (loadedScreen->screen->IsVisible()) {
@@ -953,7 +966,7 @@ namespace engine {
         PushScreen(name);
     }
 
-    void UIManager::PushScreen(std::string_view name) {
+    void UIManager::PushScreen(std::string_view name, bool restartAnimations) {
         auto iterator = std::find_if(mLoadedScreens.begin(), mLoadedScreens.end(), [&](const LoadedScreen& loadedScreen) {
             return loadedScreen.screen && loadedScreen.screen->GetName() == name;
         });
@@ -966,10 +979,9 @@ namespace engine {
             LoadedScreen promoted = std::move(*iterator);
             mLoadedScreens.erase(iterator);
             mLoadedScreens.push_back(std::move(promoted));
-            TryAutoPlayScreenAnimation(mLoadedScreens.back());
         }
-        else {
-            TryAutoPlayScreenAnimation(*iterator);
+        if (restartAnimations) {
+            TryAutoPlayScreenAnimation(mLoadedScreens.back());
         }
 
         SyncScreenRenderOrder();

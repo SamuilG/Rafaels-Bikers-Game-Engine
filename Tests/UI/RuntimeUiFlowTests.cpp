@@ -51,7 +51,7 @@ namespace {
                                      "AbilityUnlock", "RespawnPrompt", "UFONews"}) {
                 Require(controller.PreloadWidget(Path(name)), std::string("load real asset ") + name);
             }
-            Event("ResetToMainMenu");
+            Require(controller.SyncGameFlowUi(), "present initial authoritative state");
             Settle();
         }
 
@@ -69,7 +69,7 @@ namespace {
         }
         void Event(const std::string& name) {
             Require(Manager().HasEventHandler(name), "registered event " + name);
-            Manager().TriggerEvent(name);
+            Require(controller.DispatchEvent(name), "runtime facade dispatches registered event " + name);
         }
         void Settle() {
             // Advance real animation time, without sleeping or creating a GPU/window.
@@ -92,19 +92,19 @@ namespace {
             Require(Manager().GetActiveScreen() == (wanted.empty() ? nullptr : Manager().GetScreen(wanted.back())),
                 "active screen matches visible stack top");
         }
-        void Flow(GameFlowState expected) {
-            Require(state.gameFlowState == expected, "expected game flow state");
-            Require(state.IsGameplayActive() == (expected == GameFlowState::Playing &&
-                !state.restartRequested && !state.returnToMainMenuRequested), "gameplay pause/reload gate");
-            if (expected != GameFlowState::Playing) {
-                Require(Manager().BlocksGameplayInput(), "menus and result screens block gameplay input");
-            }
-            if (expected != GameFlowState::Settings) {
-                Require(state.isGameStarted == (expected != GameFlowState::MainMenu), "legacy started flag matches flow");
-                Require(state.isGamePause == (expected == GameFlowState::Paused), "legacy pause flag matches flow");
-                Require(state.isGameOver == (expected == GameFlowState::GameOver), "legacy game-over flag matches flow");
-                Require(state.isGameWon == (expected == GameFlowState::Victory), "legacy victory flag matches flow");
-            }
+        void Flow(GameFlowState expected, bool settings = false) {
+            Require(state.gameFlow.State() == expected, "expected authoritative game flow state");
+            Require(state.gameFlow.IsSettingsOpen() == settings, "expected independent Settings layer");
+            Require(state.gameFlow.CanSimulate() == (expected == GameFlowState::Playing && !settings),
+                "only Playing without Settings permits simulation");
+        }
+        void CompleteReload(bool success) {
+            Require(state.gameFlow.State() == GameFlowState::Loading, "host sees Loading before reload");
+            Require(state.gameFlow.TakeReloadRequest(), "host consumes reload once");
+            Require(!state.gameFlow.TakeReloadRequest(), "consumed reload is not available again");
+            Require(state.gameFlow.CompleteReload(success), "host reports real completion status");
+            Require(controller.SyncGameFlowUi(), "completion presents authoritative state");
+            Require(!state.gameFlow.CompleteReload(success), "duplicate completion is rejected");
         }
         void Click(const char* screenName, const char* elementName) {
             Settle();
@@ -155,7 +155,7 @@ namespace {
         f.Event("MenuBack");
         f.Flow(GameFlowState::MainMenu);
         f.Click("MainMenu", "SettingsButton");
-        f.Flow(GameFlowState::Settings);
+        f.Flow(GameFlowState::MainMenu, true);
         f.Visible({"MainMenu", "Settings"});
         f.Click("Settings", "Toggle_001");
         Require(!f.Element<UIToggle>("Settings", "Toggle_001").isOn, "hints edit is pending");
@@ -183,12 +183,11 @@ namespace {
         f.Click("MainMenu", "StartButton");
         f.Flow(GameFlowState::Playing);
         f.Visible({"HUD"});
-        Require(!f.Manager().BlocksGameplayInput(), "HUD allows gameplay input");
         f.Event("MenuBack");
         f.Flow(GameFlowState::Paused);
         f.Visible({"HUD", "PauseMenu"});
         f.Click("PauseMenu", "SettingsButton");
-        f.Flow(GameFlowState::Settings);
+        f.Flow(GameFlowState::Paused, true);
         f.Visible({"HUD", "PauseMenu", "Settings"});
         f.Click("Settings", "Back");
         f.Flow(GameFlowState::Paused);
@@ -197,7 +196,7 @@ namespace {
         f.Flow(GameFlowState::Playing);
         f.Visible({"HUD"});
         f.Event("OpenSettings");
-        f.Flow(GameFlowState::Settings);
+        f.Flow(GameFlowState::Playing, true);
         f.Visible({"HUD", "Settings"});
         f.Event("MenuBack");
         f.Flow(GameFlowState::Playing);
@@ -222,10 +221,8 @@ namespace {
         f.Event("MenuBack");
         f.Visible({"HUD", "AbilityUnlock"});
         f.Flow(GameFlowState::Playing);
-        Require(!f.Manager().BlocksGameplayInput(), "ability hints allow gameplay input");
         Require(f.controller.AddWidgetToViewPort(Fixture::Path("UFONews")), "show modal gameplay news");
-        Require(f.Manager().BlocksGameplayInput(), "UFONews blocks gameplay input");
-        Require(f.state.IsGameplayActive(), "UFONews input capture leaves simulation active");
+        Require(f.state.gameFlow.CanSimulate(), "a gameplay notice alone does not change simulation state");
         std::puts("PASS pause/settings: all return sources, real resume click, rapid back without overlays");
     }
 
@@ -268,17 +265,17 @@ namespace {
         f.Event("MenuBack");
         f.Visible({"GameOver"});
         f.Click("GameOver", "RestartButton");
-        Require(f.state.restartRequested && !f.state.returnToMainMenuRequested, "restart queues exactly the restart request");
-        Require(!f.state.IsGameplayActive(), "game stays stopped while restart is pending");
+        f.Flow(GameFlowState::Loading);
+        Require(f.state.gameFlow.ReloadTarget() == GameFlowState::Playing, "restart queues the Playing destination");
+        f.Visible({});
         f.Event("MenuBack");
         f.Event("ResumeGame");
-        f.Visible({"GameOver"});
-        // The host consumes its request before signaling completion.
-        f.state.restartRequested = false;
-        f.Event("ResetToPlaying");
+        f.Flow(GameFlowState::Loading);
+        f.Visible({});
+        f.CompleteReload(true);
         f.Flow(GameFlowState::Playing);
         f.Visible({"HUD"});
-        Require(!f.state.restartRequested && !f.state.returnToMainMenuRequested, "reset-complete must not request another reload");
+        Require(!f.state.gameFlow.TakeReloadRequest(), "completion does not request another reload");
         f.ShowTemporaryScreens();
         f.Event("ShowVictory");
         f.Flow(GameFlowState::Victory);
@@ -286,22 +283,54 @@ namespace {
         f.Event("MenuBack");
         f.Visible({"Win"});
         f.Event("BackToMainMenu");
-        Require(f.state.returnToMainMenuRequested && !f.state.restartRequested, "return queues the menu reload request");
-        Require(!f.state.IsGameplayActive(), "game stops while returning to main menu");
+        f.Flow(GameFlowState::Loading);
+        Require(f.state.gameFlow.ReloadTarget() == GameFlowState::MainMenu, "return queues the MainMenu destination");
         f.Event("StartGame");
-        f.Visible({"MainMenu"});
+        f.Flow(GameFlowState::Loading);
+        f.Visible({});
+        f.CompleteReload(true);
         f.Flow(GameFlowState::MainMenu);
-        f.state.returnToMainMenuRequested = false;
-        f.Event("ResetToMainMenu");
-        f.Flow(GameFlowState::MainMenu);
         f.Visible({"MainMenu"});
-        Require(!f.state.restartRequested && !f.state.returnToMainMenuRequested, "menu reset does not requeue a reload");
+        Require(!f.state.gameFlow.TakeReloadRequest(), "menu completion does not requeue a reload");
         f.Click("MainMenu", "StartButton");
         f.Event("MenuBack");
         f.Click("PauseMenu", "MainMenuButton");
-        Require(f.state.returnToMainMenuRequested, "real pause-menu button reaches return request");
+        f.Flow(GameFlowState::Loading);
+        Require(f.state.gameFlow.ReloadTarget() == GameFlowState::MainMenu, "real pause-menu button requests menu reload");
+        f.CompleteReload(true);
+        f.Visible({"MainMenu"});
+        f.Settle();
         f.Visible({"MainMenu"});
         std::puts("PASS result screens/reload requests and temporary-screen cleanup");
+    }
+
+    void TestFailedReloadRetry() {
+        Fixture f;
+        f.Click("MainMenu", "StartButton");
+        f.Event("ShowGameOver");
+        f.Click("GameOver", "RestartButton");
+        f.CompleteReload(false);
+        f.Flow(GameFlowState::LoadFailed);
+        f.Visible({"MainMenu"});
+        f.Event("ResumeGame");
+        f.Event("MenuBack");
+        f.Flow(GameFlowState::LoadFailed);
+        f.Click("MainMenu", "StartButton");
+        f.Flow(GameFlowState::Loading);
+        f.Visible({});
+        f.CompleteReload(false);
+        f.Flow(GameFlowState::LoadFailed);
+        f.Click("MainMenu", "StartButton");
+        f.CompleteReload(true);
+        f.Flow(GameFlowState::Playing);
+        f.Visible({"HUD"});
+        f.Event("BackToMainMenu");
+        f.CompleteReload(false);
+        f.Flow(GameFlowState::LoadFailed);
+        f.Visible({"MainMenu"});
+        f.Click("MainMenu", "ExitButton");
+        Require(!f.running, "failed reload still leaves a working Exit button");
+        std::puts("PASS reload failures stop simulation, expose real retry/exit buttons and permit recovery");
     }
 
     void TestEditorAndQuit() {
@@ -320,22 +349,58 @@ namespace {
         f.Visible({"Win"});
         Require(f.state.showRuntimeUi && !f.state.showEngineUi,
             "editor victory exposes runtime result screen and hides editor");
-        f.Event("ResetToMainMenu");
+        f.Event("BackToMainMenu");
+        f.CompleteReload(true);
         f.Event("OpenEditor");
         f.Flow(GameFlowState::Playing);
         f.state.showRuntimeUi = false;
-        f.Event("ResetToMainMenu");
+        f.Event("BackToMainMenu");
+        f.CompleteReload(true);
         f.Flow(GameFlowState::MainMenu);
         f.Visible({"MainMenu"});
         Require(f.state.showRuntimeUi && !f.state.showEngineUi,
-            "reset from editor exposes runtime main menu and hides editor");
+            "return from editor exposes runtime main menu and hides editor");
         f.Click("MainMenu", "ExitButton");
         Require(!f.running, "actual exit button stops app loop");
         std::puts("PASS editor configuration and real exit button");
     }
 
+    void TestGameplayDrivenSynchronization() {
+        Fixture f;
+        Require(!f.controller.DispatchEvent("Unknown.GameFlow.Event"), "unknown event is rejected by runtime facade");
+        Require(f.state.gameFlow.Request(GameFlowCommand::Start), "gameplay requests Start directly");
+        Require(f.controller.SyncGameFlowUi(), "frame sync presents gameplay request");
+        f.Visible({"HUD"});
+        f.Event("OpenSettings");
+        Require(f.state.gameFlow.Request(GameFlowCommand::Pause), "pause reason changes while Settings stays open");
+        Require(f.controller.SyncGameFlowUi(), "frame sync adds independent Pause beneath Settings");
+        f.Flow(GameFlowState::Paused, true);
+        f.Visible({"HUD", "PauseMenu", "Settings"});
+        Require(f.state.gameFlow.Request(GameFlowCommand::Resume), "gameplay resumes the pause reason");
+        Require(f.controller.SyncGameFlowUi(), "frame sync removes Pause but retains Settings");
+        f.Flow(GameFlowState::Playing, true);
+        f.Visible({"HUD", "Settings"});
+        f.Event("CloseSettings");
+        f.Flow(GameFlowState::Playing);
+        f.Visible({"HUD"});
+        f.ShowTemporaryScreens();
+        Require(f.state.gameFlow.Request(GameFlowCommand::Victory), "scene completion requests Victory directly");
+        Require(f.controller.SyncGameFlowUi(), "frame sync presents scene-driven Victory");
+        f.Flow(GameFlowState::Victory);
+        f.Visible({"Win"});
+        const auto revision = f.state.gameFlow.Revision();
+        Require(f.controller.SyncGameFlowUi(), "repeated frame sync succeeds");
+        Require(f.state.gameFlow.Revision() == revision, "presentation never writes authoritative flow");
+        f.Settle();
+        f.Visible({"Win"});
+        std::puts("PASS gameplay and UI use the same authority; frame synchronization is presentation-only");
+    }
+
     void TestMissingDestination() {
         Fixture f;
+        Require(f.controller.UnloadWidget(Fixture::Path("HUD")), "unload HUD to test actual preload path");
+        Require(f.controller.PreloadWidget(Fixture::Path("HUD")), "preload HUD while MainMenu is active");
+        f.Visible({"MainMenu"});
         Require(f.controller.UnloadWidget(Fixture::Path("Settings")), "unload settings to exercise real load failure");
         const auto originalDirectory = std::filesystem::current_path();
         // Existing test directory has no Assets tree; real assets stay untouched.
@@ -353,7 +418,9 @@ int main() {
     TestPauseAndSettingsSources();
     TestApplyAndDisplayFailure();
     TestReloadAndResults();
+    TestFailedReloadRetry();
     TestEditorAndQuit();
+    TestGameplayDrivenSynchronization();
     TestMissingDestination();
     std::puts("PASS all runtime UI flow regressions (real assets/router/manager; no window or GPU)");
 }

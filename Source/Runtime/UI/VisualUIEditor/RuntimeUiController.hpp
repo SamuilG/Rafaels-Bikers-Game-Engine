@@ -154,6 +154,20 @@ namespace engine {
             return static_cast<bool>(mUiManager);
         }
 
+        // Call after host/level flow commands and reload completion. UI events
+        // synchronize automatically through GameUIEventRouter.
+        bool SyncGameFlowUi() {
+            return mEventRouter && mEventRouter->SyncGameFlowUi();
+        }
+
+        bool DispatchEvent(const std::string& eventName) {
+            if (!mUiManager || !mUiManager->HasEventHandler(eventName)) {
+                return false;
+            }
+            mUiManager->TriggerEvent(eventName);
+            return true;
+        }
+
         UIManager* GetManager() {
             return mUiManager.get();
         }
@@ -190,9 +204,9 @@ namespace engine {
                 return false;
             }
 
-            if (UIScreen* screen = manager->GetScreen(screenName)) {
-                screen->SetVisible(false);
-            }
+            // Preloading must not change the active stack or leave a pending
+            // entrance animation behind when a later resource fails to load.
+            manager->HideScreenImmediately(screenName);
             return true;
         }
 

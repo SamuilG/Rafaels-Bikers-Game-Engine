@@ -2,8 +2,8 @@
 
 #include <algorithm>
 #include <array>
-#include <filesystem>
 #include <format>
+#include <vector>
 
 #include "../EngineUi.hpp"
 #include "../../AudioSystem/AudioSystem.hpp"
@@ -37,6 +37,28 @@ namespace engine {
             {1920, 1080},
             {2560, 1440}
         } };
+
+        std::vector<const char*> FlowScreens(GameFlowState flow, bool settingsOpen) {
+            std::vector<const char*> paths;
+            switch (flow) {
+            case GameFlowState::MainMenu:
+            case GameFlowState::LoadFailed: paths.push_back(kMainMenuUiPath); break;
+            case GameFlowState::Playing: paths.push_back(kHudUiPath); break;
+            case GameFlowState::Paused:
+                paths.push_back(kHudUiPath);
+                paths.push_back(kPauseMenuUiPath);
+                break;
+            case GameFlowState::GameOver: paths.push_back(kGameOverUiPath); break;
+            case GameFlowState::Victory: paths.push_back(kWinUiPath); break;
+            case GameFlowState::Loading: break;
+            }
+            if (settingsOpen) paths.push_back(kSettingsUiPath);
+            return paths;
+        }
+
+        bool IsGameplayScreenFlow(GameFlowState flow) {
+            return flow == GameFlowState::Playing || flow == GameFlowState::Paused;
+        }
 
     } // namespace
 
@@ -118,6 +140,13 @@ namespace engine {
             HandleShowGameOver(eventName);
         });
 
+        uiManager.RegisterEventHandler("ShowVictory", [this](const std::string& eventName) {
+            HandleShowVictory(eventName);
+        });
+        uiManager.RegisterEventHandler("MenuBack", [this](const std::string& eventName) {
+            HandleMenuBack(eventName);
+        });
+
         uiManager.RegisterEventHandler("RestartGame", [this](const std::string& eventName) {
             HandleRestartGame(eventName);
         });
@@ -196,6 +225,7 @@ namespace engine {
     }
 
     void GameUIEventRouter::SyncHudHintUi() {
+        if (!mRuntimeUiController.IsWidgetLoaded(kHudUiPath)) return;
         const bool showJumpHint = mState.showHints && mState.jumpEnabled;
         const bool showHornHint = mState.showHints && mState.hornEnabled;
         const bool showRadioHint = mState.showHints && mState.radioEnabled;
@@ -205,119 +235,131 @@ namespace engine {
         mRuntimeUiController.SetElementVisible(kHudUiPath, kRadioHintElementName, showRadioHint);
     }
 
-    void GameUIEventRouter::RestoreSettingsReturnScreen() {
-        mRuntimeUiController.RemoveWidgetFromViewPort(kSettingsUiPath);
-
-        if (mSettingsState.returnTarget == SettingsReturnTarget::MainMenu) {
-            mState.isGameStarted = false;
-            mState.isGamePause = false;
-            mState.isGameOver = false;
-            mState.isGameWon = false;
-            mState.gameFlowState = GameFlowState::MainMenu;
-            if (!mRuntimeUiController.IsWidgetVisible(kMainMenuUiPath)) {
-                mRuntimeUiController.AddWidgetToViewPort(kMainMenuUiPath);
+    bool GameUIEventRouter::PrepareFlowScreens(GameFlowState flow, bool settingsOpen) {
+        for (const char* path : FlowScreens(flow, settingsOpen)) {
+            if (!mRuntimeUiController.PreloadWidget(path)) {
+                EngineUi::ShowToast("[ Runtime UI: Screen Load Failed ]");
+                EngineUi::LogPrint("[RuntimeUI] Cannot prepare flow screen '{}'\n", path);
+                return false;
             }
-            return;
         }
+        return true;
+    }
 
-        mState.isGameStarted = true;
-        mState.isGamePause = true;
-        mState.isGameOver = false;
-        mState.isGameWon = false;
-        mState.gameFlowState = GameFlowState::Paused;
-        if (!mRuntimeUiController.IsWidgetVisible(kPauseMenuUiPath)) {
-            mRuntimeUiController.AddWidgetToViewPort(kPauseMenuUiPath);
+    bool GameUIEventRouter::RequestFlow(GameFlowCommand command, const std::string& eventName) {
+        // Validate the value model before loading assets; only the authoritative
+        // instance queues a real scene reload.
+        auto proposed = mState.gameFlow;
+        if (!proposed.Request(command)) return false;
+        const GameFlowState preparedFlow = proposed.State() == GameFlowState::Loading
+            ? proposed.ReloadTarget() : proposed.State();
+        if (!PrepareFlowScreens(preparedFlow, proposed.IsSettingsOpen())) return false;
+        if (!mState.gameFlow.Request(command)) return false;
+        EngineUi::LogPrint("[RuntimeUI] Routed '{}' through GameFlowController\n", eventName);
+        return SyncGameFlowUi();
+    }
+
+    bool GameUIEventRouter::SyncGameFlowUi() {
+        UIManager* manager = mRuntimeUiController.GetManager();
+        if (!manager) return false;
+        const auto& flow = mState.gameFlow;
+        if (mHasPresentedFlow && mPresentedRevision == flow.Revision()) return true;
+
+        const GameFlowState state = flow.State();
+        const bool settingsOpen = flow.IsSettingsOpen();
+        if (!PrepareFlowScreens(state, settingsOpen)) return false;
+        const auto desiredPaths = FlowScreens(state, settingsOpen);
+        const bool keepGameplayScreens = mHasPresentedFlow &&
+            IsGameplayScreenFlow(mPresentedFlow) && IsGameplayScreenFlow(state);
+        const bool clearSessionScreens = !mHasPresentedFlow ||
+            (mPresentedFlow != state && !keepGameplayScreens);
+
+        // Cancel stale modals immediately on results/reload. Pause/settings keep
+        // the level's temporary popups and the original HUD render order.
+        constexpr std::array<const char*, 6> coreScreens{
+            "MainMenu", "HUD", "PauseMenu", "Settings", "GameOver", "Win"
+        };
+        for (const auto& loaded : manager->GetLoadedScreens()) {
+            if (!loaded.screen) continue;
+            const std::string& name = loaded.screen->GetName();
+            const bool coreScreen = std::find(coreScreens.begin(), coreScreens.end(), name) != coreScreens.end();
+            const bool desired = std::any_of(desiredPaths.begin(), desiredPaths.end(), [&](const char* path) {
+                return RuntimeUiController::BuildScreenNameFromPath(path) == name;
+            });
+            if (clearSessionScreens || (coreScreen && !desired)) {
+                manager->HideScreenImmediately(name);
+            }
         }
+        if (settingsOpen && !mPresentedSettingsOpen) {
+            RefreshPendingSettingsFromGame();
+            SyncSettingsUi();
+        }
+        else if (!settingsOpen && mPresentedSettingsOpen) {
+            RefreshPendingSettingsFromGame();
+        }
+        for (const char* path : desiredPaths) {
+            if (!mRuntimeUiController.IsWidgetVisible(path)) {
+                mRuntimeUiController.AddWidgetToViewPort(path);
+            }
+        }
+        // An independent pause reason may add PauseMenu beneath an open
+        // Settings overlay. Restore its order without restarting any animation.
+        if (settingsOpen && manager->GetActiveScreen() != manager->GetScreen("Settings")) {
+            manager->PushScreen("Settings", false);
+        }
+        SyncHudHintUi();
+        mState.showRuntimeUi = true;
+        if (state != GameFlowState::Playing || settingsOpen ||
+            (mHasPresentedFlow && !IsGameplayScreenFlow(mPresentedFlow))) {
+            mState.showEngineUi = false;
+        }
+        mPresentedFlow = state;
+        mPresentedSettingsOpen = settingsOpen;
+        mPresentedRevision = flow.Revision();
+        mHasPresentedFlow = true;
+        return true;
     }
 
     void GameUIEventRouter::HandleStartGame(const std::string& eventName) {
-        mState.isGameStarted = true;
-        mState.isGamePause = false;
-        mState.isGameOver = false;
-        mState.isGameWon = false;
-        mState.gameFlowState = GameFlowState::Playing;
-
-        mRuntimeUiController.RemoveWidgetFromViewPort(kMainMenuUiPath);
-        mRuntimeUiController.RemoveWidgetFromViewPort(kPauseMenuUiPath);
-        mRuntimeUiController.RemoveWidgetFromViewPort(kSettingsUiPath);
-        mRuntimeUiController.RemoveWidgetFromViewPort(kWinUiPath);
-        mRuntimeUiController.AddWidgetToViewPort(kHudUiPath);
-
-        EngineUi::ShowToast("[ Runtime UI: Start Game ]");
-        EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> Playing | MainMenu hidden | HUD visible\n", eventName);
+        if (RequestFlow(GameFlowCommand::Start, eventName)) {
+            EngineUi::ShowToast("[ Runtime UI: Start Game ]");
+        }
     }
 
     void GameUIEventRouter::HandleOpenEditor(const std::string& eventName) {
-#ifdef GAME_ONLY
-        HandleStartGame(eventName);
-#else
-        mState.isGameStarted = true;
-        mState.isGamePause = false;
-        mState.isGameOver = false;
-        mState.isGameWon = false;
-        mState.gameFlowState = GameFlowState::Playing;
-        mState.showEngineUi = true;
-
-        mRuntimeUiController.RemoveWidgetFromViewPort(kMainMenuUiPath);
-        mRuntimeUiController.RemoveWidgetFromViewPort(kPauseMenuUiPath);
-        mRuntimeUiController.RemoveWidgetFromViewPort(kSettingsUiPath);
-        mRuntimeUiController.RemoveWidgetFromViewPort(kWinUiPath);
-        mRuntimeUiController.AddWidgetToViewPort(kHudUiPath);
-
-        EngineUi::ShowToast("[ Editor Mode ]");
-        EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> Playing + Editor UI\n", eventName);
+        if (!RequestFlow(GameFlowCommand::Start, eventName)) return;
+#ifndef GAME_ONLY
+        if (mState.gameFlow.State() == GameFlowState::Playing) {
+            mState.showEngineUi = true;
+            EngineUi::ShowToast("[ Editor Mode ]");
+        }
 #endif
     }
-    // PauseGame：暂停游戏并弹出 PauseMenu 覆盖层。
+
     void GameUIEventRouter::HandlePauseGame(const std::string& eventName) {
-        mState.isGameStarted = true;
-        mState.isGamePause = true;
-        mState.isGameOver = false;
-        mState.isGameWon = false;
-        mState.gameFlowState = GameFlowState::Paused;
-
-        mRuntimeUiController.RemoveWidgetFromViewPort(kSettingsUiPath);
-        mRuntimeUiController.RemoveWidgetFromViewPort(kWinUiPath);
-        mRuntimeUiController.AddWidgetToViewPort(kPauseMenuUiPath);
-
-        EngineUi::ShowToast("[ Runtime UI: Pause ]");
-        EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> Paused | PauseMenu visible\n", eventName);
+        RequestFlow(GameFlowCommand::Pause, eventName);
     }
 
     void GameUIEventRouter::HandleOpenSettings(const std::string& eventName) {
-        if (!std::filesystem::exists(kSettingsUiPath)) {
-            EngineUi::ShowToast("[ Runtime UI: Settings Missing ]");
-            EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> missing settings screen\n", eventName);
-            return;
-        }
-
-        RefreshPendingSettingsFromGame();
-        SyncSettingsUi();
-
-        if (mRuntimeUiController.IsWidgetVisible(kSettingsUiPath)) {
-            EngineUi::ShowToast("[ Runtime UI: Settings Already Open ]");
-            EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> settings screen already visible\n", eventName);
-            return;
-        }
-
-        if (!mRuntimeUiController.AddWidgetToViewPort(kSettingsUiPath)) {
-            EngineUi::ShowToast("[ Runtime UI: Settings Load Failed ]");
-            EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> failed to show settings screen '{}'\n", eventName, kSettingsUiPath);
-            return;
-        }
-
-        SyncSettingsUi();
-
-        EngineUi::ShowToast("[ Runtime UI: Settings Screen Opened ]");
-        EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> Settings | Settings screen pushed and visible\n", eventName);
+        // Duplicate open preserves pending values and the existing source.
+        if (mState.gameFlow.IsSettingsOpen()) return;
+        RequestFlow(GameFlowCommand::OpenSettings, eventName);
     }
-    // CloseSettings：关闭设置界面，回退到暂停菜单。
-    void GameUIEventRouter::HandleCloseSettings(const std::string& eventName) {
-        RefreshPendingSettingsFromGame();
-        mRuntimeUiController.RemoveWidgetFromViewPort(kSettingsUiPath);
 
-        EngineUi::ShowToast("[ Runtime UI: Close Settings ]");
-        EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> settings screen hidden\n", eventName);
+    void GameUIEventRouter::HandleCloseSettings(const std::string& eventName) {
+        RequestFlow(GameFlowCommand::CloseSettings, eventName);
+    }
+
+    void GameUIEventRouter::HandleMenuBack(const std::string& eventName) {
+        if (mState.gameFlow.IsSettingsOpen()) {
+            HandleCloseSettings(eventName);
+        }
+        else if (mState.gameFlow.State() == GameFlowState::Playing) {
+            HandlePauseGame(eventName);
+        }
+        else if (mState.gameFlow.State() == GameFlowState::Paused) {
+            HandleResumeGame(eventName);
+        }
     }
 
     void GameUIEventRouter::HandleApplySettings(const std::string& eventName) {
@@ -438,74 +480,23 @@ namespace engine {
     }
 
     void GameUIEventRouter::HandleBackToMainMenu(const std::string& eventName) {
-        // 回主菜单时保留已加载屏幕，只重置可见层级，方便后续再次切回 HUD / Pause。
-        mState.isGamePause = false;
-        mState.isGameOver = false;
-        mState.isGameWon = false;
-        mState.isGameStarted = false;
-        mState.gameFlowState = GameFlowState::MainMenu;
-
-        mRuntimeUiController.RemoveWidgetFromViewPort(kHudUiPath);
-        mRuntimeUiController.RemoveWidgetFromViewPort(kPauseMenuUiPath);
-        mRuntimeUiController.RemoveWidgetFromViewPort(kSettingsUiPath);
-        mRuntimeUiController.RemoveWidgetFromViewPort(kGameOverUiPath);
-        mRuntimeUiController.RemoveWidgetFromViewPort(kWinUiPath);
-        mRuntimeUiController.AddWidgetToViewPort(kMainMenuUiPath);
-
-        EngineUi::ShowToast("[ Runtime UI: Back To Main Menu ]");
-        EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> MainMenu | HUD/Pause hidden\n", eventName);
+        RequestFlow(GameFlowCommand::ReturnToMainMenu, eventName);
     }
 
     void GameUIEventRouter::HandleResumeGame(const std::string& eventName) {
-        // Resume：关闭设置层和暂停层，并恢复 HUD 的显示顺序。
-        mState.isGameStarted = true;
-        mState.isGamePause = false;
-        mState.isGameOver = false;
-        mState.isGameWon = false;
-        mState.gameFlowState = GameFlowState::Playing;
-
-        mRuntimeUiController.RemoveWidgetFromViewPort(kSettingsUiPath);
-        mRuntimeUiController.RemoveWidgetFromViewPort(kPauseMenuUiPath);
-        mRuntimeUiController.RemoveWidgetFromViewPort(kWinUiPath);
-        mRuntimeUiController.AddWidgetToViewPort(kHudUiPath);
-
-        EngineUi::ShowToast("[ Runtime UI: Resume ]");
-        EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> Playing | PauseMenu hidden | HUD visible\n", eventName);
+        RequestFlow(GameFlowCommand::Resume, eventName);
     }
-    // ShowGameOver：切到 GameOver 状态，隐藏所有游戏中界面并显示结算屏幕。
+
     void GameUIEventRouter::HandleShowGameOver(const std::string& eventName) {
-        mState.isGameStarted = true;
-        mState.isGamePause = false;
-        mState.isGameOver = true;
-        mState.isGameWon = false;
-        mState.gameFlowState = GameFlowState::GameOver;
-
-        mRuntimeUiController.RemoveWidgetFromViewPort(kHudUiPath);
-        mRuntimeUiController.RemoveWidgetFromViewPort(kPauseMenuUiPath);
-        mRuntimeUiController.RemoveWidgetFromViewPort(kSettingsUiPath);
-        mRuntimeUiController.RemoveWidgetFromViewPort(kWinUiPath);
-        mRuntimeUiController.AddWidgetToViewPort(kGameOverUiPath);
-
-        EngineUi::ShowToast("[ Runtime UI: Game Over ]");
-        EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> GameOver | GameOver screen visible\n", eventName);
+        RequestFlow(GameFlowCommand::GameOver, eventName);
     }
-    // RestartGame：重新开始游戏，重置为 Playing 状态并恢复 HUD。
+
+    void GameUIEventRouter::HandleShowVictory(const std::string& eventName) {
+        RequestFlow(GameFlowCommand::Victory, eventName);
+    }
+
     void GameUIEventRouter::HandleRestartGame(const std::string& eventName) {
-        mState.isGameStarted = true;
-        mState.isGamePause = false;
-        mState.isGameOver = false;
-        mState.isGameWon = false;
-        mState.gameFlowState = GameFlowState::Playing;
-        mState.restartRequested = true;
-        mState.returnToMainMenuRequested = false;
-
-        mRuntimeUiController.RemoveWidgetFromViewPort(kGameOverUiPath);
-        mRuntimeUiController.RemoveWidgetFromViewPort(kWinUiPath);
-        mRuntimeUiController.RemoveWidgetFromViewPort(kPauseMenuUiPath);
-        mRuntimeUiController.RemoveWidgetFromViewPort(kSettingsUiPath);
-
-        EngineUi::ShowToast("[ Runtime UI: Restart Game ]");
-        EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> Playing | Restart requested\n", eventName);
+        RequestFlow(GameFlowCommand::Restart, eventName);
     }
 
     // TestButton：调试用，打印日志和弹出 Toast。

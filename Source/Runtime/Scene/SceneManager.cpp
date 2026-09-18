@@ -649,7 +649,8 @@ namespace engine {
     // =========================================================================
 
     void SceneManager::Update(float dt) {
-        if (m_physics_system) {
+        // Keep transform propagation alive for editor changes while simulation is paused.
+        if (m_physics_system && (!mState || mState->gameFlow.CanSimulate())) {
             JPH::BodyInterface& bodyInterface = m_physics_system->get_body_interface();
 
             // 1. 同步普通刚体位置

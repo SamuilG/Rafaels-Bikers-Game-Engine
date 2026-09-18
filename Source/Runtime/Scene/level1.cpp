@@ -215,10 +215,13 @@ namespace engine {
 			return;
 		}
 
+		if (!mState->gameFlow.Request(GameFlowCommand::Victory)) {
+			return;
+		}
+
 		if (RuntimeUiController* ui = GetRuntimeUiController()) {
-			ui->RemoveWidgetFromViewPort("Assets/ui/HUD.ui.json");
 			ui->RemoveWidgetFromViewPort(kRespawnPromptUiPath);
-			ui->AddWidgetToViewPort(kWinUiPath);
+			ui->SyncGameFlowUi();
 			ui->SetText(
 				kWinUiPath,
 				"DeadCount",
@@ -227,11 +230,6 @@ namespace engine {
 				});
 		}
 
-		mState->isGameStarted = true;
-		mState->isGamePause = false;
-		mState->isGameOver = false;
-		mState->isGameWon = true;
-		mState->gameFlowState = GameFlowState::Victory;
 		m_winUiVisible = true;
 	}
 
@@ -239,12 +237,6 @@ namespace engine {
 		RemoveWidget(kWinUiPath);
 		m_winUiVisible = false;
 		m_winUiDelayTimer = -1.0f;
-		if (mState) {
-			mState->isGameWon = false;
-			if (mState->gameFlowState == GameFlowState::Victory) {
-				mState->gameFlowState = GameFlowState::Playing;
-			}
-		}
 	}
 
 	void level::Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, GameplayState* state, AnimationSystem* anima, AudioSystem* audio) {
@@ -569,7 +561,7 @@ namespace engine {
 			m_event->Subscribe(EventType::Collision, [this, bikeBodyIDStr](Event& e) {
 				auto& col = static_cast<CollisionEvent&>(e);
 				if (col.GetEntityA() != bikeBodyIDStr && col.GetEntityB() != bikeBodyIDStr) return;
-				if (mState->isGameOver) return; // already dead, ignore further events
+				if (mState->gameFlow.State() == GameFlowState::GameOver) return; // already dead, ignore further events
 
 				// --- Physics-based impact thresholds (SI units: m/s) ---
 				// 36 km/h = 10.0 m/s -> ignore bumps below this
@@ -1924,6 +1916,7 @@ namespace engine {
 			m_winUiDelayTimer -= dt;
 			if (m_winUiDelayTimer <= 0.0f) {
 				ShowWinScreen();
+				if (mState && !mState->gameFlow.CanSimulate()) return;
 			}
 		}
 
@@ -2475,7 +2468,6 @@ namespace engine {
 						mState->portalCameraBoomOffset = glm::vec3(0.0f);
 						mState->isAlive = true;
 						mState->deathTimer = 0.0f;
-						mState->isGameOver = false;
 						mState->bikeLeanAngle = 0.0f;
 						mState->bikeSteerAngle = 0.0f;
 						mState->thirdPersonMode = true;
