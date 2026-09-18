@@ -54,7 +54,7 @@ namespace {
     static_assert(sizeof(SkinnedVertex) == 64);
     static_assert(sizeof(ObjectPC) == 128 && offsetof(ObjectPC, clipPlane) == 112);
     static_assert(sizeof(SceneUniform) == 1568 && offsetof(SceneUniform, portalClipPlane) == 1552);
-    struct Draw { std::array<Vertex, 6> vertices; ObjectPC pc{}; bool cutoutTexture = false; };
+    struct Draw { std::array<Vertex, 6> vertices; ObjectPC pc{}; bool cutoutTexture = false; bool coloredTexture = false; };
     using Pixel = std::array<float, 4>;
     using Frame = std::vector<Pixel>;
 
@@ -80,7 +80,7 @@ namespace {
 
     class Gpu {
         struct Buffer { VkBuffer handle{}; VkDeviceMemory memory{}; VkDeviceSize size{}; };
-        struct Image { VkImage handle{}; VkDeviceMemory memory{}; VkImageView view{}; uint32_t levels = 1; };
+        struct Image { VkImage handle{}; VkDeviceMemory memory{}; VkImageView view{}; uint32_t levels = 1, layers = 1; };
         VkInstance instance{};
         VkPhysicalDevice physical{};
         VkDevice device{};
@@ -94,9 +94,9 @@ namespace {
         std::vector<VkPipeline> pipelines;
         VkDescriptorSetLayout sceneLayout{}, materialLayout{}, boneLayout{};
         VkDescriptorPool descriptorPool{};
-        VkDescriptorSet sceneSet{}, whiteSet{}, cutoutSet{}, boneSet{};
-        VkPipelineLayout pipelineLayout{};
-        VkSampler sampler{};
+        VkDescriptorSet sceneSet{}, whiteSet{}, cutoutSet{}, coloredSet{}, boneSet{};
+        VkPipelineLayout pipelineLayout{}, bufferPipelineLayout{};
+        VkSampler sampler{}, shadowSampler{};
         Buffer sceneBuffer{}, vertices{}, readback{}, boneBuffer{};
         Image color{}, depth{};
         std::filesystem::path shaderDirectory;
@@ -126,11 +126,11 @@ namespace {
             void* mapped{}; VK_CHECK(vkMapMemory(device, buffer.memory, 0, size, 0, &mapped));
             std::memcpy(mapped, data, static_cast<size_t>(size)); vkUnmapMemory(device, buffer.memory);
         }
-        Image MakeImage(VkFormat format, VkImageUsageFlags usage, VkImageAspectFlags aspect, uint32_t levels = 1) {
-            Image result{}; result.levels = levels;
+        Image MakeImage(VkFormat format, VkImageUsageFlags usage, VkImageAspectFlags aspect, uint32_t levels = 1, uint32_t layers = 1) {
+            Image result{}; result.levels = levels; result.layers = layers;
             VkImageCreateInfo info{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
             info.imageType = VK_IMAGE_TYPE_2D; info.format = format; info.extent = {kSize, kSize, 1};
-            info.mipLevels = levels; info.arrayLayers = 1; info.samples = VK_SAMPLE_COUNT_1_BIT;
+            info.mipLevels = levels; info.arrayLayers = layers; info.samples = VK_SAMPLE_COUNT_1_BIT;
             info.tiling = VK_IMAGE_TILING_OPTIMAL; info.usage = usage; info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
             VK_CHECK(vkCreateImage(device, &info, nullptr, &result.handle));
             VkMemoryRequirements requirements{}; vkGetImageMemoryRequirements(device, result.handle, &requirements);
@@ -140,8 +140,8 @@ namespace {
             VK_CHECK(vkAllocateMemory(device, &allocation, nullptr, &result.memory));
             VK_CHECK(vkBindImageMemory(device, result.handle, result.memory, 0));
             VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-            view.image = result.handle; view.viewType = VK_IMAGE_VIEW_TYPE_2D; view.format = format;
-            view.subresourceRange = {aspect, 0, levels, 0, 1};
+            view.image = result.handle; view.viewType = layers > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D; view.format = format;
+            view.subresourceRange = {aspect, 0, levels, 0, layers};
             VK_CHECK(vkCreateImageView(device, &view, nullptr, &result.view));
             images.push_back(result); return result;
         }
@@ -165,11 +165,11 @@ namespace {
             barrier.dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT;
             barrier.oldLayout = oldLayout; barrier.newLayout = newLayout;
             barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.image = image.handle; barrier.subresourceRange = {aspect, 0, image.levels, 0, 1};
+            barrier.image = image.handle; barrier.subresourceRange = {aspect, 0, image.levels, 0, image.layers};
             VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO}; dependency.imageMemoryBarrierCount = 1;
             dependency.pImageMemoryBarriers = &barrier; vkCmdPipelineBarrier2(command, &dependency);
         }
-        Image MakeTexture(bool cutout) {
+        Image MakeTexture(bool cutout, bool colored = false) {
             constexpr uint32_t levels = 4; // Deliberately stop at 8x8: maximum available LOD is 3.
             Image texture = MakeImage(VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
                 VK_IMAGE_ASPECT_COLOR_BIT, levels);
@@ -181,7 +181,9 @@ namespace {
                 copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, level, 0, 1}; copy.imageExtent = {size, size, 1};
                 regions.push_back(copy);
                 for (uint32_t y = 0; y < size; ++y) for (uint32_t x = 0; x < size; ++x) {
-                    pixels.insert(pixels.end(), {255, 255, 255, static_cast<uint8_t>(cutout && x < size / 2 ? 0 : 255)});
+                    pixels.insert(pixels.end(), {static_cast<uint8_t>(colored ? 128 : 255),
+                        static_cast<uint8_t>(colored ? 64 : 255), static_cast<uint8_t>(colored ? 32 : 255),
+                        static_cast<uint8_t>(cutout && x < size / 2 ? 0 : 255)});
                 }
             }
             const Buffer staging = MakeBuffer(pixels.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, pixels.data());
@@ -191,6 +193,30 @@ namespace {
                 static_cast<uint32_t>(regions.size()), regions.data());
             Barrier(texture, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             Submit(); return texture;
+        }
+        void UploadImage(const Image& image, VkImageAspectFlags aspect, const void* pixels, size_t bytes) {
+            const Buffer staging = MakeBuffer(bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, pixels);
+            Begin();
+            Barrier(image, aspect, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            VkBufferImageCopy copy{}; copy.imageSubresource = {aspect, 0, 0, image.layers}; copy.imageExtent = {kSize, kSize, 1};
+            vkCmdCopyBufferToImage(command, staging.handle, image.handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+            Barrier(image, aspect, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            Submit();
+        }
+        Image MakeShadowTexture() {
+            const Image image = MakeImage(kDepthFormat, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                VK_IMAGE_ASPECT_DEPTH_BIT, 1, 4);
+            std::vector<float> pixels(kSize * kSize * 4);
+            for (uint32_t layer = 0; layer < 4; ++layer) for (uint32_t y = 0; y < kSize; ++y) for (uint32_t x = 0; x < kSize; ++x)
+                pixels[(layer * kSize + y) * kSize + x] = layer == 0 ? (x < kSize / 2 ? 0.25f : 0.75f) : layer == 2 ? 0.25f : 0.75f;
+            UploadImage(image, VK_IMAGE_ASPECT_DEPTH_BIT, pixels.data(), pixels.size() * sizeof(float));
+            return image;
+        }
+        Image MakeFloatTexture(const Frame& values) {
+            Require(values.size() == kSize * kSize, "float texture has expected dimensions");
+            const Image image = MakeImage(VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
+            UploadImage(image, VK_IMAGE_ASPECT_COLOR_BIT, values.data(), values.size() * sizeof(Pixel));
+            return image;
         }
         VkDescriptorSet AllocateSet(VkDescriptorSetLayout layout) {
             VkDescriptorSetAllocateInfo allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
@@ -234,6 +260,8 @@ namespace {
             vkGetPhysicalDeviceFeatures2(physical, &features);
             Require(features13.dynamicRendering && features13.synchronization2 && scalar.scalarBlockLayout,
                 "GPU supports production dynamic rendering, synchronization2 and scalar layout");
+            Require(features.features.fillModeNonSolid, "GPU supports real wireframe polygon rasterization");
+            VkPhysicalDeviceFeatures enabledFeatures{}; enabledFeatures.fillModeNonSolid = VK_TRUE;
             features13 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES}; features13.pNext = &scalar;
             features13.dynamicRendering = features13.synchronization2 = VK_TRUE;
             uint32_t queueCount{}; vkGetPhysicalDeviceQueueFamilyProperties(physical, &queueCount, nullptr);
@@ -244,6 +272,7 @@ namespace {
             VkDeviceQueueCreateInfo queueInfo{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
             queueInfo.queueFamilyIndex = family; queueInfo.queueCount = 1; queueInfo.pQueuePriorities = &priority;
             VkDeviceCreateInfo deviceInfo{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO}; deviceInfo.pNext = &features13;
+            deviceInfo.pEnabledFeatures = &enabledFeatures;
             deviceInfo.queueCreateInfoCount = 1; deviceInfo.pQueueCreateInfos = &queueInfo;
             VK_CHECK(vkCreateDevice(physical, &deviceInfo, nullptr, &device)); volkLoadDevice(device); vkGetDeviceQueue(device, family, 0, &queue);
             VkCommandPoolCreateInfo pool{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO}; pool.queueFamilyIndex = family;
@@ -257,15 +286,17 @@ namespace {
             vertices = MakeBuffer(sizeof(SkinnedVertex) * 6 * 64, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
             boneBuffer = MakeBuffer(sizeof(glm::mat4) * 2, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
             readback = MakeBuffer(kSize * kSize * 8, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-            VkDescriptorSetLayoutBinding sceneBinding{0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
-            VkDescriptorSetLayoutCreateInfo layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO}; layout.bindingCount = 1; layout.pBindings = &sceneBinding;
+            const VkDescriptorSetLayoutBinding sceneBindings[] = {
+                {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+                {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}};
+            VkDescriptorSetLayoutCreateInfo layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO}; layout.bindingCount = 2; layout.pBindings = sceneBindings;
             VK_CHECK(vkCreateDescriptorSetLayout(device, &layout, nullptr, &sceneLayout));
             VkDescriptorSetLayoutBinding materialBinding{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
-            layout.pBindings = &materialBinding; VK_CHECK(vkCreateDescriptorSetLayout(device, &layout, nullptr, &materialLayout));
+            layout.bindingCount = 1; layout.pBindings = &materialBinding; VK_CHECK(vkCreateDescriptorSetLayout(device, &layout, nullptr, &materialLayout));
             VkDescriptorSetLayoutBinding boneBinding{0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr};
             layout.pBindings = &boneBinding; VK_CHECK(vkCreateDescriptorSetLayout(device, &layout, nullptr, &boneLayout));
-            const VkDescriptorPoolSize sizes[] = {{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1}, {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2}, {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1}};
-            VkDescriptorPoolCreateInfo descriptors{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO}; descriptors.maxSets = 4;
+            const VkDescriptorPoolSize sizes[] = {{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1}, {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 32}, {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1}};
+            VkDescriptorPoolCreateInfo descriptors{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO}; descriptors.maxSets = 34;
             descriptors.poolSizeCount = 3; descriptors.pPoolSizes = sizes;
             VK_CHECK(vkCreateDescriptorPool(device, &descriptors, nullptr, &descriptorPool));
             sceneSet = AllocateSet(sceneLayout);
@@ -282,30 +313,43 @@ namespace {
             sampling.addressModeU = sampling.addressModeV = sampling.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
             sampling.maxLod = 16; sampling.maxAnisotropy = 1;
             VK_CHECK(vkCreateSampler(device, &sampling, nullptr, &sampler));
-            whiteSet = TextureSet(MakeTexture(false)); cutoutSet = TextureSet(MakeTexture(true));
+            whiteSet = TextureSet(MakeTexture(false)); cutoutSet = TextureSet(MakeTexture(true)); coloredSet = TextureSet(MakeTexture(false, true));
+            sampling.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+            sampling.addressModeU = sampling.addressModeV = sampling.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+            sampling.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE; sampling.compareEnable = VK_TRUE; sampling.compareOp = VK_COMPARE_OP_LESS;
+            VK_CHECK(vkCreateSampler(device, &sampling, nullptr, &shadowSampler));
+            const Image shadow = MakeShadowTexture();
+            VkDescriptorImageInfo shadowInfo{shadowSampler, shadow.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+            write.dstSet = sceneSet; write.dstBinding = 1; write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            write.pBufferInfo = nullptr; write.pImageInfo = &shadowInfo; vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
             const VkDescriptorSetLayout layouts[] = {sceneLayout, materialLayout, boneLayout};
             VkPushConstantRange push{VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ObjectPC)};
             VkPipelineLayoutCreateInfo pipeline{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
             pipeline.setLayoutCount = 3; pipeline.pSetLayouts = layouts; pipeline.pushConstantRangeCount = 1; pipeline.pPushConstantRanges = &push;
             VK_CHECK(vkCreatePipelineLayout(device, &pipeline, nullptr, &pipelineLayout));
+            const VkPushConstantRange bufferPush{VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16};
+            pipeline.setLayoutCount = 1; pipeline.pSetLayouts = &materialLayout; pipeline.pPushConstantRanges = &bufferPush;
+            VK_CHECK(vkCreatePipelineLayout(device, &pipeline, nullptr, &bufferPipelineLayout));
         }
         ~Gpu() {
             if (device) {
                 vkDeviceWaitIdle(device);
                 for (auto pipeline : pipelines) vkDestroyPipeline(device, pipeline, nullptr);
                 vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+                vkDestroyPipelineLayout(device, bufferPipelineLayout, nullptr);
                 vkDestroyDescriptorPool(device, descriptorPool, nullptr);
                 vkDestroyDescriptorSetLayout(device, sceneLayout, nullptr); vkDestroyDescriptorSetLayout(device, materialLayout, nullptr);
                 vkDestroyDescriptorSetLayout(device, boneLayout, nullptr);
                 vkDestroySampler(device, sampler, nullptr);
+                vkDestroySampler(device, shadowSampler, nullptr);
                 for (const auto& image : images) { vkDestroyImageView(device, image.view, nullptr); vkDestroyImage(device, image.handle, nullptr); vkFreeMemory(device, image.memory, nullptr); }
                 for (const auto& buffer : buffers) { vkDestroyBuffer(device, buffer.handle, nullptr); vkFreeMemory(device, buffer.memory, nullptr); }
                 vkDestroyCommandPool(device, commandPool, nullptr); vkDestroyDevice(device, nullptr);
             }
             if (instance) vkDestroyInstance(instance, nullptr);
         }
-        VkPipeline Pipeline(const char* fragment, bool accumulate = false, bool depthTest = true, bool skinned = false) {
-            const VkShaderModule vertex = Shader(skinned ? "skinned.vert.spv" : "debug.vert.spv"), frag = Shader(fragment);
+        VkPipeline Pipeline(const char* fragment, bool accumulate = false, bool depthTest = true, bool skinned = false, bool wireframe = false, bool fullscreen = false) {
+            const VkShaderModule vertex = Shader(fullscreen ? "fullscreen.vert.spv" : skinned ? "skinned.vert.spv" : "debug.vert.spv"), frag = Shader(fragment);
             VkPipelineShaderStageCreateInfo stages[2]{};
             stages[0] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO}; stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT; stages[0].module = vertex; stages[0].pName = "main";
             stages[1] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO}; stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT; stages[1].module = frag; stages[1].pName = "main";
@@ -314,12 +358,12 @@ namespace {
                 {1, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex, uv)}, {2, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, normal)},
                 {3, 0, VK_FORMAT_R32G32B32A32_UINT, offsetof(SkinnedVertex, joints)}, {4, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(SkinnedVertex, weights)}};
             VkPipelineVertexInputStateCreateInfo input{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
-            input.vertexBindingDescriptionCount = 1; input.pVertexBindingDescriptions = &binding;
-            input.vertexAttributeDescriptionCount = skinned ? 5 : 3; input.pVertexAttributeDescriptions = attributes;
+            input.vertexBindingDescriptionCount = fullscreen ? 0 : 1; input.pVertexBindingDescriptions = &binding;
+            input.vertexAttributeDescriptionCount = fullscreen ? 0 : skinned ? 5 : 3; input.pVertexAttributeDescriptions = attributes;
             VkPipelineInputAssemblyStateCreateInfo assembly{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO}; assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
             VkPipelineViewportStateCreateInfo viewport{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO}; viewport.viewportCount = viewport.scissorCount = 1;
             VkPipelineRasterizationStateCreateInfo raster{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
-            raster.polygonMode = VK_POLYGON_MODE_FILL; raster.cullMode = VK_CULL_MODE_NONE; raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; raster.lineWidth = 1;
+            raster.polygonMode = wireframe ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL; raster.cullMode = VK_CULL_MODE_NONE; raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; raster.lineWidth = 1;
             VkPipelineMultisampleStateCreateInfo samples{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO}; samples.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
             VkPipelineDepthStencilStateCreateInfo depthState{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
             depthState.depthTestEnable = depthState.depthWriteEnable = depthTest; depthState.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
@@ -331,19 +375,20 @@ namespace {
             const VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
             VkPipelineDynamicStateCreateInfo dynamic{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO}; dynamic.dynamicStateCount = 2; dynamic.pDynamicStates = dynamicStates;
             VkPipelineRenderingCreateInfo rendering{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
-            rendering.colorAttachmentCount = 1; rendering.pColorAttachmentFormats = &kColorFormat; rendering.depthAttachmentFormat = kDepthFormat;
+            rendering.colorAttachmentCount = 1; rendering.pColorAttachmentFormats = &kColorFormat; rendering.depthAttachmentFormat = fullscreen ? VK_FORMAT_UNDEFINED : kDepthFormat;
             VkGraphicsPipelineCreateInfo pipeline{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO}; pipeline.pNext = &rendering;
             pipeline.stageCount = 2; pipeline.pStages = stages; pipeline.pVertexInputState = &input; pipeline.pInputAssemblyState = &assembly;
             pipeline.pViewportState = &viewport; pipeline.pRasterizationState = &raster; pipeline.pMultisampleState = &samples;
-            pipeline.pDepthStencilState = &depthState; pipeline.pColorBlendState = &blend; pipeline.pDynamicState = &dynamic; pipeline.layout = pipelineLayout;
+            pipeline.pDepthStencilState = &depthState; pipeline.pColorBlendState = &blend; pipeline.pDynamicState = &dynamic; pipeline.layout = fullscreen ? bufferPipelineLayout : pipelineLayout;
             VkPipeline result{}; const VkResult status = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline, nullptr, &result);
             vkDestroyShaderModule(device, vertex, nullptr); vkDestroyShaderModule(device, frag, nullptr); Check(status, "vkCreateGraphicsPipelines");
             pipelines.push_back(result); return result;
         }
-        Frame Render(VkPipeline pipeline, const std::vector<Draw>& draws, glm::vec4 portalClip = {}, const glm::mat4* animatedBone = nullptr) {
+        Frame Render(VkPipeline pipeline, const std::vector<Draw>& draws, glm::vec4 portalClip = {}, const glm::mat4* animatedBone = nullptr, const SceneUniform* overrideScene = nullptr) {
             Require(!draws.empty() && draws.size() <= 64, "draw count fits vertex buffer");
             SceneUniform scene{}; scene.projection = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 100.0f);
             scene.projection[1][1] *= -1; scene.projCam = scene.projection; scene.portalClipPlane = portalClip;
+            if (overrideScene) scene = *overrideScene;
             Write(sceneBuffer, &scene, sizeof(scene));
             if (animatedBone) {
                 std::vector<SkinnedVertex> allVertices;
@@ -374,11 +419,35 @@ namespace {
             vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
             const VkDeviceSize offset = 0; vkCmdBindVertexBuffers(command, 0, 1, &vertices.handle, &offset);
             for (uint32_t index = 0; index < draws.size(); ++index) {
-                const VkDescriptorSet sets[] = {sceneSet, draws[index].cutoutTexture ? cutoutSet : whiteSet, boneSet};
+                const VkDescriptorSet sets[] = {sceneSet, draws[index].coloredTexture ? coloredSet : draws[index].cutoutTexture ? cutoutSet : whiteSet, boneSet};
                 vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 3, sets, 0, nullptr);
                 vkCmdPushConstants(command, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ObjectPC), &draws[index].pc);
                 vkCmdDraw(command, 6, 1, index * 6, 0);
             }
+            return FinishFrame();
+        }
+        Frame Resolve(VkPipeline pipeline, const Frame& values, int mode) {
+            const VkDescriptorSet sourceSet = TextureSet(MakeFloatTexture(values));
+            Begin();
+            Barrier(color, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            VkRenderingAttachmentInfo attachment{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+            attachment.imageView = color.view; attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            VkRenderingInfo rendering{VK_STRUCTURE_TYPE_RENDERING_INFO}; rendering.renderArea.extent = {kSize, kSize}; rendering.layerCount = 1;
+            rendering.colorAttachmentCount = 1; rendering.pColorAttachments = &attachment;
+            vkCmdBeginRendering(command, &rendering);
+            const VkViewport viewport{0, 0, static_cast<float>(kSize), static_cast<float>(kSize), 0, 1};
+            const VkRect2D scissor{{0, 0}, {kSize, kSize}};
+            vkCmdSetViewport(command, 0, 1, &viewport); vkCmdSetScissor(command, 0, 1, &scissor);
+            vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+            vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, bufferPipelineLayout, 0, 1, &sourceSet, 0, nullptr);
+            const int parameters[4] = {mode, 0, 0, 0};
+            vkCmdPushConstants(command, bufferPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(parameters), parameters);
+            vkCmdDraw(command, 3, 1, 0, 0);
+            return FinishFrame();
+        }
+    private:
+        Frame FinishFrame() {
             vkCmdEndRendering(command);
             Barrier(color, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
             VkBufferImageCopy copy{}; copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}; copy.imageExtent = {kSize, kSize, 1};
@@ -488,6 +557,82 @@ int main(int argc, char** argv) {
         Near(Sample(boneMoved, 46)[0], Sample(bindPose, 32)[0], 0.002f, "production skinned vertex shader keeps debug depth after bone translation");
         Save(output, "skinned-bone-translation.png", boneMoved);
         std::puts("PASS production skinned.vert, bone descriptor, nonzero push-constant bone index and animated debug depth");
+
+        const VkPipeline albedo = gpu.Pipeline("debug_albedo.frag.spv");
+        Draw material = Quad(2); material.pc.baseColorFactor = {0.25f, 0.5f, 0.75f, 1};
+        const Frame factorOnly = gpu.Render(albedo, {material});
+        material.coloredTexture = true;
+        const Frame texturedAlbedo = gpu.Render(albedo, {material});
+        for (uint32_t channel = 0; channel < 3; ++channel) {
+            const float texel = static_cast<float>(128 >> channel) / 255;
+            Near(Sample(factorOnly)[channel], material.pc.baseColorFactor[channel], 0.001f, "albedo retains material base-color factor without lighting");
+            Near(Sample(texturedAlbedo)[channel], texel * material.pc.baseColorFactor[channel], 0.001f, "albedo multiplies known linear texture by material factor");
+        }
+        Save(output, "albedo-texture-times-factor.png", texturedAlbedo);
+        std::puts("PASS Albedo uses texture times material factor with no lighting or tone mapping");
+
+        const VkPipeline wireframe = gpu.Pipeline("debug_wireframe.frag.spv", false, true, false, true);
+        Draw triangle = Quad(2); triangle.vertices[2].position.x = 0;
+        triangle.vertices[3] = triangle.vertices[4] = triangle.vertices[5] = triangle.vertices[0];
+        triangle.pc.transform = glm::scale(glm::mat4(1), glm::vec3(0.7f, 0.7f, 1));
+        const Frame filledTriangle = gpu.Render(albedo, {triangle});
+        const Frame wireTriangle = gpu.Render(wireframe, {triangle});
+        Near(Sample(filledTriangle, 32, 32)[0], 1, 0.001f, "control triangle covers its interior");
+        Near(Sample(wireTriangle, 32, 32)[0], 0, 0.001f, "wireframe leaves triangle interior empty");
+        const auto edgePixels = std::count_if(wireTriangle.begin(), wireTriangle.end(), [](const Pixel& pixel) { return pixel[0] > 0.5f; });
+        Require(edgePixels > 50 && edgePixels < 400, "real LINE rasterization draws edges but not filled faces");
+        Save(output, "wireframe-triangle.png", wireTriangle);
+        std::puts("PASS Wireframe uses non-solid GPU polygon rasterization with visible edges and empty interior");
+
+        const VkPipeline shadow = gpu.Pipeline("debug_shadow.frag.spv");
+        SceneUniform shadowScene{};
+        shadowScene.projection = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 100.0f);
+        shadowScene.projection[1][1] *= -1; shadowScene.projCam = shadowScene.projection;
+        shadowScene.cascadeSplits = {5, 20, 80, 100};
+        const float cascadeDepths[] = {2, 10, 40, 90};
+        for (int cascade = 0; cascade < 4; ++cascade) {
+            glm::mat4 light(0);
+            light[0][0] = light[1][1] = 1 / (cascadeDepths[cascade] * std::tan(glm::radians(60.0f) / 2));
+            light[3][2] = 0.5f; light[3][3] = 1;
+            shadowScene.lightVP[cascade] = light;
+        }
+        const Frame splitShadow = gpu.Render(shadow, {Quad(2)}, {}, nullptr, &shadowScene);
+        Near(Sample(splitShadow, 16)[0], 0, 0.001f, "shadow comparison rejects reference depth 0.5 behind stored depth 0.25");
+        Near(Sample(splitShadow, 48)[0], 1, 0.001f, "shadow comparison accepts reference depth 0.5 before stored depth 0.75");
+        const Frame secondCascade = gpu.Render(shadow, {Quad(10)}, {}, nullptr, &shadowScene);
+        const Frame thirdCascade = gpu.Render(shadow, {Quad(40)}, {}, nullptr, &shadowScene);
+        Near(Sample(secondCascade, 16)[0], 1, 0.001f, "camera depth selects the lit second shadow-array layer");
+        Near(Sample(thirdCascade, 48)[0], 0, 0.001f, "camera depth selects the shadowed third shadow-array layer");
+        Save(output, "shadow-csm-visibility.png", splitShadow);
+        std::puts("PASS Shadow displays comparison-sampled directional CSM visibility and selects the correct cascade");
+
+        const VkPipeline bufferDebug = gpu.Pipeline("debug_buffer.frag.spv", false, false, false, false, true);
+        Frame aoInput(kSize * kSize), ssrInput(kSize * kSize), normalInput(kSize * kSize);
+        for (uint32_t y = 0; y < kSize; ++y) for (uint32_t x = 0; x < kSize; ++x) {
+            const size_t pixel = y * kSize + x;
+            aoInput[pixel] = {x < kSize / 2 ? 0.25f : 0.75f, 0.99f, 0.02f, 0.1f};
+            ssrInput[pixel] = x < kSize / 2 ? Pixel{8, 2, 1, 0.25f} : Pixel{20, 30, 40, 0};
+            normalInput[pixel] = x < 21 ? Pixel{0, 3, 4, 0.92f} : x < 43 ? Pixel{-2, 0, 0, 0.11f} : Pixel{0, 0, 0, 0.99f};
+        }
+        const Frame ao = gpu.Resolve(bufferDebug, aoInput, 6);
+        for (uint32_t channel = 0; channel < 3; ++channel) {
+            Near(Sample(ao, 16)[channel], 0.25f, 0.001f, "SSAO copies red-channel occlusion to grayscale without exposure or alpha");
+            Near(Sample(ao, 48)[channel], 0.75f, 0.001f, "SSAO preserves the independent far-side input value");
+        }
+        const Frame ssr = gpu.Resolve(bufferDebug, ssrInput, 7);
+        Near(Sample(ssr, 16)[0], 2, 0.001f, "SSR retains HDR reflected RGB times confidence without tone mapping");
+        Near(Sample(ssr, 16)[1], 0.5f, 0.001f, "SSR green uses the reflection confidence");
+        Near(Sample(ssr, 16)[2], 0.25f, 0.001f, "SSR blue uses the reflection confidence");
+        Near(Sample(ssr, 48)[0], 0, 0.001f, "zero-confidence SSR contributes no reflected color");
+        const Frame normals = gpu.Resolve(bufferDebug, normalInput, 8);
+        Near(Sample(normals, 10)[0], 0.5f, 0.001f, "Normals maps signed world-normal X to display RGB");
+        Near(Sample(normals, 10)[1], 0.8f, 0.001f, "Normals normalizes the real normal-buffer XYZ before display");
+        Near(Sample(normals, 10)[2], 0.9f, 0.001f, "Normals uses normal-buffer Z, not roughness alpha");
+        Near(Sample(normals, 32)[0], 0, 0.001f, "negative X normal decodes to zero red");
+        Near(Sample(normals, 32)[1], 0.5f, 0.001f, "negative X normal leaves green at midpoint");
+        for (uint32_t channel = 0; channel < 3; ++channel) Near(Sample(normals, 53)[channel], 0, 0.001f, "invalid/background normals stay black");
+        Save(output, "ssao-buffer-grayscale.png", ao); Save(output, "ssr-buffer-contribution.png", ssr); Save(output, "normals-buffer-decode.png", normals);
+        std::puts("PASS SSAO/SSR/Normals production buffer resolver: channel selection, confidence, signed normal decoding and unmodified HDR values");
         std::puts("PASS all view mode shader + Vulkan GPU contract tests (no window/surface/swapchain)");
         return 0;
     } catch (const std::exception& error) {

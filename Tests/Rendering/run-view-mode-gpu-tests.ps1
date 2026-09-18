@@ -5,7 +5,8 @@ $shaderDirectory = Join-Path $outputDirectory 'shaders'
 New-Item -ItemType Directory -Force -Path $shaderDirectory | Out-Null
 $compiler = Join-Path $repoRoot 'glslc.exe'
 if (-not (Test-Path -LiteralPath $compiler)) { $compiler = Join-Path $repoRoot 'ThirdParty/shaderc/win-x86_64/glslc.exe' }
-foreach ($shader in @('debug.vert', 'skinned.vert', 'debug_mip.frag', 'debug_depth.frag', 'debug_deriv.frag', 'overdraw.frag')) {
+foreach ($shader in @('debug.vert', 'skinned.vert', 'fullscreen.vert', 'debug_mip.frag', 'debug_depth.frag', 'debug_deriv.frag', 'overdraw.frag',
+    'debug_albedo.frag', 'debug_wireframe.frag', 'debug_shadow.frag', 'debug_buffer.frag')) {
     & $compiler --target-env=vulkan1.3 ('-I' + (Join-Path $repoRoot 'Assets/Shaders')) (Join-Path $repoRoot "Assets/Shaders/$shader") -o (Join-Path $shaderDirectory "$shader.spv")
     if ($LASTEXITCODE -ne 0) { throw "Production shader compilation failed: $shader" }
 }

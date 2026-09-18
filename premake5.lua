@@ -277,6 +277,8 @@ workspace "EngineWorkspace"
                 "{MKDIR} \"%{wks.location}/Assets/Shaders/spirv\"",
                 "glslc \"%{file.abspath}\" -o \"%{wks.location}/Assets/Shaders/spirv/%{file.name}.spv\""
             }
-        filter "files:Assets/Shaders/debug_mip.frag or files:Assets/Shaders/debug_depth.frag or files:Assets/Shaders/debug_deriv.frag or files:Assets/Shaders/overdraw.frag"
+        filter "files:Assets/Shaders/debug_mip.frag or files:Assets/Shaders/debug_depth.frag or files:Assets/Shaders/debug_deriv.frag or files:Assets/Shaders/overdraw.frag or files:Assets/Shaders/debug_albedo.frag or files:Assets/Shaders/debug_shadow.frag or files:Assets/Shaders/debug_wireframe.frag"
             buildinputs { "Assets/Shaders/debug_common.glsl" }
+        filter "files:Assets/Shaders/default.frag or files:Assets/Shaders/debug_shadow.frag"
+            buildinputs { "Assets/Shaders/shadow_sampling.glsl" }
         filter "*"

@@ -69,6 +69,9 @@ void record_commands(
 	float aBloomStrength,
 	float aExposure,
 	bool aEditorBackdrop,
+	VkPipeline aBufferViewPipe,
+	VkPipelineLayout aBufferViewLayout,
+	VkDescriptorSet aBufferViewDS,
 
 	// ==============================================================
 	// 极速后处理效果

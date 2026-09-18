@@ -62,6 +62,7 @@ namespace lut = labut2;
 #include "RenderUtilities/setup.hpp"
 #include "RenderUtilities/light.hpp"
 #include "RenderUtilities/rendering.hpp"
+#include "RenderUtilities/ViewMode.hpp"
 
 #include "../Input/InputSystem.hpp"
 
@@ -598,6 +599,7 @@ namespace engine {
             mBlurPipe = create_blur_pipeline(mWindow, mBlurPipeLayout.handle);
             mCompositePipe = create_composite_pipeline(mWindow, mCompPipeLayout.handle);
             mSpeedPostPipe = create_speed_post_pipeline(mWindow, mSpeedPostPipeLayout.handle);
+            mBufferViewPipe = create_speed_post_pipeline(mWindow, mSpeedPostPipeLayout.handle, cfg::kDebugBufferFragShaderPath);
 
             // =====================================================================
             // 【致命雷区修复】：全场唯一的一个描述符分配循环！里面只有 push_back！
@@ -620,6 +622,9 @@ namespace engine {
                 ));
 
                 mSpeedPostDescriptors.push_back(BuildSpeedDesc(mCompositeOutputImage.view));
+                mBufferViewDescriptors[0].push_back(BuildSpeedDesc(mSsaoRawImage.view));
+                mBufferViewDescriptors[1].push_back(BuildSpeedDesc(mSsrOutputImage.view));
+                mBufferViewDescriptors[2].push_back(BuildSpeedDesc(mNormalImage.view));
 
                 mSsrDescriptors.push_back(BuildSsrDesc(
                     mOffscreenImage.view,
@@ -1331,13 +1336,15 @@ namespace engine {
                     mPortalSurfacePipe = create_portal_surface_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
                     mThumbnailAlphaPipe = create_alpha_pipeline_1_attachment(mWindow, mPipeLayout.handle, VK_FORMAT_R8G8B8A8_UNORM);
                     CreateDebugViewPipelines();
+                    mSpeedPostPipe = create_speed_post_pipeline(mWindow, mSpeedPostPipeLayout.handle);
+                    mBufferViewPipe = create_speed_post_pipeline(mWindow, mSpeedPostPipeLayout.handle, cfg::kDebugBufferFragShaderPath);
                     mPostProcPipe = create_post_proc_pipeline(mWindow, mPostPipeLayout.handle, mPostLayout.handle);
 
                     // Recreate (p2_1.1)
                     mVisResolvePipe = create_vis_resolve_pipeline(mWindow, mPostPipeLayout.handle, mPostLayout.handle);
                 }
 
-                if (changes.changedSize) {
+                if (changes.changedSize || changes.changedFormat) {
                     // 1. 重建所有与屏幕尺寸绑定的画板 (Image)
                     mDepthBuffer = create_depth_buffer(mWindow, mAllocator);
                     mOffscreenImage = create_offscreen_buffer(mWindow, mAllocator);
@@ -1420,6 +1427,9 @@ namespace engine {
                     UpdatePostDescImage(mBlurHorizDescriptors, mBrightImage.view);
                     UpdatePostDescImage(mBlurVertDescriptors, mBlurTempImage.view);
                     UpdatePostDescImage(mSpeedPostDescriptors, mCompositeOutputImage.view);
+                    UpdatePostDescImage(mBufferViewDescriptors[0], mSsaoRawImage.view);
+                    UpdatePostDescImage(mBufferViewDescriptors[1], mSsrOutputImage.view);
+                    UpdatePostDescImage(mBufferViewDescriptors[2], mNormalImage.view);
 
                     // 只有这一个循环！更新我们写的复合描述符
                     for (size_t i = 0; i < mCmdBuffers.size(); ++i) {
@@ -1639,13 +1649,13 @@ namespace engine {
             auto const* currentDescs = &mMaterialDescriptors;
 
             // Debug modes use a dedicated single-color pass, including skinned meshes.
-            const bool debugView = mState->renderMode >= 1 && mState->renderMode <= 5;
+            const bool debugView = view_mode::IsGeometry(mState->renderMode);
             VkPipeline currentSkinned = mSkinnedPipe.handle;
             if (debugView) {
-                const size_t index = static_cast<size_t>(mState->renderMode - 1);
+                const size_t index = static_cast<size_t>(mState->renderMode);
                 currentOpaque = mDebugViewPipes[index].handle;
                 currentSkinned = mSkinnedDebugViewPipes[index].handle;
-                currentDescs = &mDebugMaterialDescriptors;
+                if (mState->renderMode == view_mode::Mipmaps) currentDescs = &mDebugMaterialDescriptors;
             }
             const VkClearColorValue clearColor = { 0.1f, 0.1f, 0.1f, 1.f };
 
@@ -2181,6 +2191,9 @@ namespace engine {
                 currentBloomStrength,
                 mState->bloomExposure,
                 editorBackdrop,
+                mBufferViewPipe.handle,
+                mSpeedPostPipeLayout.handle,
+                mBufferViewDescriptors[view_mode::IsBuffer(mState->renderMode) ? mState->renderMode - view_mode::SSAO : 0][mFrameIndex],
 
                 // 【新增】：将极速管线和目标传给 rendering.cpp
                 mSpeedPostPipe.handle,
@@ -2609,17 +2622,27 @@ namespace engine {
         }
     private:
         void CreateDebugViewPipelines() {
-            const char* fragments[] = { cfg::kDebugMipFragShaderPath, cfg::kDebugDepthFragShaderPath,
-                cfg::kDebugDerivFragShaderPath, cfg::kOverdrawFragShaderPath, cfg::kOverdrawFragShaderPath };
-            for (size_t i = 0; i < mDebugViewPipes.size(); ++i) {
-                const bool accumulate = i >= 3;
-                const bool depthTest = i != 3; // Overdraw counts all covered fragments.
-                mDebugViewPipes[i] = create_debug_pipeline(mWindow, mPipeLayout.handle,
-                    cfg::kDebugVertShaderPath, fragments[i], VK_FORMAT_R16G16B16A16_SFLOAT,
-                    false, accumulate, depthTest);
-                mSkinnedDebugViewPipes[i] = create_debug_pipeline(mWindow, mSkinnedPipeLayout.handle,
-                    cfg::kSkinnedVertShaderPath, fragments[i], VK_FORMAT_R16G16B16A16_SFLOAT,
-                    true, accumulate, depthTest);
+            mState->wireframeSupported = supports_wireframe(mWindow.physicalDevice);
+            if (!mState->wireframeSupported && mState->renderMode == view_mode::Wireframe)
+                mState->renderMode = view_mode::Default;
+            const char* fragments[view_mode::Count] = {
+                nullptr, cfg::kDebugMipFragShaderPath, cfg::kDebugDepthFragShaderPath,
+                cfg::kDebugDerivFragShaderPath, cfg::kOverdrawFragShaderPath, cfg::kOverdrawFragShaderPath,
+                nullptr, nullptr, nullptr, cfg::kDebugWireframeFragShaderPath,
+                cfg::kDebugAlbedoFragShaderPath, cfg::kDebugShadowFragShaderPath
+            };
+            for (int mode = 1; mode < view_mode::Count; ++mode) {
+                if (!view_mode::IsGeometry(mode)) continue;
+                const bool wireframe = mode == view_mode::Wireframe;
+                if (wireframe && !mState->wireframeSupported) continue;
+                const bool accumulate = mode == view_mode::Overdraw || mode == view_mode::Overshading;
+                const bool depthTest = mode != view_mode::Overdraw;
+                mDebugViewPipes[mode] = create_debug_pipeline(mWindow, mPipeLayout.handle,
+                    cfg::kDebugVertShaderPath, fragments[mode], VK_FORMAT_R16G16B16A16_SFLOAT,
+                    false, accumulate, depthTest, wireframe);
+                mSkinnedDebugViewPipes[mode] = create_debug_pipeline(mWindow, mSkinnedPipeLayout.handle,
+                    cfg::kSkinnedVertShaderPath, fragments[mode], VK_FORMAT_R16G16B16A16_SFLOAT,
+                    true, accumulate, depthTest, wireframe);
             }
         }
 
@@ -3440,8 +3463,8 @@ void InitSkybox()
 
         lut::Pipeline mPipe, mAlphaPipe;
         lut::Pipeline mPortalSurfacePipe;
-        std::array<lut::Pipeline, 5> mDebugViewPipes;
-        std::array<lut::Pipeline, 5> mSkinnedDebugViewPipes;
+        std::array<lut::Pipeline, view_mode::Count> mDebugViewPipes;
+        std::array<lut::Pipeline, view_mode::Count> mSkinnedDebugViewPipes;
         lut::Pipeline mPostProcPipe, mVisResolvePipe;
         lut::Pipeline mShadowPipe;
         lut::Pipeline mShadowSkinnedPipe;
@@ -3618,6 +3641,8 @@ void InitSkybox()
         // =========================================================
         lut::ImageWithView mCompositeOutputImage; // 存放 Composite 合成结果的中间缓冲
         lut::Pipeline mSpeedPostPipe;
+        lut::Pipeline mBufferViewPipe;
+        std::array<std::vector<VkDescriptorSet>, 3> mBufferViewDescriptors;
         lut::PipelineLayout mSpeedPostPipeLayout;
         std::vector<VkDescriptorSet> mSpeedPostDescriptors;
 

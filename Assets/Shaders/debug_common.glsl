@@ -5,13 +5,14 @@ layout(location = 0) in vec2 v2fTexCoord;
 layout(location = 2) in vec3 v2fPos;
 layout(set = 1, binding = 0) uniform sampler2D uTexColor;
 
-// The first three matrices are a stable prefix of glsl::SceneUniform. The
-// explicit final offset skips camera/light data that diagnostics do not use.
+// Match glsl::SceneUniform while skipping camera/light data unused by diagnostics.
 layout(scalar, set = 0, binding = 0) uniform DebugScene
 {
     mat4 camera;
     mat4 projection;
     mat4 projCam;
+    layout(offset = 1280) mat4 lightVP[4];
+    layout(offset = 1536) vec4 cascadeSplits;
     layout(offset = 1552) vec4 portalClipPlane;
 } uScene;
 

@@ -658,7 +658,11 @@ namespace
 			queueInfo.pQueuePriorities  = queuePriorities;
 		}
 
+		VkPhysicalDeviceFeatures supportedFeatures{};
+		vkGetPhysicalDeviceFeatures(aPhysicalDev, &supportedFeatures);
 		VkPhysicalDeviceFeatures deviceFeatures{};
+		// Wireframe diagnostics remain optional on hardware without non-solid fill.
+		deviceFeatures.fillModeNonSolid = supportedFeatures.fillModeNonSolid;
 		deviceFeatures.independentBlend = VK_TRUE; // 开启独立混合特性
 		// No extra Vulkan 1.0 features for now.
 

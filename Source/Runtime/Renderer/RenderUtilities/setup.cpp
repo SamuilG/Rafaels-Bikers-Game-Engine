@@ -1080,16 +1080,23 @@ lut::ImageWithView create_ssao_raw_buffer(lut::VulkanWindow const& aWindow, lut:
 
 	return lut::ImageWithView(aAllocator.allocator, image, allocation, view);
 }
-// creates a generic pipeline for debug visualization
-// the vertex shader is typically the same (debug.vert)
-// but the fragment shader depends on keys 1-4
+bool supports_wireframe(VkPhysicalDevice physicalDevice)
+{
+    VkPhysicalDeviceFeatures features{};
+    vkGetPhysicalDeviceFeatures(physicalDevice, &features);
+    return features.fillModeNonSolid == VK_TRUE;
+}
+
+// A single-target diagnostic pipeline for static or skinned meshes.
 lut::Pipeline create_debug_pipeline(
     lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout,
     char const* aVertPath, char const* aFragPath, VkFormat aColorFormat,
-    bool skinned, bool accumulate, bool depthTest)
+    bool skinned, bool accumulate, bool depthTest, bool wireframe)
 {
     // Diagnostics use one color attachment and bypass the normal MRT/post chain.
-    // Keep the clip-plane offset synchronized with debug_common.glsl.
+    // Keep explicit UBO offsets synchronized with debug_common.glsl.
+    static_assert(offsetof(glsl::SceneUniform, lightVP) == 1280);
+    static_assert(offsetof(glsl::SceneUniform, cascadeSplits) == 1536);
     static_assert(offsetof(glsl::SceneUniform, portalClipPlane) == 1552);
     auto const vertSpirV = lut::load_file_u32(skinned ? cfg::kSkinnedVertShaderPath : aVertPath);
     auto const fragSpirV = lut::load_file_u32(aFragPath);
@@ -1136,7 +1143,7 @@ lut::Pipeline create_debug_pipeline(
     viewport.viewportCount = viewport.scissorCount = 1;
 
     VkPipelineRasterizationStateCreateInfo raster{ VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
-    raster.polygonMode = VK_POLYGON_MODE_FILL;
+    raster.polygonMode = wireframe ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL;
     raster.cullMode = VK_CULL_MODE_NONE; // Match the normal static scene, including double-sided/mirrored meshes.
     raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     raster.lineWidth = 1.0f;
@@ -2692,11 +2699,11 @@ lut::PipelineLayout create_speed_post_pipeline_layout(lut::VulkanContext const& 
 // ==============================================================================
 // 极速特效 (Speed Post-Process) 的管线
 // ==============================================================================
-lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout)
+lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, char const* fragPath)
 {
 	// 复用全屏顶点着色器，加载新的极速片段着色器
 	auto const vertSpirV = lut::load_file_u32(cfg::kFullscreenVertShaderPath);
-	auto const fragSpirV = lut::load_file_u32(cfg::kSpeedPostFragShaderPath); // 注意：需要在 cfg 中定义这个路径！
+	auto const fragSpirV = lut::load_file_u32(fragPath); // 注意：需要在 cfg 中定义这个路径！
 
 	VkShaderModuleCreateInfo code[2]{};
 	code[0].sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;

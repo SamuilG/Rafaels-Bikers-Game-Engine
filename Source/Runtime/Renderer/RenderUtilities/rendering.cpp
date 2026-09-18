@@ -5,6 +5,7 @@
 #include "../../Rhi/error.hpp"
 #include "../../Rhi/to_string.hpp"
 #include "setup.hpp"
+#include "ViewMode.hpp"
 
 #include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
@@ -91,6 +92,9 @@ void record_commands(
 	float aBloomStrength,
 	float aExposure,
 	bool aEditorBackdrop,
+	VkPipeline aBufferViewPipe,
+	VkPipelineLayout aBufferViewLayout,
+	VkDescriptorSet aBufferViewDS,
 
 	// ==============================================================
 	// 鏋侀€熷悗澶勭悊鏁堟灉
@@ -239,10 +243,43 @@ void record_commands(
 		}
 	};
 
+    // Display the actual intermediate buffer before scene post-processing.
+    auto renderBufferView = [&]() {
+        const VkImageSubresourceRange range{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+        lut::image_barrier(aCmdBuff, aFinalSceneColor.image,
+            VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+            VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
+        VkRenderingAttachmentInfo color{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+        color.imageView = aFinalSceneColor.view;
+        color.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        color.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        VkRenderingInfo pass{ VK_STRUCTURE_TYPE_RENDERING_INFO };
+        pass.renderArea.extent = aImageExtent;
+        pass.layerCount = 1;
+        pass.colorAttachmentCount = 1;
+        pass.pColorAttachments = &color;
+        vkCmdBeginRendering(aCmdBuff, &pass);
+        const VkViewport viewport{ 0.0f, 0.0f, float(aImageExtent.width), float(aImageExtent.height), 0.0f, 1.0f };
+        const VkRect2D scissor{ {0, 0}, aImageExtent };
+        vkCmdSetViewport(aCmdBuff, 0, 1, &viewport);
+        vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
+        vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aBufferViewPipe);
+        vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aBufferViewLayout, 0, 1, &aBufferViewDS, 0, nullptr);
+        struct BufferViewPC { int32_t mode; int32_t padding[3]; };
+        const BufferViewPC pc{ static_cast<int32_t>(aSceneUniform.renderMode), {0, 0, 0} };
+        static_assert(sizeof(BufferViewPC) == 16);
+        vkCmdPushConstants(aCmdBuff, aBufferViewLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
+        vkCmdDraw(aCmdBuff, 3, 1, 0, 0);
+        vkCmdEndRendering(aCmdBuff);
+    };
+
     // Diagnostic data must never pass through scene lighting, skybox, SSAO,
-    // bloom, tone mapping or camera effects. All five modes share one target.
+    // bloom, tone mapping or camera effects. Geometry modes share one target.
     // Shared images discard old contents, but still wait for prior frames to finish reading/writing.
-    if (aSceneUniform.renderMode >= 1 && aSceneUniform.renderMode <= 5) {
+    auto renderGeometryView = [&]() {
         const VkImageSubresourceRange colorRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
         const VkImageSubresourceRange depthRange{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
         lut::image_barrier(aCmdBuff, aOffscreenColor.image,
@@ -337,6 +374,10 @@ void record_commands(
         vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aPostProcLayout, 0, 1, &aPostProcDescriptors, 0, nullptr);
         vkCmdDraw(aCmdBuff, 3, 1, 0, 0);
         vkCmdEndRendering(aCmdBuff);
+    };
+    if (engine::view_mode::IsGeometry(aSceneUniform.renderMode) &&
+        aSceneUniform.renderMode != engine::view_mode::Shadow) {
+        renderGeometryView();
         finishFrame();
         return;
     }
@@ -349,11 +390,11 @@ void record_commands(
 		const std::vector<RenderBatch>& shadowBatches) {
 		const VkPipelineStageFlags2 shadowOldStage =
 			(shadowMapLayout == VK_IMAGE_LAYOUT_UNDEFINED)
-			? VK_PIPELINE_STAGE_2_NONE
+			? VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
 			: VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
 		const VkAccessFlags2 shadowOldAccess =
 			(shadowMapLayout == VK_IMAGE_LAYOUT_UNDEFINED)
-			? VK_ACCESS_2_NONE
+			? VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT
 			: VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
 
 		lut::image_barrier(aCmdBuff, aShadowMap.image,
@@ -950,6 +991,12 @@ void record_commands(
 	}
 	renderShadowMap(aSceneUniform, aBatches);
 	uploadSceneUniform(aSceneUniform);
+    if (aSceneUniform.renderMode == engine::view_mode::Shadow) {
+        renderGeometryView();
+        finishFrame();
+        return;
+    }
+
 
 	// ==========================================================
 	// PASS 1: 鍦烘櫙娓叉煋 + 浜害鎻愬彇 (MRT -> Offscreen + Bright)
@@ -964,8 +1011,8 @@ void record_commands(
 		VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
 	);
 	lut::image_barrier(aCmdBuff, aBrightColor.image,
-		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
-		VK_ACCESS_2_NONE,
+		VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+		VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
 		VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
 		VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
@@ -975,7 +1022,7 @@ void record_commands(
 
 	// 銆愭柊澧炶ˉ婕?1銆戯細灏嗘硶绾跨紦鍐查噸缃负鍙啓鍏ョ姸鎬?
 	lut::image_barrier(aCmdBuff, aNormalImage.image,
-		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		VkImageSubresourceRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
 	);
@@ -1131,7 +1178,7 @@ void record_commands(
 	// =====================================================================
 	// 闃舵 1.5锛氱敾銆愬ぉ绌虹洅銆?(姝ゆ椂鍒╃敤 Early-Z 鍓旈櫎琚缓绛戞尅浣忕殑澶╃┖鍍忕礌锛屾€ц兘鏋侀珮锛?
 	// =====================================================================
-	if (!aEditorBackdrop && skyboxPipe != VK_NULL_HANDLE && skyboxVBO != VK_NULL_HANDLE) {
+	if (aSceneUniform.renderMode == engine::view_mode::Default && !aEditorBackdrop && skyboxPipe != VK_NULL_HANDLE && skyboxVBO != VK_NULL_HANDLE) {
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipe);
 
 		// 鏄惧紡璁剧疆瑙嗗彛鍜岃鍓尯鍩?
@@ -1180,7 +1227,12 @@ void record_commands(
 		for (const auto& batch : *aSkinnedBatches) {
 			uint32_t meshIdx = batch.meshIndex; uint32_t matIdx = batch.materialIndex;
 			// 鍙敾涓嶉€忔槑鐨?
-			bool isAlpha = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0) || (batch.alphaMultiplier < 0.99f);
+			const bool isMasked = matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0;
+            // Buffer diagnostics need cutout depth/normals, including animated meshes.
+            // Preserve Default's existing transparent-pass routing.
+            const bool isAlpha = engine::view_mode::IsBuffer(aSceneUniform.renderMode)
+                ? (!isMasked && batch.alphaMultiplier < 0.99f)
+                : (isMasked || batch.alphaMultiplier < 0.99f);
 			if (isAlpha) continue;
 
 			auto jIt = aMeshJoints->find(meshIdx); auto wIt = aMeshWeights->find(meshIdx);
@@ -1231,12 +1283,18 @@ void record_commands(
 
 	// 3. 娣卞害鍥?-> Read (鍥犱负 SSR 瑕侀潬娣卞害閲嶅缓 3D 鍧愭爣)
 	lut::image_barrier(aCmdBuff, aDepthAttach.image,
-		VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, depthRange);
+    if (aSceneUniform.renderMode == engine::view_mode::Normals) {
+        renderBufferView();
+        finishFrame();
+        return;
+    }
+
 
 	// 4. SSR Output -> Write (浣滀负 SSR Pass 鐨勭敾鏉?
 	lut::image_barrier(aCmdBuff, aSsrOutput.image,
-		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
 	// ==========================================================
 	// 鎵ц SSR Pass
@@ -1257,7 +1315,8 @@ void record_commands(
 
 	vkCmdBeginRendering(aCmdBuff, &ssrRenderInfo);
 	// 銆愭牳蹇冧慨鏀广€戯細鍙湁寮€鍚簡 SSR锛屾墠缁?GPU 涓嬪彂缁樺埗鎸囦护锛?
-	if (aSsrEnabled) {
+	if (aSceneUniform.renderMode == engine::view_mode::SSR ||
+        (aSceneUniform.renderMode == engine::view_mode::Default && aSsrEnabled)) {
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsrPipe);
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsrLayout, 0, 1, &aSsrDS, 0, nullptr);
 
@@ -1282,6 +1341,12 @@ void record_commands(
 	lut::image_barrier(aCmdBuff, aSsrOutput.image,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
+    if (aSceneUniform.renderMode == engine::view_mode::SSR) {
+        renderBufferView();
+        finishFrame();
+        return;
+    }
+
 
 	// ==========================================================
 	// SSAO Pass (娴佺▼鍚?SSR锛屽厛杞姸鎬併€佸啀娓叉煋銆佹渶鍚庤浆鍥炲彧璇?
@@ -1292,7 +1357,7 @@ void record_commands(
 
 	// 銆愪慨姝ｃ€戯細鍙妸 SSAO 鐨勭敾鏉胯浆涓哄彲鍐欑姸鎬侊紒涓嶈纰?SSR锛?
 	lut::image_barrier(aCmdBuff, aSsaoRawOutput.image,
-		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
 
 	VkRenderingAttachmentInfo ssaoAtt{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
@@ -1310,7 +1375,7 @@ void record_commands(
 	ssaoRenderInfo.pColorAttachments = &ssaoAtt;
 
 	vkCmdBeginRendering(aCmdBuff, &ssaoRenderInfo);
-	if (aSsaoEnabled) {
+	if (aSceneUniform.renderMode == engine::view_mode::SSAO || aSsaoEnabled) {
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsaoPipe);
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsaoLayout, 0, 1, &aSsaoDS, 0, nullptr);
 
@@ -1329,6 +1394,12 @@ void record_commands(
 	lut::image_barrier(aCmdBuff, aSsaoRawOutput.image,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
+    if (aSceneUniform.renderMode == engine::view_mode::SSAO) {
+        renderBufferView();
+        finishFrame();
+        return;
+    }
+
 
 
 	// ==========================================================

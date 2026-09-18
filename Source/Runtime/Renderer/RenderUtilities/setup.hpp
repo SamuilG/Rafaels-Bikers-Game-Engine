@@ -64,6 +64,10 @@ namespace cfg
 	constexpr char const* kDebugMipFragShaderPath = SHADERDIR_ "debug_mip.frag.spv";
 	constexpr char const* kDebugDepthFragShaderPath = SHADERDIR_ "debug_depth.frag.spv";
 	constexpr char const* kDebugDerivFragShaderPath = SHADERDIR_ "debug_deriv.frag.spv";
+	constexpr char const* kDebugAlbedoFragShaderPath = SHADERDIR_ "debug_albedo.frag.spv";
+	constexpr char const* kDebugShadowFragShaderPath = SHADERDIR_ "debug_shadow.frag.spv";
+	constexpr char const* kDebugWireframeFragShaderPath = SHADERDIR_ "debug_wireframe.frag.spv";
+	constexpr char const* kDebugBufferFragShaderPath = SHADERDIR_ "debug_buffer.frag.spv";
 	constexpr char const* kFullscreenVertShaderPath = SHADERDIR_ "fullscreen.vert.spv";
 	constexpr char const* kFullscreenFragShaderPath = SHADERDIR_ "fullscreen.frag.spv";
 
@@ -172,7 +176,8 @@ lut::DescriptorSetLayout create_blur_descriptor_layout(lut::VulkanContext const&
 
 lut::Pipeline create_triangle_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_B8G8R8A8_SRGB );
 lut::Pipeline create_portal_surface_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_B8G8R8A8_SRGB );
-lut::Pipeline create_debug_pipeline( lut::VulkanWindow const&, VkPipelineLayout, char const* aVertPath, char const* aFragPath, VkFormat = VK_FORMAT_B8G8R8A8_SRGB, bool skinned = false, bool accumulate = false, bool depthTest = true );
+bool supports_wireframe(VkPhysicalDevice physicalDevice);
+lut::Pipeline create_debug_pipeline( lut::VulkanWindow const&, VkPipelineLayout, char const* aVertPath, char const* aFragPath, VkFormat = VK_FORMAT_B8G8R8A8_SRGB, bool skinned = false, bool accumulate = false, bool depthTest = true, bool wireframe = false );
 lut::Pipeline create_alpha_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_B8G8R8A8_SRGB );
 lut::Pipeline create_alpha_pipeline_1_attachment( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_B8G8R8A8_SRGB );
 lut::Pipeline create_post_proc_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkDescriptorSetLayout );
@@ -182,7 +187,7 @@ lut::Pipeline create_overdraw_pipeline( lut::VulkanWindow const&, VkPipelineLayo
 lut::Pipeline create_overshading_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_R8G8B8A8_UNORM, bool skinned = false );
 lut::Pipeline create_vis_resolve_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkDescriptorSetLayout );
 lut::PipelineLayout create_speed_post_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aDescriptorLayout);
-lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout);
+lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, char const* fragPath = cfg::kSpeedPostFragShaderPath);
 // p2_1.5 shadow mapping
 lut::Pipeline create_shadow_pipeline( lut::VulkanWindow const&, VkPipelineLayout );
 // Skinned shadow pipeline (uses shadowmap_skinned.vert + shadowmap.frag, 5 vertex bindings)

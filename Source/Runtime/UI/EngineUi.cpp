@@ -4,6 +4,7 @@
 #include "EditorLayout.hpp"
 #include "EditorTransform.hpp"
 #include "EditorTheme.hpp"
+#include "../Renderer/RenderUtilities/ViewMode.hpp"
 
 #include <cstdio>
 #include <cstdarg>
@@ -1231,7 +1232,7 @@ namespace engine {
         if (!state.showRenderSettings) return;
         if (ImGui::Begin(PanelTitle("Render Settings", "RenderSettings").c_str(), &state.showRenderSettings)) {
             ImGui::TextDisabled("Changes apply to the current session.");
-            if (state.renderMode != 0) ImGui::TextWrapped("%s", _SL("Debug views bypass lighting and post-processing. Return to Default to adjust them."));
+            if (state.renderMode != 0) ImGui::TextWrapped("%s", _SL("Diagnostic views display their rendering data directly. Return to Default to adjust scene effects."));
             ImGui::BeginDisabled(state.renderMode != 0);
             ImGui::SeparatorText("Rendering");
             ImGui::Checkbox("Image-based Lighting (IBL)", &state.iblEnabled);
@@ -1693,19 +1694,42 @@ namespace engine {
         const float fps = ImGui::GetIO().Framerate;
         ImGui::Text("%.1f FPS / %.2f ms", fps, fps > 0.0f ? 1000.0f / fps : 0.0f);
         ImGui::Text("Visible static batches: %u / %u", state.frustumCullingVisibleCandidates, state.frustumCullingTotalCandidates);
-        const char* modes[] = { _SL("Default"), _SL("Mipmaps"), _SL("Depth"), _SL("Derivatives"), _SL("Overdraw"), _SL("Overshading") };
-        ImGui::Combo(_SL("View Mode"), &state.renderMode, modes, IM_ARRAYSIZE(modes));
+        const char* modes[] = { _SL("Default"), _SL("Mipmaps"), _SL("Depth"), _SL("Derivatives"), _SL("Overdraw"), _SL("Overshading"),
+            "SSAO", "SSR", _SL("Normals"), _SL("Wireframe"), "Albedo", _SL("Shadow") };
+        static_assert(IM_ARRAYSIZE(modes) == view_mode::Count);
+        state.renderMode = std::clamp(state.renderMode, 0, view_mode::Count - 1);
+        if (ImGui::BeginCombo(_SL("View Mode"), modes[state.renderMode])) {
+            for (int mode = 0; mode < view_mode::Count; ++mode) {
+                const bool available = mode != view_mode::Wireframe || state.wireframeSupported;
+                ImGui::BeginDisabled(!available);
+                if (ImGui::Selectable(modes[mode], state.renderMode == mode)) state.renderMode = mode;
+                if (state.renderMode == mode) ImGui::SetItemDefaultFocus();
+                ImGui::EndDisabled();
+                if (!available && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                    ImGui::SetTooltip("%s", _SL("Wireframe is not supported by this graphics device."));
+            }
+            ImGui::EndCombo();
+        }
         const char* modeHelp[] = {
             "Lit scene with the current rendering settings.",
             "Texture mip level: 0 red, 1 green, 2 blue, 3 yellow, 4 cyan, 5 magenta; colors repeat every 6 levels.",
             "Camera distance on a logarithmic scale: near is black, far is white; empty background is black.",
             "Relative depth change per pixel: horizontal red, vertical green; surfaces parallel to the camera plane are dark.",
             "Covered layers without depth rejection: brighter means more overlap, white at 20 layers.",
-            "Layers passing depth in draw order: brighter means more shading, white at 20 layers. This is an estimate, not GPU timing."
+            "Layers passing depth in draw order: brighter means more shading, white at 20 layers. This is an estimate, not GPU timing.",
+            "SSAO buffer: white is unoccluded, darker areas are occluded. Computed even when SSAO is disabled in Default view.",
+            "SSR buffer: reflection color weighted by hit confidence. Black means no valid reflection; rough or off-screen surfaces may have no hit. Computed even when SSR is disabled in Default view.",
+            "World-space shading normals, including normal maps: X/Y/Z map to R/G/B. Empty pixels are black.",
+            "Triangle edges for static and animated meshes. Surfaces are unfilled, so edges behind them may also be visible.",
+            "Base-color texture multiplied by the material color, without lighting, AO, shadows or tone mapping.",
+            "Directional-light cascaded shadow visibility: white is lit, black is shadowed. Includes cascade blending; spotlight shadows are not shown."
         };
+        static_assert(IM_ARRAYSIZE(modeHelp) == view_mode::Count);
         if (state.renderMode >= 0 && state.renderMode < IM_ARRAYSIZE(modeHelp))
             ImGui::TextWrapped("%s", _SL(modeHelp[state.renderMode]));
-        if (state.renderMode != 0)
+        if (view_mode::IsBuffer(state.renderMode))
+            ImGui::TextWrapped("%s", _SL("Buffer views use opaque and alpha-cutout geometry, including animated meshes. Transparent blending and display post-processing are omitted."));
+        else if (state.renderMode != 0)
             ImGui::TextWrapped("%s", _SL("Debug views include static and animated meshes; sky, particles, portal views and post-processing are omitted."));
 
 		ImGui::End();

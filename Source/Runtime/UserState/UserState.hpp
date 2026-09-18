@@ -6,7 +6,8 @@ namespace engine {
 
 	struct UserState : public GameplayState
 	{
-		int renderMode = 0; // 0=Default, 1=Mip, 2=Depth, 3=Deriv
+		int renderMode = 0; // Stable IDs are defined in Renderer/RenderUtilities/ViewMode.hpp.
+		bool wireframeSupported = false; // Set from the active Vulkan device; read-only in the UI.
 
 		//================UI System================================
 
