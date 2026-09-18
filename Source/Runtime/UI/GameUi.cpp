@@ -1,7 +1,8 @@
 #include "GameUi.hpp"
 
 #include "../Renderer/RenderSystem.hpp"
-#include "../UserState/UserState.hpp"
+#include "../UserState/PlayerState.hpp"
+#include "../UserState/EditorState.hpp"
 
 #include <algorithm>
 #include <array>
@@ -76,7 +77,7 @@ namespace engine {
             // Optional, currently unused examples:
             // bool clampPrintedSpeed = false; // true = limit the shown number to maxDisplaySpeed.
             // float fakeTestSpeed = 120.0f; // Useful when previewing UI without gameplay data.
-            // bool overrideSpeedForPreview = false; // true = use fakeTestSpeed instead of state.bikeSpeed.
+            // bool overrideSpeedForPreview = false; // true = use fakeTestSpeed instead of player.bikeSpeed.
 
             // =========================
             // Big speed number
@@ -283,7 +284,7 @@ namespace engine {
             return style;
         }
 
-        void DrawImageSpeedometerDemo(RenderSystem* renderSys, const UserState& state, const ImVec2& viewportPos, const ImVec2& viewportSize) {
+        void DrawImageSpeedometerDemo(RenderSystem* renderSys, const PlayerState& player, const EditorState& editor, const ImVec2& viewportPos, const ImVec2& viewportSize) {
             if (!renderSys || viewportSize.x <= 1.0f || viewportSize.y <= 1.0f) {
                 return;
             }
@@ -314,7 +315,7 @@ namespace engine {
             const ImVec2 widgetMax(widgetMin.x + widgetSize.x, widgetMin.y + widgetSize.y);
 
             static float smoothedSpeedKmh = 0.0f;
-            const float rawSpeedKmh = std::abs(state.bikeSpeed) * style.speedMultiplier;
+            const float rawSpeedKmh = std::abs(player.bikeSpeed) * style.speedMultiplier;
             if (style.useSmoothing) {
                 smoothedSpeedKmh += (rawSpeedKmh - smoothedSpeedKmh) * style.smoothingFactor;
             }
@@ -422,7 +423,7 @@ namespace engine {
             // drawList->AddRect(widgetMin, widgetMax, IM_COL32(255, 0, 0, 255)); // Manual border.
             // drawList->AddImage(iconTex, iconMin, iconMax); // Add another image on top of the speedometer.
             // drawList->AddText(baseFont, 18.0f, pos, IM_COL32_WHITE, "NITRO"); // Add a mode label.
-            // if (state.isExtremeSpeed) { ... } // Trigger special UI state at high speed.
+            // if (player.isExtremeSpeed) { ... } // Trigger special UI state at high speed.
 
             if (style.clipToViewport) {
                 drawList->PopClipRect();
@@ -431,12 +432,12 @@ namespace engine {
             ImGui::End();
         }
 
-        void DrawViewportHint(const UserState& state, const ImVec2& viewportPos, const ImVec2& viewportSize) {
+        void DrawViewportHint(const PlayerState& player, const EditorState& editor, const ImVec2& viewportPos, const ImVec2& viewportSize) {
             if (viewportSize.x <= 1.0f || viewportSize.y <= 1.0f) {
                 return;
             }
 
-            const char* engineUiLabel = state.showEngineUi ? "F1 Hide Engine UI" : "F1 Show Engine UI";
+            const char* engineUiLabel = editor.showEngineUi ? "F1 Hide Engine UI" : "F1 Show Engine UI";
 
             ImGui::SetNextWindowBgAlpha(0.0f);
             ImGui::SetNextWindowPos(viewportPos, ImGuiCond_Always);
@@ -480,8 +481,8 @@ namespace engine {
         }
     } // namespace
 
-    void GameUi::DrawHud(RenderSystem* renderSys, const UserState& state, const ImVec2& viewportPos, const ImVec2& viewportSize) {
-        DrawImageSpeedometerDemo(renderSys, state, viewportPos, viewportSize);
-        DrawViewportHint(state, viewportPos, viewportSize);
+    void GameUi::DrawHud(RenderSystem* renderSys, const PlayerState& player, const EditorState& editor, const ImVec2& viewportPos, const ImVec2& viewportSize) {
+        DrawImageSpeedometerDemo(renderSys, player, editor, viewportPos, viewportSize);
+        DrawViewportHint(player, editor, viewportPos, viewportSize);
     }
 } // namespace engine

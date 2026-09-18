@@ -5,14 +5,14 @@ inline bool RenderSystem::HasRuntimeUiScreen() const {
 }
 
 inline bool RenderSystem::ShouldRenderRuntimeUi() const {
-    return mState && mState->showRuntimeUi && !mState->showEngineUi && HasRuntimeUiScreen();
+    return mState && mState->runtimeUi.showRuntimeUi && !mState->editor.showEngineUi && HasRuntimeUiScreen();
 }
 
 inline bool RenderSystem::ShouldRenderRuntimeUiDebugPreview() const {
     return mState &&
-        mState->showRuntimeUi &&
-        mState->showEngineUi &&
-        mState->showRuntimeUiDebugPanel &&
+        mState->runtimeUi.showRuntimeUi &&
+        mState->editor.showEngineUi &&
+        mState->editor.showRuntimeUiDebugPanel &&
         mRuntimeUiDebugShowLivePreview &&
         HasRuntimeUiScreen();
 }
@@ -59,7 +59,7 @@ inline bool RenderSystem::BuildRuntimeUiRenderContext(UIRenderContext& outContex
     outContext.speedTextScale = mRuntimeUiManager ? std::clamp(mRuntimeUiManager->GetSettings().speedTextScale, 0.1f, 4.0f) : 1.0f;
     outContext.selectedElementId = mRuntimeUiDebugSelectedElementId;
     ImDrawList* runtimeUiDrawList = nullptr;
-    if (mState && mState->showEngineUi) {
+    if (mState && mState->editor.showEngineUi) {
         runtimeUiDrawList = EngineUi::GetSceneViewportDrawList();
     }
     if (!runtimeUiDrawList) {
@@ -85,10 +85,10 @@ inline void RenderSystem::RefreshRuntimeUiDataContext(float dt) {
     }
     else if (mState->gameFlow.CanSimulate()) {
         mRuntimeUiLapTimeSeconds += dt;
-        mRuntimeUiTravelDistanceMeters += (std::abs(mState->bikeSpeed) / 3.6f) * dt;
+        mRuntimeUiTravelDistanceMeters += (std::abs(mState->player.State().bikeSpeed) / 3.6f) * dt;
     }
 
-    const float speedKmh = std::abs(mState->bikeSpeed);
+    const float speedKmh = std::abs(mState->player.State().bikeSpeed);
     const float speedMph = speedKmh * 0.621371f;
     
     const float energy = std::clamp(1.0f - (speedKmh / 60.0f), 0.0f, 1.0f);
@@ -248,7 +248,7 @@ inline void RenderSystem::RenderRuntimeUi() {
 
     const std::vector<std::string> visibleScreens = mRuntimeUiManager->GetVisibleScreenNames();
     const auto debugColor = [this](unsigned themeColor, ImU32 runtimeColor) {
-        return mState && mState->showEngineUi ? editor_theme::ColorU32(themeColor) : runtimeColor;
+        return mState && mState->editor.showEngineUi ? editor_theme::ColorU32(themeColor) : runtimeColor;
     };
     
     if (mRuntimeUiDebugShowStack && !visibleScreens.empty()) {
@@ -365,7 +365,7 @@ inline void RenderSystem::RenderRuntimeUi() {
 }
 
 inline bool RenderSystem::ShouldShowRuntimeUiDebugPanel() const {
-    return mState && mState->showEngineUi && mState->showRuntimeUiDebugPanel && mRuntimeUiManager && mState->showRuntimeUi;
+    return mState && mState->editor.showEngineUi && mState->editor.showRuntimeUiDebugPanel && mRuntimeUiManager && mState->runtimeUi.showRuntimeUi;
 }
 
 inline bool RenderSystem::ShouldDrawRuntimeUiDebugOverlay() const {
@@ -527,7 +527,7 @@ inline bool RenderSystem::HandleRuntimeUiDebugSelection() {
     if (!ShouldShowRuntimeUiDebugPanel() ||
         !mRuntimeUiDebugEnablePicking ||
         !ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
-        (mState->showGameUiEditor && render_system_ui_editor::WantsMouseCapture()) ||
+        (mState->editor.showGameUiEditor && render_system_ui_editor::WantsMouseCapture()) ||
         ImGuizmo::IsOver()) {
         return false;
     }
@@ -565,11 +565,11 @@ inline bool RenderSystem::HandleRuntimeUiDebugSelection() {
 }
 
 inline void RenderSystem::DrawRuntimeUiDebugPanel() {
-    if (!mState || !mState->showEngineUi || !mState->showRuntimeUiDebugPanel) {
+    if (!mState || !mState->editor.showEngineUi || !mState->editor.showRuntimeUiDebugPanel) {
         return;
     }
 
-    if (!ImGui::Begin("Runtime UI Debug###RuntimeUiDebug", &mState->showRuntimeUiDebugPanel)) {
+    if (!ImGui::Begin("Runtime UI Debug###RuntimeUiDebug", &mState->editor.showRuntimeUiDebugPanel)) {
         ImGui::End();
         return;
     }
@@ -578,8 +578,8 @@ inline void RenderSystem::DrawRuntimeUiDebugPanel() {
         ImGui::End();
         return;
     }
-    ImGui::Checkbox("Enable Runtime UI", &mState->showRuntimeUi);
-    if (!mState->showRuntimeUi)
+    ImGui::Checkbox("Enable Runtime UI", &mState->runtimeUi.showRuntimeUi);
+    if (!mState->runtimeUi.showRuntimeUi)
         ImGui::TextWrapped("Runtime UI rendering is disabled. Enable it to use the live preview and viewport picking.");
 
     if (mRuntimeUiDebugSelectedElementId != 0 && !mRuntimeUiDebugSelectedScreenName.empty()) {

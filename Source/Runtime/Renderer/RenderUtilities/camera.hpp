@@ -8,7 +8,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include "../../Rhi/angle.hpp"
-#include "../UserState/UserState.hpp"
+#include "../../UserState/CameraController.hpp"
 
 namespace lut = labut2;
 namespace glsl {
@@ -32,15 +32,16 @@ namespace cfg
 
 
 namespace engine {
-	struct UserState;
+	struct EditorState;
 }
 
 
 namespace engine { class InputSystem; }
 
-void update_user_state(engine::UserState& aState, float aElapsedTime, engine::InputSystem* inputSys);
+void update_camera(engine::CameraController& controller, const engine::PlayerState& player,
+    const engine::EditorState& editor, float dt, engine::InputSystem* inputSys);
 
-void update_scene_uniforms(glsl::SceneUniform& aSceneUniforms, std::uint32_t aFramebufferWidth, std::uint32_t aFramebufferHeight, const engine::UserState& aState);
+void update_scene_uniforms(glsl::SceneUniform& aSceneUniforms, std::uint32_t aFramebufferWidth, std::uint32_t aFramebufferHeight, const engine::CameraState& camera, int renderMode);
 
 
 

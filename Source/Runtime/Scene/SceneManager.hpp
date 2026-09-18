@@ -17,7 +17,7 @@
 #include "../Core/System.h"
 #include "model_loader/engine_model.hpp"
 #include "../Renderer/RenderUtilities/light.hpp"
-#include "../UserState/UserState.hpp"
+#include "../UserState/StateViews.hpp"
 #include "../Renderer/RenderUtilities/frustum.hpp"
 
 // Forward declare EngineModel to avoid including engine_model.hpp here
@@ -153,7 +153,7 @@ namespace engine {
     class SceneManager final : public System {
 
     private:
-        struct UserState* mState = nullptr; // �������ָ��
+        SceneStateView* mState = nullptr; // �������ָ��
 
     public:
         SceneManager(PhysicsSystem* physics_system = nullptr);
@@ -223,7 +223,7 @@ namespace engine {
         flecs::entity raycast_entity(const glm::vec3& origin, const glm::vec3& direction, float max_distance = 1000.0f);
         PhysicsSystem* get_physics_system() const { return m_physics_system; }
 
-        void SetUserState(struct UserState* state) { mState = state; }
+        void SetState(SceneStateView* state) { mState = state; }
         //==========UI System======================
 
         float speed = 0.0f;

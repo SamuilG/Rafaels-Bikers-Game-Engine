@@ -3,6 +3,7 @@
 #include <Jolt/Jolt.h>
 #include <Jolt/Physics/Body/BodyID.h>
 #include <memory>
+#include <cstdint>
 #include <glm/glm.hpp>
 
 namespace engine { class AudioSystem; 
@@ -13,7 +14,7 @@ class PhysicsSystem;
 namespace JPH { class PhysicsSystem; }
 
 namespace engine {
-    struct GameplayState;
+    class PlayerController;
     // InputSystem Ӧ�û����� engine �����
     class InputSystem;
 
@@ -28,11 +29,12 @@ namespace engine {
     class BikeController {
     public:
         // ���캯����ע������ʹ�õ���ȫ�ֵ� UserState
-        BikeController(JPH::PhysicsSystem* joltPhysics, InputSystem* input, GameplayState* state);
+        BikeController(JPH::PhysicsSystem* joltPhysics, InputSystem* input, PlayerController* player);
         ~BikeController() = default;
 
         void Init(uint32_t chassisBodyID);
         void Update(float dt);
+        void SampleMotion();
         void SetAudioSystem(AudioSystem* audio) { m_audio = audio; }
 
         float get_steer_angle() const { return m_bicycle ? m_bicycle->steerAngle : 0.0f; }
@@ -40,9 +42,11 @@ namespace engine {
         JPH::PhysicsSystem* m_joltPhysics = nullptr;
 
     private:
-        PhysicsSystem* m_physicsSystem; // Store your engine's wrapper
         InputSystem* m_inputSystem = nullptr;
-        GameplayState* m_state = nullptr;
+        PlayerController* m_player = nullptr;
+        std::uint64_t m_motionResetRevision = 0;
+        float m_engineForce = 0.0f;
+        int m_lastPedal = -1;
         AudioSystem* m_audio = nullptr;
 
 

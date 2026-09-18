@@ -35,7 +35,7 @@ namespace {
         RuntimeDisplaySettings requested;
         bool acceptDisplay = true;
         int applyCalls = 0;
-        RuntimeUiController controller{running, state};
+        RuntimeUiController controller{running, state.RuntimeUi()};
 
         Fixture() {
             controller.Initialize([](const std::string&) -> void* { return nullptr; });
@@ -159,7 +159,7 @@ namespace {
         f.Visible({"MainMenu", "Settings"});
         f.Click("Settings", "Toggle_001");
         Require(!f.Element<UIToggle>("Settings", "Toggle_001").isOn, "hints edit is pending");
-        Require(f.state.showHints, "pending edit does not change gameplay settings");
+        Require(f.state.preferences.showHints, "pending edit does not change gameplay settings");
         f.Click("Settings", "ResolutionNextButton");
         const std::string pendingResolution = f.Element<UIText>("Settings", "ResolutionValueText").text;
         f.Event("OpenSettings");
@@ -168,7 +168,7 @@ namespace {
         f.Click("Settings", "Back");
         f.Flow(GameFlowState::MainMenu);
         f.Visible({"MainMenu"});
-        Require(f.applyCalls == 0 && f.state.showHints, "cancel never applies pending settings");
+        Require(f.applyCalls == 0 && f.state.preferences.showHints, "cancel never applies pending settings");
         f.Click("MainMenu", "SettingsButton");
         Require(f.Element<UIToggle>("Settings", "Toggle_001").isOn, "reopen restores applied hints");
         Require(f.Element<UIText>("Settings", "ResolutionValueText").text == "1280 x 720", "reopen restores applied resolution");
@@ -235,7 +235,7 @@ namespace {
         f.Click("Settings", "Apply");
         Require(f.applyCalls == 1 && f.display.width == 1600 && f.display.height == 900 && f.display.fullscreen,
             "Apply sends pending display values to host callback");
-        Require(!f.state.showHints, "Apply commits pending hints");
+        Require(!f.state.preferences.showHints, "Apply commits pending hints");
         f.Visible({"MainMenu", "Settings"});
         f.Click("Settings", "Back");
         f.Click("MainMenu", "SettingsButton");
@@ -247,7 +247,7 @@ namespace {
         Require(f.requested.width == 1920 && f.display.width == 1600, "host can reject a resolution change");
         Require(f.Element<UIText>("Settings", "ResolutionValueText").text == "1600 x 900", "rejected display resets pending UI value");
         f.Click("Settings", "Reset");
-        Require(f.Element<UIToggle>("Settings", "Toggle_001").isOn && !f.state.showHints,
+        Require(f.Element<UIToggle>("Settings", "Toggle_001").isOn && !f.state.preferences.showHints,
             "Reset edits pending values without applying them");
         f.Event("MenuBack");
         f.Flow(GameFlowState::MainMenu);
@@ -339,26 +339,26 @@ namespace {
         f.Flow(GameFlowState::Playing);
         f.Visible({"HUD"});
 #ifdef GAME_ONLY
-        Require(!f.state.showEngineUi, "Game-only build does not enable editor");
+        Require(!f.state.editor.showEngineUi, "Game-only build does not enable editor");
 #else
-        Require(f.state.showEngineUi, "editor entry enables editor UI");
+        Require(f.state.editor.showEngineUi, "editor entry enables editor UI");
 #endif
-        f.state.showRuntimeUi = false;
+        f.state.runtimeUi.showRuntimeUi = false;
         f.Event("ShowVictory");
         f.Flow(GameFlowState::Victory);
         f.Visible({"Win"});
-        Require(f.state.showRuntimeUi && !f.state.showEngineUi,
+        Require(f.state.runtimeUi.showRuntimeUi && !f.state.editor.showEngineUi,
             "editor victory exposes runtime result screen and hides editor");
         f.Event("BackToMainMenu");
         f.CompleteReload(true);
         f.Event("OpenEditor");
         f.Flow(GameFlowState::Playing);
-        f.state.showRuntimeUi = false;
+        f.state.runtimeUi.showRuntimeUi = false;
         f.Event("BackToMainMenu");
         f.CompleteReload(true);
         f.Flow(GameFlowState::MainMenu);
         f.Visible({"MainMenu"});
-        Require(f.state.showRuntimeUi && !f.state.showEngineUi,
+        Require(f.state.runtimeUi.showRuntimeUi && !f.state.editor.showEngineUi,
             "return from editor exposes runtime main menu and hides editor");
         f.Click("MainMenu", "ExitButton");
         Require(!f.running, "actual exit button stops app loop");

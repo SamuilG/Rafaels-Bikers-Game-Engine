@@ -5,7 +5,7 @@
 #include <format>
 #include <vector>
 
-#include "../../UserState/UserState.hpp"
+#include "../../UserState/GameFlowController.hpp"
 #include "../EngineUi.hpp"
 #include "UIAnimation.hpp"
 #include "UIElement.hpp"
@@ -317,7 +317,7 @@ namespace engine {
 
         void DrawDebugPanel(DebugState& state,
                             UIManager& uiManager,
-                            const UserState& userState) {
+                            const GameFlowController& flow) {
             // 选中目标如果已经被销毁就立刻清空，避免后面的查询拿到悬空指针。
             if (state.selectedElementId != 0 && !state.selectedScreenName.empty()) {
                 const UIScreen* selectedScreen = uiManager.GetScreen(state.selectedScreenName);
@@ -339,10 +339,10 @@ namespace engine {
 
             // ---------- 游戏流程状态 + 活跃屏幕 ----------
             ImGui::TextUnformatted("Game Flow");
-            ImGui::Text("State: %s", GameFlowStateName(userState.gameFlow.State()));
+            ImGui::Text("State: %s", GameFlowStateName(flow.State()));
             ImGui::Text("Simulating=%s  Settings=%s",
-                userState.gameFlow.CanSimulate() ? "true" : "false",
-                userState.gameFlow.IsSettingsOpen() ? "true" : "false");
+                flow.CanSimulate() ? "true" : "false",
+                flow.IsSettingsOpen() ? "true" : "false");
 
             ImGui::Separator();
             ImGui::TextUnformatted("Active Runtime UI Screens");

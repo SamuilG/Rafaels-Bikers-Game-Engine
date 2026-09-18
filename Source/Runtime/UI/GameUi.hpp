@@ -4,10 +4,11 @@
 
 namespace engine {
     class RenderSystem;
-    struct UserState;
+    struct PlayerState;
+    struct EditorState;
 
     class GameUi {
     public:
-        static void DrawHud(RenderSystem* renderSys, const UserState& state, const ImVec2& viewportPos, const ImVec2& viewportSize);
+        static void DrawHud(RenderSystem* renderSys, const PlayerState& player, const EditorState& editor, const ImVec2& viewportPos, const ImVec2& viewportSize);
     };
 } // namespace engine

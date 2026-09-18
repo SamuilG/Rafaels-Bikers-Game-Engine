@@ -4831,7 +4831,7 @@ namespace engine {
 
     } // namespace
 
-    void UIEditorWindow::Draw(UserState& state) {
+    void UIEditorWindow::Draw(EditorState& state) {
         if (!state.showGameUiEditor) {
             // 窗口关闭时显式释放输入占用，避免其他编辑器窗口被错误拦截。
             UiEditorSession& hiddenSession = GetSession();

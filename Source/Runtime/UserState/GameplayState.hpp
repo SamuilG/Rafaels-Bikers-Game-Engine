@@ -1,105 +1,20 @@
 #pragma once
 #include "GameFlowController.hpp"
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-
-// Bike tuning parameters — exposed to gameplay
-struct BikeTuning
-{
-	float maxSteerAngleDeg = 25.0f;
-	float steerSpeedDeg = 90.0f;
-	float maxLeanAngleDeg = 30.0f;
-	float leanSpeedDeg = 90.0f;
-	float wheelBase = 1.6f;
-	float driveForce = 1000.0f;
-	float brakeForce = 20.0f;
-	float maxSpeed = 120.0f;
-	float gravityFactor = 100.0f;
-};
+#include "PlayerController.hpp"
+#include "CameraController.hpp"
+#include "LevelState.hpp"
+#include "GameplayPreferences.hpp"
+#include "RenderSettings.hpp"
 
 namespace engine {
-
-	struct GameplayState
-	{
-		//================Mouse================================
-		float mouseX = 0.f;
-		float mouseY = 0.f;
-		float mouseLastX = 0.f;
-		float mouseLastY = 0.f;
-		bool previousMouseState = false;
-		bool wasMousing = false;
-
-		//================Camera================================
-		float Yaw = 0.f;
-		float Pitch = 0.f;
-		float Distance = 0.f;
-
-		glm::mat4 camera2world = glm::identity<glm::mat4>();
-
-		float cameraFov = 85.0f;
-		float targetFov = 85.0f;
-		float targetYaw = 0.f;
-		float targetPitch = 0.f;
-		float targetDistance = 5.0f;
-
-		float cameraIdleTimer = 0.0f;
-		float bikeYaw = 0.0f;
-		float bikeLeanAngle = 0.0f;
-		float cameraRoll = 0.0f;
-		float targetCameraRoll = 0.0f;
-		bool portalCameraActive = false;
-		float portalCameraTimer = 0.0f;
-		float portalCameraBoomLength = 0.0f;
-		float portalCameraStartSide = 1.0f;
-		glm::vec3 portalCameraPosition = glm::vec3(0.0f);
-		glm::vec3 portalCameraTargetPosition = glm::vec3(0.0f);
-		glm::vec3 portalCameraBoomOffset = glm::vec3(0.0f);
-		glm::mat4 portalCameraEntrySurface = glm::identity<glm::mat4>();
-		glm::mat4 portalCameraExitSurface = glm::identity<glm::mat4>();
-		glm::mat4 portalCameraInverseExitSurface = glm::identity<glm::mat4>();
-		bool portalTransitionVisualActive = false;
-		float portalTransitionVisualTimer = 0.0f;
-		float portalTransitionVisualDuration = 0.35f;
-		bool portalTransitionRealAtExit = false;
-		glm::mat4 portalTransitionEntrySurface = glm::identity<glm::mat4>();
-		glm::mat4 portalTransitionExitSurface = glm::identity<glm::mat4>();
-		glm::vec3 portalTransitionExitCorrection = glm::vec3(0.0f);
-
-		//================Game Flow================================
-		GameFlowController gameFlow;
-		bool isExtremeSpeed = false;
-
-		//================Player================================
-		glm::vec3 followTargetPos = glm::vec3(2.f);
-		bool thirdPersonMode = true;
-		bool isAlive = true;
-
-		bool jumpEnabled =false;
-		bool hornEnabled = false;
-		bool radioEnabled = false;
-		bool showHints = true;
-		float deathFactor = 0.0f;
-		float deathTimer = 0.0f;
-		float bikeSpeed = 0.0f;
-		float bikeSteerAngle = 0.0f;
-		float engineForce = 0.0f;
-		int lastPedal = -1;
-		int deathCount = 0;
-
-		BikeTuning bikeTuning{};
-
-		//================Collectibles================================
-		int  collectedItems  = 0;
-		int  totalCollectibles = 15;
-		bool allCollected    = false;
-		bool radioMuted = false;
-		//================Graphics toggles (game-controlled)================================
-		bool iblEnabled = true;
-		bool bloomEnabled = true;
-		bool ssrEnabled = true;
-		bool ssaoEnabled = true;
-
-		bool showRuntimeUi = true;
-	};
-
-} // namespace engine
+// Game code can issue player/camera/flow commands and own its level data.
+// It has no access to the editor workspace or writable user rendering preferences.
+struct GameplayState {
+    GameFlowController& gameFlow;
+    PlayerController& player;
+    CameraController& camera;
+    LevelState& level;
+    RenderOverrides& renderOverrides;
+    const GameplayPreferences& preferences;
+};
+}

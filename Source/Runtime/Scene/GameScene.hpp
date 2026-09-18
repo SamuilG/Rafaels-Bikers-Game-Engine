@@ -20,6 +20,9 @@ namespace engine {
 
         virtual void Update(float dt) = 0;
 
+        // Publish physical feedback after the physics step without applying input.
+        virtual void RefreshPlayerMotion() {}
+
         virtual void Shutdown() = 0;
 
     protected:

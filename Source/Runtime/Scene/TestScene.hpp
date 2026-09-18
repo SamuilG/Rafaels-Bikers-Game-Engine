@@ -12,6 +12,7 @@ namespace engine {
 
         void Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, GameplayState* state, AnimationSystem* anima, AudioSystem* audio) override;
         void Update(float dt) override;
+        void RefreshPlayerMotion() override;
         void Shutdown() override;
 
     private:
@@ -30,6 +31,7 @@ namespace engine {
 
         //sound delay
         float m_allCollectSoundDelay = -1.0f;
+        bool m_previousAliveState = true;
     };
 
 } // namespace engine

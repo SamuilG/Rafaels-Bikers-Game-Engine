@@ -18,7 +18,7 @@ namespace engine::render_system_ui_editor {
         UIEditorWindow::SetRuntimeUiFileChangedCallback(std::move(fileChangedCallback));
     }
 
-    inline void Draw(UserState& state) {
+    inline void Draw(EditorState& state) {
         if (state.showEngineUi && state.showGameUiEditor) {
             UIEditorWindow::Draw(state);
         }

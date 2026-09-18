@@ -554,7 +554,7 @@ namespace engine {
         mLastFrustumCullingCandidates = 0;
         mLastFrustumCullingVisible = 0;
 
-        const bool doLOD = mState && mState->lodEnabled;
+        const bool doLOD = mState && mState->render.lodEnabled;
 
         m_world->query<const WorldTransform, const MeshComponent, const MaterialComponent, const EntityStatus, const OpacityComponent*, const LODComponent*>()
             .each([&](flecs::entity e, const WorldTransform& wt, const MeshComponent& mc, const MaterialComponent& matc, const EntityStatus& status, const OpacityComponent* op, const LODComponent* lod) {
@@ -581,8 +581,8 @@ namespace engine {
             uint32_t selectedMesh = mc.meshIndex;
             if (doLOD && lod && lod->levelCount > 0) {
                 glm::vec3 entityPos = glm::vec3(wt.matrix[3]);
-                float dist = mState->lodDebugDistance >= 0.0f
-                    ? mState->lodDebugDistance
+                float dist = mState->editor.lodDebugDistance >= 0.0f
+                    ? mState->editor.lodDebugDistance
                     : glm::length(entityPos - cameraPos);
                 float distSq = dist * dist;
                 float biasSq = lod->lodBias * lod->lodBias;
@@ -692,13 +692,13 @@ namespace engine {
 
                     if (name != nullptr) {
                         if (strstr(name, "steer.001_2") || strstr(name, "frontwheel.001_3")) {
-                            float steerAngle = mState ? mState->bikeSteerAngle : 0.0f;
+                            float steerAngle = mState ? mState->player.State().bikeSteerAngle : 0.0f;
                             glm::mat4 steerRot = glm::rotate(glm::mat4(1.0f), steerAngle, glm::vec3(0.0f, 1.0f, 0.0f));
                             finalOffset = finalOffset * steerRot;
                         }
 
                         if (strstr(name, "frontwheel.001_3") || strstr(name, "Rear wheel_1") || strstr(name, "Pedal.002_7") || strstr(name, "WholePedal_6")) {
-                            float currentSpeed = mState ? mState->bikeSpeed : 0.0f;
+                            float currentSpeed = mState ? mState->player.State().bikeSpeed : 0.0f;
                             speed += 0.001f * currentSpeed;
                             glm::mat4 selfRot = glm::rotate(glm::mat4(1.0f), speed, glm::vec3(1.0f, 0.0f, 0.0f));
                             finalOffset = finalOffset * selfRot;
@@ -745,8 +745,8 @@ namespace engine {
             // =========================================================
 
             // 3. 第三人称相机遮挡透视 (X-Ray) 逻辑
-            if (mState && mState->thirdPersonMode) {
-                glm::vec3 cameraPos = glm::vec3(mState->camera2world[3]);
+            if (mState && mState->camera.State().thirdPersonMode) {
+                glm::vec3 cameraPos = glm::vec3(mState->camera.State().camera2world[3]);
 
                 m_world->defer_begin();
                 m_world->query<OpacityComponent>().each([&](flecs::entity e, OpacityComponent& op) {
@@ -758,7 +758,7 @@ namespace engine {
                     });
                 m_world->defer_end();
 
-                if (!mState->portalCameraActive && !mState->isExtremeSpeed) {
+                if (!mState->camera.State().portalCameraActive && !mState->player.State().isExtremeSpeed) {
                     flecs::entity bikeEntity = find_entity("Bike_0");
                     if (bikeEntity.is_valid() && bikeEntity.has<WorldTransform>()) {
                         uint32_t bikeBodyID = JPH::BodyID::cInvalidBodyID;

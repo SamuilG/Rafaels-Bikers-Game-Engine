@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include "../../UserState/StateViews.hpp"
 
 #include <string>
 #include "../../UserState/GameFlowController.hpp"
@@ -8,7 +9,7 @@ namespace engine {
     class AudioSystem;
     class RuntimeUiController;
     class UIManager;
-    struct UserState;
+    struct RuntimeUiStateView;
 
     // 运行时 UI 事件到游戏逻辑的路由层。
     // UIManager 只负责在按钮/控件交互后抛出事件名，
@@ -16,7 +17,7 @@ namespace engine {
     class GameUIEventRouter {
     public:
         // router 只持有外部系统的引用，不拥有它们的生命周期。
-        GameUIEventRouter(RuntimeUiController& runtimeUiController, UserState& state, bool& appRunning);
+        GameUIEventRouter(RuntimeUiController& runtimeUiController, RuntimeUiStateView state, bool& appRunning);
         void SetAudioSystem(AudioSystem* audioSystem);
 
         // 把当前支持的事件名统一注册到 UIManager。
@@ -78,7 +79,7 @@ namespace engine {
 
     private:
         RuntimeUiController& mRuntimeUiController; // 运行时 UI 控制器引用（管理运行时 UI 屏幕的加载/显示/隐藏）
-        UserState& mState;              // 用户状态引用（控制游戏流程状态）
+        RuntimeUiStateView mState;              // 用户状态引用（控制游戏流程状态）
         bool& mAppRunning;              // 应用运行标志引用（置 false 则退出程序）
         AudioSystem* mAudioSystem = nullptr;
         SettingsState mSettingsState;

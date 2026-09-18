@@ -4,6 +4,9 @@
 #include "EditorLayout.hpp"
 #include "EditorTransform.hpp"
 #include "EditorTheme.hpp"
+#include "../UserState/CameraController.hpp"
+#include "../UserState/EditorState.hpp"
+#include "../UserState/RenderSettings.hpp"
 #include "../Renderer/RenderUtilities/ViewMode.hpp"
 
 #include <cstdio>
@@ -676,15 +679,15 @@ namespace engine {
 	}
 
 
-	void EngineUi::DrawSceneViewport(VkDescriptorSet sceneTexId, RenderSystem* renderSys, SceneManager* sceneManager, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, UserState& state) {
+	void EngineUi::DrawSceneViewport(VkDescriptorSet sceneTexId, RenderSystem* renderSys, SceneManager* sceneManager, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, EditorState& editor, const RenderSettings& render) {
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, state.showEngineUi ? 1.0f : 0.0f);
-		ImGui::PushStyleColor(ImGuiCol_WindowBg, state.showEngineUi
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, editor.showEngineUi ? 1.0f : 0.0f);
+		ImGui::PushStyleColor(ImGuiCol_WindowBg, editor.showEngineUi
 			? editor_theme::Color(editor_theme::kViewport) : ImVec4(0.0f, 0.0f, 0.0f, 1.0f));
 
-		const char* viewportWindowName = state.showEngineUi ? "Scene Viewport###SceneViewportEditor": "Game View###SceneViewportFullscreen";
+		const char* viewportWindowName = editor.showEngineUi ? "Scene Viewport###SceneViewportEditor": "Game View###SceneViewportFullscreen";
 		ImGuiWindowFlags viewportFlags = 0;
-		if (!state.showEngineUi) {
+		if (!editor.showEngineUi) {
 			ImGuiViewport* mainViewport = ImGui::GetMainViewport();
 			ImGui::SetNextWindowViewport(mainViewport->ID);
 			ImGui::SetNextWindowPos(mainViewport->Pos, ImGuiCond_Always);
@@ -699,7 +702,7 @@ namespace engine {
 		}
 
 		if (!ImGui::Begin(viewportWindowName, nullptr, viewportFlags)) {
-            state.isSceneViewportHovered = false;
+            editor.isSceneViewportHovered = false;
             s_SceneViewportDrawList = nullptr;
             ImGui::End();
             ImGui::PopStyleColor();
@@ -728,7 +731,7 @@ namespace engine {
 
 		//  3. 拖放目标 (Drag & Drop)
 
-		if (state.showEngineUi && ImGui::BeginDragDropTarget()) {
+		if (editor.showEngineUi && ImGui::BeginDragDropTarget()) {
 			if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_MODEL", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
 				const char* droppedPath = (const char*)payload->Data;
 				glm::mat4 dropTransform(1.0f);
@@ -764,7 +767,7 @@ namespace engine {
 
 
 		//  4. 粒子 Billboard 图标和点击// Particle billboard icons and select
-		if (state.showEngineUi && renderSys && state.particlesEnabled && state.renderMode == 0) {
+		if (editor.showEngineUi && renderSys && render.particlesEnabled && editor.renderMode == 0) {
 			glm::mat4 viewProj = proj * view;
 			glm::vec3 cameraPos = glm::vec3(glm::inverse(view)[3]);
 			ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -797,7 +800,7 @@ namespace engine {
 				ImVec2 iconMin = ImVec2(screenPos.x - iconSize.x * 0.5f, screenPos.y - iconSize.y * 0.5f);
 				ImVec2 iconMax = ImVec2(screenPos.x + iconSize.x * 0.5f, screenPos.y + iconSize.y * 0.5f);
 
-				bool is_selected = (state.activeParticleIndex == i);
+				bool is_selected = (editor.activeParticleIndex == i);
 				ImU32 iconColor = editor_theme::ColorU32(editor_theme::kPaper);
 
 				//从粒子 config 里拿贴图 ID// Get the texture ID from the particle config
@@ -830,8 +833,8 @@ namespace engine {
 
 				//InvisibleButton
 				if (ImGui::InvisibleButton("ParticleIcon", ImVec2(hitRadius * 2, hitRadius * 2))) {
-					state.activeParticleIndex = i;
-                    state.showParticlePanel = true;
+					editor.activeParticleIndex = i;
+                    editor.showParticlePanel = true;
 					selected_id = 0; // clear
 					LogPrint("[BillboardPick] Hit Particle Group %d\n", i + 1);
 				}
@@ -855,13 +858,13 @@ namespace engine {
 		//  5. ImGuizmo 坐标轴
 		bool drawGizmo = false;
 		glm::mat4 gizmoMatrix = glm::mat4(1.0f);
-		if (state.showEngineUi && renderSys && state.particlesEnabled && state.activeParticleIndex >= 0 && state.activeParticleIndex < renderSys->GetParticles().size()) {
-			auto& particle = *renderSys->GetParticles()[state.activeParticleIndex];
-            drawGizmo = !renderSys->IsParticleGroupSceneControlled(state.activeParticleIndex) &&
+		if (editor.showEngineUi && renderSys && render.particlesEnabled && editor.activeParticleIndex >= 0 && editor.activeParticleIndex < renderSys->GetParticles().size()) {
+			auto& particle = *renderSys->GetParticles()[editor.activeParticleIndex];
+            drawGizmo = !renderSys->IsParticleGroupSceneControlled(editor.activeParticleIndex) &&
                 (particle.getEmitterShape() != EmitterShape::Sphere || particle.config.triggerControlled);
             gizmoMatrix = glm::translate(glm::mat4(1.0f), particle.config.emitterPos);
 		}
-		else if (state.showEngineUi && selected_id != 0 && sceneManager) {
+		else if (editor.showEngineUi && selected_id != 0 && sceneManager) {
 			flecs::entity selectedEntity = sceneManager->get_world().entity(selected_id);
 			if (selectedEntity.is_alive() && selectedEntity.has<LocalTransform>()) {
 				drawGizmo = true;
@@ -880,18 +883,18 @@ namespace engine {
 
 			static ImGuizmo::OPERATION currentOp = ImGuizmo::TRANSLATE;
 			if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && !ImGui::GetIO().WantTextInput &&
-                !ImGui::GetIO().KeyCtrl && !ImGui::IsAnyItemActive() && !(state.showGameUiEditor && UIEditorWindow::WantsKeyboardCapture())) {
+                !ImGui::GetIO().KeyCtrl && !ImGui::IsAnyItemActive() && !(editor.showGameUiEditor && UIEditorWindow::WantsKeyboardCapture())) {
                 if (ImGui::IsKeyPressed(ImGuiKey_W)) currentOp = ImGuizmo::TRANSLATE;
                 if (ImGui::IsKeyPressed(ImGuiKey_E)) currentOp = ImGuizmo::ROTATE;
                 if (ImGui::IsKeyPressed(ImGuiKey_R)) currentOp = ImGuizmo::SCALE;
             }
-            if (state.activeParticleIndex >= 0) currentOp = ImGuizmo::TRANSLATE;
+            if (editor.activeParticleIndex >= 0) currentOp = ImGuizmo::TRANSLATE;
 
 			ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(proj), currentOp, ImGuizmo::LOCAL, glm::value_ptr(gizmoMatrix));
 
 			if (ImGuizmo::IsUsing()) {
-				if (state.activeParticleIndex >= 0) {
-					renderSys->GetParticles()[state.activeParticleIndex]->config.emitterPos = glm::vec3(gizmoMatrix[3]);
+				if (editor.activeParticleIndex >= 0) {
+					renderSys->GetParticles()[editor.activeParticleIndex]->config.emitterPos = glm::vec3(gizmoMatrix[3]);
 				}
 				else if (selected_id != 0 && sceneManager) {
 					flecs::entity selectedEntity = sceneManager->get_world().entity(selected_id);
@@ -903,7 +906,7 @@ namespace engine {
 			}
 		}
 
-		state.isSceneViewportHovered = ImGui::IsWindowHovered();
+		editor.isSceneViewportHovered = ImGui::IsWindowHovered();
 
 		ImGui::End(); //  Viewport 闭合
 		ImGui::PopStyleColor();
@@ -912,8 +915,8 @@ namespace engine {
 	}
 
 
-	void EngineUi::DrawContentBrowser(RenderSystem* renderSys, SceneManager* sceneManager, UserState& state) {
-        if (!state.showContentBrowser) return;
+	void EngineUi::DrawContentBrowser(RenderSystem* renderSys, SceneManager* sceneManager, EditorState& editor) {
+        if (!editor.showContentBrowser) return;
 		(void)sceneManager; //The browser only needs asset browsing and drag/drop here.
 		static std::string s_CurrentDirectory = "Assets"; //当前浏览的文件夹路径//Track the active folder inside Assets.
 		static char s_NewFolderName[128] = "NewFolder"; //Buffer for the create-folder popup.
@@ -925,7 +928,7 @@ namespace engine {
 
 
 
-		if (ImGui::Begin(PanelTitle("Assets", "ContentBrowser").c_str(), &state.showContentBrowser)) //开始绘制窗口// Begin drawing the window
+		if (ImGui::Begin(PanelTitle("Assets", "ContentBrowser").c_str(), &editor.showContentBrowser)) //开始绘制窗口// Begin drawing the window
 		{
 			if (!fs::exists(assetsRoot) || !fs::is_directory(assetsRoot)) { //Fail clearly when the Assets root is missing.
 				ImGui::TextColored(editor_theme::Color(editor_theme::kError), "Folder Assets not found!");
@@ -1223,43 +1226,45 @@ namespace engine {
         s_ResetEditorLayout = false;
     }
 
-    void EngineUi::DrawConsole(UserState& state) {
-        if (state.showConsole)
-            s_Console.Draw(PanelTitle("Console", "OutputConsole").c_str(), &state.showConsole);
+    void EngineUi::DrawConsole(EditorState& editor) {
+        if (editor.showConsole)
+            s_Console.Draw(PanelTitle("Console", "OutputConsole").c_str(), &editor.showConsole);
     }
 
-    void EngineUi::DrawRenderSettings(UserState& state) {
-        if (!state.showRenderSettings) return;
-        if (ImGui::Begin(PanelTitle("Render Settings", "RenderSettings").c_str(), &state.showRenderSettings)) {
+    void EngineUi::DrawRenderSettings(RenderSettings& render, const RenderOverrides& overrides, EditorState& editor) {
+        if (!editor.showRenderSettings) return;
+        if (ImGui::Begin(PanelTitle("Render Settings", "RenderSettings").c_str(), &editor.showRenderSettings)) {
             ImGui::TextDisabled("Changes apply to the current session.");
-            if (state.renderMode != 0) ImGui::TextWrapped("%s", _SL("Diagnostic views display their rendering data directly. Return to Default to adjust scene effects."));
-            ImGui::BeginDisabled(state.renderMode != 0);
+            if (editor.renderMode != 0) ImGui::TextWrapped("%s", _SL("Diagnostic views display their rendering data directly. Return to Default to adjust scene effects."));
+            ImGui::BeginDisabled(editor.renderMode != 0);
             ImGui::SeparatorText("Rendering");
-            ImGui::Checkbox("Image-based Lighting (IBL)", &state.iblEnabled);
-            ImGui::Checkbox("Screen-space Reflections (SSR)", &state.ssrEnabled);
-            ImGui::Checkbox("Ambient Occlusion (SSAO)", &state.ssaoEnabled);
-            ImGui::Checkbox(_SL("Particle System"), &state.particlesEnabled);
+            ImGui::Checkbox("Image-based Lighting (IBL)", &render.iblEnabled);
+            if (overrides.iblEnabled.has_value())
+                ImGui::TextDisabled("Scene IBL override: %s", *overrides.iblEnabled ? "On" : "Off");
+            ImGui::Checkbox("Screen-space Reflections (SSR)", &render.ssrEnabled);
+            ImGui::Checkbox("Ambient Occlusion (SSAO)", &render.ssaoEnabled);
+            ImGui::Checkbox(_SL("Particle System"), &render.particlesEnabled);
             ImGui::SeparatorText("Post-processing");
-            ImGui::Checkbox(_SL("Enable Bloom"), &state.bloomEnabled);
-            ImGui::BeginDisabled(!state.bloomEnabled);
-            ImGui::SliderFloat(_SL("Bloom Strength"), &state.bloomStrength, 0.0f, 5.0f, "%.2f");
+            ImGui::Checkbox(_SL("Enable Bloom"), &render.bloomEnabled);
+            ImGui::BeginDisabled(!render.bloomEnabled);
+            ImGui::SliderFloat(_SL("Bloom Strength"), &render.bloomStrength, 0.0f, 5.0f, "%.2f");
             ImGui::EndDisabled();
-            ImGui::SliderFloat(_SL("Exposure"), &state.bloomExposure, 0.1f, 5.0f, "%.2f");
-            ImGui::Checkbox(_SL("Enable Mosaic Post-Process"), &state.mosaicEnabled);
+            ImGui::SliderFloat(_SL("Exposure"), &render.bloomExposure, 0.1f, 5.0f, "%.2f");
+            ImGui::Checkbox(_SL("Enable Mosaic Post-Process"), &render.mosaicEnabled);
             ImGui::EndDisabled();
             ImGui::SeparatorText("Visibility & detail");
-            ImGui::Checkbox("Frustum Culling", &state.frustumCullingEnabled);
-            ImGui::BeginDisabled(!state.frustumCullingEnabled);
-            ImGui::SliderFloat("Frustum Padding", &state.frustumCullingPadding, 0.0f, 10.0f, "%.2f");
+            ImGui::Checkbox("Frustum Culling", &render.frustumCullingEnabled);
+            ImGui::BeginDisabled(!render.frustumCullingEnabled);
+            ImGui::SliderFloat("Frustum Padding", &render.frustumCullingPadding, 0.0f, 10.0f, "%.2f");
             ImGui::EndDisabled();
 
         }
         ImGui::End();
     }
 
-    void EngineUi::DrawParticlePanel(UserState& state, RenderSystem* renderSys, flecs::entity_t& selected_id) {
-        if (!state.showParticlePanel) return;
-        if (!ImGui::Begin(PanelTitle("Particles", "Particles").c_str(), &state.showParticlePanel)) {
+    void EngineUi::DrawParticlePanel(RenderSettings& render, EditorState& editor, RenderSystem* renderSys, flecs::entity_t& selected_id) {
+        if (!editor.showParticlePanel) return;
+        if (!ImGui::Begin(PanelTitle("Particles", "Particles").c_str(), &editor.showParticlePanel)) {
             ImGui::End();
             return;
         }
@@ -1268,15 +1273,15 @@ namespace engine {
             ImGui::End();
             return;
         }
-        ImGui::Checkbox(_SL("Particle System"), &state.particlesEnabled);
-        if (!state.particlesEnabled)
+        ImGui::Checkbox(_SL("Particle System"), &render.particlesEnabled);
+        if (!render.particlesEnabled)
             ImGui::TextWrapped("Simulation and rendering are disabled. Parameters can still be edited.");
 
         static const ParticleSystem* countOwner = nullptr;
         static uint32_t previousCapacity = 0;
         static int newCount = 0;
         auto& particles = renderSys->GetParticles();
-        int& selectedParticle = state.activeParticleIndex;
+        int& selectedParticle = editor.activeParticleIndex;
         if (selectedParticle >= static_cast<int>(particles.size())) selectedParticle = -1;
         if (ImGui::Button(_SL("Add Group"))) {
             renderSys->AddParticleGroup();
@@ -1440,13 +1445,13 @@ namespace engine {
         ImGui::End();
     }
 
-	void EngineUi::DrawLightPanel(SceneManager* sceneManager, UserState& state)
+	void EngineUi::DrawLightPanel(SceneManager* sceneManager, EditorState& editor)
 	{
-		if (!state.showLightPanel) return;
+		if (!editor.showLightPanel) return;
 
 
 
-		if (!ImGui::Begin(PanelTitle("Lighting", "Lighting").c_str(), &state.showLightPanel)) {
+		if (!ImGui::Begin(PanelTitle("Lighting", "Lighting").c_str(), &editor.showLightPanel)) {
 			ImGui::End();
 			return;
 		}
@@ -1577,114 +1582,84 @@ namespace engine {
 	}
 
 	//camera UI相机调节面板
-	void EngineUi::DrawCameraPanel(UserState& state)
-	{
-		if (!state.showCameraPanel) return;
-
-
-
-		if (!ImGui::Begin(PanelTitle("Camera", "Camera").c_str(), &state.showCameraPanel)) {
-			ImGui::End();
-			return;
-		}
-
-		//UI基础相机模式与镜头参数// Basic camera mode and lens parameters
-		ImGui::Checkbox("Third Person Mode", &state.thirdPersonMode);
-		ImGui::BeginDisabled(state.thirdPersonMode);
-        if (ImGui::SliderFloat("FOV", &state.cameraFov, 10.0f, 120.0f, "%.1f deg")) {
-			state.targetFov = state.cameraFov;
-		}
-
-        ImGui::EndDisabled();
-        if (state.thirdPersonMode) ImGui::TextWrapped("Follow mode derives FOV and target position from the game. Switch to free camera for direct lens and transform editing.");
-        glm::vec3 cameraPos = glm::vec3(state.camera2world[3]);
-		ImGui::Text("Camera Pos: %.2f, %.2f, %.2f", cameraPos.x, cameraPos.y, cameraPos.z);
-		ImGui::SameLine();
-		if (ImGui::SmallButton("Copy##cam")) {
-			char buf[128];
-			snprintf(buf, sizeof(buf), "glm::vec3(%.2ff, %.2ff, %.2ff)", cameraPos.x, cameraPos.y, cameraPos.z);
-			ImGui::SetClipboardText(buf);
-		}
-
-		const glm::vec3& bikePos = state.followTargetPos;
-		ImGui::Text("Bike Pos:   %.2f, %.2f, %.2f", bikePos.x, bikePos.y, bikePos.z);
-		ImGui::SameLine();
-		if (ImGui::SmallButton("Copy##bike")) {
-			char buf[128];
-			snprintf(buf, sizeof(buf), "glm::vec3(%.2ff, %.2ff, %.2ff)", bikePos.x, bikePos.y, bikePos.z);
-			ImGui::SetClipboardText(buf);
-		}
-
-		if (state.thirdPersonMode) {
-			//第三人称相机参数// Third-person camera parameters
-			ImGui::Text("Follow target: %.2f, %.2f, %.2f", state.followTargetPos.x, state.followTargetPos.y, state.followTargetPos.z);
-            ImGui::BeginDisabled(state.isExtremeSpeed || state.portalCameraActive);
-            bool orbitChanged = false;
-			orbitChanged |= ImGui::SliderAngle("Yaw", &state.targetYaw, -180.0f, 180.0f);
-			orbitChanged |= ImGui::SliderAngle("Pitch", &state.targetPitch, -85.0f, 85.0f);
-			orbitChanged |= ImGui::SliderFloat("Distance", &state.targetDistance, 2.0f, 70.0f, "%.2f");
-
-			if (ImGui::Button("Reset Third Person Camera")) {
-				state.Yaw = state.targetYaw = 0.0f;
-                state.Pitch = state.targetPitch = 0.0f;
-                state.Distance = state.targetDistance = 5.0f;
-                orbitChanged = true;
-			}
-            ImGui::EndDisabled();
-            if (orbitChanged || ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) state.cameraIdleTimer = 0.0f;
-            ImGui::TextWrapped("The moving game camera auto-aligns after you leave this panel. Speed and portal effects can take control of its orbit.");
+    void EngineUi::DrawCameraPanel(CameraController& controller, const PlayerState& player, EditorState& editor)
+    {
+        if (!editor.showCameraPanel) return;
+        if (!ImGui::Begin(PanelTitle("Camera", "Camera").c_str(), &editor.showCameraPanel)) {
+            ImGui::End();
+            return;
         }
-        else {
-			//自由相机直接编辑世界矩阵的位移和旋转// Free camera directly edits the translation and rotation of the world matrix
-			float cameraTranslation[3];
-			float cameraRotation[3];
-			float cameraScale[3];
+        const CameraState& camera = controller.State();
+        const bool takenOver = camera.mode == CameraMode::Portal || camera.mode == CameraMode::Cinematic;
+        if (camera.mode == CameraMode::Cinematic) ImGui::TextDisabled("Cinematic camera controls the view.");
+        else if (camera.mode == CameraMode::Portal) ImGui::TextDisabled("Portal transition controls the view.");
+        ImGui::BeginDisabled(takenOver);
+        bool follow = camera.thirdPersonMode;
+        if (ImGui::Checkbox("Third Person Mode", &follow)) {
+            if (follow) controller.RequestFollow();
+            else controller.RequestFree();
+        }
+        bool automaticFov = camera.automaticFov;
+        if (ImGui::Checkbox("Automatic FOV", &automaticFov)) controller.UseAutomaticFov(automaticFov);
+        float fov = camera.targetFov;
+        if (ImGui::SliderFloat("FOV", &fov, 10.0f, 120.0f, "%.1f deg")) controller.SetFov(fov);
+        ImGui::TextDisabled("Current FOV: %.1f degrees", camera.cameraFov);
+        ImGui::TextWrapped("Adjusting FOV selects a manual lens. Enable Automatic FOV to follow camera distance and speed.");
+        ImGui::EndDisabled();
 
-			ImGuizmo::DecomposeMatrixToComponents(
-				glm::value_ptr(state.camera2world),
-				cameraTranslation,
-				cameraRotation,
-				cameraScale
-			);
+        const glm::vec3 cameraPos(camera.camera2world[3]);
+        ImGui::Text("Camera Pos: %.2f, %.2f, %.2f", cameraPos.x, cameraPos.y, cameraPos.z);
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Copy##cam")) {
+            char text[128];
+            snprintf(text, sizeof(text), "glm::vec3(%.2ff, %.2ff, %.2ff)", cameraPos.x, cameraPos.y, cameraPos.z);
+            ImGui::SetClipboardText(text);
+        }
+        ImGui::Text("Player Pos: %.2f, %.2f, %.2f", player.position.x, player.position.y, player.position.z);
+        if (camera.thirdPersonMode) {
+            ImGui::Text("Follow target: %.2f, %.2f, %.2f", camera.followTargetPos.x, camera.followTargetPos.y, camera.followTargetPos.z);
+            ImGui::BeginDisabled(takenOver || player.isExtremeSpeed);
+            float yaw = camera.targetYaw, pitch = camera.targetPitch, distance = camera.targetDistance;
+            bool changed = ImGui::SliderAngle("Yaw", &yaw, -180.0f, 180.0f);
+            changed |= ImGui::SliderAngle("Pitch", &pitch, -85.0f, 85.0f);
+            changed |= ImGui::SliderFloat("Distance", &distance, 2.0f, 70.0f, "%.2f");
+            if (changed) controller.SetOrbit(yaw, pitch, distance);
+            if (ImGui::Button("Reset Third Person Camera")) controller.SetOrbit(0.0f, 0.0f, 5.0f, true);
+            if (changed || ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) controller.HoldAutoAlign();
+            ImGui::EndDisabled();
+        }
+        else if (camera.mode == CameraMode::Free) {
+            float position[3], rotation[3], scale[3];
+            if (editor_transform::Decompose(camera.camera2world, position, rotation, scale)) {
+                bool changed = ImGui::DragFloat3("Position", position, 0.1f);
+                changed |= ImGui::DragFloat3("Rotation", rotation, 0.5f);
+                if (changed) {
+                    const float unitScale[3] = {1.0f, 1.0f, 1.0f};
+                    glm::mat4 transform;
+                    ImGuizmo::RecomposeMatrixFromComponents(position, rotation, unitScale, glm::value_ptr(transform));
+                    controller.SetFreeTransform(transform);
+                }
+            }
+        }
+        ImGui::End();
+    }
 
-			bool cameraTransformChanged = false;
-			cameraTransformChanged |= ImGui::DragFloat3("Position", cameraTranslation, 0.1f);
-			cameraTransformChanged |= ImGui::DragFloat3("Rotation", cameraRotation, 0.5f);
-
-			if (cameraTransformChanged) {
-				cameraScale[0] = 1.0f;
-				cameraScale[1] = 1.0f;
-				cameraScale[2] = 1.0f;
-				ImGuizmo::RecomposeMatrixFromComponents(
-					cameraTranslation,
-					cameraRotation,
-					cameraScale,
-					glm::value_ptr(state.camera2world)
-				);
-			}
-		}
-
-		ImGui::Separator();
-
-		ImGui::End();
-	}
-
-	void EngineUi::DrawDebugPanel(UserState& state)
+	void EngineUi::DrawDebugPanel(EditorState& editor, const RenderStatistics& statistics, const RenderCapabilities& capabilities)
 	{
-		if (!state.showDebugPanel) return;
+		if (!editor.showDebugPanel) return;
 
 
 
-		if (!ImGui::Begin(PanelTitle("Diagnostics", "Diagnostics").c_str(), &state.showDebugPanel)) {
+		if (!ImGui::Begin(PanelTitle("Diagnostics", "Diagnostics").c_str(), &editor.showDebugPanel)) {
 			ImGui::End();
 			return;
 		}
 
 		ImGui::TextUnformatted("Selection Debug");
-        if (state.renderMode != 0) ImGui::TextDisabled("%s", _SL("Selection wireframes require Default view."));
-        ImGui::BeginDisabled(state.renderMode != 0);
-		ImGui::Checkbox("Selection Bounds (AABB)", &state.debugSelectionBounds);
-		ImGui::Checkbox("Collision Shapes", &state.debugCollisionShapes);
+        if (editor.renderMode != 0) ImGui::TextDisabled("%s", _SL("Selection wireframes require Default view."));
+        ImGui::BeginDisabled(editor.renderMode != 0);
+		ImGui::Checkbox("Selection Bounds (AABB)", &editor.debugSelectionBounds);
+		ImGui::Checkbox("Collision Shapes", &editor.debugCollisionShapes);
         ImGui::EndDisabled();
 		ImGui::Separator();
 		ImGui::TextWrapped("Selection Bounds draws the selected body's world-space AABB. Collision Shapes draws the selected body's physics shape wireframe.");
@@ -1693,17 +1668,17 @@ namespace engine {
         ImGui::SeparatorText("Frame & visibility");
         const float fps = ImGui::GetIO().Framerate;
         ImGui::Text("%.1f FPS / %.2f ms", fps, fps > 0.0f ? 1000.0f / fps : 0.0f);
-        ImGui::Text("Visible static batches: %u / %u", state.frustumCullingVisibleCandidates, state.frustumCullingTotalCandidates);
+        ImGui::Text("Visible static batches: %u / %u", statistics.frustumCullingVisibleCandidates, statistics.frustumCullingTotalCandidates);
         const char* modes[] = { _SL("Default"), _SL("Mipmaps"), _SL("Depth"), _SL("Derivatives"), _SL("Overdraw"), _SL("Overshading"),
             "SSAO", "SSR", _SL("Normals"), _SL("Wireframe"), "Albedo", _SL("Shadow") };
         static_assert(IM_ARRAYSIZE(modes) == view_mode::Count);
-        state.renderMode = std::clamp(state.renderMode, 0, view_mode::Count - 1);
-        if (ImGui::BeginCombo(_SL("View Mode"), modes[state.renderMode])) {
+        editor.renderMode = std::clamp(editor.renderMode, 0, view_mode::Count - 1);
+        if (ImGui::BeginCombo(_SL("View Mode"), modes[editor.renderMode])) {
             for (int mode = 0; mode < view_mode::Count; ++mode) {
-                const bool available = mode != view_mode::Wireframe || state.wireframeSupported;
+                const bool available = mode != view_mode::Wireframe || capabilities.wireframeSupported;
                 ImGui::BeginDisabled(!available);
-                if (ImGui::Selectable(modes[mode], state.renderMode == mode)) state.renderMode = mode;
-                if (state.renderMode == mode) ImGui::SetItemDefaultFocus();
+                if (ImGui::Selectable(modes[mode], editor.renderMode == mode)) editor.renderMode = mode;
+                if (editor.renderMode == mode) ImGui::SetItemDefaultFocus();
                 ImGui::EndDisabled();
                 if (!available && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
                     ImGui::SetTooltip("%s", _SL("Wireframe is not supported by this graphics device."));
@@ -1725,31 +1700,31 @@ namespace engine {
             "Directional-light cascaded shadow visibility: white is lit, black is shadowed. Includes cascade blending; spotlight shadows are not shown."
         };
         static_assert(IM_ARRAYSIZE(modeHelp) == view_mode::Count);
-        if (state.renderMode >= 0 && state.renderMode < IM_ARRAYSIZE(modeHelp))
-            ImGui::TextWrapped("%s", _SL(modeHelp[state.renderMode]));
-        if (view_mode::IsBuffer(state.renderMode))
+        if (editor.renderMode >= 0 && editor.renderMode < IM_ARRAYSIZE(modeHelp))
+            ImGui::TextWrapped("%s", _SL(modeHelp[editor.renderMode]));
+        if (view_mode::IsBuffer(editor.renderMode))
             ImGui::TextWrapped("%s", _SL("Buffer views use opaque and alpha-cutout geometry, including animated meshes. Transparent blending and display post-processing are omitted."));
-        else if (state.renderMode != 0)
+        else if (editor.renderMode != 0)
             ImGui::TextWrapped("%s", _SL("Debug views include static and animated meshes; sky, particles, portal views and post-processing are omitted."));
 
 		ImGui::End();
 	}
 
-	void EngineUi::DrawSceneHierarchy(RenderSystem* renderSys, SceneManager* sceneManager, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, UserState& state)
+	void EngineUi::DrawSceneHierarchy(RenderSystem* renderSys, SceneManager* sceneManager, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, EditorState& editor)
 	{
 		// 获取当前屏幕分辨率 (Current screen resolution)
 
 
 
 		// 🪟 1. Scene Hierarchy Panel (场景层级面板)
-		if (state.showSceneHierarchy)
+		if (editor.showSceneHierarchy)
 		{
 			// 设置面板的初始位置和大小// Set initial position and size of the panel
 
 
 
-			// &state.showSceneHierarchy，ImGui 会自动在右上角生成关闭按钮 [X]// ImGui will automatically generate a close button [X] in the top right corner when we pass &state.showSceneHierarchy
-			if (ImGui::Begin(PanelTitle("Scene Hierarchy", "SceneHierarchy").c_str(), &state.showSceneHierarchy))
+			// &editor.showSceneHierarchy，ImGui 会自动在右上角生成关闭按钮 [X]// ImGui will automatically generate a close button [X] in the top right corner when we pass &editor.showSceneHierarchy
+			if (ImGui::Begin(PanelTitle("Scene Hierarchy", "SceneHierarchy").c_str(), &editor.showSceneHierarchy))
 			{
 				if (sceneManager && &sceneManager->get_world() != nullptr) {
 					// 显示实体总数// Display total entity count
@@ -1768,7 +1743,7 @@ namespace engine {
 							bool is_selected = (selected_id == entity.id());
 							if (ImGui::Selectable(name.c_str(), is_selected)) {
 								selected_id = entity.id(); // 更新当前选中的实体 ID
-								state.activeParticleIndex = -1;
+								editor.activeParticleIndex = -1;
 							}
 							});
 					}
@@ -1819,10 +1794,10 @@ namespace engine {
 		// 🪟 2. Entity Inspector & ImGuizmo (实体属性检查器 & 3D 交互坐标轴)
 
         if (selected_id != 0 && sceneManager && !sceneManager->get_world().entity(selected_id).is_alive()) selected_id = 0;
-        if (state.showEntityInspector && (selected_id == 0 || !sceneManager)) {
-            if (ImGui::Begin(PanelTitle("Entity Inspector", "EntityInspector").c_str(), &state.showEntityInspector)) {
+        if (editor.showEntityInspector && (selected_id == 0 || !sceneManager)) {
+            if (ImGui::Begin(PanelTitle("Entity Inspector", "EntityInspector").c_str(), &editor.showEntityInspector)) {
                 ImGui::TextWrapped("Select an entity in the hierarchy or scene viewport to inspect its components.");
-                if (state.activeParticleIndex >= 0 && ImGui::Button("Open Particles")) state.showParticlePanel = true;
+                if (editor.activeParticleIndex >= 0 && ImGui::Button("Open Particles")) editor.showParticlePanel = true;
             }
             ImGui::End();
         }
@@ -1839,13 +1814,13 @@ namespace engine {
 
 			//属性检查器面板 (Entity Inspector)
 
-			if (state.showEntityInspector)
+			if (editor.showEntityInspector)
 			{
 				// 设置初始位置在 Hierarchy 的下方// Set initial position below the Hierarchy panel
 
 
 
-				if (ImGui::Begin(PanelTitle("Entity Inspector", "EntityInspector").c_str(), &state.showEntityInspector)) {
+				if (ImGui::Begin(PanelTitle("Entity Inspector", "EntityInspector").c_str(), &editor.showEntityInspector)) {
 
 					ImGui::TextColored(editor_theme::Color(editor_theme::kText), "[ %s ]", selectedEntity.name().c_str());
 					ImGui::Separator();
@@ -1917,7 +1892,7 @@ namespace engine {
 					// 键盘快捷键删除 (Delete 键)
 					if (selectedEntity.is_alive() &&
 						ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-						!(state.showGameUiEditor && UIEditorWindow::WantsKeyboardCapture()) &&
+						!(editor.showGameUiEditor && UIEditorWindow::WantsKeyboardCapture()) &&
 						ImGui::IsKeyPressed(ImGuiKey_Delete) &&
 						!ImGui::GetIO().WantTextInput) {
 						selectedEntity.destruct();
@@ -1932,13 +1907,13 @@ namespace engine {
 		}
 	}
 
-	void EngineUi::DrawAudioPanel(UserState& state, AudioSystem* audioSystem)
+	void EngineUi::DrawAudioPanel(EditorState& editor, AudioSystem* audioSystem)
 	{
-		if (!state.showAudioPanel) return;
+		if (!editor.showAudioPanel) return;
 
 
 
-		if (!ImGui::Begin(PanelTitle("Audio", "Audio").c_str(), &state.showAudioPanel)) {
+		if (!ImGui::Begin(PanelTitle("Audio", "Audio").c_str(), &editor.showAudioPanel)) {
 			ImGui::End();
 			return;
 		}
@@ -1995,23 +1970,23 @@ namespace engine {
 		ImGui::End();
 	}
 
-    void EngineUi::DrawMainMenuBar(RenderSystem* renderSys, SceneManager* sceneManager, UserState& state, bool& appRunning) {
-        if (!state.showEngineUi) return;
+    void EngineUi::DrawMainMenuBar(RenderSystem* renderSys, SceneManager* sceneManager, EditorState& editor, const RenderCapabilities& capabilities, bool& appRunning) {
+        if (!editor.showEngineUi) return;
         const auto snapshot = [&](bool save) {
             try {
                 const bool ok = save ? SaveProject(sceneManager, renderSys, "Assets/MySceneSave.json")
                                      : LoadProject(sceneManager, renderSys, "Assets/MySceneSave.json");
                 ShowToast(ok ? (save ? "Scene snapshot saved" : "Scene snapshot loaded") : "Snapshot failed - see Console");
-                if (!ok) state.showConsole = true;
+                if (!ok) editor.showConsole = true;
             }
             catch (const std::exception& error) {
                 LogPrintf("[Error] Scene snapshot failed: %s\n", error.what());
                 ShowToast("Snapshot failed - see Console");
-                state.showConsole = true;
+                editor.showConsole = true;
             }
         };
         // UI authoring owns its own save shortcut. Do not save the scene while typing.
-        if (!ImGui::GetIO().WantTextInput && !(state.showGameUiEditor && UIEditorWindow::WantsKeyboardCapture()) && ImGui::GetIO().KeyCtrl) {
+        if (!ImGui::GetIO().WantTextInput && !(editor.showGameUiEditor && UIEditorWindow::WantsKeyboardCapture()) && ImGui::GetIO().KeyCtrl) {
             if (ImGui::IsKeyPressed(ImGuiKey_S, false)) snapshot(true);
             if (ImGui::IsKeyPressed(ImGuiKey_O, false)) snapshot(false);
         }
@@ -2027,37 +2002,37 @@ namespace engine {
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu(_SL("Window"))) {
-            ImGui::MenuItem(_SL("Scene Hierarchy"), nullptr, &state.showSceneHierarchy);
-            ImGui::MenuItem(_SL("Entity Inspector"), nullptr, &state.showEntityInspector);
-            ImGui::MenuItem(_SL("Assets"), nullptr, &state.showContentBrowser);
-            ImGui::MenuItem(_SL("Console"), nullptr, &state.showConsole);
+            ImGui::MenuItem(_SL("Scene Hierarchy"), nullptr, &editor.showSceneHierarchy);
+            ImGui::MenuItem(_SL("Entity Inspector"), nullptr, &editor.showEntityInspector);
+            ImGui::MenuItem(_SL("Assets"), nullptr, &editor.showContentBrowser);
+            ImGui::MenuItem(_SL("Console"), nullptr, &editor.showConsole);
             ImGui::Separator();
-            ImGui::MenuItem(_SL("Render Settings"), nullptr, &state.showRenderSettings);
-            ImGui::MenuItem(_SL("Lighting"), nullptr, &state.showLightPanel);
-            ImGui::MenuItem(_SL("Camera"), nullptr, &state.showCameraPanel);
-            ImGui::MenuItem(_SL("Particles"), nullptr, &state.showParticlePanel);
-            ImGui::MenuItem(_SL("Audio"), nullptr, &state.showAudioPanel);
-            ImGui::MenuItem(_SL("Diagnostics"), nullptr, &state.showDebugPanel);
+            ImGui::MenuItem(_SL("Render Settings"), nullptr, &editor.showRenderSettings);
+            ImGui::MenuItem(_SL("Lighting"), nullptr, &editor.showLightPanel);
+            ImGui::MenuItem(_SL("Camera"), nullptr, &editor.showCameraPanel);
+            ImGui::MenuItem(_SL("Particles"), nullptr, &editor.showParticlePanel);
+            ImGui::MenuItem(_SL("Audio"), nullptr, &editor.showAudioPanel);
+            ImGui::MenuItem(_SL("Diagnostics"), nullptr, &editor.showDebugPanel);
             ImGui::Separator();
             if (ImGui::BeginMenu(_SL("Game UI Tools"))) {
-                ImGui::MenuItem(_SL("Game UI Editor"), nullptr, &state.showGameUiEditor);
-                ImGui::MenuItem(_SL("Runtime UI Debug"), nullptr, &state.showRuntimeUiDebugPanel);
+                ImGui::MenuItem(_SL("Game UI Editor"), nullptr, &editor.showGameUiEditor);
+                ImGui::MenuItem(_SL("Runtime UI Debug"), nullptr, &editor.showRuntimeUiDebugPanel);
                 ImGui::EndMenu();
             }
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu(_SL("View"))) {
-            ImGui::MenuItem(_SL("Engine UI"), "F1", &state.showEngineUi);
-            ImGui::MenuItem(_SL("Neutral Viewport Background"), nullptr, &state.editorViewportBackdrop, state.renderMode == 0);
-            ImGui::MenuItem(_SL("Viewport Grid"), nullptr, &state.editorViewportGrid, state.renderMode == 0);
-            if (state.renderMode != 0) ImGui::TextDisabled("%s", _SL("Available in default render mode"));
+            ImGui::MenuItem(_SL("Engine UI"), "F1", &editor.showEngineUi);
+            ImGui::MenuItem(_SL("Neutral Viewport Background"), nullptr, &editor.editorViewportBackdrop, editor.renderMode == 0);
+            ImGui::MenuItem(_SL("Viewport Grid"), nullptr, &editor.editorViewportGrid, editor.renderMode == 0);
+            if (editor.renderMode != 0) ImGui::TextDisabled("%s", _SL("Available in default render mode"));
             ImGui::Separator();
             if (ImGui::MenuItem(_SL("Reset Editor Layout"))) {
-                state.showSceneHierarchy = state.showEntityInspector = state.showContentBrowser = true;
-                state.showConsole = state.showRenderSettings = true;
-                state.showLightPanel = state.showCameraPanel = state.showAudioPanel = false;
-                state.showDebugPanel = state.showParticlePanel = state.showRuntimeUiDebugPanel = false;
-                state.showGameUiEditor = false;
+                editor.showSceneHierarchy = editor.showEntityInspector = editor.showContentBrowser = true;
+                editor.showConsole = editor.showRenderSettings = true;
+                editor.showLightPanel = editor.showCameraPanel = editor.showAudioPanel = false;
+                editor.showDebugPanel = editor.showParticlePanel = editor.showRuntimeUiDebugPanel = false;
+                editor.showGameUiEditor = false;
                 s_ResetEditorLayout = true;
             }
             if (ImGui::BeginMenu(_SL("Language"))) {

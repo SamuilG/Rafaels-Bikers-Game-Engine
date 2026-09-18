@@ -12,7 +12,6 @@
 #include "../Particle/ParticleSystem.hpp"
 #include "../Debug/DebugRenderer.hpp"
 #include "../Scene/model_loader/engine_model.hpp" 
-#include "../UserState/UserState.hpp"
 
 lut::PipelineLayout create_triangle_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aSceneLayout, VkDescriptorSetLayout aObjectLayout)
 {

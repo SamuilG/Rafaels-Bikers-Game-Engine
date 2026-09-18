@@ -4,7 +4,7 @@
 #include <functional>
 #include <string>
 
-#include "../../UserState/UserState.hpp"
+#include "../../UserState/EditorState.hpp"
 
 namespace engine {
 
@@ -12,7 +12,7 @@ namespace engine {
     // 这里只负责编辑器侧的可视化编辑，不参与真正的运行时逻辑。
     class UIEditorWindow {
     public:
-        static void Draw(UserState& state);
+        static void Draw(EditorState& state);
         // 复用引擎现有的缩略图 / 贴图解析能力，让编辑器画布能直接显示 Assets 里的图片。
         static void SetTexturePreviewResolver(std::function<void*(const std::string&)> resolver);
         // 当编辑器保存 / 编译 UI 文件后，通过回调通知运行时 UI 热重载。

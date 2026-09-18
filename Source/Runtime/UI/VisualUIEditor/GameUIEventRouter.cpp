@@ -7,7 +7,7 @@
 
 #include "../EngineUi.hpp"
 #include "../../AudioSystem/AudioSystem.hpp"
-#include "../../UserState/UserState.hpp"
+#include "../../UserState/StateViews.hpp"
 #include "RuntimeUiController.hpp"
 #include "UIElement.hpp"
 #include "UIManager.hpp"
@@ -62,7 +62,7 @@ namespace engine {
 
     } // namespace
 
-    GameUIEventRouter::GameUIEventRouter(RuntimeUiController& runtimeUiController, UserState& state, bool& appRunning)
+    GameUIEventRouter::GameUIEventRouter(RuntimeUiController& runtimeUiController, RuntimeUiStateView state, bool& appRunning)
         : mRuntimeUiController(runtimeUiController)
         , mState(state)
         , mAppRunning(appRunning) {
@@ -162,7 +162,7 @@ namespace engine {
     void GameUIEventRouter::RefreshPendingSettingsFromGame() {
         mSettingsState.appliedMasterVolume = mAudioSystem ? mAudioSystem->GetMasterVolume() : 1.0f;
         mSettingsState.pendingMasterVolume = mSettingsState.appliedMasterVolume;
-        mSettingsState.appliedShowHints = mState.showHints;
+        mSettingsState.appliedShowHints = mState.preferences.showHints;
         mSettingsState.pendingShowHints = mSettingsState.appliedShowHints;
 
         const RuntimeDisplaySettings displaySettings = mRuntimeUiController.QueryDisplaySettings();
@@ -226,9 +226,9 @@ namespace engine {
 
     void GameUIEventRouter::SyncHudHintUi() {
         if (!mRuntimeUiController.IsWidgetLoaded(kHudUiPath)) return;
-        const bool showJumpHint = mState.showHints && mState.jumpEnabled;
-        const bool showHornHint = mState.showHints && mState.hornEnabled;
-        const bool showRadioHint = mState.showHints && mState.radioEnabled;
+        const bool showJumpHint = mState.preferences.showHints && mState.player.State().jumpEnabled;
+        const bool showHornHint = mState.preferences.showHints && mState.player.State().hornEnabled;
+        const bool showRadioHint = mState.preferences.showHints && mState.player.State().radioEnabled;
 
         mRuntimeUiController.SetElementVisible(kHudUiPath, kJumpHintElementName, showJumpHint);
         mRuntimeUiController.SetElementVisible(kHudUiPath, kHornHintElementName, showHornHint);
@@ -308,10 +308,10 @@ namespace engine {
             manager->PushScreen("Settings", false);
         }
         SyncHudHintUi();
-        mState.showRuntimeUi = true;
+        mState.runtimeUi.showRuntimeUi = true;
         if (state != GameFlowState::Playing || settingsOpen ||
             (mHasPresentedFlow && !IsGameplayScreenFlow(mPresentedFlow))) {
-            mState.showEngineUi = false;
+            mState.editor.showEngineUi = false;
         }
         mPresentedFlow = state;
         mPresentedSettingsOpen = settingsOpen;
@@ -330,7 +330,7 @@ namespace engine {
         if (!RequestFlow(GameFlowCommand::Start, eventName)) return;
 #ifndef GAME_ONLY
         if (mState.gameFlow.State() == GameFlowState::Playing) {
-            mState.showEngineUi = true;
+            mState.editor.showEngineUi = true;
             EngineUi::ShowToast("[ Editor Mode ]");
         }
 #endif
@@ -387,7 +387,7 @@ namespace engine {
             mSettingsState.pendingFullscreen = mSettingsState.appliedFullscreen;
         }
 
-        mState.showHints = mSettingsState.appliedShowHints;
+        mState.preferences.showHints = mSettingsState.appliedShowHints;
         SyncHudHintUi();
         if (mAudioSystem) {
             mAudioSystem->SetMasterVolume(mSettingsState.appliedMasterVolume);

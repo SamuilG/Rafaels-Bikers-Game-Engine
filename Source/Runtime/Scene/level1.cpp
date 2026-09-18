@@ -82,7 +82,7 @@ namespace engine {
 				return NormalizeFlat(fallback);
 			}
 			return NormalizeFlat(
-				glm::vec3(state->camera2world * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)),
+				glm::vec3(state->camera.State().camera2world * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)),
 				fallback);
 		}
 
@@ -163,9 +163,9 @@ namespace engine {
 		}
 
 		if (RuntimeUiController* ui = GetRuntimeUiController()) {
-			const bool showJumpHint = mState->showHints && mState->jumpEnabled;
-			const bool showHornHint = mState->showHints && mState->hornEnabled;
-			const bool showRadioHint = mState->showHints && mState->radioEnabled;
+			const bool showJumpHint = mState->preferences.showHints && mState->player.State().jumpEnabled;
+			const bool showHornHint = mState->preferences.showHints && mState->player.State().hornEnabled;
+			const bool showRadioHint = mState->preferences.showHints && mState->player.State().radioEnabled;
 			ui->SetElementVisible("Assets/ui/HUD.ui.json", "JumpIcon", showJumpHint);
 			ui->SetElementVisible("Assets/ui/HUD.ui.json", "HornIcon", showHornHint);
 			ui->SetElementVisible("Assets/ui/HUD.ui.json", "RadioIcon", showRadioHint);
@@ -210,6 +210,22 @@ namespace engine {
 		m_abilityUnlockPopupTimer = 0.0f;
 	}
 
+	void level::ReleaseRocketCamera(bool freezeVictoryPose) {
+		const bool wasActive = m_rocketCameraActive;
+		m_rocketCameraActive = false;
+		m_rocket2Launching = false;
+		if (!mState) return;
+		const glm::mat4 finalPose = mState->camera.State().camera2world;
+		mState->camera.EndCinematic();
+		mState->player.SetControlEnabled(true);
+		if (freezeVictoryPose && wasActive) {
+			// Keep the final launch shot while the victory screen stops simulation.
+			mState->camera.CancelPortal();
+			mState->camera.RequestFree();
+			mState->camera.SetFreeTransform(finalPose);
+		}
+	}
+
 	void level::ShowWinScreen() {
 		if (!mState || m_winUiVisible) {
 			return;
@@ -219,6 +235,8 @@ namespace engine {
 			return;
 		}
 
+		ReleaseRocketCamera(true);
+
 		if (RuntimeUiController* ui = GetRuntimeUiController()) {
 			ui->RemoveWidgetFromViewPort(kRespawnPromptUiPath);
 			ui->SyncGameFlowUi();
@@ -226,7 +244,7 @@ namespace engine {
 				kWinUiPath,
 				"DeadCount",
 				RuntimeUiTextOptions{
-					.text = std::to_string(mState->deathCount)
+					.text = std::to_string(mState->player.State().deathCount)
 				});
 		}
 
@@ -263,7 +281,7 @@ namespace engine {
 		m_abilityUnlockPopupTimer = 0.0f;
 		m_winUiVisible = false;
 		m_winUiDelayTimer = -1.0f;
-		m_previousAliveState = mState ? mState->isAlive : true;
+		m_previousAliveState = mState ? mState->player.State().isAlive : true;
 
 		RemoveWidget(kRespawnPromptUiPath);
 		RemoveWidget(kAbilityUnlockUiPath);
@@ -369,7 +387,7 @@ namespace engine {
 		flecs::entity playerBike = m_scene->LoadModel(m_render, "Assets/Models/tbikeWithAnchor.glb", engine::ModelPhysicsType::CustomC, 90.0f, BikeSpawnPos);
 
 		// 3. ��ʼ������������
-		m_bikeController = std::make_unique<BikeController>(m_physics->GetJoltSystem(), m_input, mState);
+		m_bikeController = std::make_unique<BikeController>(m_physics->GetJoltSystem(), m_input, &mState->player);
 		m_audio->LoadSound("Jump", "Assets/Sounds/jump_effect.mp3");
 		m_audio->LoadSound("SpringJump", "Assets/Sounds/spring.mp3");
 		m_audio->LoadSound("PortalWarp", "Assets/Sounds/deepBass.mp3");
@@ -580,7 +598,7 @@ namespace engine {
 				constexpr float kFrontalThreshold = 0.80f; // above this -> counts as frontal for fatal
 
 				float impactSpeed = col.GetRelativeSpeed(); // approach speed along normal (m/s)
-				float bikeSpeed = mState->bikeSpeed;     // horizontal speed (m/s)
+				float bikeSpeed = mState->player.State().bikeSpeed;     // horizontal speed (m/s)
 
 				// Normalised alignment: how much of the bike's speed is directed into the wall
 				float normalAlignment = (bikeSpeed > 0.5f)
@@ -625,13 +643,13 @@ namespace engine {
 				}
 
 				auto killFromCollision = [&]() {
-					mState->isAlive = false;
+					if (!mState->player.Die()) return;
 
 					m_audio->LoadSound("wasted", "Assets/Sounds/wasted.mp3");
 					m_audio->SetVolume("wasted", 1.5f);
 					m_audio->PlayOneShot("wasted");
-					mState->deathTimer = 0.0f;
-					mState->thirdPersonMode = false;
+					mState->camera.CancelPortal();
+					mState->camera.RequestFree();
 				};
 
 				const bool hardFrontalWallImpact =
@@ -877,7 +895,7 @@ namespace engine {
 			m_audio->LoadSound("AllCollectd", "Assets/Sounds/AllCollectd.mp3");
 			m_audio->SetVolume("AllCollectd", 0.8f);
 
-		/*	if (mState->isExtremeSpeed == true)
+		/*	if (mState->player.State().isExtremeSpeed == true)
 			{
 				audioSystem->LoadSound("ExtremeSpeed0", "Assets/Sounds/deepBass.mp3");
 				audioSystem->LoadSound("ExtremeSpeed1", "Assets/Sounds/breath.mp3");
@@ -896,7 +914,7 @@ namespace engine {
 			
 
 
-			if (mState->isExtremeSpeed)
+			if (mState->player.State().isExtremeSpeed)
 			{
 				
 				m_audio->SetVolume("ExtremeSpeed0", 2.5f);
@@ -911,9 +929,9 @@ namespace engine {
 			m_event->Subscribe(EventType::ItemCollected, [this, bikeBodyID_raw](Event& e) {
 				auto& col = static_cast<ItemCollectedEvent&>(e);
 				int collected = col.GetCurrentTotal();
-				mState->collectedItems = collected;
+				mState->level.collectedItems = collected;
 				Log(std::format("[Collection] {}/{} collected\n",
-					collected, mState->totalCollectibles));
+					collected, mState->level.totalCollectibles));
 
 				m_audio->PlayOneShot("Collect");
 
@@ -939,16 +957,16 @@ namespace engine {
 					if (lock.Succeeded()) {
 						lock.GetBody().GetMotionProperties()->SetInverseMass(1.0f / newMass);
 						printf("[Collect] Bike mass -> %.1f kg (%d/%d)\n",
-							newMass, collected, mState->totalCollectibles);
+							newMass, collected, mState->level.totalCollectibles);
 					}
 				}
 				});
 
 			// === 事件订阅：全部收集完毕 ===
 			m_event->Subscribe(EventType::AllItemsCollected, [this](Event& /*e*/) {
-				mState->allCollected = true;
+				mState->level.allCollected = true;
 				Log(std::format("[Collection] ALL {} ITEMS COLLECTED!\n",
-					mState->totalCollectibles));
+					mState->level.totalCollectibles));
 				Toast("All gas tanks collected! Bike fully lightened!");
 			});
 		}
@@ -1010,7 +1028,7 @@ namespace engine {
 			m_render->GetTriggerSystem().SetTriggerCallbacks(jumpPickupTrigger,
 				[this]() {
 					ScopedFlecsDefer defer(m_scene->get_world());
-					mState->jumpEnabled = true;
+					mState->player.UnlockJump();
 					RefreshAbilityHintUi();
 					if (m_springPickupEntity.is_valid() && m_bikeEntity.is_valid()) {
 						// Mount spring to bottom-center of bike frame, flipped upside down
@@ -1089,7 +1107,7 @@ namespace engine {
 			m_render->GetTriggerSystem().SetTriggerCallbacks(hornPickupTrigger,
 				[this]() {
 					ScopedFlecsDefer defer(m_scene->get_world());
-					mState->hornEnabled = true;
+					mState->player.UnlockHorn();
 					RefreshAbilityHintUi();//刷新提示UI
 					if (m_hornPickupEntity.is_valid() && m_bikeEntity.is_valid()) {
 						// Mount horn above right handlebar, no tilt (keep 180° X flip for model orientation)
@@ -1181,7 +1199,7 @@ namespace engine {
 			m_render->GetTriggerSystem().SetTriggerCallbacks(radioTrigger,
 				[this]() {
 					ScopedFlecsDefer defer(m_scene->get_world());
-					mState->radioEnabled = true;
+					mState->player.UnlockRadio();
 					for (auto& re : m_radioPickupEntities)
 						if (re.is_valid()) re.set<EntityStatus>({ false, false });
 					if (m_radioSongs.empty()) return;
@@ -1377,7 +1395,7 @@ namespace engine {
 			m_render->GetTriggerSystem().SetTriggerCallbacks(iblOffTrigger,
 				[this]() {
 					if (mState) {
-						mState->iblEnabled = false;
+						mState->renderOverrides.iblEnabled = false;
 						printf("[Trigger] IBL disabled\n");
 					}
 				},
@@ -1401,7 +1419,7 @@ namespace engine {
 			m_render->GetTriggerSystem().SetTriggerCallbacks(iblOnTrigger,
 				[this]() {
 					if (mState) {
-						mState->iblEnabled = true;
+						mState->renderOverrides.iblEnabled.reset();
 						printf("[Trigger] IBL enabled\n");
 					}
 				},
@@ -1448,7 +1466,10 @@ namespace engine {
 						});
 					// Switch to rocket-follow camera
 					m_rocketCameraActive = true;
-					if (mState) mState->thirdPersonMode = false;
+					if (mState) {
+						mState->player.SetControlEnabled(false);
+						mState->camera.BeginCinematic();
+					}
 
 					// 停止所有正在播放的声音
 					if (m_bgMusicPlaying && !m_radioSongs.empty())
@@ -1519,22 +1540,13 @@ namespace engine {
 			return;
 		}
 
-		mState->portalCameraActive = false;
-		mState->portalCameraTimer = 0.0f;
-		mState->portalCameraBoomLength = 0.0f;
-		mState->portalCameraStartSide = 1.0f;
-		mState->portalCameraPosition = glm::vec3(0.0f);
-		mState->portalCameraTargetPosition = glm::vec3(0.0f);
-		mState->portalCameraBoomOffset = glm::vec3(0.0f);
-		mState->portalCameraEntrySurface = glm::identity<glm::mat4>();
-		mState->portalCameraExitSurface = glm::identity<glm::mat4>();
-		mState->portalCameraInverseExitSurface = glm::identity<glm::mat4>();
-		mState->portalTransitionVisualActive = false;
-		mState->portalTransitionVisualTimer = 0.0f;
-		mState->portalTransitionRealAtExit = false;
-		mState->portalTransitionEntrySurface = glm::identity<glm::mat4>();
-		mState->portalTransitionExitSurface = glm::identity<glm::mat4>();
-		mState->portalTransitionExitCorrection = glm::vec3(0.0f);
+		mState->camera.CancelPortal();
+		mState->level.portalTransitionVisualActive = false;
+		mState->level.portalTransitionVisualTimer = 0.0f;
+		mState->level.portalTransitionRealAtExit = false;
+		mState->level.portalTransitionEntrySurface = glm::identity<glm::mat4>();
+		mState->level.portalTransitionExitSurface = glm::identity<glm::mat4>();
+		mState->level.portalTransitionExitCorrection = glm::vec3(0.0f);
 	}
 
 	void level::CloseActivePortals(bool showFeedback) {
@@ -1569,16 +1581,16 @@ namespace engine {
 			}
 		};
 
-		if (mState && mState->portalTransitionVisualActive) {
-			mState->portalTransitionVisualTimer = std::max(0.0f, mState->portalTransitionVisualTimer - dt);
-			if (mState->portalTransitionVisualTimer <= 0.0f) {
-				mState->portalTransitionVisualActive = false;
-				mState->portalTransitionRealAtExit = false;
+		if (mState && mState->level.portalTransitionVisualActive) {
+			mState->level.portalTransitionVisualTimer = std::max(0.0f, mState->level.portalTransitionVisualTimer - dt);
+			if (mState->level.portalTransitionVisualTimer <= 0.0f) {
+				mState->level.portalTransitionVisualActive = false;
+				mState->level.portalTransitionRealAtExit = false;
 			}
 		}
 
 		const bool anyPortalEnabled = m_portals[0].enabled || m_portals[1].enabled;
-		if (!anyPortalEnabled || !m_physics || !mState || !mState->isAlive) {
+		if (!anyPortalEnabled || !m_physics || !mState || !mState->player.CanControl()) {
 			resetPortalSamples();
 			return;
 		}
@@ -1637,13 +1649,13 @@ namespace engine {
 				portalLocal.z <= kPortalVolumeHalfDepth + 1.4f &&
 				portalLocal.z >= -kPortalVolumeHalfDepth - 0.25f;
 			if (nearRenderedPortalSide && m_portalPairCooldown <= 0.0f &&
-				!(mState->portalTransitionVisualActive && mState->portalTransitionRealAtExit)) {
-				mState->portalTransitionVisualActive = true;
-				mState->portalTransitionVisualTimer = mState->portalTransitionVisualDuration;
-				mState->portalTransitionRealAtExit = false;
-				mState->portalTransitionEntrySurface = portal.surfaceTransform;
-				mState->portalTransitionExitSurface = portal.exitSurfaceTransform;
-				mState->portalTransitionExitCorrection = glm::vec3(0.0f);
+				!(mState->level.portalTransitionVisualActive && mState->level.portalTransitionRealAtExit)) {
+				mState->level.portalTransitionVisualActive = true;
+				mState->level.portalTransitionVisualTimer = mState->level.portalTransitionVisualDuration;
+				mState->level.portalTransitionRealAtExit = false;
+				mState->level.portalTransitionEntrySurface = portal.surfaceTransform;
+				mState->level.portalTransitionExitSurface = portal.exitSurfaceTransform;
+				mState->level.portalTransitionExitCorrection = glm::vec3(0.0f);
 			}
 			bool crossedPlane = false;
 			if (portal.hasPreviousSample) {
@@ -1685,7 +1697,7 @@ namespace engine {
 				const glm::mat4 portalMap = PortalSpaceMap(portal.surfaceTransform, portal.exitSurfaceTransform);
 				glm::vec3 mappedBodyPos = TransformPoint(portalMap, bodyWorldPos);
 				glm::vec3 mappedSamplePos = TransformPoint(portalMap, samplePos);
-				glm::vec3 mappedFollowTarget = TransformPoint(portalMap, mState->followTargetPos);
+				glm::vec3 mappedFollowTarget = TransformPoint(portalMap, mState->camera.State().followTargetPos);
 				glm::vec3 mappedForward = NormalizeFlat(TransformVector(portalMap, currentForward));
 				glm::vec3 mappedVelocity = TransformVector(portalMap, currentVelocity);
 				glm::vec3 mappedAngularVelocity = TransformVector(portalMap, currentAngularVelocity);
@@ -1729,89 +1741,28 @@ namespace engine {
 					mappedAngularVelocity.y,
 					mappedAngularVelocity.z);
 
-				const float portalCameraDistanceCap = std::max(
-					0.1f,
-					mState->Distance > 0.1f ? mState->Distance : mState->targetDistance);
-				const bool teleportCameraWithBike =
-					mState->isExtremeSpeed || currentSpeed >= kDeployExtremeSpeedThreshold;
-				if (teleportCameraWithBike) {
-					glm::mat4 mappedCamera = portalMap * mState->camera2world;
-					mappedCamera[3] += glm::vec4(exitCorrection, 0.0f);
-					const glm::vec3 mappedCameraPos = glm::vec3(mappedCamera[3]);
-					const glm::vec3 mappedCameraTarget = mappedFollowTarget + glm::vec3(0.0f, 1.6f, 0.0f);
-					glm::vec3 mappedCameraOffset = mappedCameraPos - mappedCameraTarget;
-					const float rawMappedCameraDistance = glm::length(mappedCameraOffset);
-					const float mappedCameraDistance = std::min(std::max(rawMappedCameraDistance, 0.1f), portalCameraDistanceCap);
-					const glm::vec3 mappedCameraBack = Normalize3(
-						glm::vec3(mappedCamera * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f)),
-						glm::vec3(0.0f, 0.0f, 1.0f));
-					mappedCameraOffset = Normalize3(mappedCameraOffset, mappedCameraBack);
-					if (rawMappedCameraDistance > portalCameraDistanceCap || rawMappedCameraDistance < 0.1f) {
-						mappedCamera[3] = glm::vec4(mappedCameraTarget + mappedCameraOffset * mappedCameraDistance, 1.0f);
-					}
+				PortalCameraRequest cameraRequest{};
+				cameraRequest.entrySurface = portal.surfaceTransform;
+				cameraRequest.exitSurface = portal.exitSurfaceTransform;
+				cameraRequest.portalMap = portalMap;
+				cameraRequest.exitCorrection = exitCorrection;
+				cameraRequest.mappedFollowTarget = mappedFollowTarget;
+				cameraRequest.teleportImmediately =
+					mState->player.State().isExtremeSpeed || currentSpeed >= kDeployExtremeSpeedThreshold;
+				mState->camera.BeginPortal(cameraRequest);
 
-					ResetPortalCameraState();
-					mState->camera2world = mappedCamera;
-					mState->followTargetPos = mappedFollowTarget;
-					mState->Distance = mappedCameraDistance;
-					mState->targetDistance = mappedCameraDistance;
-					mState->Yaw = std::atan2(mappedCameraOffset.x, mappedCameraOffset.z);
-					mState->targetYaw = mState->Yaw;
-					mState->Pitch = std::asin(glm::clamp(mappedCameraOffset.y, -1.0f, 1.0f));
-					mState->targetPitch = mState->Pitch;
-				}
-				else {
-					mState->portalCameraActive = true;
-					mState->portalCameraTimer = 0.0f;
-					mState->portalCameraPosition = glm::vec3(mState->camera2world[3]);
-					const glm::mat4 exitToEntry = PortalSpaceMap(portal.exitSurfaceTransform, portal.surfaceTransform);
-					mState->portalCameraTargetPosition = TransformPoint(
-						exitToEntry,
-						mappedFollowTarget + glm::vec3(0.0f, 1.6f, 0.0f));
-					mState->portalCameraBoomOffset = mState->portalCameraPosition - mState->portalCameraTargetPosition;
-					const float rawPortalBoomDistance = glm::length(mState->portalCameraBoomOffset);
-					const float portalBoomDistance = std::min(std::max(rawPortalBoomDistance, 0.1f), portalCameraDistanceCap);
-					const glm::vec3 cameraBack = Normalize3(
-						glm::vec3(mState->camera2world * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f)),
-						glm::vec3(0.0f, 0.0f, 1.0f));
-					const glm::vec3 portalBoomDir = Normalize3(mState->portalCameraBoomOffset, cameraBack);
-					if (rawPortalBoomDistance > portalCameraDistanceCap || rawPortalBoomDistance < 0.1f) {
-						mState->portalCameraPosition =
-							mState->portalCameraTargetPosition + portalBoomDir * portalBoomDistance;
-						mState->portalCameraBoomOffset = portalBoomDir * portalBoomDistance;
-					}
-					mState->portalCameraBoomLength = portalBoomDistance;
-					mState->Distance = portalBoomDistance;
-					mState->targetDistance = portalBoomDistance;
-					mState->Yaw = std::atan2(portalBoomDir.x, portalBoomDir.z);
-					mState->targetYaw = mState->Yaw;
-					mState->Pitch = std::asin(glm::clamp(portalBoomDir.y, -1.0f, 1.0f));
-					mState->targetPitch = mState->Pitch;
-					mState->portalCameraEntrySurface = portal.surfaceTransform;
-					mState->portalCameraExitSurface = portal.exitSurfaceTransform;
-					mState->portalCameraInverseExitSurface = portal.inverseExitSurfaceTransform;
-					const float cameraEntryLocalZ = glm::vec3(
-						portal.inverseSurfaceTransform *
-						glm::vec4(mState->portalCameraPosition, 1.0f)).z;
-					mState->portalCameraStartSide = cameraEntryLocalZ < 0.0f ? -1.0f : 1.0f;
-				}
-
-				mState->portalTransitionVisualActive = true;
-				mState->portalTransitionVisualTimer = mState->portalTransitionVisualDuration;
-				mState->portalTransitionRealAtExit = true;
-				mState->portalTransitionEntrySurface = portal.surfaceTransform;
-				mState->portalTransitionExitSurface = portal.exitSurfaceTransform;
-				mState->portalTransitionExitCorrection = exitCorrection;
+				mState->level.portalTransitionVisualActive = true;
+				mState->level.portalTransitionVisualTimer = mState->level.portalTransitionVisualDuration;
+				mState->level.portalTransitionRealAtExit = true;
+				mState->level.portalTransitionEntrySurface = portal.surfaceTransform;
+				mState->level.portalTransitionExitSurface = portal.exitSurfaceTransform;
+				mState->level.portalTransitionExitCorrection = exitCorrection;
 
 				bi.SetPositionAndRotation(id, exitPos, exitRot, JPH::EActivation::Activate);
 				bi.SetLinearVelocity(id, exitVel);
 				bi.SetAngularVelocity(id, exitAngularVel);
 
-				mState->bikeYaw = mappedYaw;
-				mState->cameraIdleTimer = 0.0f;
-				mState->followTargetPos = mappedFollowTarget;
-				mState->thirdPersonMode = true;
-				mState->lastPedal = -1;
+				mState->player.NotifyTeleported(mappedYaw, glm::vec3(static_cast<float>(exitPos.GetX()), static_cast<float>(exitPos.GetY()), static_cast<float>(exitPos.GetZ())));
 
 				if (m_audio) {
 					m_audio->PlayOneShot("PortalWarp");
@@ -1829,9 +1780,20 @@ namespace engine {
 		}
 	}
 
+	void level::RefreshPlayerMotion() {
+		if (m_bikeController) m_bikeController->SampleMotion();
+		if (mState) {
+			if (m_previousAliveState && !mState->player.State().isAlive) {
+				mState->camera.CancelPortal();
+				mState->camera.RequestFree();
+			}
+			m_previousAliveState = mState->player.State().isAlive;
+		}
+	}
+
 	void level::Update(float dt) {
 
-		if (m_input && m_input->IsActionPressed("ClosePortal")) {
+		if (mState->player.CanControl() && m_input && m_input->IsActionPressed("ClosePortal")) {
 			CloseActivePortals(true);
 			if (m_input->IsActionHeld("DEPLOY")) {
 				m_deployConsumedUntilRelease = true;
@@ -1846,7 +1808,7 @@ namespace engine {
 			s_checkpointCooldown -= dt;
 		}
 
-		if (mState->isAlive && m_input && m_input->IsActionPressed("SetCheckpoint") && s_checkpointCooldown <= 0.0f) {
+		if (mState->player.CanControl() && m_input && m_input->IsActionPressed("SetCheckpoint") && s_checkpointCooldown <= 0.0f) {
 			if (m_bikeEntity.is_valid() && m_physics) {
 				uint32_t bikeBodyID = JPH::BodyID::cInvalidBodyID;
 				if (m_bikeEntity.has<PhysicsBody>()) bikeBodyID = m_bikeEntity.get<PhysicsBody>().bodyID;
@@ -1905,12 +1867,6 @@ namespace engine {
 				}
 			}
 		}
-		if (mState) {
-			if (m_previousAliveState && !mState->isAlive) {
-				++mState->deathCount;
-			}
-			m_previousAliveState = mState->isAlive;
-		}
 
 		if (m_winUiDelayTimer >= 0.0f) {
 			m_winUiDelayTimer -= dt;
@@ -1920,10 +1876,10 @@ namespace engine {
 			}
 		}
 
-		const bool canRespawnNow = mState && !mState->isAlive;
+		const bool canRespawnNow = mState && !mState->player.State().isAlive && mState->player.State().controlEnabled;
 
 		if (mState) {
-			if (!mState->isAlive && canRespawnNow) {
+			if (!mState->player.State().isAlive && canRespawnNow) {
 				if (!m_respawnPromptVisible) {
 					m_respawnPromptVisible = AddWidget(kRespawnPromptUiPath);
 				}
@@ -1982,7 +1938,7 @@ namespace engine {
 				for (int i = 0; i < m_radioSongs.size(); ++i) {
 					m_audio->PlayLoop(m_radioSongs[i]);
 
-					if (i == m_currentSongIndex && !mState->radioMuted) {
+					if (i == m_currentSongIndex && !mState->level.radioMuted) {
 						m_audio->SetVolume(m_radioSongs[i], 0.35f);
 					}
 					else {
@@ -2026,13 +1982,13 @@ namespace engine {
 			s_radioInputCooldown -= dt;
 		}
 
-		if (m_bgMusicPlaying && !m_radioSongs.empty() && m_input) {
+		if (mState->player.CanControl() && m_bgMusicPlaying && !m_radioSongs.empty() && m_input) {
 
 			// 1. M 键静音切换 (保持不变)
 			if (m_input->IsActionPressed("Mute") && s_radioInputCooldown <= 0.0f) {
-				mState->radioMuted = !mState->radioMuted; // 状态翻转
+				mState->level.radioMuted = !mState->level.radioMuted; // 状态翻转
 
-				if (mState->radioMuted) {
+				if (mState->level.radioMuted) {
 					m_audio->SetVolume(m_radioSongs[m_currentSongIndex], 0.0f);
 					Toast("Radio Muted");
 				}
@@ -2055,7 +2011,7 @@ namespace engine {
 				m_currentSongIndex = (m_currentSongIndex + 1) % static_cast<int>(m_radioSongs.size());
 
 				// 3. 把新频道的音量推上去 (前提是玩家没按 M 键静音)
-				if (!mState->radioMuted) {
+				if (!mState->level.radioMuted) {
 					m_audio->SetVolume(m_radioSongs[m_currentSongIndex], 0.35f);
 				}
 
@@ -2066,7 +2022,7 @@ namespace engine {
 				s_radioInputCooldown = 0.3f;
 			}
 		}
-		if (mState->hornEnabled && m_input && m_audio && m_input->IsActionPressed("Horn")) {
+		if (mState->player.CanControl() && mState->player.State().hornEnabled && m_input && m_audio && m_input->IsActionPressed("Horn")) {
 			m_audio->LoadSound("Horn", "Assets/Sounds/bicycle_horn.mp3");
 			m_audio->SetVolume("Horn", 0.7f);
 			m_audio->PlayOneShot("Horn");
@@ -2074,7 +2030,7 @@ namespace engine {
 		}
 
 		// Spring squeeze animation on jump (Space)
-		if (mState->jumpEnabled && m_input && m_input->IsActionPressed("Jump"))
+		if (mState->player.CanControl() && mState->player.State().jumpEnabled && m_input && m_input->IsActionPressed("Jump"))
 			m_springAnimTimer = 0.0f;
 
 		// Horn squeeze animation: scale up then back to original
@@ -2139,7 +2095,7 @@ namespace engine {
 				lookTarget = camPos + glm::vec3(0.0f, -1.0f, 0.0f);
 				up     = glm::vec3(0.0f, 0.0f, -1.0f);
 			}
-			mState->camera2world = glm::inverse(glm::lookAt(camPos, lookTarget, up));
+			mState->camera.SetCinematicTransform(glm::inverse(glm::lookAt(camPos, lookTarget, up)));
 		}
 
 		// Satellite spin — rotate around Y axis while mounted
@@ -2204,7 +2160,7 @@ namespace engine {
 		// =========================================================
 		// 长按 DEPLOY 键：急速状态下展开传送门；死亡时在尸体处原地复活
 		// =========================================================
-		const bool deployHeld = m_input && m_input->IsActionHeld("DEPLOY");
+		const bool deployHeld = mState->player.State().controlEnabled && m_input && m_input->IsActionHeld("DEPLOY");
 		auto cancelDeployPortalCharge = [&]() {
 			if (!m_deployPortalCharging) {
 				return;
@@ -2228,7 +2184,7 @@ namespace engine {
 			m_deployConsumedUntilRelease = false;
 		}
 
-		if (deployHeld && !m_deployConsumedUntilRelease && mState && mState->isAlive && m_hasCheckpoint && m_render && m_physics) {
+		if (deployHeld && !m_deployConsumedUntilRelease && mState && mState->player.State().isAlive && m_hasCheckpoint && m_render && m_physics) {
 			bool chargingPortalThisFrame = false;
 			const uint32_t bikeBodyID = GetBikeBodyID();
 			if (bikeBodyID != JPH::BodyID::cInvalidBodyID) {
@@ -2239,7 +2195,7 @@ namespace engine {
 					const float horizontalSpeed = std::sqrt(
 						currentVelocity.GetX() * currentVelocity.GetX() +
 						currentVelocity.GetZ() * currentVelocity.GetZ());
-					const bool isExtremeForDeploy = (mState->isExtremeSpeed || horizontalSpeed >= kDeployExtremeSpeedThreshold);
+					const bool isExtremeForDeploy = (mState->player.State().isExtremeSpeed || horizontalSpeed >= kDeployExtremeSpeedThreshold);
 
 					if (isExtremeForDeploy) {
 						const JPH::RVec3 currentPos = bi.GetPosition(id);
@@ -2349,7 +2305,7 @@ namespace engine {
 		if (m_deployHoldTimer >= kDeployPortalHoldDuration && !m_deployConsumedUntilRelease) {
 			bool deployActionHandled = false;
 			bool portalDeployHandled = false;
-			if (mState && mState->isAlive && mState->isExtremeSpeed && m_hasCheckpoint && m_render && m_physics) {
+			if (mState && mState->player.State().isAlive && mState->player.State().isExtremeSpeed && m_hasCheckpoint && m_render && m_physics) {
 				const uint32_t bikeBodyID = GetBikeBodyID();
 				if (bikeBodyID != JPH::BodyID::cInvalidBodyID) {
 					JPH::BodyInterface& bi = m_physics->GetJoltSystem()->GetBodyInterface();
@@ -2432,7 +2388,7 @@ namespace engine {
 			}
 			deployActionHandled = portalDeployHandled;
 
-			if (!portalDeployHandled && mState && !mState->isAlive && canRespawnNow && m_scene && m_physics) {
+			if (!portalDeployHandled && mState && !mState->player.State().isAlive && canRespawnNow && m_scene && m_physics) {
 				flecs::entity bikeEntity = m_scene->find_entity("Bike_0");
 				if (bikeEntity.is_valid()) {
 					uint32_t bikeBodyID = JPH::BodyID::cInvalidBodyID;
@@ -2460,20 +2416,10 @@ namespace engine {
 						bi.SetLinearVelocity(id, JPH::Vec3::sZero());
 						bi.SetAngularVelocity(id, JPH::Vec3::sZero());
 
-						mState->portalCameraActive = false;
-						mState->portalCameraTimer = 0.0f;
-						mState->portalCameraBoomLength = 0.0f;
-						mState->portalCameraStartSide = 1.0f;
-						mState->portalCameraTargetPosition = glm::vec3(0.0f);
-						mState->portalCameraBoomOffset = glm::vec3(0.0f);
-						mState->isAlive = true;
-						mState->deathTimer = 0.0f;
-						mState->bikeLeanAngle = 0.0f;
-						mState->bikeSteerAngle = 0.0f;
-						mState->thirdPersonMode = true;
-						mState->bikeSpeed = 0.0f;
-						mState->engineForce = 0.0f;
-						mState->lastPedal = -1;
+						ReleaseRocketCamera(false);
+						mState->camera.CancelPortal();
+						mState->player.Respawn(currentYaw, glm::vec3(static_cast<float>(currentPos.GetX()), static_cast<float>(currentPos.GetY()), static_cast<float>(currentPos.GetZ())));
+						mState->camera.ResetFollow();
 
 						RemoveWidget(kRespawnPromptUiPath);
 						m_respawnPromptVisible = false;
@@ -2488,7 +2434,7 @@ namespace engine {
 				m_deployHoldTimer = 0.0f;
 				m_deployConsumedUntilRelease = true;
 			}
-			else if (mState && mState->isAlive) {
+			else if (mState && mState->player.State().isAlive) {
 				m_deployHoldTimer = 0.0f;
 			}
 		}
@@ -2531,13 +2477,10 @@ namespace engine {
 		m_deployPortalCheckpointBodyPos = glm::vec3(0.0f);
 		m_deployPortalCheckpointForward = glm::vec3(0.0f, 0.0f, -1.0f);
 		if (mState) {
-			mState->portalCameraActive = false;
-			mState->portalCameraTimer = 0.0f;
-			mState->portalCameraBoomLength = 0.0f;
-			mState->portalCameraStartSide = 1.0f;
-			mState->portalCameraTargetPosition = glm::vec3(0.0f);
-			mState->portalCameraBoomOffset = glm::vec3(0.0f);
+			mState->camera.CancelPortal();
+			mState->renderOverrides.iblEnabled.reset();
 		}
+		ReleaseRocketCamera(false);
 		m_bikeController.reset();
 	}
 

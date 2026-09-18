@@ -16,6 +16,13 @@ namespace engine {
     class RenderSystem;
     class SceneManager;
     class AudioSystem;
+    class CameraController;
+    struct PlayerState;
+    struct EditorState;
+    struct RenderSettings;
+    struct RenderOverrides;
+    struct RenderStatistics;
+    struct RenderCapabilities;
 
     class EngineUi {
     public:
@@ -34,7 +41,7 @@ namespace engine {
 
         //================Editor workspace and scene snapshots================
 		// 绘制顶部主菜单栏//Draw the top main menu bar
-        static void DrawMainMenuBar(RenderSystem* renderSys, SceneManager* sceneManager, UserState& state, bool& appRunning);
+        static void DrawMainMenuBar(RenderSystem* renderSys, SceneManager* sceneManager, EditorState& editor, const RenderCapabilities& capabilities, bool& appRunning);
 
         static void DrawEditorWorkspace();
 		
@@ -63,30 +70,30 @@ namespace engine {
         
 		//绘制 3D 渲染画面、图标、Gizmo 坐标轴//Draw the 3D rendered scene, icons, and Gizmo axes
         static ImDrawList* GetSceneViewportDrawList();
-        static void DrawSceneViewport(VkDescriptorSet sceneTexId, RenderSystem* renderSys, SceneManager* sceneManager, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, UserState& state);
+        static void DrawSceneViewport(VkDescriptorSet sceneTexId, RenderSystem* renderSys, SceneManager* sceneManager, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, EditorState& editor, const RenderSettings& render);
 
 
         //================Editor Panels 编辑器面板=============================
 		//内容浏览器面板（显示 Assets 资源）//Content Browser panel (showing Assets)
-        static void DrawContentBrowser(RenderSystem* renderSys, SceneManager* sceneManager, UserState& state);
+        static void DrawContentBrowser(RenderSystem* renderSys, SceneManager* sceneManager, EditorState& editor);
 
         // Independent editor tools; each owns its visibility/close button.
-        static void DrawRenderSettings(UserState& state);
-        static void DrawParticlePanel(UserState& state, RenderSystem* renderSys, flecs::entity_t& selected_id);
-        static void DrawConsole(UserState& state);
+        static void DrawRenderSettings(RenderSettings& render, const RenderOverrides& overrides, EditorState& editor);
+        static void DrawParticlePanel(RenderSettings& render, EditorState& editor, RenderSystem* renderSys, flecs::entity_t& selected_id);
+        static void DrawConsole(EditorState& editor);
 
         //light UI灯光调节面板
-        static void DrawLightPanel(SceneManager* sceneManager, UserState& state);
+        static void DrawLightPanel(SceneManager* sceneManager, EditorState& editor);
 
         //camera UI相机调节面板
-        static void DrawCameraPanel(UserState& state);
+        static void DrawCameraPanel(CameraController& controller, const PlayerState& player, EditorState& editor);
 		//调试信息面板//Debug info panel
-        static void DrawDebugPanel(UserState& state);
+        static void DrawDebugPanel(EditorState& editor, const RenderStatistics& statistics, const RenderCapabilities& capabilities);
 		//音频系统面板//Audio system panel
-        static void DrawAudioPanel(UserState& state, AudioSystem* audioSystem);
+        static void DrawAudioPanel(EditorState& editor, AudioSystem* audioSystem);
 
 		// 场景层级面板与属性检查器（Inspector）//Scene Hierarchy panel with property inspector (Inspector)
-        static void DrawSceneHierarchy(RenderSystem* renderSys, SceneManager* sceneManager, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, UserState& state);
+        static void DrawSceneHierarchy(RenderSystem* renderSys, SceneManager* sceneManager, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, EditorState& editor);
 		
 
     private:

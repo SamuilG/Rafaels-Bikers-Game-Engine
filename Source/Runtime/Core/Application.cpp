@@ -22,16 +22,16 @@ namespace engine {
 
         physicsSystem = AddSystem<PhysicsSystem>();
         physicsSystem->SetEventSystem(eventSystem);
-        physicsSystem->SetUserState(&mState);
+
 
         sceneManager = AddSystem<SceneManager>(physicsSystem);
-        sceneManager->SetUserState(&mState);
+        sceneManager->SetState(&mSceneState);
 
         animationSystem = AddSystem<AnimationSystem>();
         animationSystem->set_scene_manager(sceneManager);
 
         renderSystem = AddSystem<RenderSystem>(Running, sceneManager);
-        renderSystem->SetUserState(&mState);
+        renderSystem->SetState(&mRendererState);
         renderSystem->set_animation_system(animationSystem);
 		renderSystem->SetAudioSystem(audioSystem);
         
@@ -55,7 +55,7 @@ namespace engine {
         if (inputSystem && renderSystem) {
             inputSystem->SetWindow(renderSystem->GetGLFWWindow());
             renderSystem->SetInputSystem(inputSystem);
-            physicsSystem->SetInputSystem(inputSystem);
+
         }
 
 		// UI 系统初始化
@@ -107,7 +107,7 @@ namespace engine {
         //m_currentScene = std::make_unique<TestScene>();
         m_currentScene = std::make_unique<level>();
 
-        m_currentScene->Init(renderSystem, sceneManager, physicsSystem, inputSystem, eventSystem, &mState, animationSystem, audioSystem);
+        m_currentScene->Init(renderSystem, sceneManager, physicsSystem, inputSystem, eventSystem, &mGameplayState, animationSystem, audioSystem);
         sceneManager->Update(0.0f);
         animationSystem->Update(0.0f);
         if (runtimeUiController) runtimeUiController->SyncGameFlowUi();
@@ -146,12 +146,16 @@ namespace engine {
                     continue;
                 }
                 sys->Update(dt);
+                if (sys.get() == physicsSystem) {
+                    if (m_currentScene) m_currentScene->RefreshPlayerMotion();
+                    mState.player.UpdateEffects(dt);
+                }
             }
 
             //audio system
            // 根据自行车速度状态调整音效// Adjust bike chain sound based on bike speed
             if (audioSystem) {
-                float speed01 = mState.gameFlow.CanSimulate() ? std::clamp(mState.bikeSpeed / 40.0f, 0.0f, 1.0f) : 0.0f;
+                float speed01 = mState.gameFlow.CanSimulate() ? std::clamp(mState.player.State().bikeSpeed / 40.0f, 0.0f, 1.0f) : 0.0f;
 
                 audioSystem->SetRuntimeVolume("BikeChain", speed01);
                 audioSystem->SetPitch("BikeChain", 0.75f + speed01 * 1.25f);
@@ -190,10 +194,6 @@ namespace engine {
 
     bool Application::ReloadCurrentScene() {
         renderSystem->WaitForGpuIdle();
-        // Keep the in-flight flow transaction across the existing whole-state reset.
-        const GameFlowController preserveFlow = mState.gameFlow;
-        const bool preserveShowEngineUi = mState.showEngineUi;
-        const bool preserveRuntimeUi = mState.showRuntimeUi;
         const float preserveMasterVolume = audioSystem ? audioSystem->GetMasterVolume() : 1.0f;
 
         if (m_currentScene) {
@@ -226,7 +226,7 @@ namespace engine {
             physicsSystem->Shutdown();
             physicsSystem->Init();
             physicsSystem->SetEventSystem(eventSystem);
-            physicsSystem->SetInputSystem(inputSystem);
+
         }
 
         if (sceneManager) {
@@ -240,26 +240,20 @@ namespace engine {
             animationSystem->set_scene_manager(sceneManager);
         }
 
-        mState = UserState{};
-        mState.gameFlow = preserveFlow;
-        mState.showEngineUi = preserveShowEngineUi;
-        mState.showRuntimeUi = preserveRuntimeUi;
+        mState.ResetSession();
 
-        if (physicsSystem) {
-            physicsSystem->SetUserState(&mState);
-        }
         if (sceneManager) {
-            sceneManager->SetUserState(&mState);
+            sceneManager->SetState(&mSceneState);
         }
         if (renderSystem) {
-            renderSystem->SetUserState(&mState);
+            renderSystem->SetState(&mRendererState);
         }
 
         // Only level loading failures can recover to a menu. Rebuilding an engine
         // subsystem above must finish before another frame is allowed to render.
         try {
             m_currentScene = std::make_unique<level>();
-            m_currentScene->Init(renderSystem, sceneManager, physicsSystem, inputSystem, eventSystem, &mState, animationSystem, audioSystem);
+            m_currentScene->Init(renderSystem, sceneManager, physicsSystem, inputSystem, eventSystem, &mGameplayState, animationSystem, audioSystem);
             sceneManager->Update(0.0f);
             animationSystem->Update(0.0f);
             return true;

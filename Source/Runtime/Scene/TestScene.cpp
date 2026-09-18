@@ -22,6 +22,7 @@ namespace engine {
 		m_input = input;
 		m_event = eventSys;
 		mState = state;
+		m_previousAliveState = mState ? mState->player.State().isAlive : true;
 		m_anima = anima;
 		m_audio = audio;
 
@@ -50,7 +51,7 @@ namespace engine {
         m_scene->LoadModel(m_render, "Assets/Models/tbikeWithAnchor.glb", engine::ModelPhysicsType::CustomC, 90.0f, tbpos);
 
 		// 3. ��ʼ������������
-		m_bikeController = std::make_unique<BikeController>(m_physics->GetJoltSystem(), m_input, mState);
+		m_bikeController = std::make_unique<BikeController>(m_physics->GetJoltSystem(), m_input, &mState->player);
 		m_audio->LoadSound("Jump", "Assets/Sounds/jump_effect.mp3");
 		m_bikeController->SetAudioSystem(m_audio);
 		flecs::entity bikeEntity = m_scene->find_entity("Bike_0");
@@ -244,7 +245,7 @@ namespace engine {
 				constexpr float kFrontalThreshold = 0.90f; // raised: require near-head-on collision to be fatal
 
 				float impactSpeed = col.GetRelativeSpeed(); // approach speed along normal (m/s)
-				float bikeSpeed = mState->bikeSpeed;     // horizontal speed (m/s)
+				float bikeSpeed = mState->player.State().bikeSpeed;     // horizontal speed (m/s)
 
 				// Normalised alignment: how much of the bike's speed is directed into the wall
 				float normalAlignment = (bikeSpeed > 0.5f)
@@ -262,14 +263,14 @@ namespace engine {
 
 				if (impactSpeed >= kFatalSpeed && normalAlignment >= kFrontalThreshold) {
 					// Fatal frontal collision -> game over
-					mState->isAlive = false;
+					if (!mState->player.Die()) return;
 
 
 					m_audio->LoadSound("wasted", "Assets/Sounds/wasted.mp3");
 					m_audio->SetVolume("wasted", 1.2f);
 					m_audio->PlayOneShot("wasted");
-					mState->deathTimer = 0.0f;
-					mState->thirdPersonMode = false;
+					mState->camera.CancelPortal();
+					mState->camera.RequestFree();
 					printf("[Collision] FATAL: speed=%.2f m/s align=%.2f | %s vs %s\n",
 						impactSpeed, normalAlignment,
 						col.GetEntityA().c_str(), col.GetEntityB().c_str());
@@ -353,20 +354,31 @@ namespace engine {
 
 		m_event->Subscribe(EventType::ItemCollected, [this](Event& e) {
 			auto& col = static_cast<ItemCollectedEvent&>(e);
-			mState->collectedItems = col.GetCurrentTotal();
+			mState->level.collectedItems = col.GetCurrentTotal();
 			Log(std::format("[Collection] {}/{} collected\n",
-				col.GetCurrentTotal(), mState->totalCollectibles));
+				col.GetCurrentTotal(), mState->level.totalCollectibles));
 
 			m_audio->PlayOneShot("Collect");
 		});
 
 		m_event->Subscribe(EventType::AllItemsCollected, [this](Event& e) {
-			mState->allCollected = true;
-			mState->bikeTuning.maxSpeed *= 2.0f;
+			mState->level.allCollected = true;
+			mState->level.bikeTuning.maxSpeed *= 2.0f;
 			Log("[Collection] ALL ITEMS COLLECTED — max speed unlocked!\n");
 			Toast("All collectibles found! MAX SPEED UNLOCKED!");
 			m_allCollectSoundDelay = 0.8f; 
 		});
+	}
+
+	void TestScene::RefreshPlayerMotion() {
+		if (m_bikeController) m_bikeController->SampleMotion();
+		if (mState) {
+			if (m_previousAliveState && !mState->player.State().isAlive) {
+				mState->camera.CancelPortal();
+				mState->camera.RequestFree();
+			}
+			m_previousAliveState = mState->player.State().isAlive;
+		}
 	}
 
 	void TestScene::Update(float dt) {
@@ -380,15 +392,15 @@ namespace engine {
 			}
 		}
 
-		if (m_input && m_audio && m_input->IsActionPressed("Horn")) {
+		if (mState->player.CanControl() && m_input && m_audio && m_input->IsActionPressed("Horn")) {
 			m_audio->LoadSound("Horn", "Assets/Sounds/bicycle_horn.mp3");
 			m_audio->SetVolume("Horn", 0.2f);
 			m_audio->PlayOneShot("Horn");
 		}
 	
-		if (m_input && m_input->IsActionPressed("DEPLOY")) {
+		if (mState->player.State().controlEnabled && m_input && m_input->IsActionPressed("DEPLOY")) {
 			
-			if (!mState->isAlive) {
+			if (!mState->player.State().isAlive) {
 				flecs::entity bikeEntity = m_scene->find_entity("Bike_0");
 				if (bikeEntity.is_valid()) {
 					uint32_t bikeBodyID = JPH::BodyID::cInvalidBodyID;
@@ -419,11 +431,8 @@ namespace engine {
 							bi.SetLinearVelocity(id, JPH::Vec3::sZero());
 							bi.SetAngularVelocity(id, JPH::Vec3::sZero());
 
-							mState->isAlive = true;
-							mState->deathTimer = 0.0f;
-							mState->bikeLeanAngle = 0.0f;
-							mState->bikeSteerAngle = 0.0f;
-							mState->thirdPersonMode = true;
+							mState->player.Respawn(currentYaw, glm::vec3(static_cast<float>(currentPos.GetX()), static_cast<float>(currentPos.GetY()), static_cast<float>(currentPos.GetZ())));
+							mState->camera.ResetFollow();
 							printf("[Gameplay] Bike stopped and respawned in place!\n");
 						}
 						else {
@@ -447,7 +456,12 @@ namespace engine {
 	}
 
 	void TestScene::Shutdown() {
-
+		if (mState) {
+			mState->camera.CancelPortal();
+			mState->camera.EndCinematic();
+			mState->player.SetControlEnabled(true);
+		}
+		m_previousAliveState = true;
 		m_bikeController.reset();
 	}
 

@@ -24,9 +24,6 @@
 #include <vector> 
 #include "../Core/System.h"
 #include "../Scene/model_loader/engine_model.hpp"
-#include "../Renderer/RenderUtilities/camera.hpp"
-#include "../Input/InputSystem.hpp"
-#include "../UserState/UserState.hpp"
 
 // helper to convert GLM to Jolt
 inline JPH::Vec3 toJolt(const glm::vec3& v) { return JPH::Vec3(v.x, v.y, v.z); }
@@ -99,8 +96,6 @@ namespace engine {
         void set_body_scale(uint32_t bodyID, const glm::vec3& newScale, const glm::vec3& currentWorldPos, const glm::quat& currentWorldRot);
         //=============================UI System Interactions=============================
 
-        void SetInputSystem(engine::InputSystem* sys) { mInputSystem = sys; }
-        void SetUserState(UserState* state) { this->mState = state; }
 
 
         // 【关键修复】：暴露底层的 Jolt PhysicsSystem 给控制器使用！
@@ -133,8 +128,6 @@ namespace engine {
         std::unique_ptr<ObjectVsBroadPhaseLayerFilterImpl> m_objectVsBroadphaseFilter;
         std::unique_ptr<ObjectLayerPairFilterImpl> m_objectVsObjectFilter;
 
-        engine::InputSystem* mInputSystem = nullptr;
-        UserState* mState = nullptr;
 
         // Optional Event System Link
         EventSystem* m_eventSystem = nullptr;

@@ -62,6 +62,9 @@ namespace engine {
         InputSystem* inputSystem = nullptr;
         EventSystem* eventSystem = nullptr;
         UserState mState;
+        GameplayState mGameplayState = mState.Gameplay();
+        SceneStateView mSceneState = mState.Scene();
+        RendererStateView mRendererState = mState.Renderer();
         AnimationSystem* animationSystem = nullptr;
         std::unique_ptr<GameScene> m_currentScene;
 

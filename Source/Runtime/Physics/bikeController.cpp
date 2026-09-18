@@ -6,7 +6,7 @@
 #include <iostream>
 #include <cmath>
 #include <algorithm>
-#include "../UserState/GameplayState.hpp"
+#include "../UserState/PlayerController.hpp"
 
 #include "../Input/InputSystem.hpp" 
 #include <Jolt/Physics/Collision/RayCast.h>
@@ -16,28 +16,56 @@
 #include "PhysicsSystem.hpp"
 namespace engine
 {
-    float speed;
 
-    BikeController::BikeController(JPH::PhysicsSystem* joltPhysics, InputSystem* input, GameplayState* state)
-        : m_joltPhysics(joltPhysics), m_inputSystem(input), m_state(state)
+    BikeController::BikeController(JPH::PhysicsSystem* joltPhysics, InputSystem* input, PlayerController* player)
+        : m_joltPhysics(joltPhysics), m_inputSystem(input), m_player(player)
     {
     }
 
     void BikeController::Init(uint32_t chassisBodyID)
     {
-        if (!m_joltPhysics || chassisBodyID == JPH::BodyID::cInvalidBodyID) return;
+        if (!m_joltPhysics || !m_player || chassisBodyID == JPH::BodyID::cInvalidBodyID) return;
 
         m_bicycle = std::make_unique<BicycleState>();
         m_bicycle->chassisID = JPH::BodyID(chassisBodyID);
 
         JPH::BodyInterface& bi = m_joltPhysics->GetBodyInterface();
         bi.SetGravityFactor(m_bicycle->chassisID, 1.5f);
+        m_motionResetRevision = m_player->State().motionResetRevision;
+        m_engineForce = 0.0f;
+        m_lastPedal = -1;
+        SampleMotion();
 
         std::cout << "[Bicycle] bicycle created via BikeController." << std::endl;
     }
 
+    void BikeController::SampleMotion() {
+        if (!m_bicycle || !m_joltPhysics || !m_player) return;
+        const auto revision = m_player->State().motionResetRevision;
+        if (revision != m_motionResetRevision) {
+            m_bicycle->steerAngle = 0.0f;
+            m_bicycle->leanAngle = 0.0f;
+            m_bicycle->currentSpeed = 0.0f;
+            m_engineForce = 0.0f;
+            m_lastPedal = -1;
+            m_motionResetRevision = revision;
+        }
+        JPH::BodyInterface& bi = m_joltPhysics->GetBodyInterface();
+        const JPH::BodyID id = m_bicycle->chassisID;
+        if (!bi.IsAdded(id)) return;
+        const JPH::Vec3 velocity = bi.GetLinearVelocity(id);
+        const JPH::Vec3 forward = bi.GetRotation(id).RotateAxisZ();
+        const float yaw = std::atan2(-forward.GetX(), -forward.GetZ());
+        const float speedMps = std::sqrt(velocity.GetX() * velocity.GetX() + velocity.GetZ() * velocity.GetZ());
+        m_bicycle->currentSpeed = velocity.GetX() * -std::sin(yaw) + velocity.GetZ() * -std::cos(yaw);
+        const JPH::RVec3 position = bi.GetPosition(id);
+        m_player->PublishMotion(speedMps, yaw, m_bicycle->steerAngle, m_bicycle->leanAngle,
+            glm::vec3(static_cast<float>(position.GetX()), static_cast<float>(position.GetY()), static_cast<float>(position.GetZ())));
+    }
+
     void BikeController::Update(float dt) {
-        if (!m_bicycle || !m_inputSystem || !m_joltPhysics || !m_state || !m_state->thirdPersonMode || !m_state->isAlive) return;
+        SampleMotion();
+        if (!m_bicycle || !m_inputSystem || !m_joltPhysics || !m_player || !m_player->CanControl() || dt <= 0.0f) return;
 
         JPH::BodyInterface& bi = m_joltPhysics->GetBodyInterface();
         JPH::BodyID id = m_bicycle->chassisID;
@@ -58,7 +86,7 @@ namespace engine
         float currentYaw = std::atan2(-fwd.GetX(), -fwd.GetZ());
 
         JPH::Vec3 vel = bi.GetLinearVelocity(id);
-        speed = std::sqrt(vel.GetX() * vel.GetX() + vel.GetZ() * vel.GetZ());
+        const float speed = std::sqrt(vel.GetX() * vel.GetX() + vel.GetZ() * vel.GetZ());
 
         float forwardX = -std::sin(currentYaw);
         float forwardZ = -std::cos(currentYaw);
@@ -71,7 +99,7 @@ namespace engine
         JPH::IgnoreSingleBodyFilter bodyFilter(id);
         bool isGrounded = m_joltPhysics->GetNarrowPhaseQuery().CastRay(ray, hit, { }, { }, bodyFilter);
 
-        if (m_state->jumpEnabled && isGrounded && m_inputSystem->IsActionPressed("Jump")) {
+        if (m_player->State().jumpEnabled && isGrounded && m_inputSystem->IsActionPressed("Jump")) {
             vel.SetY(vel.GetY() + 16.0f); // Higher impulse to counteract the 3x gravity
             bi.SetLinearVelocity(id, vel);
             if (m_audio) m_audio->PlayOneShot("SpringJump");
@@ -121,11 +149,9 @@ namespace engine
         bool isLosingStrength = false;
 
         // Only treat near-stationary, heavily tipped bikes as a death state.
-        if (std::abs(signedSpeed) < 2.0f && std::abs(currentPitch) > 0.85f && m_state->isAlive == true && isLosingStrength == false) {
+        if (std::abs(signedSpeed) < 2.0f && std::abs(currentPitch) > 0.85f && m_player->State().isAlive == true && isLosingStrength == false) {
             isLosingStrength = true;
-            m_state->isAlive = false; // ��������/����״̬
-			m_state->deathTimer = 0.0f; // ����������ʱ��
-			m_state->thirdPersonMode = false; // �л�����һ�˳��ӽ�
+            m_player->Die();
         }
 
         if (isLosingStrength) {
@@ -205,14 +231,14 @@ namespace engine
         bool justPedaled = false;
 
         if (m_inputSystem->IsActionPressed("pedal0")) {
-            if (m_state->lastPedal != 0) {
-                m_state->lastPedal = 0;
+            if (m_lastPedal != 0) {
+                m_lastPedal = 0;
                 justPedaled = true;
             }
         }
         if (m_inputSystem->IsActionPressed("pedal1")) {
-            if (m_state->lastPedal != 1) {
-                m_state->lastPedal = 1;
+            if (m_lastPedal != 1) {
+                m_lastPedal = 1;
                 justPedaled = true;
             }
         }
@@ -231,26 +257,26 @@ namespace engine
 
         // 3. ��������ע����˥��
         if (justPedaled) {
-            m_state->engineForce += pedalBurstForce * slopePenalty;
-            if (m_state->engineForce > targetMaxForce) {
-                m_state->engineForce = targetMaxForce;
+            m_engineForce += pedalBurstForce * slopePenalty;
+            if (m_engineForce > targetMaxForce) {
+                m_engineForce = targetMaxForce;
             }
         }
         else {
-            if (m_state->engineForce > 0.0f) {
-                m_state->engineForce -= forceDecayRate * dt;
-                if (m_state->engineForce < 0.0f) m_state->engineForce = 0.0f;
+            if (m_engineForce > 0.0f) {
+                m_engineForce -= forceDecayRate * dt;
+                if (m_engineForce < 0.0f) m_engineForce = 0.0f;
             }
         }
 
         if (m_inputSystem->IsActionHeld("MoveBackward")) {
-            m_state->engineForce -= 10000.0f * dt;
-            if (m_state->engineForce < -500.0f) m_state->engineForce = -500.0f;
+            m_engineForce -= 10000.0f * dt;
+            if (m_engineForce < -500.0f) m_engineForce = -500.0f;
         }
 
-        if (std::abs(m_state->engineForce) > 10.0f) {
-            // �����ġ�������ҲҪ�ĳ� m_state->engineForce
-            bi.AddForce(id, moveDirJPH * m_state->engineForce);
+        if (std::abs(m_engineForce) > 10.0f) {
+            // �����ġ�������ҲҪ�ĳ� m_engineForce
+            bi.AddForce(id, moveDirJPH * m_engineForce);
         }
 
         if (speed > 0.1f) {
@@ -265,10 +291,7 @@ namespace engine
         float pitchAngVel = angVel.Dot(localX);
         bi.SetAngularVelocity(id, localX * (pitchAngVel * 0.85f));
 
-        m_state->bikeSpeed = speed; 
-        m_state->bikeSteerAngle = m_bicycle->steerAngle;
-        m_state->bikeYaw = newYaw;
-        m_state->bikeLeanAngle = m_bicycle->leanAngle;
+        SampleMotion();
     }
 
 } // namespace engine

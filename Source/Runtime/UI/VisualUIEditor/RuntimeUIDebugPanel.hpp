@@ -14,7 +14,7 @@ namespace engine {
     class UIManager;
     class UIScreen;
     class UIElement;
-    struct UserState;
+    class GameFlowController;
 
     
     namespace RuntimeUIDebugPanel {
@@ -39,7 +39,7 @@ namespace engine {
         // 活动动画、最近触发事件等。
         void DrawDebugPanel(DebugState& state,
                             UIManager& uiManager,
-                            const UserState& userState);
+                            const GameFlowController& flow);
 
         // 视口内的调试覆盖层：包围盒、命中矩形、选中高亮、绑定值小标签。
         // 调用前必须确保 BuildRuntimeUiRenderContext 已经成功生成 context。

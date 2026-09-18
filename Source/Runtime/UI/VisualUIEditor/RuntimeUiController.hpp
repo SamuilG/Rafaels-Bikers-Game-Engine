@@ -1,4 +1,5 @@
 #pragma once
+#include "../../UserState/StateViews.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -19,7 +20,7 @@
 namespace engine {
 
     class AudioSystem;
-    struct UserState;
+    struct RuntimeUiStateView;
     class RuntimeUiController;
 
     struct RuntimeUiElementOptions {
@@ -107,7 +108,7 @@ namespace engine {
         using DisplaySettingsQuery = std::function<RuntimeDisplaySettings()>;
         using DisplaySettingsApply = std::function<bool(const RuntimeDisplaySettings&)>;
 
-        RuntimeUiController(bool& appRunning, UserState& state)
+        RuntimeUiController(bool& appRunning, RuntimeUiStateView state)
             : mAppRunning(appRunning)
             , mState(state) {
         }
@@ -551,7 +552,7 @@ namespace engine {
 
     private:
         bool& mAppRunning;
-        UserState& mState;
+        RuntimeUiStateView mState;
         std::unique_ptr<UIManager> mUiManager;
         std::shared_ptr<ImGuiPreviewRenderer> mRenderer;
         std::unique_ptr<GameUIEventRouter> mEventRouter;

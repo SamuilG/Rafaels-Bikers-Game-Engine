@@ -12,7 +12,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "../../UI/ui.hpp"
-#include "../../UserState/UserState.hpp"
 
 #include <algorithm>
 #include <cstddef>
