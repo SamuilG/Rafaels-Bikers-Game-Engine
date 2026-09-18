@@ -21,6 +21,17 @@ namespace engine {
         void Update(float dt) override;
         void Shutdown() override;
 
+        // Clear edge history after a scene/session reload while preserving held keys.
+        void ResetForNewSession();
+        void SetGameplayInputEnabled(bool enabled) { mGameplayInputEnabled = enabled; }
+        bool IsGameplayInputEnabled() const { return mGameplayInputEnabled; }
+        bool IsGameplayActionPressed(const std::string& actionName) const {
+            return mGameplayInputEnabled && IsActionPressed(actionName);
+        }
+        bool IsGameplayActionHeld(const std::string& actionName) const {
+            return mGameplayInputEnabled && IsActionHeld(actionName);
+        }
+
         // Call to provide the GLFW window pointer once created by the Window/Render system
         void SetWindow(GLFWwindow* window);
         // Core Input Polling
@@ -94,6 +105,8 @@ namespace engine {
         void UpdateGamepadStates();
         void UpdateMouseStates();
 
+
+        bool mGameplayInputEnabled = true;
 
         float mScrollDeltaY = 0.0f;       // 当前帧可用的滚轮变化量
         float mScrollAccumulatorY = 0.0f; // 累加器（因为回调在帧中间随时可能触发）

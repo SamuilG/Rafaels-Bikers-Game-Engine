@@ -13,6 +13,7 @@
 
 namespace engine {
     namespace {
+        float s_smoothedSpeedKmh = 0.0f;
         enum class UiAnchor {
             TopLeft,
             TopCenter,
@@ -314,17 +315,17 @@ namespace engine {
 
             const ImVec2 widgetMax(widgetMin.x + widgetSize.x, widgetMin.y + widgetSize.y);
 
-            static float smoothedSpeedKmh = 0.0f;
+
             const float rawSpeedKmh = std::abs(player.bikeSpeed) * style.speedMultiplier;
             if (style.useSmoothing) {
-                smoothedSpeedKmh += (rawSpeedKmh - smoothedSpeedKmh) * style.smoothingFactor;
+                s_smoothedSpeedKmh += (rawSpeedKmh - s_smoothedSpeedKmh) * style.smoothingFactor;
             }
             else {
-                smoothedSpeedKmh = rawSpeedKmh;
+                s_smoothedSpeedKmh = rawSpeedKmh;
             }
 
             float pulseScale = 1.0f;
-            if (style.pulseWhenFast && smoothedSpeedKmh >= style.pulseStartSpeed) {
+            if (style.pulseWhenFast && s_smoothedSpeedKmh >= style.pulseStartSpeed) {
                 pulseScale += std::sin(static_cast<float>(ImGui::GetTime()) * style.pulseSpeed) * style.pulseAmplitude;
             }
 
@@ -388,10 +389,10 @@ namespace engine {
 
             char speedText[32] = {};
             if (style.padWithZeros) {
-                std::snprintf(speedText, sizeof(speedText), "%0*.*f", style.minimumIntegerDigits, style.decimals, smoothedSpeedKmh);
+                std::snprintf(speedText, sizeof(speedText), "%0*.*f", style.minimumIntegerDigits, style.decimals, s_smoothedSpeedKmh);
             }
             else {
-                std::snprintf(speedText, sizeof(speedText), "%.*f", style.decimals, smoothedSpeedKmh);
+                std::snprintf(speedText, sizeof(speedText), "%.*f", style.decimals, s_smoothedSpeedKmh);
             }
 
             if (style.showTitle) {
@@ -480,6 +481,10 @@ namespace engine {
             ImGui::End();
         }
     } // namespace
+
+    void GameUi::ResetTransientState() {
+        s_smoothedSpeedKmh = 0.0f;
+    }
 
     void GameUi::DrawHud(RenderSystem* renderSys, const PlayerState& player, const EditorState& editor, const ImVec2& viewportPos, const ImVec2& viewportSize) {
         DrawImageSpeedometerDemo(renderSys, player, editor, viewportPos, viewportSize);

@@ -159,6 +159,9 @@ namespace engine {
     void InputSystem::Update(float dt) {
 
         if (!mWindow) return;
+        // Poll once at the start of the application input phase. Gameplay
+        // then consumes this frame's state instead of the previous frame's.
+        glfwPollEvents();
         // ==========================================
         // 提取这一帧的滚轮数据，并清零累加器
         mScrollDeltaY = mScrollAccumulatorY;
@@ -176,6 +179,19 @@ namespace engine {
         UpdateKeyboardStates();
         UpdateGamepadStates();
         UpdateMouseStates();
+    }
+
+    void InputSystem::ResetForNewSession() {
+        for (auto& pair : mActionBindings) {
+            pair.second.wasHeld = pair.second.isHeld;
+        }
+        mMouseDeltaX = 0.0;
+        mMouseDeltaY = 0.0;
+        mScrollDeltaY = 0.0f;
+        mScrollAccumulatorY = 0.0f;
+        mGamepadRightX = 0.0;
+        mGamepadRightY = 0.0;
+        mFirstMouseUpdate = true;
     }
 
     void InputSystem::Shutdown() {

@@ -18,6 +18,10 @@ struct EditorState {
     bool showParticlePanel = false;
     bool showRuntimeUiDebugPanel = false;
     bool showGameUiEditor = false;
+    // Published after the ImGui frame and consumed by the next simulation
+    // phase. This keeps editor text entry from reaching gameplay controls.
+    bool inputCapturesKeyboard = false;
+    bool inputCapturesMouse = false;
     bool debugSelectionBounds = false;
     bool debugCollisionShapes = true;
     float lodDebugDistance = -1.0f;   // -1 = inactive; positive value overrides distance for testing

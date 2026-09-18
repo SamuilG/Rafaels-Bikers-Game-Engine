@@ -65,7 +65,7 @@ namespace engine
 
     void BikeController::Update(float dt) {
         SampleMotion();
-        if (!m_bicycle || !m_inputSystem || !m_joltPhysics || !m_player || !m_player->CanControl() || dt <= 0.0f) return;
+        if (!m_bicycle || !m_inputSystem || !m_joltPhysics || !m_player || !m_inputSystem->IsGameplayInputEnabled() || !m_player->CanControl() || dt <= 0.0f) return;
 
         JPH::BodyInterface& bi = m_joltPhysics->GetBodyInterface();
         JPH::BodyID id = m_bicycle->chassisID;
@@ -76,10 +76,10 @@ namespace engine
         float inputThrottle = 0.0f;
         float inputSteer = 0.0f;
 
-        if (m_inputSystem->IsActionHeld("MoveForward"))  inputThrottle += 1.0f;
-        if (m_inputSystem->IsActionHeld("MoveBackward")) inputThrottle -= 1.0f;
-        if (m_inputSystem->IsActionHeld("StrafeLeft"))   inputSteer += 1.0f;
-        if (m_inputSystem->IsActionHeld("StrafeRight"))  inputSteer -= 1.0f;
+        if (m_inputSystem->IsGameplayActionHeld("MoveForward"))  inputThrottle += 1.0f;
+        if (m_inputSystem->IsGameplayActionHeld("MoveBackward")) inputThrottle -= 1.0f;
+        if (m_inputSystem->IsGameplayActionHeld("StrafeLeft"))   inputSteer += 1.0f;
+        if (m_inputSystem->IsGameplayActionHeld("StrafeRight"))  inputSteer -= 1.0f;
 
         JPH::Quat currentRot = bi.GetRotation(id);
         JPH::Vec3 fwd = currentRot.RotateAxisZ();
@@ -99,7 +99,7 @@ namespace engine
         JPH::IgnoreSingleBodyFilter bodyFilter(id);
         bool isGrounded = m_joltPhysics->GetNarrowPhaseQuery().CastRay(ray, hit, { }, { }, bodyFilter);
 
-        if (m_player->State().jumpEnabled && isGrounded && m_inputSystem->IsActionPressed("Jump")) {
+        if (m_player->State().jumpEnabled && isGrounded && m_inputSystem->IsGameplayActionPressed("Jump")) {
             vel.SetY(vel.GetY() + 16.0f); // Higher impulse to counteract the 3x gravity
             bi.SetLinearVelocity(id, vel);
             if (m_audio) m_audio->PlayOneShot("SpringJump");
@@ -230,13 +230,13 @@ namespace engine
         //static int s_lastPedal = -1;
         bool justPedaled = false;
 
-        if (m_inputSystem->IsActionPressed("pedal0")) {
+        if (m_inputSystem->IsGameplayActionPressed("pedal0")) {
             if (m_lastPedal != 0) {
                 m_lastPedal = 0;
                 justPedaled = true;
             }
         }
-        if (m_inputSystem->IsActionPressed("pedal1")) {
+        if (m_inputSystem->IsGameplayActionPressed("pedal1")) {
             if (m_lastPedal != 1) {
                 m_lastPedal = 1;
                 justPedaled = true;
@@ -269,7 +269,7 @@ namespace engine
             }
         }
 
-        if (m_inputSystem->IsActionHeld("MoveBackward")) {
+        if (m_inputSystem->IsGameplayActionHeld("MoveBackward")) {
             m_engineForce -= 10000.0f * dt;
             if (m_engineForce < -500.0f) m_engineForce = -500.0f;
         }

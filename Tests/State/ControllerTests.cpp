@@ -1,5 +1,6 @@
 #include "Runtime/UserState/UserState.hpp"
 #include "Runtime/UserState/StateViews.hpp"
+#include "Runtime/UserState/FrameExecution.hpp"
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <cmath>
@@ -351,6 +352,22 @@ namespace {
             "narrow views reference the composition-root instances");
         std::puts("PASS grouped state separates render preferences, level overrides and editor/game ownership");
     }
+
+    void TestFrameExecutionPlan() {
+        const FrameExecution playing = FrameExecution::Plan(true, false);
+        Require(playing.runGameplay && playing.runSimulationSystems && playing.runPresentation,
+            "playing frame runs gameplay, simulation and presentation");
+
+        const FrameExecution paused = FrameExecution::Plan(false, false);
+        Require(!paused.runGameplay && !paused.runSimulationSystems && paused.runPresentation,
+            "paused frame keeps presentation while stopping simulation");
+
+        const FrameExecution reloaded = FrameExecution::Plan(true, true);
+        Require(reloaded.reloadHandled && !reloaded.runGameplay && !reloaded.runSimulationSystems &&
+            reloaded.runPresentation,
+            "reload completion prevents a partial old/new simulation frame");
+        std::puts("PASS fixed frame execution gates input, simulation and presentation");
+    }
 }
 
 int main() {
@@ -364,5 +381,6 @@ int main() {
     TestPortalCancellationAndPreemption();
     TestPortalHandoffAndImmediateTeleport();
     TestGroupedStateAndViews();
+    TestFrameExecutionPlan();
     std::puts("PASS all real Player/Camera controller and state-boundary tests (CPU only)");
 }

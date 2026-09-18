@@ -33,6 +33,8 @@ struct UserState {
         renderStats = RenderStatistics{};
         editor.activeParticleIndex = -1;
         editor.isSceneViewportHovered = false;
+        editor.inputCapturesKeyboard = false;
+        editor.inputCapturesMouse = false;
     }
 };
 }

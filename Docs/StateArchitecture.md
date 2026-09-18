@@ -1,4 +1,4 @@
-# 第 3、4 步：状态分组与控制入口
+# 第 3–6 步：状态分组、控制入口、帧调度与生命周期
 
 本文件记录当前实现；`StateOwnership.md` 保留最初的字段盘点和迁移来源。`UserState` 现在只作为 Application 的组合根，不再继承 `GameplayState`，也不再作为通用可写参数传给各个系统。
 
@@ -18,7 +18,7 @@
 | `editor` | 编辑器面板、视口模式与工具状态 | 保留工作区；清场景粒子选择和悬停 |
 | `runtimeUi` | 运行时界面的显示策略 | 保留，流程切换仍同步菜单 |
 
-`UserState::ResetSession()` 按这些分组重置，替代整份 `UserState{}` 赋值。音量仍由 AudioSystem 单独保存恢复。没有为原本未接通的 `BikeTuning` 新增调参效果；它暂留在关卡数据中。无消费者的旧鼠标坐标和 `wasMousing` 已移除，鼠标捕获只由 InputSystem 持有。
+`UserState::ResetSession()` 按这些分组重置，替代整份 `UserState{}` 赋值。音量仍由 AudioSystem 单独保存恢复。历史上未接通的 `BikeTuning` 已在第 6 步移除。无消费者的旧鼠标坐标和 `wasMousing` 已移除，鼠标捕获只由 InputSystem 持有。
 
 ## 模块实际获得的权限
 
@@ -80,6 +80,26 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Tests/UI/run-runtime-ui-flow
 powershell -NoProfile -ExecutionPolicy Bypass -File Tests/UI/run-runtime-ui-flow-tests.ps1 -GameOnly
 ```
 
-本轮验证：Debug x64 完整构建通过；状态/控制器 10 组、GameFlow 5 组、UI Editor 与 GameOnly 各 8 组通过。控制器和 UI 测试没有创建真实游戏窗口，未覆盖 GPU 实机交互验收。
+本轮验证：Debug x64 完整构建通过；状态/控制器 11 组、GameFlow 5 组、UI Editor 与 GameOnly 各 8 组通过。控制器和 UI 测试没有创建真实游戏窗口，未覆盖 GPU 实机交互验收。
 
-第 5 步的完整输入路由和帧顺序重排仍未实施：关卡/物理在 Renderer 处理 UI 前更新，输入焦点仍沿用现有规则。第 6 步的全面生命周期清理也未实施，例如关卡静态计时器、资源缓存和所有临时 UI 数据仍需分别审计。本轮已完成的是状态分组、权限收窄、玩家/相机控制权以及它们所需的会话重置接线。
+## 输入路由与帧阶段
+
+第 5 步现在由 Application 固定为四个阶段：
+
+1. `InputSystem::Update()` 在帧起点调用 `glfwPollEvents()`，更新键盘、鼠标、滚轮和手柄快照。
+2. Application 消费一次待处理的流程重载，再根据编辑器输入捕获状态设置玩家输入门禁。
+3. 关卡、物理、动画、事件和 SceneManager 共享 `FrameExecution` 的模拟门禁；玩家控制只读取本帧输入。
+4. Renderer、Runtime UI 和 Engine UI 始终进入呈现阶段。暂停时它们继续运行，Follow/Free 编辑器相机仍可调整；Portal/Cinematic 和世界模拟保持冻结。
+
+编辑器在 ImGui 帧中发布 `inputCapturesKeyboard` / `inputCapturesMouse`，供下一帧路由使用。面板或文本输入获得键盘时，`BikeController`、关卡快捷操作和复活/传送输入均被屏蔽；Renderer 自己的 F1、调试和画质开关仍按编辑器捕获规则处理。玩家输入阻止与世界模拟暂停保持独立。
+
+## 生命周期清理
+
+第 6 步将会话状态和进程/编辑器状态分开处理：
+
+- `ReloadCurrentScene()` 继续调用 `UserState::ResetSession()`，只重置玩家、相机、本局关卡、临时环境覆盖、渲染统计和场景选择；画质、能力、游戏偏好和编辑器布局保留。
+- 输入边沿、鼠标增量、滚轮累加器和手柄快照在重载后由 `InputSystem::ResetForNewSession()` 清理，避免重开瞬间重复触发按键动作。
+- 关卡检查点/电台冷却从函数静态变量改为关卡成员，并在 Init/Shutdown 中清零。渲染速度特效、传送特效时间、Runtime UI 计时、调试选中项和 HUD 平滑值在场景临时资源清理时清零。
+- 删除没有消费者的 `BikeTuning` 配置及其奖励写入，避免留下看似可调但实际无效的旧入口。
+
+验证覆盖暂停与设置组合、胜利/失败后的重开、编辑器布局和视口切换、输入边沿清理，以及重开保留画质和编辑器布局。完整 GPU 交互仍需要真实窗口验收。

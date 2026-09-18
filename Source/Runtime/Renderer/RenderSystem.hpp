@@ -247,6 +247,16 @@ namespace engine {
             mSelectedEntityId = 0;
             mPortalEnabled = false;
             mPortal2Enabled = false;
+            mPortalPreviewPairLinked = false;
+            mPortalEffectTime = 0.0f;
+            mSmoothedSpeedFactor = 0.0f;
+            mRuntimeUiLapTimeSeconds = 0.0f;
+            mRuntimeUiTravelDistanceMeters = 0.0f;
+            mRuntimeUiDebugSelectedElementId = 0;
+            mRuntimeUiDebugSelectedScreenName.clear();
+            mRuntimeUiDebugEnablePicking = false;
+            mMenuBackWasDown = false;
+            GameUi::ResetTransientState();
         }
         //==========UI System（particle）======================
         // 存储 ImGui 专用的贴图描述符// Store ImGui-specific texture descriptors
@@ -882,15 +892,9 @@ namespace engine {
 
         void Update(float dt) override
         {
-            // Let GLFW process events.
-            // glfwPollEvents() checks for events, processes them. If there are no
-            // events, it will return immediately. Alternatively, glfwWaitEvents()
-            // will wait for any event to occur, process it, and only return at
-            // that point. The former is useful for applications where you want to
-            // render as fast as possible, whereas the latter is useful for
-            // input-driven applications, where redrawing is only needed in
-            // reaction to user input (or similar).
-            glfwPollEvents(); // or: glfwWaitEvents()
+            // GLFW events and raw action states are sampled by InputSystem at
+            // the start of Application's frame. Rendering consumes that
+            // snapshot and does not poll a second time.
             // Player death effects are advanced by the gameplay owner.
             if (mRuntimeUiController) mRuntimeUiController->SyncGameFlowUi();
             const auto cameraMode = mState->camera.State().mode;
@@ -901,6 +905,12 @@ namespace engine {
             }
 
             imguiRenderer.BeginFrame(mState->editor.showEngineUi);
+            mState->editor.inputCapturesKeyboard =
+                ImGui::GetIO().WantCaptureKeyboard || ImGui::GetIO().KeyCtrl ||
+                ImGui::GetIO().KeyAlt || ImGui::GetIO().KeySuper ||
+                (mState->editor.showGameUiEditor && UIEditorWindow::WantsKeyboardCapture());
+            mState->editor.inputCapturesMouse = ImGui::GetIO().WantCaptureMouse ||
+                (mState->editor.showGameUiEditor && UIEditorWindow::WantsMouseCapture());
             // Debug shortcuts use the same validated commands as runtime buttons.
             if (!mState->editor.showEngineUi && !ImGui::GetIO().WantTextInput && mRuntimeUiManager) {
                 if (ImGui::IsKeyPressed(ImGuiKey_G, false)) {
@@ -1674,8 +1684,7 @@ namespace engine {
             // 【修改这里的 5.0f】：
             // 调大 (比如 10.0f)：特效响应极其灵敏，一踩油门特效瞬间拉满。
             // 调小 (比如 2.0f) ：特效会非常缓慢地浮现，有种“逐渐进入超空间”的深邃感
-            static float smoothedSpeedFactor = 1.0f;
-            smoothedSpeedFactor += (targetSpeedFactor - smoothedSpeedFactor) * 5.0f * dt;
+            mSmoothedSpeedFactor += (targetSpeedFactor - mSmoothedSpeedFactor) * 5.0f * dt;
             std::vector<RenderBatch> skinnedBatches;
             if (mSceneManager && mBoneSSBO.buffer != VK_NULL_HANDLE) {
                 void* ptr;
@@ -1968,8 +1977,7 @@ namespace engine {
                     portal2RecursiveSceneUniformCount = 1;
                 }
             }
-            static float portalEffectTime = 0.0f;
-            portalEffectTime += dt;
+            mPortalEffectTime += dt;
             ImageAndView portalColorTarget{ mPortalColorImage.image, mPortalColorImage.view };
             ImageAndView portalBrightTarget{ mPortalBrightImage.image, mPortalBrightImage.view };
             ImageAndView portalNormalTarget{ mPortalNormalImage.image, mPortalNormalImage.view };
@@ -2057,7 +2065,7 @@ namespace engine {
                 mSpeedPostPipe.handle,
                 mSpeedPostPipeLayout.handle,
                 mSpeedPostDescriptors[mFrameIndex],
-                editorBackdrop ? 0.0f : smoothedSpeedFactor, // Keep the neutral editor canvas free from camera effects.
+                editorBackdrop ? 0.0f : mSmoothedSpeedFactor, // Keep the neutral editor canvas free from camera effects.
                 mState->player.State().isAlive,       // <--- 直接把 userState 里的变量喂给渲染器！
                 editorBackdrop ? 0.0f : mState->player.State().deathFactor,
                 finalSceneTarget,    // 极速特效输出到最终
@@ -2121,7 +2129,7 @@ namespace engine {
                 mPortal2SurfaceDesc,
                 mPortal2RecursiveSurfaceDesc,
                 &mPortal2SurfaceTransform,
-                portalEffectTime,
+                mPortalEffectTime,
                 portalMainVisibleForFrame,
                 portal2MainVisibleForFrame,
                 portalVisibleInPortalView,
@@ -2791,6 +2799,8 @@ namespace engine {
 
         engine::InputSystem* mInputSystem = nullptr;
         bool mMenuBackWasDown = false;
+        float mSmoothedSpeedFactor = 0.0f;
+        float mPortalEffectTime = 0.0f;
 
         bool TryGetDebugBodyID(flecs::entity entity, uint32_t& outBodyID) const
         {

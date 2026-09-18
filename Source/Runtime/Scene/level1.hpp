@@ -61,6 +61,8 @@ namespace engine {
         std::vector<flecs::entity> m_gasPickupEntities;
         std::vector<flecs::entity> m_radioPickupEntities;
         bool m_radioCollected;
+        float m_checkpointCooldown = 0.0f;
+        float m_radioInputCooldown = 0.0f;
         // Mounted horn — kept after collection for squeeze animation
         flecs::entity m_hornMountedEntity;
         glm::mat4     m_hornBaseMountT  = glm::mat4(1.0f);

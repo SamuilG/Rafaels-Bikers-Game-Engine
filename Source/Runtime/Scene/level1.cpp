@@ -288,6 +288,8 @@ namespace engine {
 		RemoveWidget(kWinUiPath);
 		RefreshAbilityHintUi();
 		m_deployHoldTimer = 0.0f;
+		m_checkpointCooldown = 0.0f;
+		m_radioInputCooldown = 0.0f;
 		m_deployConsumedUntilRelease = false;
 		m_deployPortalCharging = false;
 		m_deployPortalEntryFloorCenter = glm::vec3(0.0f);
@@ -1793,9 +1795,9 @@ namespace engine {
 
 	void level::Update(float dt) {
 
-		if (mState->player.CanControl() && m_input && m_input->IsActionPressed("ClosePortal")) {
+		if (mState->player.CanControl() && m_input && m_input->IsGameplayActionPressed("ClosePortal")) {
 			CloseActivePortals(true);
-			if (m_input->IsActionHeld("DEPLOY")) {
+			if (m_input->IsGameplayActionHeld("DEPLOY")) {
 				m_deployConsumedUntilRelease = true;
 			}
 		}
@@ -1803,12 +1805,11 @@ namespace engine {
 		// =========================================================
 		// 【新增】：玩家手动放置自定义复活点 + 召唤信标 (C 键)
 		// =========================================================
-		static float s_checkpointCooldown = 0.0f;
-		if (s_checkpointCooldown > 0.0f) {
-			s_checkpointCooldown -= dt;
+		if (m_checkpointCooldown > 0.0f) {
+			m_checkpointCooldown -= dt;
 		}
 
-		if (mState->player.CanControl() && m_input && m_input->IsActionPressed("SetCheckpoint") && s_checkpointCooldown <= 0.0f) {
+		if (mState->player.CanControl() && m_input && m_input->IsGameplayActionPressed("SetCheckpoint") && m_checkpointCooldown <= 0.0f) {
 			if (m_bikeEntity.is_valid() && m_physics) {
 				uint32_t bikeBodyID = JPH::BodyID::cInvalidBodyID;
 				if (m_bikeEntity.has<PhysicsBody>()) bikeBodyID = m_bikeEntity.get<PhysicsBody>().bodyID;
@@ -1863,7 +1864,7 @@ namespace engine {
 					m_audio->LoadSound("res", "Assets/Sounds/respawn.mp3");
 					m_audio->PlayOneShot("res");
 
-					s_checkpointCooldown = 1.0f; // 1秒冷却
+					m_checkpointCooldown = 1.0f; // 1秒冷却
 				}
 			}
 		}
@@ -1977,15 +1978,14 @@ namespace engine {
 		// =========================================================
 		// 【新增】：收音机按键冷却计时器，防止按住键时一秒触发 60 次
 		// =========================================================
-		static float s_radioInputCooldown = 0.0f;
-		if (s_radioInputCooldown > 0.0f) {
-			s_radioInputCooldown -= dt;
+		if (m_radioInputCooldown > 0.0f) {
+			m_radioInputCooldown -= dt;
 		}
 
 		if (mState->player.CanControl() && m_bgMusicPlaying && !m_radioSongs.empty() && m_input) {
 
 			// 1. M 键静音切换 (保持不变)
-			if (m_input->IsActionPressed("Mute") && s_radioInputCooldown <= 0.0f) {
+			if (m_input->IsGameplayActionPressed("Mute") && m_radioInputCooldown <= 0.0f) {
 				mState->level.radioMuted = !mState->level.radioMuted; // 状态翻转
 
 				if (mState->level.radioMuted) {
@@ -1996,13 +1996,13 @@ namespace engine {
 					m_audio->SetVolume(m_radioSongs[m_currentSongIndex], 0.35f);
 					Toast("Radio Unmuted");
 				}
-				s_radioInputCooldown = 0.3f;
+				m_radioInputCooldown = 0.3f;
 			}
 
 			// =========================================================
 			// 2. N 键切歌 (电台模式)
 			// =========================================================
-			if (m_input->IsActionPressed("NextSong") && s_radioInputCooldown <= 0.0f) {
+			if (m_input->IsGameplayActionPressed("NextSong") && m_radioInputCooldown <= 0.0f) {
 
 				// 1. 把当前频道的音量拉到 0 (不要调用 Stop，让它在后台继续默默放！)
 				m_audio->SetVolume(m_radioSongs[m_currentSongIndex], 0.0f);
@@ -2019,10 +2019,10 @@ namespace engine {
 				Toast(std::format("Channel: {}", m_radioLabels[m_currentSongIndex]));
 				m_audio->PlayOneShot("NextSong"); // 播放按钮咔哒声
 
-				s_radioInputCooldown = 0.3f;
+				m_radioInputCooldown = 0.3f;
 			}
 		}
-		if (mState->player.CanControl() && mState->player.State().hornEnabled && m_input && m_audio && m_input->IsActionPressed("Horn")) {
+		if (mState->player.CanControl() && mState->player.State().hornEnabled && m_input && m_audio && m_input->IsGameplayActionPressed("Horn")) {
 			m_audio->LoadSound("Horn", "Assets/Sounds/bicycle_horn.mp3");
 			m_audio->SetVolume("Horn", 0.7f);
 			m_audio->PlayOneShot("Horn");
@@ -2030,7 +2030,7 @@ namespace engine {
 		}
 
 		// Spring squeeze animation on jump (Space)
-		if (mState->player.CanControl() && mState->player.State().jumpEnabled && m_input && m_input->IsActionPressed("Jump"))
+		if (mState->player.CanControl() && mState->player.State().jumpEnabled && m_input && m_input->IsGameplayActionPressed("Jump"))
 			m_springAnimTimer = 0.0f;
 
 		// Horn squeeze animation: scale up then back to original
@@ -2160,7 +2160,7 @@ namespace engine {
 		// =========================================================
 		// 长按 DEPLOY 键：急速状态下展开传送门；死亡时在尸体处原地复活
 		// =========================================================
-		const bool deployHeld = mState->player.State().controlEnabled && m_input && m_input->IsActionHeld("DEPLOY");
+		const bool deployHeld = mState->player.State().controlEnabled && m_input && m_input->IsGameplayActionHeld("DEPLOY");
 		auto cancelDeployPortalCharge = [&]() {
 			if (!m_deployPortalCharging) {
 				return;
@@ -2470,6 +2470,8 @@ namespace engine {
 		m_winUiDelayTimer = -1.0f;
 		m_previousAliveState = true;
 		m_deployHoldTimer = 0.0f;
+		m_checkpointCooldown = 0.0f;
+		m_radioInputCooldown = 0.0f;
 		m_deployConsumedUntilRelease = false;
 		m_deployPortalCharging = false;
 		m_deployPortalEntryFloorCenter = glm::vec3(0.0f);

@@ -363,7 +363,6 @@ namespace engine {
 
 		m_event->Subscribe(EventType::AllItemsCollected, [this](Event& e) {
 			mState->level.allCollected = true;
-			mState->level.bikeTuning.maxSpeed *= 2.0f;
 			Log("[Collection] ALL ITEMS COLLECTED — max speed unlocked!\n");
 			Toast("All collectibles found! MAX SPEED UNLOCKED!");
 			m_allCollectSoundDelay = 0.8f; 
@@ -392,13 +391,13 @@ namespace engine {
 			}
 		}
 
-		if (mState->player.CanControl() && m_input && m_audio && m_input->IsActionPressed("Horn")) {
+		if (mState->player.CanControl() && m_input && m_audio && m_input->IsGameplayActionPressed("Horn")) {
 			m_audio->LoadSound("Horn", "Assets/Sounds/bicycle_horn.mp3");
 			m_audio->SetVolume("Horn", 0.2f);
 			m_audio->PlayOneShot("Horn");
 		}
 	
-		if (mState->player.State().controlEnabled && m_input && m_input->IsActionPressed("DEPLOY")) {
+		if (mState->player.State().controlEnabled && m_input && m_input->IsGameplayActionPressed("DEPLOY")) {
 			
 			if (!mState->player.State().isAlive) {
 				flecs::entity bikeEntity = m_scene->find_entity("Bike_0");

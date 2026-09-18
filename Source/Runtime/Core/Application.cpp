@@ -9,6 +9,7 @@
 #include "../Scene/Level1.hpp" 
 #include "../AudioSystem/AudioSystem.hpp"
 #include "../UI/VisualUIEditor/RuntimeUiController.hpp"
+#include "../UserState/FrameExecution.hpp"
 
 namespace engine {
 
@@ -133,16 +134,54 @@ namespace engine {
         while (Running) {
             float dt = std::min(CalcDeltaTime(), kMaxDt);
 
-            // 更新当前关卡
-            if (m_currentScene && mState.gameFlow.CanSimulate()) {
+            // Phase 1: sample OS input before any gameplay code runs.
+            if (inputSystem) {
+                inputSystem->Update(dt);
+                const bool editorOwnsKeyboard = mState.editor.showEngineUi &&
+                    (mState.editor.inputCapturesKeyboard || !mState.editor.isSceneViewportHovered);
+                inputSystem->SetGameplayInputEnabled(
+                    mState.gameFlow.CanSimulate() && !editorOwnsKeyboard);
+            }
+
+            // Phase 2: consume a pending flow reload before the old scene can
+            // execute another simulation step.
+            bool reloadHandled = false;
+            if (mState.gameFlow.TakeReloadRequest()) {
+                reloadHandled = true;
+                try {
+                    const bool loaded = ReloadCurrentScene();
+                    mState.gameFlow.CompleteReload(loaded);
+                }
+                catch (const std::exception& error) {
+                    EngineUi::LogPrintf("Engine reload/recovery failed: %s\n", error.what());
+                    mState.gameFlow.CompleteReload(false);
+                    Running = false;
+                }
+                if (inputSystem) inputSystem->ResetForNewSession();
+                if (renderSystem && renderSystem->GetRuntimeUiController()) {
+                    renderSystem->GetRuntimeUiController()->SyncGameFlowUi();
+                }
+                mLastTime = std::chrono::steady_clock::now();
+            }
+
+            const FrameExecution frame = FrameExecution::Plan(
+                mState.gameFlow.CanSimulate(), reloadHandled);
+
+            // Phase 3: gameplay and simulation systems share one gate.
+            if (m_currentScene && frame.runGameplay) {
                 m_currentScene->Update(dt);
             }
 
-            // 更新底层引擎系统
+            // Phase 4: presentation remains alive while simulation is paused.
             for (auto& sys : Systems) {
-                // UI, input and rendering keep running while session simulation is paused.
-                if (!mState.gameFlow.CanSimulate() &&
-                    (sys.get() == physicsSystem || sys.get() == animationSystem || sys.get() == eventSystem)) {
+                // Input was sampled at the start of the frame. Physics,
+                // animation, events and scene transforms use the same plan.
+                if (sys.get() == inputSystem) {
+                    continue;
+                }
+                if (!frame.runSimulationSystems &&
+                    (sys.get() == physicsSystem || sys.get() == animationSystem ||
+                     sys.get() == eventSystem)) {
                     continue;
                 }
                 sys->Update(dt);
@@ -161,22 +200,6 @@ namespace engine {
                 audioSystem->SetPitch("BikeChain", 0.75f + speed01 * 1.25f);
             }
 
-            if (mState.gameFlow.TakeReloadRequest()) {
-                try {
-                    const bool loaded = ReloadCurrentScene();
-                    mState.gameFlow.CompleteReload(loaded);
-                }
-                catch (const std::exception& error) {
-                    // A subsystem or recovery failure leaves no safely renderable world.
-                    EngineUi::LogPrintf("Engine reload/recovery failed: %s\n", error.what());
-                    mState.gameFlow.CompleteReload(false);
-                    Running = false;
-                    break;
-                }
-                if (auto* ui = renderSystem->GetRuntimeUiController()) ui->SyncGameFlowUi();
-                // Loading time must not become the next simulation step.
-                mLastTime = std::chrono::steady_clock::now();
-            }
         }
     }
 
@@ -203,6 +226,11 @@ namespace engine {
 
         if (renderSystem) {
             renderSystem->ClearSceneTransientResources();
+        }
+
+        if (inputSystem) {
+            inputSystem->SetGameplayInputEnabled(false);
+            inputSystem->ResetForNewSession();
         }
 
         if (eventSystem) {
