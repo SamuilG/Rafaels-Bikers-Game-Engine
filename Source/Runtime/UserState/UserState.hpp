@@ -11,6 +11,8 @@ namespace engine {
 		//================UI System================================
 
 		bool showEngineUi = false;//engine UI toggle with key F1
+		bool editorViewportBackdrop = true; // Neutral editor background; disable to preview scene sky.
+		bool editorViewportGrid = true;     // Depth-tested reference grid on the XZ plane.
 
 		bool particlesEnabled = true; // Shared simulation/rendering switch.
 

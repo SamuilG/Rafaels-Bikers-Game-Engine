@@ -3,6 +3,7 @@
 #include "EngineUi.hpp"
 #include "EditorLayout.hpp"
 #include "EditorTransform.hpp"
+#include "EditorTheme.hpp"
 
 #include <cstdio>
 #include <cstdarg>
@@ -321,10 +322,10 @@ namespace engine {
 
 			for (const auto& item : Items) {
 				if (item.find("[Error]") != std::string::npos) {
-					ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "%s", item.c_str());
+					ImGui::TextColored(editor_theme::Color(editor_theme::kError), "%s", item.c_str());
 				}
 				else if (item.find("[Warning]") != std::string::npos) {
-					ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.4f, 1.0f), "%s", item.c_str());
+					ImGui::TextColored(editor_theme::Color(editor_theme::kWarning), "%s", item.c_str());
 				}
 				else {
 					ImGui::TextUnformatted(item.c_str());
@@ -437,8 +438,10 @@ namespace engine {
 			ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
 			ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoInputs;
 
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);// 设置圆角
-		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, alpha)); // 纯黑色文字
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, ImGui::GetStyle().WindowRounding);
+		ImVec4 toastText = ImGui::GetStyleColorVec4(ImGuiCol_Text);
+		toastText.w *= std::clamp(alpha, 0.0f, 1.0f);
+		ImGui::PushStyleColor(ImGuiCol_Text, toastText);
 
 		if (ImGui::Begin("ToastWindow", nullptr, flags)) {
 			ImGui::Text("  %s  ", s_ToastMessage.c_str());
@@ -674,8 +677,9 @@ namespace engine {
 
 	void EngineUi::DrawSceneViewport(VkDescriptorSet sceneTexId, RenderSystem* renderSys, SceneManager* sceneManager, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, UserState& state) {
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-		ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 1.0f));
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, state.showEngineUi ? 1.0f : 0.0f);
+		ImGui::PushStyleColor(ImGuiCol_WindowBg, state.showEngineUi
+			? editor_theme::Color(editor_theme::kViewport) : ImVec4(0.0f, 0.0f, 0.0f, 1.0f));
 
 		const char* viewportWindowName = state.showEngineUi ? "Scene Viewport###SceneViewportEditor": "Game View###SceneViewportFullscreen";
 		ImGuiWindowFlags viewportFlags = 0;
@@ -697,6 +701,8 @@ namespace engine {
             state.isSceneViewportHovered = false;
             s_SceneViewportDrawList = nullptr;
             ImGui::End();
+            ImGui::PopStyleColor();
+            ImGui::PopStyleVar(2);
             return;
         }
 		s_SceneViewportDrawList = ImGui::GetWindowDrawList();
@@ -757,7 +763,7 @@ namespace engine {
 
 
 		//  4. 粒子 Billboard 图标和点击// Particle billboard icons and select
-		if (state.showEngineUi && renderSys && state.particlesEnabled) {
+		if (state.showEngineUi && renderSys && state.particlesEnabled && state.renderMode == 0) {
 			glm::mat4 viewProj = proj * view;
 			glm::vec3 cameraPos = glm::vec3(glm::inverse(view)[3]);
 			ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -791,7 +797,7 @@ namespace engine {
 				ImVec2 iconMax = ImVec2(screenPos.x + iconSize.x * 0.5f, screenPos.y + iconSize.y * 0.5f);
 
 				bool is_selected = (state.activeParticleIndex == i);
-				ImU32 iconColor = is_selected ? IM_COL32(255, 255, 100, 255) : IM_COL32(255, 80, 80, 255);
+				ImU32 iconColor = editor_theme::ColorU32(editor_theme::kPaper);
 
 				//从粒子 config 里拿贴图 ID// Get the texture ID from the particle config
 				VkDescriptorSet currentIconTex = particles[i]->config.uiIconDescriptor;
@@ -808,8 +814,10 @@ namespace engine {
 				else {
 					// Fallback显示红圈 P// Fallback: draw a red circle with "P" if no texture is available
 					drawList->AddCircleFilled(screenPos, hitRadius * 0.5f, iconColor);
-					drawList->AddText(ImVec2(screenPos.x - 4, screenPos.y - 7), IM_COL32(0, 0, 0, 255), "P");
+					drawList->AddText(ImVec2(screenPos.x - 4, screenPos.y - 7), editor_theme::ColorU32(editor_theme::kText), "P");
 				}
+				drawList->AddCircle(screenPos, hitRadius, editor_theme::ColorU32(
+					is_selected ? editor_theme::kAccent : editor_theme::kBorder), 0, is_selected ? 2.0f : 1.0f);
 
 
 				//InvisibleButton
@@ -919,7 +927,7 @@ namespace engine {
 		if (ImGui::Begin(PanelTitle("Assets", "ContentBrowser").c_str(), &state.showContentBrowser)) //开始绘制窗口// Begin drawing the window
 		{
 			if (!fs::exists(assetsRoot) || !fs::is_directory(assetsRoot)) { //Fail clearly when the Assets root is missing.
-				ImGui::TextColored(ImVec4(1, 0, 0, 1), "Folder Assets not found!");
+				ImGui::TextColored(editor_theme::Color(editor_theme::kError), "Folder Assets not found!");
 			}
 			else {
 				if (!fs::exists(fs::path(s_CurrentDirectory)) || !fs::is_directory(fs::path(s_CurrentDirectory))) { //Reset to Assets if the current folder was removed.
@@ -965,7 +973,7 @@ namespace engine {
 						ImGui::Text("Create folder in %s", currentDirectoryLabel.c_str());
 						ImGui::InputText("Folder Name", s_NewFolderName, IM_ARRAYSIZE(s_NewFolderName));
 						if (!s_CreateFolderError.empty()) {
-							ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "%s", s_CreateFolderError.c_str());
+							ImGui::TextColored(editor_theme::Color(editor_theme::kError), "%s", s_CreateFolderError.c_str());
 						}
 
 						if (ImGui::Button("Create")) {
@@ -1049,8 +1057,8 @@ namespace engine {
 									: ImVec2(1.0f, 1.0f);
 
 								ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));//按钮背景透明
-								ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1, 1, 1, 0.10f));//悬停背景顔色
-								ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1, 1, 1, 0.18f));//点击背景颜色
+								ImGui::PushStyleColor(ImGuiCol_ButtonHovered, editor_theme::Color(editor_theme::kHover));
+								ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
 
 								ImGui::ImageButton(
 									filename.c_str(),
@@ -1223,6 +1231,8 @@ namespace engine {
         if (!state.showRenderSettings) return;
         if (ImGui::Begin(PanelTitle("Render Settings", "RenderSettings").c_str(), &state.showRenderSettings)) {
             ImGui::TextDisabled("Changes apply to the current session.");
+            if (state.renderMode != 0) ImGui::TextWrapped("%s", _SL("Debug views bypass lighting and post-processing. Return to Default to adjust them."));
+            ImGui::BeginDisabled(state.renderMode != 0);
             ImGui::SeparatorText("Rendering");
             ImGui::Checkbox("Image-based Lighting (IBL)", &state.iblEnabled);
             ImGui::Checkbox("Screen-space Reflections (SSR)", &state.ssrEnabled);
@@ -1235,6 +1245,7 @@ namespace engine {
             ImGui::EndDisabled();
             ImGui::SliderFloat(_SL("Exposure"), &state.bloomExposure, 0.1f, 5.0f, "%.2f");
             ImGui::Checkbox(_SL("Enable Mosaic Post-Process"), &state.mosaicEnabled);
+            ImGui::EndDisabled();
             ImGui::SeparatorText("Visibility & detail");
             ImGui::Checkbox("Frustum Culling", &state.frustumCullingEnabled);
             ImGui::BeginDisabled(!state.frustumCullingEnabled);
@@ -1389,7 +1400,7 @@ namespace engine {
 
                         // 如果被选中，按钮加上背景高亮
                         if (isSelected) {
-                            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1.0f, 0.6f, 0.2f, 0.6f));
+                            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_Header));
                         }
                         else {
                             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.1f, 0.1f, 0.1f, 0.0f));
@@ -1495,7 +1506,7 @@ namespace engine {
 		LocalTransform* localTransform = selectedLight.has<LocalTransform>() ? &selectedLight.get_mut<LocalTransform>() : nullptr;
 
 		ImGui::Separator();
-		ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.35f, 1.0f), "[ %s ]", selectedLight.name().c_str());
+		ImGui::TextColored(editor_theme::Color(editor_theme::kText), "[ %s ]", selectedLight.name().c_str());
 
 		if (entityStatus) {
 			ImGui::Checkbox("Visible", &entityStatus->should_render);
@@ -1669,8 +1680,11 @@ namespace engine {
 		}
 
 		ImGui::TextUnformatted("Selection Debug");
+        if (state.renderMode != 0) ImGui::TextDisabled("%s", _SL("Selection wireframes require Default view."));
+        ImGui::BeginDisabled(state.renderMode != 0);
 		ImGui::Checkbox("Selection Bounds (AABB)", &state.debugSelectionBounds);
 		ImGui::Checkbox("Collision Shapes", &state.debugCollisionShapes);
+        ImGui::EndDisabled();
 		ImGui::Separator();
 		ImGui::TextWrapped("Selection Bounds draws the selected body's world-space AABB. Collision Shapes draws the selected body's physics shape wireframe.");
 		ImGui::Separator();
@@ -1679,9 +1693,20 @@ namespace engine {
         const float fps = ImGui::GetIO().Framerate;
         ImGui::Text("%.1f FPS / %.2f ms", fps, fps > 0.0f ? 1000.0f / fps : 0.0f);
         ImGui::Text("Visible static batches: %u / %u", state.frustumCullingVisibleCandidates, state.frustumCullingTotalCandidates);
-        const char* modes[] = { "Default", "Mipmaps", "Depth", "Derivatives", "Overdraw", "Overshading" };
+        const char* modes[] = { _SL("Default"), _SL("Mipmaps"), _SL("Depth"), _SL("Derivatives"), _SL("Overdraw"), _SL("Overshading") };
         ImGui::Combo(_SL("View Mode"), &state.renderMode, modes, IM_ARRAYSIZE(modes));
-        ImGui::TextWrapped("Visibility settings are in Render Settings. Debug views omit particles and portals.");
+        const char* modeHelp[] = {
+            "Lit scene with the current rendering settings.",
+            "Texture mip level: 0 red, 1 green, 2 blue, 3 yellow, 4 cyan, 5 magenta; colors repeat every 6 levels.",
+            "Camera distance on a logarithmic scale: near is black, far is white; empty background is black.",
+            "Relative depth change per pixel: horizontal red, vertical green; surfaces parallel to the camera plane are dark.",
+            "Covered layers without depth rejection: brighter means more overlap, white at 20 layers.",
+            "Layers passing depth in draw order: brighter means more shading, white at 20 layers. This is an estimate, not GPU timing."
+        };
+        if (state.renderMode >= 0 && state.renderMode < IM_ARRAYSIZE(modeHelp))
+            ImGui::TextWrapped("%s", _SL(modeHelp[state.renderMode]));
+        if (state.renderMode != 0)
+            ImGui::TextWrapped("%s", _SL("Debug views include static and animated meshes; sky, particles, portal views and post-processing are omitted."));
 
 		ImGui::End();
 	}
@@ -1798,7 +1823,7 @@ namespace engine {
 
 				if (ImGui::Begin(PanelTitle("Entity Inspector", "EntityInspector").c_str(), &state.showEntityInspector)) {
 
-					ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "[ %s ]", selectedEntity.name().c_str());
+					ImGui::TextColored(editor_theme::Color(editor_theme::kText), "[ %s ]", selectedEntity.name().c_str());
 					ImGui::Separator();
 
 					// 可见性切换组件// Visibility Toggle Component
@@ -1834,7 +1859,7 @@ namespace engine {
 							if (ImGui::DragFloat3("##Scl", m_ui_scale, 0.1f)) is_modified = true;
 
 							// 快速镜像按钮 (Mirror Buttons)
-							ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "Mirror:");
+							ImGui::TextColored(editor_theme::Color(editor_theme::kMuted), "Mirror:");
 							ImGui::SameLine();
 							if (ImGui::Button("Flip X")) { m_ui_scale[0] = -m_ui_scale[0]; is_modified = true; }
 							ImGui::SameLine();
@@ -1999,6 +2024,10 @@ namespace engine {
         }
         if (ImGui::BeginMenu(_SL("View"))) {
             ImGui::MenuItem(_SL("Engine UI"), "F1", &state.showEngineUi);
+            ImGui::MenuItem(_SL("Neutral Viewport Background"), nullptr, &state.editorViewportBackdrop, state.renderMode == 0);
+            ImGui::MenuItem(_SL("Viewport Grid"), nullptr, &state.editorViewportGrid, state.renderMode == 0);
+            if (state.renderMode != 0) ImGui::TextDisabled("%s", _SL("Available in default render mode"));
+            ImGui::Separator();
             if (ImGui::MenuItem(_SL("Reset Editor Layout"))) {
                 state.showSceneHierarchy = state.showEntityInspector = state.showContentBrowser = true;
                 state.showConsole = state.showRenderSettings = true;

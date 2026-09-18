@@ -23,12 +23,17 @@
 #include "../../../../ThirdParty/imgui/misc/cpp/imgui_stdlib.cpp"
 
 #include "../EngineUi.hpp"
+#include "../EditorTheme.hpp"
 #include "UICompiler.hpp"
 #include "VisualUIRuntime.hpp"
 
 namespace engine {
 
     namespace {
+
+        ImU32 EditorColor(unsigned rgb, float alpha = 1.0f) {
+            return ImGui::ColorConvertFloat4ToU32(editor_theme::Color(rgb, alpha));
+        }
 
         // 画布缩放控制柄的 8 个方向。
         enum class ResizeHandle : std::uint8_t {
@@ -198,8 +203,8 @@ namespace engine {
             };
 
             ImDrawList* drawList = ImGui::GetWindowDrawList();
-            const ImU32 fillColor = IM_COL32(58, 66, 82, 120);
-            const ImU32 borderColor = IM_COL32(180, 190, 210, 180);
+            const ImU32 fillColor = EditorColor(editor_theme::kHover);
+            const ImU32 borderColor = EditorColor(editor_theme::kBorder);
 
             for (std::size_t index = 0; index < handlePositions.size(); ++index) {
                 const ImVec2 handlePos = handlePositions[index];
@@ -2540,7 +2545,7 @@ namespace engine {
         void DrawCanvasGrid(ImDrawList* drawList, const ImVec2& canvasMin, const ImVec2& canvasMax, float scale) {
             // 可选网格仅用于编辑期对齐辅助，不会写入运行时 UI 数据。
             const float scaledStep = std::max(8.0f, 32.0f * scale);
-            const ImU32 gridColor = IM_COL32(65, 72, 84, 120);
+            const ImU32 gridColor = EditorColor(editor_theme::kPaper, 0.12f);
 
             for (float x = canvasMin.x + scaledStep; x < canvasMax.x; x += scaledStep) {
                 drawList->AddLine(ImVec2(x, canvasMin.y), ImVec2(x, canvasMax.y), gridColor, 1.0f);
@@ -2606,18 +2611,18 @@ namespace engine {
                 if (HasVisibleRotation(element)) {
                     const auto quad = BuildRotatedQuad(element, min, max);
                     drawList->AddQuadFilled(quad[0], quad[1], quad[2], quad[3], fillColor);
-                    drawList->AddQuad(quad[0], quad[1], quad[2], quad[3], IM_COL32(210, 210, 220, 180), 1.0f);
+                    drawList->AddQuad(quad[0], quad[1], quad[2], quad[3], EditorColor(editor_theme::kMuted), 1.0f);
                 }
                 else {
                     drawList->AddRectFilled(min, max, fillColor, scaledBorderRadius);
-                    drawList->AddRect(min, max, IM_COL32(210, 210, 220, 180), scaledBorderRadius, 0, 1.0f);
+                    drawList->AddRect(min, max, EditorColor(editor_theme::kMuted), scaledBorderRadius, 0, 1.0f);
                 }
                 std::string placeholder = "Image";
                 if (image && !image->imagePath.empty()) {
                     placeholder = std::format("Image\n{}", image->imagePath);
                 }
-                drawList->AddLine(min, max, IM_COL32(180, 180, 190, 150), 1.0f);
-                drawList->AddLine(ImVec2(min.x, max.y), ImVec2(max.x, min.y), IM_COL32(180, 180, 190, 150), 1.0f);
+                drawList->AddLine(min, max, EditorColor(editor_theme::kMuted, 0.65f), 1.0f);
+                drawList->AddLine(ImVec2(min.x, max.y), ImVec2(max.x, min.y), EditorColor(editor_theme::kMuted, 0.65f), 1.0f);
                 DrawPreviewText(drawList, placeholder, min, max, textColor, scaledFontSize, "Left", previewFont, true);
                 break;
             }
@@ -2748,10 +2753,10 @@ namespace engine {
             if (!session.previewMode && session.selectedElementId == element.GetId()) {
                 if (HasVisibleRotation(element)) {
                     const auto quad = BuildRotatedQuad(element, min, max);
-                    drawList->AddQuad(quad[0], quad[1], quad[2], quad[3], IM_COL32(255, 204, 96, 255), 2.5f);
+                    drawList->AddQuad(quad[0], quad[1], quad[2], quad[3], EditorColor(editor_theme::kAccent), 2.5f);
                 }
                 else {
-                    drawList->AddRect(min, max, IM_COL32(255, 204, 96, 255), std::max(2.0f, scaledBorderRadius), 0, 2.5f);
+                    drawList->AddRect(min, max, EditorColor(editor_theme::kAccent), std::max(2.0f, scaledBorderRadius), 0, 2.5f);
                 }
             }
 
@@ -2763,8 +2768,8 @@ namespace engine {
         void DrawResizeHandles(ImDrawList* drawList, const UIElement& element, const ImVec2& min, const ImVec2& max) {
             const auto handles = BuildResizeHandleRects(element, min, max);
             for (const ResizeHandleRect& handleRect : handles) {
-                drawList->AddRectFilled(handleRect.min, handleRect.max, IM_COL32(255, 204, 96, 255), 2.0f);
-                drawList->AddRect(handleRect.min, handleRect.max, IM_COL32(20, 24, 30, 255), 2.0f, 0, 1.0f);
+                drawList->AddRectFilled(handleRect.min, handleRect.max, EditorColor(editor_theme::kAccent), 2.0f);
+                drawList->AddRect(handleRect.min, handleRect.max, EditorColor(editor_theme::kBorder), 2.0f, 0, 1.0f);
             }
         }
 
@@ -3208,35 +3213,35 @@ namespace engine {
             const float fullHeight = timelineHeaderHeight + totalRowHeight;
             ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-            drawList->AddRectFilled(origin, ImVec2(origin.x + fullWidth, origin.y + fullHeight), IM_COL32(16, 19, 26, 255), 8.0f);
-            drawList->AddRect(origin, ImVec2(origin.x + fullWidth, origin.y + fullHeight), IM_COL32(74, 82, 98, 255), 8.0f, 0, 1.2f);
-            drawList->AddRectFilled(origin, ImVec2(origin.x + fullWidth, origin.y + timelineHeaderHeight), IM_COL32(26, 30, 40, 255), 8.0f, ImDrawFlags_RoundCornersTop);
-            drawList->AddLine(ImVec2(origin.x + timelineLeftColumnWidth, origin.y), ImVec2(origin.x + timelineLeftColumnWidth, origin.y + fullHeight), IM_COL32(84, 92, 110, 255), 1.0f);
-            drawList->AddText(ImVec2(origin.x + 10.0f, origin.y + 8.0f), IM_COL32(228, 232, 240, 255), "Tracks");
-            drawList->AddText(ImVec2(origin.x + timelineLeftColumnWidth + 10.0f, origin.y + 8.0f), IM_COL32(228, 232, 240, 255), "Timeline");
+            drawList->AddRectFilled(origin, ImVec2(origin.x + fullWidth, origin.y + fullHeight), EditorColor(editor_theme::kPaper), 3.0f);
+            drawList->AddRect(origin, ImVec2(origin.x + fullWidth, origin.y + fullHeight), EditorColor(editor_theme::kBorder), 3.0f, 0, 1.0f);
+            drawList->AddRectFilled(origin, ImVec2(origin.x + fullWidth, origin.y + timelineHeaderHeight), EditorColor(editor_theme::kHover), 3.0f, ImDrawFlags_RoundCornersTop);
+            drawList->AddLine(ImVec2(origin.x + timelineLeftColumnWidth, origin.y), ImVec2(origin.x + timelineLeftColumnWidth, origin.y + fullHeight), EditorColor(editor_theme::kBorder), 1.0f);
+            drawList->AddText(ImVec2(origin.x + 10.0f, origin.y + 8.0f), EditorColor(editor_theme::kText), "Tracks");
+            drawList->AddText(ImVec2(origin.x + timelineLeftColumnWidth + 10.0f, origin.y + 8.0f), EditorColor(editor_theme::kText), "Timeline");
 
             const int majorTickCount = 10;
             for (int tick = 0; tick <= majorTickCount; ++tick) {
                 const float normalized = static_cast<float>(tick) / static_cast<float>(majorTickCount);
                 const float x = origin.x + timelineLeftColumnWidth + normalized * rightWidth;
-                drawList->AddLine(ImVec2(x, origin.y), ImVec2(x, origin.y + fullHeight), IM_COL32(54, 58, 68, 180), 1.0f);
-                drawList->AddText(ImVec2(x + 4.0f, origin.y + 7.0f), IM_COL32(195, 202, 214, 255), std::format("{:.2f}", duration * normalized).c_str());
+                drawList->AddLine(ImVec2(x, origin.y), ImVec2(x, origin.y + fullHeight), EditorColor(editor_theme::kBorder, 0.24f), 1.0f);
+                drawList->AddText(ImVec2(x + 4.0f, origin.y + 7.0f), EditorColor(editor_theme::kMuted), std::format("{:.2f}", duration * normalized).c_str());
                 if (tick < majorTickCount) {
                     for (int minor = 1; minor < 5; ++minor) {
                         const float minorNormalized = (static_cast<float>(tick) + static_cast<float>(minor) / 5.0f) / static_cast<float>(majorTickCount);
                         const float minorX = origin.x + timelineLeftColumnWidth + minorNormalized * rightWidth;
-                        drawList->AddLine(ImVec2(minorX, origin.y + timelineHeaderHeight), ImVec2(minorX, origin.y + fullHeight), IM_COL32(38, 42, 52, 120), 1.0f);
+                        drawList->AddLine(ImVec2(minorX, origin.y + timelineHeaderHeight), ImVec2(minorX, origin.y + fullHeight), EditorColor(editor_theme::kBorder, 0.10f), 1.0f);
                     }
                 }
             }
 
             const float currentTimeX = origin.x + timelineLeftColumnWidth + (std::clamp(session.animationPreviewTime, 0.0f, duration) / duration) * rightWidth;
-            drawList->AddLine(ImVec2(currentTimeX, origin.y + 2.0f), ImVec2(currentTimeX, origin.y + fullHeight), IM_COL32(255, 210, 96, 255), 2.5f);
+            drawList->AddLine(ImVec2(currentTimeX, origin.y + 2.0f), ImVec2(currentTimeX, origin.y + fullHeight), EditorColor(editor_theme::kAccent), 2.5f);
             drawList->AddTriangleFilled(
                 ImVec2(currentTimeX - 6.0f, origin.y + 2.0f),
                 ImVec2(currentTimeX + 6.0f, origin.y + 2.0f),
                 ImVec2(currentTimeX, origin.y + 12.0f),
-                IM_COL32(255, 210, 96, 255));
+                EditorColor(editor_theme::kAccent));
 
             const ImVec2 mousePos = ImGui::GetMousePos();
             const bool leftClicked = childHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
@@ -3267,21 +3272,24 @@ namespace engine {
                 const bool isSelectedTrack = session.selectedAnimationTrackIndex == static_cast<int>(trackIndex);
                 const bool alternateRow = (trackIndex % 2) == 1;
                 const ImU32 rowColor = isSelectedTrack
-                    ? IM_COL32(42, 52, 74, 255)
-                    : (alternateRow ? IM_COL32(27, 31, 40, 255) : IM_COL32(24, 27, 35, 255));
+                    ? EditorColor(editor_theme::kHover)
+                    : EditorColor(alternateRow ? editor_theme::kViewport : editor_theme::kPaper);
                 drawList->AddRectFilled(ImVec2(origin.x, rowTop), ImVec2(origin.x + fullWidth, rowBottom), rowColor);
-                drawList->AddLine(ImVec2(origin.x, rowBottom), ImVec2(origin.x + fullWidth, rowBottom), IM_COL32(46, 50, 60, 255), 1.0f);
+                if (isSelectedTrack) {
+                    drawList->AddRectFilled(ImVec2(origin.x, rowTop), ImVec2(origin.x + 3.0f, rowBottom), EditorColor(editor_theme::kAccent));
+                }
+                drawList->AddLine(ImVec2(origin.x, rowBottom), ImVec2(origin.x + fullWidth, rowBottom), EditorColor(editor_theme::kBorder, 0.25f), 1.0f);
                 drawList->AddLine(
                     ImVec2(origin.x + timelineLeftColumnWidth + 12.0f, rowTop + rowHeight * 0.5f),
                     ImVec2(origin.x + fullWidth - 10.0f, rowTop + rowHeight * 0.5f),
-                    IM_COL32(68, 76, 92, 110),
+                    EditorColor(editor_theme::kBorder, 0.18f),
                     1.0f);
 
                 const UIElement* targetElement = session.screen ? session.screen->FindById(track.targetElementId) : nullptr;
                 const std::string label = std::format("{}  {}", collapsed ? ">" : "v", targetElement ? targetElement->GetName() : std::format("Missing({})", track.targetElementId));
                 const std::string propertyLabel = std::string(ToString(track.property));
-                drawList->AddText(ImVec2(origin.x + 10.0f, rowTop + 5.0f), IM_COL32(228, 232, 240, 255), label.c_str());
-                drawList->AddText(ImVec2(origin.x + 28.0f, rowTop + 22.0f), IM_COL32(154, 176, 230, 255), propertyLabel.c_str());
+                drawList->AddText(ImVec2(origin.x + 10.0f, rowTop + 5.0f), EditorColor(editor_theme::kText), label.c_str());
+                drawList->AddText(ImVec2(origin.x + 28.0f, rowTop + 22.0f), EditorColor(editor_theme::kMuted), propertyLabel.c_str());
 
                 const bool mouseInRow = childHovered && mousePos.y >= rowTop && mousePos.y <= rowBottom;
                 if (mouseInRow) {
@@ -3323,9 +3331,9 @@ namespace engine {
                     const float x = origin.x + timelineLeftColumnWidth + normalized * rightWidth;
                     const float y = rowTop + rowHeight * 0.5f;
                     const bool isSelected = IsAnimationKeySelected(session, static_cast<int>(trackIndex), static_cast<int>(keyframeIndex));
-                    const ImU32 diamondColor = isSelected ? IM_COL32(255, 214, 112, 255) : IM_COL32(188, 202, 226, 255);
+                    const ImU32 diamondColor = EditorColor(isSelected ? editor_theme::kAccent : editor_theme::kPaper);
                     drawList->AddQuadFilled(ImVec2(x, y - 7.0f), ImVec2(x + 7.0f, y), ImVec2(x, y + 7.0f), ImVec2(x - 7.0f, y), diamondColor);
-                    drawList->AddQuad(ImVec2(x, y - 7.0f), ImVec2(x + 7.0f, y), ImVec2(x, y + 7.0f), ImVec2(x - 7.0f, y), IM_COL32(18, 20, 24, 255), 1.0f);
+                    drawList->AddQuad(ImVec2(x, y - 7.0f), ImVec2(x + 7.0f, y), ImVec2(x, y + 7.0f), ImVec2(x - 7.0f, y), EditorColor(editor_theme::kBorder), 1.0f);
                 }
             }
 
@@ -3438,8 +3446,8 @@ namespace engine {
             if (session.isMarqueeSelectingKeys) {
                 const ImVec2 minPoint(std::min(session.marqueeSelectionStart.x, session.marqueeSelectionEnd.x), std::min(session.marqueeSelectionStart.y, session.marqueeSelectionEnd.y));
                 const ImVec2 maxPoint(std::max(session.marqueeSelectionStart.x, session.marqueeSelectionEnd.x), std::max(session.marqueeSelectionStart.y, session.marqueeSelectionEnd.y));
-                drawList->AddRectFilled(minPoint, maxPoint, IM_COL32(88, 156, 255, 35.0f));
-                drawList->AddRect(minPoint, maxPoint, IM_COL32(88, 156, 255, 220), 0.0f, 0, 1.2f);
+                drawList->AddRectFilled(minPoint, maxPoint, EditorColor(editor_theme::kAccent, 0.14f));
+                drawList->AddRect(minPoint, maxPoint, EditorColor(editor_theme::kAccent), 0.0f, 0, 1.2f);
             }
 
             if (ImGui::BeginPopup("AnimationTimelineContext")) {
@@ -4385,8 +4393,8 @@ namespace engine {
             const ImVec2 regionMin = ImGui::GetItemRectMin();
             const ImVec2 regionMax = ImGui::GetItemRectMax();
             ImDrawList* drawList = ImGui::GetWindowDrawList();
-            drawList->AddRectFilled(regionMin, regionMax, IM_COL32(28, 31, 39, 255), 10.0f);
-            drawList->AddRect(regionMin, regionMax, IM_COL32(92, 100, 118, 255), 10.0f, 0, 1.5f);
+            drawList->AddRectFilled(regionMin, regionMax, EditorColor(editor_theme::kViewport), 3.0f);
+            drawList->AddRect(regionMin, regionMax, EditorColor(editor_theme::kBorder), 3.0f, 0, 1.0f);
 
             const float fitScale = std::min(
                 previewRegion.x / std::max(referenceResolution.x, 1.0f),
@@ -4676,11 +4684,12 @@ namespace engine {
             }
 
             drawList->PushClipRect(regionMin, regionMax, true);
-            drawList->AddRectFilled(canvasMin, canvasMax, IM_COL32(18, 20, 26, 255), 6.0f);
+            // Keep transparent/white game HUDs readable against their preview surface.
+            drawList->AddRectFilled(canvasMin, canvasMax, IM_COL32(18, 20, 26, 255), 2.0f);
             if (session.showGrid) {
                 DrawCanvasGrid(drawList, canvasMin, canvasMax, previewScale);
             }
-            drawList->AddRect(canvasMin, canvasMax, IM_COL32(160, 170, 190, 255), 6.0f, 0, 1.5f);
+            drawList->AddRect(canvasMin, canvasMax, EditorColor(editor_theme::kBorder), 2.0f, 0, 1.0f);
 
             if (session.screen && session.screen->GetRootCanvas()) {
                 DrawPreviewElement(*session.screen->GetRootCanvas(), rootRect, session, drawList, canvasMin, previewScale);
@@ -4699,7 +4708,7 @@ namespace engine {
             }
             else {
                 const ImVec2 center((canvasMin.x + canvasMax.x) * 0.5f, (canvasMin.y + canvasMax.y) * 0.5f);
-                drawList->AddText(ImVec2(center.x - 56.0f, center.y - 8.0f), IM_COL32(255, 204, 96, 255), "No UI Screen");
+                drawList->AddText(ImVec2(center.x - 56.0f, center.y - 8.0f), EditorColor(editor_theme::kPaper), "No UI Screen");
             }
 
             drawList->PopClipRect();

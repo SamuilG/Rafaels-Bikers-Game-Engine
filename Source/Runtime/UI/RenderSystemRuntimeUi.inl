@@ -245,6 +245,9 @@ inline void RenderSystem::RenderRuntimeUi() {
     mRuntimeUiManager->Render(context);
 
     const std::vector<std::string> visibleScreens = mRuntimeUiManager->GetVisibleScreenNames();
+    const auto debugColor = [this](unsigned themeColor, ImU32 runtimeColor) {
+        return mState && mState->showEngineUi ? editor_theme::ColorU32(themeColor) : runtimeColor;
+    };
     
     if (mRuntimeUiDebugShowStack && !visibleScreens.empty()) {
         const ImVec2 debugOrigin(canvasMin.x + 12.0f, canvasMin.y + 12.0f);
@@ -259,21 +262,21 @@ inline void RenderSystem::RenderRuntimeUi() {
         drawList->AddRectFilled(
             debugOrigin,
             ImVec2(debugOrigin.x + boxWidth, debugOrigin.y + boxHeight),
-            IM_COL32(8, 12, 18, 180),
+            debugColor(editor_theme::kPaper, IM_COL32(8, 12, 18, 180)),
             8.0f);
         drawList->AddRect(
             debugOrigin,
             ImVec2(debugOrigin.x + boxWidth, debugOrigin.y + boxHeight),
-            IM_COL32(120, 160, 220, 210),
+            debugColor(editor_theme::kBorder, IM_COL32(120, 160, 220, 210)),
             8.0f,
             0,
             1.0f);
 
         ImVec2 textCursor(debugOrigin.x + 10.0f, debugOrigin.y + 6.0f);
-        drawList->AddText(textCursor, IM_COL32(230, 235, 255, 255), "Runtime UI Stack");
+        drawList->AddText(textCursor, debugColor(editor_theme::kText, IM_COL32(230, 235, 255, 255)), "Runtime UI Stack");
         textCursor.y += lineHeight;
         for (const std::string& screenName : visibleScreens) {
-            drawList->AddText(textCursor, IM_COL32(220, 225, 235, 255), screenName.c_str());
+            drawList->AddText(textCursor, debugColor(editor_theme::kText, IM_COL32(220, 225, 235, 255)), screenName.c_str());
             textCursor.y += lineHeight;
         }
     }
@@ -288,12 +291,12 @@ inline void RenderSystem::RenderRuntimeUi() {
         drawList->AddRectFilled(
             dataOrigin,
             ImVec2(dataOrigin.x + dataBoxWidth, dataOrigin.y + dataBoxHeight),
-            IM_COL32(8, 12, 18, 180),
+            debugColor(editor_theme::kPaper, IM_COL32(8, 12, 18, 180)),
             8.0f);
         drawList->AddRect(
             dataOrigin,
             ImVec2(dataOrigin.x + dataBoxWidth, dataOrigin.y + dataBoxHeight),
-            IM_COL32(120, 200, 140, 210),
+            debugColor(editor_theme::kBorder, IM_COL32(120, 200, 140, 210)),
             8.0f,
             0,
             1.0f);
@@ -338,7 +341,7 @@ inline void RenderSystem::RenderRuntimeUi() {
         };
 
         ImVec2 dataCursor(dataOrigin.x + 10.0f, dataOrigin.y + 6.0f);
-        drawList->AddText(dataCursor, IM_COL32(230, 255, 235, 255), dataPanelTitle);
+        drawList->AddText(dataCursor, debugColor(editor_theme::kText, IM_COL32(230, 255, 235, 255)), dataPanelTitle);
         dataCursor.y += dataLineHeight;
         const std::array<std::string, 8> debugLines = {
             std::format("speed: {:.1f} km/h", tryGetFloat("bike.speedKmh")),
@@ -351,7 +354,7 @@ inline void RenderSystem::RenderRuntimeUi() {
             std::format("low energy: {}", tryGetBool("bike.isLowEnergy") ? "true" : "false")
         };
         for (const std::string& line : debugLines) {
-            drawList->AddText(dataCursor, IM_COL32(220, 225, 235, 255), line.c_str());
+            drawList->AddText(dataCursor, debugColor(editor_theme::kText, IM_COL32(220, 225, 235, 255)), line.c_str());
             dataCursor.y += dataLineHeight;
         }
     }
@@ -468,13 +471,13 @@ inline void RenderSystem::DrawRuntimeUiDebugOverlay() {
                 context.rootPosition.y + (entry.rect.position.y + entry.rect.size.y) * context.axisScale.y);
 
             if (mRuntimeUiDebugShowBounds) {
-                drawList->AddRect(min, max, IM_COL32(80, 220, 140, 210), 0.0f, 0, 1.0f);
+                drawList->AddRect(min, max, editor_theme::ColorU32(editor_theme::kAccent), 0.0f, 0, 1.0f);
             }
             if (mRuntimeUiDebugShowHitRects && entry.interactive) {
-                drawList->AddRect(min, max, IM_COL32(255, 96, 96, 220), 0.0f, 0, 2.0f);
+                drawList->AddRect(min, max, editor_theme::ColorU32(editor_theme::kAxisX), 0.0f, 0, 2.0f);
             }
             if (mRuntimeUiDebugSelectedElementId != 0 && entry.element && entry.element->GetId() == mRuntimeUiDebugSelectedElementId) {
-                drawList->AddRect(min, max, IM_COL32(255, 215, 96, 255), 0.0f, 0, 2.5f);
+                drawList->AddRect(min, max, editor_theme::ColorU32(editor_theme::kAccent), 0.0f, 0, 2.5f);
             }
         }
 
@@ -503,7 +506,11 @@ inline void RenderSystem::DrawRuntimeUiDebugOverlay() {
                         "{} = {}",
                         binding.sourceKey,
                         FormatUiValueForDebug(dataContext.GetValue(binding.sourceKey)));
-                    drawList->AddText(debugTextPos, IM_COL32(255, 245, 200, 255), line.c_str());
+                    const ImVec2 labelSize = ImGui::CalcTextSize(line.c_str());
+                    drawList->AddRectFilled(ImVec2(debugTextPos.x - 2.0f, debugTextPos.y - 1.0f),
+                        ImVec2(debugTextPos.x + labelSize.x + 2.0f, debugTextPos.y + labelSize.y + 1.0f),
+                        editor_theme::ColorU32(editor_theme::kPaper));
+                    drawList->AddText(debugTextPos, editor_theme::ColorU32(editor_theme::kText), line.c_str());
                     debugTextPos.y -= ImGui::GetTextLineHeightWithSpacing();
                 }
                 break;

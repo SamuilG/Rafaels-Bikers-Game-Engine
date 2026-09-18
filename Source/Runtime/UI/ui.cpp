@@ -1,4 +1,5 @@
 #include "ui.hpp"
+#include "EditorTheme.hpp"
 
 #include <stdexcept>
 #include <array>
@@ -12,6 +13,14 @@
 
 //============== = Global Instance全局实例============================
 ImGuiRenderer imguiRenderer;
+
+namespace
+{
+    // This renderer owns the single ImGui context. Preserve the runtime style
+    // when entering the editor so its palette and spacing do not leak into play.
+    ImGuiStyle s_runtimeStyle;
+    ImGuizmo::Style s_runtimeGizmoStyle;
+}
 
 //================Vulkan Function Loader驱动函数加载===================
 static PFN_vkVoidFunction MyVulkanLoader(const char* function_name, void* user_data) {
@@ -71,6 +80,10 @@ void ImGuiRenderer::Init(const InitInfo& info)
     if (info.imageCount < 2) throw std::runtime_error("ImGuiRenderer::Init imageCount must be >=2");
 
     m_device = info.device;
+    m_srgbOutput = info.colorFormat == VK_FORMAT_R8G8B8A8_SRGB
+        || info.colorFormat == VK_FORMAT_B8G8R8A8_SRGB
+        || info.colorFormat == VK_FORMAT_A8B8G8R8_SRGB_PACK32;
+    engine::editor_theme::SetLinearOutput(false);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -133,6 +146,7 @@ void ImGuiRenderer::Init(const InitInfo& info)
     }
 
     m_inited = true;
+    m_editorThemeActive = false;
 }
 
 //================UI System Shutdown===========================
@@ -144,6 +158,8 @@ void ImGuiRenderer::Shutdown()
 
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
+    if (m_editorThemeActive)
+        ImGuizmo::GetStyle() = s_runtimeGizmoStyle;
     ImGui::DestroyContext();
 
     if (m_pool != VK_NULL_HANDLE)
@@ -153,12 +169,40 @@ void ImGuiRenderer::Shutdown()
     }
 
     m_inited = false;
+    m_editorThemeActive = false;
+    m_srgbOutput = false;
+    engine::editor_theme::SetLinearOutput(false);
 }
 
 //================Frame Lifecycle帧生命周期==========================
-void ImGuiRenderer::BeginFrame()
+void ImGuiRenderer::BeginFrame(bool editorUi)
 {
     if (!m_inited) return;
+    if (editorUi != m_editorThemeActive)
+    {
+        ImGuiStyle& style = ImGui::GetStyle();
+        if (editorUi)
+        {
+            s_runtimeStyle = style;
+            s_runtimeGizmoStyle = ImGuizmo::GetStyle();
+            engine::editor_theme::SetLinearOutput(m_srgbOutput);
+            engine::editor_theme::Apply();
+        }
+        else
+        {
+            // Font scaling may have changed with the monitor while in editor.
+            const float fontScaleMain = style.FontScaleMain;
+            const float fontScaleDpi = style.FontScaleDpi;
+            const float fontSizeBase = style.FontSizeBase;
+            style = s_runtimeStyle;
+            style.FontScaleMain = fontScaleMain;
+            style.FontScaleDpi = fontScaleDpi;
+            style.FontSizeBase = fontSizeBase;
+            ImGuizmo::GetStyle() = s_runtimeGizmoStyle;
+            engine::editor_theme::SetLinearOutput(false);
+        }
+        m_editorThemeActive = editorUi;
+    }
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
@@ -172,6 +216,13 @@ void ImGuiRenderer::BuildDemoUI()
 }
 
 //================Rendering指令录制================================
+VkClearColorValue ImGuiRenderer::BackgroundClearColor() const
+{
+    if (!m_editorThemeActive) return { 0.12f, 0.12f, 0.12f, 1.0f };
+    const ImVec4 background = ImGui::GetStyleColorVec4(ImGuiCol_WindowBg);
+    return { background.x, background.y, background.z, 1.0f };
+}
+
 void ImGuiRenderer::Render(VkCommandBuffer cmd)
 {
     if (!m_inited) return;

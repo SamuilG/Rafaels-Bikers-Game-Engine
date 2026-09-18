@@ -22,7 +22,13 @@ layout(location = 0) out vec4 oColor;
 layout(push_constant) uniform BloomParams {
     float exposure;
     float bloomStrength;
+    float editorBackdrop;
+    float srgbOutput;
 } params;
+
+vec3 srgbToLinear(vec3 color) {
+    return mix(color / 12.92, pow((color + 0.055) / 1.055, vec3(2.4)), greaterThan(color, vec3(0.04045)));
+}
 
 void main() {
     vec2 uv = v2fTexCoord;
@@ -34,7 +40,21 @@ void main() {
         uv = vec2(coord) / texSize;
     }
     
-    vec3 sceneColor = texture(uSceneTexture, uv).rgb;      
+    vec4 sceneSample = texture(uSceneTexture, uv);
+    // The editor clears only empty background pixels to zero alpha, and omits
+    // the main skybox. Apply the neutral surface after scene tone mapping so
+    // exposure/SSAO cannot tint the paper backdrop. Matches EditorTheme.hpp.
+    if (params.editorBackdrop > 0.5 && sceneSample.a < 0.0001) {
+        vec3 viewport = vec3(229.0, 227.0, 216.0) / 255.0;
+        vec3 paper = vec3(240.0, 238.0, 225.0) / 255.0;
+        vec3 backdrop = mix(viewport, paper, (1.0 - v2fTexCoord.y) * 0.25);
+        if (params.srgbOutput > 0.5) backdrop = srgbToLinear(backdrop);
+        vec3 glow = max(texture(uBloomBlur, uv).rgb * params.bloomStrength * params.exposure, vec3(0.0));
+        // Retain bloom spilling past object silhouettes without exposing the backdrop.
+        oColor = vec4(backdrop + (vec3(1.0) - backdrop) * (glow / (glow + vec3(1.0))), 1.0);
+        return;
+    }
+    vec3 sceneColor = sceneSample.rgb;
     vec3 bloomColor = texture(uBloomBlur, uv).rgb;
     vec4 ssrData    = texture(uSsrColor, uv);
 

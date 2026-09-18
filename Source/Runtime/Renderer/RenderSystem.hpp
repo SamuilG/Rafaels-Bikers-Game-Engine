@@ -69,6 +69,7 @@ namespace lut = labut2;
 // ================= UI System =================
 #include "../UI/ui.hpp"
 #include "../UI/EngineUi.hpp"
+#include "../UI/EditorTheme.hpp"
 #include "../UI/GameUi.hpp"
 #include <imgui.h>
 #include <backends/imgui_impl_vulkan.h>
@@ -513,11 +514,6 @@ namespace engine {
             mAlphaPipe = create_alpha_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
             mPortalSurfacePipe = create_portal_surface_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
             mThumbnailAlphaPipe = create_alpha_pipeline_1_attachment(mWindow, mPipeLayout.handle, VK_FORMAT_R8G8B8A8_UNORM);
-            mMipPipe = create_debug_pipeline(mWindow, mPipeLayout.handle, cfg::kDebugVertShaderPath, cfg::kDebugMipFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT);
-            mDepthPipe = create_debug_pipeline(mWindow, mPipeLayout.handle, cfg::kDebugVertShaderPath, cfg::kDebugDepthFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT);
-            mDerivPipe = create_debug_pipeline(mWindow, mPipeLayout.handle, cfg::kDebugVertShaderPath, cfg::kDebugDerivFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT);
-            mOverdrawPipe = create_overdraw_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
-            mOvershadingPipe = create_overshading_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
             mShadowPipe = create_shadow_pipeline(mWindow, mPipeLayout.handle);
             mParticlePipe = create_particle_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
             mDebugLinePipe = create_debug_line_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
@@ -534,6 +530,7 @@ namespace engine {
             mSkinnedPipe = create_skinned_pipeline(mWindow, mSkinnedPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
             mSkinnedAlphaPipe = create_skinned_alpha_pipeline(mWindow, mSkinnedPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
             mShadowSkinnedPipe = create_shadow_skinned_pipeline(mWindow, mSkinnedPipeLayout.handle);
+            CreateDebugViewPipelines();
 
             mBoneSSBO = lut::create_buffer(mAllocator, kMaxBoneMatrices * sizeof(glm::mat4), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
             {
@@ -989,7 +986,7 @@ namespace engine {
             // 
 
             //启动 ImGui 帧// Start ImGui frame
-            imguiRenderer.BeginFrame();
+            imguiRenderer.BeginFrame(mState->showEngineUi);
 
             if (mState->showEngineUi) {
                 EngineUi::DrawMainMenuBar(this, mSceneManager, *mState, mAppRunning);
@@ -1333,14 +1330,10 @@ namespace engine {
                     mAlphaPipe = create_alpha_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
                     mPortalSurfacePipe = create_portal_surface_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
                     mThumbnailAlphaPipe = create_alpha_pipeline_1_attachment(mWindow, mPipeLayout.handle, VK_FORMAT_R8G8B8A8_UNORM);
-                    mMipPipe = create_debug_pipeline(mWindow, mPipeLayout.handle, cfg::kDebugVertShaderPath, cfg::kDebugMipFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT);
-                    mDepthPipe = create_debug_pipeline(mWindow, mPipeLayout.handle, cfg::kDebugVertShaderPath, cfg::kDebugDepthFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT);
-                    mDerivPipe = create_debug_pipeline(mWindow, mPipeLayout.handle, cfg::kDebugVertShaderPath, cfg::kDebugDerivFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT);
+                    CreateDebugViewPipelines();
                     mPostProcPipe = create_post_proc_pipeline(mWindow, mPostPipeLayout.handle, mPostLayout.handle);
 
                     // Recreate (p2_1.1)
-                    mOverdrawPipe = create_overdraw_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
-                    mOvershadingPipe = create_overshading_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
                     mVisResolvePipe = create_vis_resolve_pipeline(mWindow, mPostPipeLayout.handle, mPostLayout.handle);
                 }
 
@@ -1645,60 +1638,17 @@ namespace engine {
             VkPipeline  currentAlpha = mAlphaPipe.handle;
             auto const* currentDescs = &mMaterialDescriptors;
 
-            // Task 1.4
-            // Debug Visualization Pipeline Switching
-            // keys 1-4: switch the pipeline used for drawing
-            // Sitch the descriptor set to 'debugMaterialDescriptors'
-            // because the debug pipeline requires a sampler with anisotropic filtering DISABLED
-            // setup.cpp
-            switch (mState->renderMode) {
-            case 1: // Mode 1: Mipmap Visualization
-                // Visualizes texture LOD levels (colored).
-                currentOpaque = currentAlpha = mMipPipe.handle;
+            // Debug modes use a dedicated single-color pass, including skinned meshes.
+            const bool debugView = mState->renderMode >= 1 && mState->renderMode <= 5;
+            VkPipeline currentSkinned = mSkinnedPipe.handle;
+            if (debugView) {
+                const size_t index = static_cast<size_t>(mState->renderMode - 1);
+                currentOpaque = mDebugViewPipes[index].handle;
+                currentSkinned = mSkinnedDebugViewPipes[index].handle;
                 currentDescs = &mDebugMaterialDescriptors;
-                break;
-            case 2: // Mode 2: Depth Visualization
-                // Visualizes fragment depth (non-linear grayscale)
-                currentOpaque = currentAlpha = mDepthPipe.handle;
-                currentDescs = &mDebugMaterialDescriptors;
-                break;
-            case 3: // Mode 3: Derivatives Visualization
-                // Visualizes partial derivatives of depth (dFdx, dFdy)
-                currentOpaque = currentAlpha = mDerivPipe.handle;
-                currentDescs = &mDebugMaterialDescriptors;
-                break;
-            case 4: // Mode 4: Overdraw
-                currentOpaque = currentAlpha = mOverdrawPipe.handle;
-                currentDescs = &mDebugMaterialDescriptors;
-                // rendering.cpp binds descriptors (i think)
-                break;
-            case 5: // Mode 5: Overshading
-                currentOpaque = currentAlpha = mOvershadingPipe.handle;
-                currentDescs = &mDebugMaterialDescriptors;
-                break;
-            default:
-                break;
             }
+            const VkClearColorValue clearColor = { 0.1f, 0.1f, 0.1f, 1.f };
 
-            ImageAndView    offscreenTarget;
-            VkPipeline      resolvePipeline = mPostProcPipe.handle;
-            VkDescriptorSet resolveDescs = mPostDescriptors[mFrameIndex];
-            VkPipelineLayout resolveLayout = mPostPipeLayout.handle;
-            VkClearColorValue clearColor = { 0.1f, 0.1f, 0.1f, 1.f };
-
-            if (mState->renderMode == 4 || mState->renderMode == 5) {
-                // Visualization Mode
-                offscreenTarget = { mVisImage.image, mVisImage.view };
-                resolvePipeline = mVisResolvePipe.handle;
-                resolveDescs = mVisDescriptors[mFrameIndex]; // same layout (postProcPipelineLayout)
-                clearColor = { 0.f, 0.1f, 0.f, 1.f }; // dark green
-            }
-            else {
-                // Normal Mode
-                offscreenTarget = { mOffscreenImage.image, mOffscreenImage.view };
-            }
-
-            
             //================  particle system===================================================
 
              // trigger
@@ -1813,6 +1763,26 @@ namespace engine {
             }
             // trigger: draw every visible trigger volume through DebugRendere
             mTriggerSystem.DrawTriggers(mDebugRenderer);
+            const bool editorBackdrop = mState->showEngineUi && mState->editorViewportBackdrop && mState->renderMode == 0;
+            if (mState->showEngineUi && mState->editorViewportGrid && mState->renderMode == 0) {
+                // A world-space XZ grid: scene depth occludes it like other editor helpers.
+                // Scale by camera height to keep the line count bounded while zooming out.
+                const float step = std::pow(10.0f, std::floor(std::log10(std::max(std::abs(camPosWorld.y) * 0.25f, 1.0f))));
+                const float centerX = std::floor(camPosWorld.x / step) * step;
+                const float centerZ = std::floor(camPosWorld.z / step) * step;
+                const float radius = 20.0f * step;
+                for (int i = -20; i <= 20; ++i) {
+                    const float x = centerX + i * step;
+                    const float z = centerZ + i * step;
+                    const auto lineColor = [step](float coordinate) {
+                        const bool major = std::abs(std::remainder(coordinate / step, 5.0f)) < 0.01f;
+                        const ImVec4 color = editor_theme::Mix(editor_theme::kViewport, editor_theme::kMuted, major ? 0.28f : 0.14f);
+                        return glm::vec3(color.x, color.y, color.z);
+                    };
+                    mDebugRenderer.DrawLine({ x, 0.01f, centerZ - radius }, { x, 0.01f, centerZ + radius }, lineColor(x));
+                    mDebugRenderer.DrawLine({ centerX - radius, 0.01f, z }, { centerX + radius, 0.01f, z }, lineColor(z));
+                }
+            }
             // 1. 在提交命令前，把这一帧收集的线上传到 GPU
             mDebugRenderer.Upload(mAllocator);
 
@@ -2210,18 +2180,19 @@ namespace engine {
                 clearColor,                    // VkClearColorValue aClearColor
                 currentBloomStrength,
                 mState->bloomExposure,
+                editorBackdrop,
 
                 // 【新增】：将极速管线和目标传给 rendering.cpp
                 mSpeedPostPipe.handle,
                 mSpeedPostPipeLayout.handle,
                 mSpeedPostDescriptors[mFrameIndex],
-                smoothedSpeedFactor, // 传递我们刚算好的平滑因子
+                editorBackdrop ? 0.0f : smoothedSpeedFactor, // Keep the neutral editor canvas free from camera effects.
                 mState->isAlive,       // <--- 直接把 userState 里的变量喂给渲染器！
-                mState->deathFactor,
+                editorBackdrop ? 0.0f : mState->deathFactor,
                 finalSceneTarget,    // 极速特效输出到最终
 
                 // --- 剩下的原有参数 ---
-                mPostProcPipe.handle,          // 这里的顺序要核对你的 rendering.cpp
+                mVisResolvePipe.handle,          // 这里的顺序要核对你的 rendering.cpp
                 mPostDescriptors[mFrameIndex],
                 mPostPipeLayout.handle,
                 mShadowPipe.handle,
@@ -2233,7 +2204,7 @@ namespace engine {
                 mDebugLinePipe.handle,
                 mDebugRenderer,
                 // Skeletal skinning
-                mSkinnedPipe.handle,
+                currentSkinned,
                 mSkinnedAlphaPipe.handle,
                 mSkinnedPipeLayout.handle,
                 mBoneDescriptorSet,
@@ -2637,6 +2608,20 @@ namespace engine {
             vkUpdateDescriptorSets(mWindow.device, 1, &write, 0, nullptr);
         }
     private:
+        void CreateDebugViewPipelines() {
+            const char* fragments[] = { cfg::kDebugMipFragShaderPath, cfg::kDebugDepthFragShaderPath,
+                cfg::kDebugDerivFragShaderPath, cfg::kOverdrawFragShaderPath, cfg::kOverdrawFragShaderPath };
+            for (size_t i = 0; i < mDebugViewPipes.size(); ++i) {
+                const bool accumulate = i >= 3;
+                const bool depthTest = i != 3; // Overdraw counts all covered fragments.
+                mDebugViewPipes[i] = create_debug_pipeline(mWindow, mPipeLayout.handle,
+                    cfg::kDebugVertShaderPath, fragments[i], VK_FORMAT_R16G16B16A16_SFLOAT,
+                    false, accumulate, depthTest);
+                mSkinnedDebugViewPipes[i] = create_debug_pipeline(mWindow, mSkinnedPipeLayout.handle,
+                    cfg::kSkinnedVertShaderPath, fragments[i], VK_FORMAT_R16G16B16A16_SFLOAT,
+                    true, accumulate, depthTest);
+            }
+        }
 
         bool IsPortalSurfaceVisibleToCamera(
             const glm::mat4& surfaceTransform,
@@ -3455,8 +3440,8 @@ void InitSkybox()
 
         lut::Pipeline mPipe, mAlphaPipe;
         lut::Pipeline mPortalSurfacePipe;
-        lut::Pipeline mMipPipe, mDepthPipe, mDerivPipe;
-        lut::Pipeline mOverdrawPipe, mOvershadingPipe;
+        std::array<lut::Pipeline, 5> mDebugViewPipes;
+        std::array<lut::Pipeline, 5> mSkinnedDebugViewPipes;
         lut::Pipeline mPostProcPipe, mVisResolvePipe;
         lut::Pipeline mShadowPipe;
         lut::Pipeline mShadowSkinnedPipe;

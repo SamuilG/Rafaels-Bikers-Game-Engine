@@ -28,14 +28,18 @@ public:
     void Init(const InitInfo& info);
     void Shutdown();
 
-    void BeginFrame();
+    void BeginFrame(bool editorUi = false);
     void BuildDemoUI();
     void Render(VkCommandBuffer cmd);
+    VkClearColorValue BackgroundClearColor() const;
+    bool UsesSrgbOutput() const { return m_srgbOutput; }
 
 private:
     VkDevice m_device = VK_NULL_HANDLE;
     VkDescriptorPool m_pool = VK_NULL_HANDLE;
     bool m_inited = false;
+    bool m_editorThemeActive = false;
+    bool m_srgbOutput = false;
 
     static void DefaultCheck(VkResult err);
     void CreateDescriptorPool();

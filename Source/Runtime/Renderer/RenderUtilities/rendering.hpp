@@ -68,6 +68,7 @@ void record_commands(
 	VkClearColorValue aClearColor,
 	float aBloomStrength,
 	float aExposure,
+	bool aEditorBackdrop,
 
 	// ==============================================================
 	// 极速后处理效果

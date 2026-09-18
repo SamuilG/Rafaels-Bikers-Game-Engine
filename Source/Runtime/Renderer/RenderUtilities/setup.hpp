@@ -172,14 +172,14 @@ lut::DescriptorSetLayout create_blur_descriptor_layout(lut::VulkanContext const&
 
 lut::Pipeline create_triangle_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_B8G8R8A8_SRGB );
 lut::Pipeline create_portal_surface_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_B8G8R8A8_SRGB );
-lut::Pipeline create_debug_pipeline( lut::VulkanWindow const&, VkPipelineLayout, char const* aVertPath, char const* aFragPath, VkFormat = VK_FORMAT_B8G8R8A8_SRGB );
+lut::Pipeline create_debug_pipeline( lut::VulkanWindow const&, VkPipelineLayout, char const* aVertPath, char const* aFragPath, VkFormat = VK_FORMAT_B8G8R8A8_SRGB, bool skinned = false, bool accumulate = false, bool depthTest = true );
 lut::Pipeline create_alpha_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_B8G8R8A8_SRGB );
 lut::Pipeline create_alpha_pipeline_1_attachment( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_B8G8R8A8_SRGB );
 lut::Pipeline create_post_proc_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkDescriptorSetLayout );
 lut::Pipeline create_blur_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout);
 lut::Pipeline create_composite_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout);
-lut::Pipeline create_overdraw_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_R8G8B8A8_UNORM );
-lut::Pipeline create_overshading_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_R8G8B8A8_UNORM );
+lut::Pipeline create_overdraw_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_R8G8B8A8_UNORM, bool skinned = false );
+lut::Pipeline create_overshading_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_R8G8B8A8_UNORM, bool skinned = false );
 lut::Pipeline create_vis_resolve_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkDescriptorSetLayout );
 lut::PipelineLayout create_speed_post_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aDescriptorLayout);
 lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout);

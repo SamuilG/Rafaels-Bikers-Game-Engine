@@ -1,14 +1,14 @@
 #version 450
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_GOOGLE_include_directive : require
+#include "debug_common.glsl"
 
 layout(location = 0) out vec4 oColor;
 
 void main()
 {
-    // Output 1/20 per fragment
-    // additive blending, 20 overlapping fragments will reach 1.0 (white)
-    oColor = vec4(0.05, 0.05, 0.05, 1.0); 
-
-
-    // Alpha is set to 1.0;
-    // not written to target due to pipeline state
+    ApplyDebugVisibility();
+    // Additive RGB: each covered fragment contributes 1/20. The pipeline
+    // enables depth testing/writes only for the depth-tested coverage mode.
+    oColor = vec4(0.05, 0.05, 0.05, 1.0);
 }

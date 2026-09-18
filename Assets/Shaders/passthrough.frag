@@ -7,9 +7,8 @@ layout(location = 0) out vec4 oColor;
 
 void main()
 {
-    // bro just passthrough
-    // input texture (visImage) is already UNORM (clamped)
-    // show heat without crushing the values
+    // Display diagnostic colors from the floating-point scene target directly.
+    // Exposure, tone mapping and mosaic must not change the diagnostic values.
     
     vec4 color = texture(uTexInput, v2fTexCoord);
     oColor = vec4(color.rgb, 1.0);

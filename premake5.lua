@@ -253,7 +253,8 @@ workspace "EngineWorkspace"
             "Assets/Shaders/*.vert", 
             "Assets/Shaders/*.frag",
             "Assets/Shaders/*.comp",
-            "Assets/Shaders/*.geom"
+            "Assets/Shaders/*.geom",
+            "Assets/Shaders/*.glsl"
         }
 
         -- Custom build commands for compiling shaders
@@ -276,4 +277,6 @@ workspace "EngineWorkspace"
                 "{MKDIR} \"%{wks.location}/Assets/Shaders/spirv\"",
                 "glslc \"%{file.abspath}\" -o \"%{wks.location}/Assets/Shaders/spirv/%{file.name}.spv\""
             }
+        filter "files:Assets/Shaders/debug_mip.frag or files:Assets/Shaders/debug_depth.frag or files:Assets/Shaders/debug_deriv.frag or files:Assets/Shaders/overdraw.frag"
+            buildinputs { "Assets/Shaders/debug_common.glsl" }
         filter "*"

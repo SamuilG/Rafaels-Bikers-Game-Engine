@@ -14,6 +14,7 @@
 #include "../../UserState/UserState.hpp"
 
 #include <algorithm>
+#include <cstddef>
 
 struct alignas(16) PortalSurfacePC {
 	glm::mat4 transform;
@@ -34,9 +35,12 @@ struct alignas(16) ObjectPC {
 	float metallicFactor;       // Offset: 96  Size: 4
 	float roughnessFactor;      // Offset: 100 Size: 4
 	float alphaCutoff;          // Offset: 104 Size: 4
-	float _pad;                 // Offset: 108 Size: 4
+	uint32_t boneBaseIndex;     // Offset: 108 Size: 4 (unused for static meshes)
 	glm::vec4 clipPlane;        // Offset: 112 Size: 16
 };
+static_assert(sizeof(ObjectPC) == 128);
+static_assert(offsetof(ObjectPC, boneBaseIndex) == 108);
+static_assert(offsetof(ObjectPC, clipPlane) == 112);
 // 鍦?rendering.cpp 椤堕儴瀹氫箟锛?
 void record_commands(
 	VkCommandBuffer aCmdBuff,
@@ -86,6 +90,7 @@ void record_commands(
 	VkClearColorValue aClearColor,
 	float aBloomStrength,
 	float aExposure,
+	bool aEditorBackdrop,
 
 	// ==============================================================
 	// 鏋侀€熷悗澶勭悊鏁堟灉
@@ -188,6 +193,153 @@ void record_commands(
 	};
 
 	uploadSceneUniform(aSceneUniform);
+	auto finishFrame = [&]() {
+		const VkImageSubresourceRange range{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+		lut::image_barrier(aCmdBuff, aFinalSceneColor.image,
+			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
+
+		// 鍑嗗鐗╃悊灞忓箷 (Swapchain) 鎺ユ敹 UI 娓叉煋
+		lut::image_barrier(aCmdBuff, aSwapchainAttach.image,
+			VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
+
+		VkRenderingAttachmentInfo uiColorAttach{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+		uiColorAttach.imageView = aSwapchainAttach.view; // 鐪熸缁樺埗鍒板睆骞?
+		uiColorAttach.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		uiColorAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		uiColorAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+		uiColorAttach.clearValue.color = imguiRenderer.BackgroundClearColor(); // UI 鑳屾櫙鏉跨殑搴曡壊锛屽彲鏀?
+
+		VkRenderingInfo uiRenderInfo{ VK_STRUCTURE_TYPE_RENDERING_INFO };
+		uiRenderInfo.renderArea.offset = { 0, 0 };
+		uiRenderInfo.renderArea.extent = aImageExtent;
+		uiRenderInfo.layerCount = 1;
+		uiRenderInfo.colorAttachmentCount = 1;
+		uiRenderInfo.pColorAttachments = &uiColorAttach;
+
+		vkCmdBeginRendering(aCmdBuff, &uiRenderInfo);
+
+		// 鐪熸瑙﹀彂 ImGui 鐨勬覆鏌擄紒
+		extern ImGuiRenderer imguiRenderer;
+		imguiRenderer.Render(aCmdBuff);
+
+		vkCmdEndRendering(aCmdBuff);
+
+		// Transition swapchain for present
+		lut::image_barrier(aCmdBuff, aSwapchainAttach.image,
+			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, range);
+
+		if (auto const res = vkEndCommandBuffer(aCmdBuff); VK_SUCCESS != res)
+		{
+			throw lut::Error("Unable to end recording command buffer\n"
+				"vkEndCommandBuffer() returned {}", lut::to_string(res)
+			);
+		}
+	};
+
+    // Diagnostic data must never pass through scene lighting, skybox, SSAO,
+    // bloom, tone mapping or camera effects. All five modes share one target.
+    // Shared images discard old contents, but still wait for prior frames to finish reading/writing.
+    if (aSceneUniform.renderMode >= 1 && aSceneUniform.renderMode <= 5) {
+        const VkImageSubresourceRange colorRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+        const VkImageSubresourceRange depthRange{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
+        lut::image_barrier(aCmdBuff, aOffscreenColor.image,
+            VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, colorRange);
+        lut::image_barrier(aCmdBuff, aDepthAttach.image,
+            VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+            VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, depthRange);
+
+        VkRenderingAttachmentInfo color{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+        color.imageView = aOffscreenColor.view;
+        color.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        color.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        color.clearValue.color = { 0.0f, 0.0f, 0.0f, 1.0f };
+        VkRenderingAttachmentInfo depth{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+        depth.imageView = aDepthAttach.view;
+        depth.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        depth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        depth.clearValue.depthStencil = { 1.0f, 0 };
+        VkRenderingInfo pass{ VK_STRUCTURE_TYPE_RENDERING_INFO };
+        pass.renderArea.extent = aImageExtent;
+        pass.layerCount = 1;
+        pass.colorAttachmentCount = 1;
+        pass.pColorAttachments = &color;
+        pass.pDepthAttachment = &depth;
+        vkCmdBeginRendering(aCmdBuff, &pass);
+        const VkViewport viewport{ 0.0f, 0.0f, float(aImageExtent.width), float(aImageExtent.height), 0.0f, 1.0f };
+        const VkRect2D scissor{ {0, 0}, aImageExtent };
+        vkCmdSetViewport(aCmdBuff, 0, 1, &viewport);
+        vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
+
+        auto drawBatches = [&](const std::vector<RenderBatch>& batches, bool skinned) {
+            const VkPipeline pipeline = skinned ? aSkinnedPipe : aGraphicsPipe;
+            const VkPipelineLayout layout = skinned ? aSkinnedPipeLayout : aGraphicsLayout;
+            if (pipeline == VK_NULL_HANDLE) return;
+            if (skinned && (!aMeshJoints || !aMeshWeights || aBoneDescriptorSet == VK_NULL_HANDLE)) return;
+            vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+            vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &aSceneDescriptors, 0, nullptr);
+            if (skinned) vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 2, 1, &aBoneDescriptorSet, 0, nullptr);
+            const VkDeviceSize offset = 0;
+            for (const auto& batch : batches) {
+                const uint32_t mesh = batch.meshIndex, material = batch.materialIndex;
+                if (mesh >= aMeshInfos.size() || mesh >= aMeshPositions.size() || mesh >= aMeshTexCoords.size() ||
+                    mesh >= aMeshNormals.size() || mesh >= aMeshIndices.size() || material >= aMaterialDescriptors.size()) continue;
+                if (skinned) {
+                    const auto joints = aMeshJoints->find(mesh), weights = aMeshWeights->find(mesh);
+                    if (joints == aMeshJoints->end() || weights == aMeshWeights->end()) continue;
+                    vkCmdBindVertexBuffers(aCmdBuff, 3, 1, &joints->second.buffer, &offset);
+                    vkCmdBindVertexBuffers(aCmdBuff, 4, 1, &weights->second.buffer, &offset);
+                }
+                ObjectPC pc{};
+                pc.transform = batch.transform;
+                pc.clipPlane = batch.clipPlane;
+                pc.boneBaseIndex = skinned ? batch.boneBaseIndex : 0;
+                pc.baseColorFactor = material < aMaterials.size() ? aMaterials[material].baseColorFactor : glm::vec4(1.0f);
+                pc.baseColorFactor.a *= batch.alphaMultiplier;
+                pc.alphaCutoff = material < aMaterials.size() ? aMaterials[material].alphaCutoff : 0.5f;
+                if (batch.alphaMultiplier < 0.99f && (material >= aMaterials.size() || aMaterials[material].alphaMaskTexture < 0))
+                    pc.alphaCutoff = -1.0f;
+                vkCmdPushConstants(aCmdBuff, layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
+                vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1, 1, &aMaterialDescriptors[material], 0, nullptr);
+                vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[mesh].buffer, &offset);
+                vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[mesh].buffer, &offset);
+                vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[mesh].buffer, &offset);
+                vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[mesh].buffer, 0, VK_INDEX_TYPE_UINT32);
+                vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(aMeshInfos[mesh].indices.size()), 1, 0, 0, 0);
+            }
+        };
+        // Each mesh contributes once, including alpha-tested and animated geometry.
+        drawBatches(aBatches, false);
+        if (aSkinnedBatches) drawBatches(*aSkinnedBatches, true);
+        vkCmdEndRendering(aCmdBuff);
+        lut::image_barrier(aCmdBuff, aOffscreenColor.image,
+            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, colorRange);
+        lut::image_barrier(aCmdBuff, aFinalSceneColor.image,
+            VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, colorRange);
+        color.imageView = aFinalSceneColor.view;
+        color.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        pass.pDepthAttachment = nullptr;
+        vkCmdBeginRendering(aCmdBuff, &pass);
+        vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aPostProcPipe);
+        vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aPostProcLayout, 0, 1, &aPostProcDescriptors, 0, nullptr);
+        vkCmdDraw(aCmdBuff, 3, 1, 0, 0);
+        vkCmdEndRendering(aCmdBuff);
+        finishFrame();
+        return;
+    }
 	VkImageLayout shadowMapLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
 	// ---------------------------
@@ -804,8 +956,7 @@ void record_commands(
 	// ==========================================================
 	// Transition offscreen + bright targets to color attachment layouts
 	lut::image_barrier(aCmdBuff, aOffscreenColor.image,
-		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
-		VK_ACCESS_2_NONE,
+		VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
 		VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
 		VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
@@ -831,7 +982,7 @@ void record_commands(
 
 	// 銆愭柊澧炶ˉ婕?2銆戯細灏嗘繁搴︾紦鍐查噸缃负鍙鍐欑姸鎬侊紒(鏋佸叾鍏抽敭锛屽惁鍒欐繁搴︽祴璇曞叏宕?
 	lut::image_barrier(aCmdBuff, aDepthAttach.image,
-		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
 		VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
 		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
@@ -855,7 +1006,7 @@ void record_commands(
 	colorAtts[0].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	colorAtts[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	colorAtts[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	colorAtts[0].clearValue.color = aClearColor;
+	colorAtts[0].clearValue.color = aEditorBackdrop ? VkClearColorValue{ 0.0f, 0.0f, 0.0f, 0.0f } : aClearColor;
 
 	// 闄勪欢 1: Bright Color
 	colorAtts[1] = colorAtts[0];
@@ -980,7 +1131,7 @@ void record_commands(
 	// =====================================================================
 	// 闃舵 1.5锛氱敾銆愬ぉ绌虹洅銆?(姝ゆ椂鍒╃敤 Early-Z 鍓旈櫎琚缓绛戞尅浣忕殑澶╃┖鍍忕礌锛屾€ц兘鏋侀珮锛?
 	// =====================================================================
-	if (skyboxPipe != VK_NULL_HANDLE && skyboxVBO != VK_NULL_HANDLE) {
+	if (!aEditorBackdrop && skyboxPipe != VK_NULL_HANDLE && skyboxVBO != VK_NULL_HANDLE) {
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipe);
 
 		// 鏄惧紡璁剧疆瑙嗗彛鍜岃鍓尯鍩?
@@ -1311,7 +1462,9 @@ void record_commands(
 	// --- 1. 鐢诲叏灞忚儗鏅悎鎴?(SSAO + SSR + 鍦烘櫙搴曡壊) ---
 	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aCompositePipe);
 	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aCompositeLayout, 0, 1, &aCompositeDS, 0, nullptr);
-	struct BloomPC { float exposure; float strength; float _pad[2]; } bloomPC{ aExposure, aBloomStrength, {0.0f,0.0f} };
+	struct BloomPC { float exposure; float strength; float editorBackdrop; float srgbOutput; }
+		bloomPC{ aExposure, aBloomStrength, aEditorBackdrop ? 1.0f : 0.0f, imguiRenderer.UsesSrgbOutput() ? 1.0f : 0.0f };
+	static_assert(sizeof(BloomPC) == 16);
 	vkCmdPushConstants(aCmdBuff, aCompositeLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(BloomPC), &bloomPC);
 	vkCmdSetViewport(aCmdBuff, 0, 1, &vp);
 	vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
@@ -1439,7 +1592,7 @@ void record_commands(
 
 	// 涓?aFinalSceneColor (缁堟瀬杞戒綋) 鍑嗗鍐欏叆鐘舵€?
 	lut::image_barrier(aCmdBuff, aFinalSceneColor.image,
-		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
 
 	VkRenderingAttachmentInfo speedAtt{};
@@ -1483,48 +1636,7 @@ void record_commands(
 	// ==========================================================
 
 	// 杞崲 aFinalSceneColor 鐨勭姸鎬侊紝鍥犱负瀹冪幇鍦ㄦ槸 3D 鍦烘櫙鐨勮浇浣擄紝ImGui 闇€瑕佹妸瀹冨綋璐村浘璇?
-	lut::image_barrier(aCmdBuff, aFinalSceneColor.image,
-		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
-
-	// 鍑嗗鐗╃悊灞忓箷 (Swapchain) 鎺ユ敹 UI 娓叉煋
-	lut::image_barrier(aCmdBuff, aSwapchainAttach.image,
-		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
-		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
-
-	VkRenderingAttachmentInfo uiColorAttach{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
-	uiColorAttach.imageView = aSwapchainAttach.view; // 鐪熸缁樺埗鍒板睆骞?
-	uiColorAttach.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	uiColorAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	uiColorAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	uiColorAttach.clearValue.color = { 0.12f, 0.12f, 0.12f, 1.0f }; // UI 鑳屾櫙鏉跨殑搴曡壊锛屽彲鏀?
-
-	VkRenderingInfo uiRenderInfo{ VK_STRUCTURE_TYPE_RENDERING_INFO };
-	uiRenderInfo.renderArea.offset = { 0, 0 };
-	uiRenderInfo.renderArea.extent = aImageExtent;
-	uiRenderInfo.layerCount = 1;
-	uiRenderInfo.colorAttachmentCount = 1;
-	uiRenderInfo.pColorAttachments = &uiColorAttach;
-
-	vkCmdBeginRendering(aCmdBuff, &uiRenderInfo);
-
-	// 鐪熸瑙﹀彂 ImGui 鐨勬覆鏌擄紒
-	extern ImGuiRenderer imguiRenderer;
-	imguiRenderer.Render(aCmdBuff);
-
-	vkCmdEndRendering(aCmdBuff);
-
-	// Transition swapchain for present
-	lut::image_barrier(aCmdBuff, aSwapchainAttach.image,
-		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, range);
-
-	if (auto const res = vkEndCommandBuffer(aCmdBuff); VK_SUCCESS != res)
-	{
-		throw lut::Error("Unable to end recording command buffer\n"
-			"vkEndCommandBuffer() returned {}", lut::to_string(res)
-		);
-	}
+	finishFrame();
 }
 
 void submit_commands(lut::VulkanContext const& aContext, VkCommandBuffer aCmdBuff, VkFence aFence, VkSemaphore aWaitSemaphore, VkSemaphore aSignalSemaphore)
