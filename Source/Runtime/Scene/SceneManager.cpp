@@ -756,11 +756,12 @@ namespace engine {
 
             // 3. 第三人称相机遮挡透视 (X-Ray) 逻辑
             if (mState && mState->camera.State().thirdPersonMode) {
-                glm::vec3 cameraPos = glm::vec3(mState->camera.State().camera2world[3]);
+                const CameraState& cameraState = mState->camera.State();
+                glm::vec3 cameraPos = glm::vec3(cameraState.camera2world[3]);
 
                 m_world->defer_begin();
                 m_world->query<OpacityComponent>().each([&](flecs::entity e, OpacityComponent& op) {
-                    op.currentFade += (op.targetFade - op.currentFade) * 8.0f * dt;
+                    op.currentFade += (op.targetFade - op.currentFade) * cameraState.occlusionFadeSpeed * dt;
                     op.targetFade = 1.0f;
                     if (op.currentFade >= 0.99f && op.targetFade == 1.0f) {
                         e.remove<OpacityComponent>();
@@ -768,7 +769,8 @@ namespace engine {
                     });
                 m_world->defer_end();
 
-                if (!mState->camera.State().portalCameraActive && !mState->player.State().isExtremeSpeed) {
+                if (cameraState.occlusionFadeEnabled &&
+                    !cameraState.portalCameraActive && !mState->player.State().isExtremeSpeed) {
                     flecs::entity bikeEntity = find_entity("Bike_0");
                     if (bikeEntity.is_valid() && bikeEntity.has<WorldTransform>()) {
                         uint32_t bikeBodyID = JPH::BodyID::cInvalidBodyID;
@@ -781,7 +783,7 @@ namespace engine {
 
                         if (bikeBodyID != JPH::BodyID::cInvalidBodyID) {
                             glm::vec3 bikePos = glm::vec3(bikeEntity.get<WorldTransform>().matrix[3]);
-                            bikePos.y += 0.8f;
+                            bikePos.y += cameraState.occlusionTargetHeight;
 
                             std::vector<uint32_t> ignoredIDs;
                             ignoredIDs.push_back(bikeBodyID);
@@ -798,15 +800,15 @@ namespace engine {
 
                                 m_world->query<const PhysicsBody>().each([&](flecs::entity e, const PhysicsBody& pb) {
                                     if (pb.bodyID == hitBodyID) {
-                                        if (!e.has<OpacityComponent>()) e.set<OpacityComponent>({ 1.0f, 0.3f });
-                                        else e.get_mut<OpacityComponent>().targetFade = 0.3f;
+                                        if (!e.has<OpacityComponent>()) e.set<OpacityComponent>({ 1.0f, cameraState.occlusionFadeCoverage });
+                                        else e.get_mut<OpacityComponent>().targetFade = cameraState.occlusionFadeCoverage;
                                     }
                                     });
 
                                 m_world->query<const CompoundParent>().each([&](flecs::entity e, const CompoundParent& cp) {
                                     if (cp.bodyID == hitBodyID) {
-                                        if (!e.has<OpacityComponent>()) e.set<OpacityComponent>({ 1.0f, 0.3f });
-                                        else e.get_mut<OpacityComponent>().targetFade = 0.3f;
+                                        if (!e.has<OpacityComponent>()) e.set<OpacityComponent>({ 1.0f, cameraState.occlusionFadeCoverage });
+                                        else e.get_mut<OpacityComponent>().targetFade = cameraState.occlusionFadeCoverage;
                                     }
                                     });
 

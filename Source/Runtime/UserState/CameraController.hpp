@@ -35,6 +35,22 @@ public:
     void UseAutomaticFov(bool enabled) {
         if (mState.mode != CameraMode::Cinematic) mState.automaticFov = enabled;
     }
+
+    void SetOcclusionFadeEnabled(bool enabled) {
+        mState.occlusionFadeEnabled = enabled;
+    }
+
+    void SetOcclusionFadeCoverage(float coverage) {
+        mState.occlusionFadeCoverage = std::clamp(coverage, 0.0f, 1.0f);
+    }
+
+    void SetOcclusionFadeSpeed(float speed) {
+        mState.occlusionFadeSpeed = std::clamp(speed, 0.1f, 30.0f);
+    }
+
+    void SetOcclusionTargetHeight(float height) {
+        mState.occlusionTargetHeight = std::clamp(height, 0.0f, 3.0f);
+    }
     bool SetFreeTransform(const glm::mat4& transform) {
         if (mState.mode != CameraMode::Free) return false;
         mState.camera2world = transform;

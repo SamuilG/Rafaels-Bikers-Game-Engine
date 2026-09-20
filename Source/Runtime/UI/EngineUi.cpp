@@ -1639,6 +1639,23 @@ namespace engine {
                 }
             }
         }
+
+        ImGui::SeparatorText("Camera Occlusion Dither Fade");
+        bool occlusionEnabled = camera.occlusionFadeEnabled;
+        if (ImGui::Checkbox("Enable Occlusion Fade", &occlusionEnabled))
+            controller.SetOcclusionFadeEnabled(occlusionEnabled);
+        ImGui::BeginDisabled(!camera.thirdPersonMode || takenOver);
+        float fadeCoverage = camera.occlusionFadeCoverage;
+        if (ImGui::SliderFloat("Retained Coverage", &fadeCoverage, 0.0f, 1.0f, "%.2f"))
+            controller.SetOcclusionFadeCoverage(fadeCoverage);
+        float fadeSpeed = camera.occlusionFadeSpeed;
+        if (ImGui::SliderFloat("Fade Response", &fadeSpeed, 0.1f, 30.0f, "%.1f"))
+            controller.SetOcclusionFadeSpeed(fadeSpeed);
+        float targetHeight = camera.occlusionTargetHeight;
+        if (ImGui::SliderFloat("Target Height", &targetHeight, 0.0f, 3.0f, "%.2f m"))
+            controller.SetOcclusionTargetHeight(targetHeight);
+        ImGui::TextWrapped("Retained Coverage controls how much of an occluding object remains visible. The fade uses the opaque dither path.");
+        ImGui::EndDisabled();
         ImGui::End();
     }
 

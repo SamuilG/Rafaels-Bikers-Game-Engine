@@ -104,7 +104,7 @@ m_currentScene->Init(renderSystem, sceneManager, physicsSystem, inputSystem, eve
 `UserState` 继承 `GameplayState`，是跨系统共享的运行状态：
 
 - 游戏流程：主菜单、Playing、Paused、GameOver、Victory。
-- 相机状态：第三人称、yaw、pitch、FOV、portal camera。
+- 相机状态：第三人称、yaw、pitch、FOV、portal camera，以及遮挡 dither fade 的开关、覆盖率、响应速度和目标高度。
 - 玩家状态：是否存活、速度、倾斜、转向、死亡计数、能力解锁。
 - 画面开关：IBL、Bloom、SSR、SSAO、LOD、frustum culling、debug render mode。
 - UI 开关：引擎 UI、运行时 UI、各编辑器面板。

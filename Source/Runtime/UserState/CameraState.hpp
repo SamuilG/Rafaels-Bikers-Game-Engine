@@ -8,6 +8,11 @@ enum class CameraMode { Follow, Free, Portal, Cinematic };
 struct CameraState {
     CameraMode mode = CameraMode::Follow;
     bool thirdPersonMode = true;
+    // Third-person camera occlusion dither-fade controls.
+    bool occlusionFadeEnabled = true;
+    float occlusionFadeCoverage = 0.3f; // fraction of occluder fragments kept
+    float occlusionFadeSpeed = 8.0f;    // response rate used for smoothing
+    float occlusionTargetHeight = 0.8f; // ray target height above the bike root
     bool automaticFov = true;
     glm::mat4 camera2world = glm::mat4(glm::vec4(1,0,0,0), glm::vec4(0,1,0,0),
         glm::vec4(0,0,1,0), glm::vec4(0,2,10,1));
