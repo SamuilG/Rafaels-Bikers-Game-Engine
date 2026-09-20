@@ -19,6 +19,7 @@
 #include "../Renderer/RenderUtilities/light.hpp"
 #include "../UserState/StateViews.hpp"
 #include "../Renderer/RenderUtilities/frustum.hpp"
+#include "SceneRenderSource.hpp"
 
 // Forward declare EngineModel to avoid including engine_model.hpp here
 // 1. Avoid circular dependency
@@ -150,7 +151,7 @@ struct SkinComponent {
 
 namespace engine {
 
-    class SceneManager final : public System {
+    class SceneManager final : public System, public SceneRenderSource {
 
     private:
         SceneStateView* mState = nullptr; // �������ָ��
@@ -179,12 +180,15 @@ namespace engine {
 
         // Build render batches for skinned entities.
         std::vector<RenderBatch> get_skinned_batches(glm::mat4* boneBuffer, size_t maxBones, size_t& outBoneCount);
+        std::vector<::RenderBatch> BuildSkinnedBatches(glm::mat4* boneBuffer,
+            std::size_t maxBones, std::size_t& outBoneCount) override;
 
         const EngineModel& get_model() const { return mModel; } // expose the cpu model to other systems (like Vulkan) to upload data to gpu
 
         // Get render batches for the current frame with Frustum Culling and LOD selection.
         // cameraPos: world-space camera position used for distance-based LOD (ignored when lodEnabled is false).
         std::vector<RenderBatch> get_render_batches(const Frustum* frustum = nullptr, float frustumPadding = 0.0f, glm::vec3 cameraPos = glm::vec3(0.0f));
+        std::vector<::RenderBatch> BuildRenderBatches(const SceneRenderRequest& request) override;
 
         // Attach LOD levels to an existing entity.
         // lodMeshIndices: globally-registered mesh indices for LOD1, LOD2, ... (LOD0 = MeshComponent::meshIndex).
@@ -195,6 +199,8 @@ namespace engine {
 
         uint32_t get_last_frustum_culling_candidates() const { return mLastFrustumCullingCandidates; }
         uint32_t get_last_frustum_culling_visible() const { return mLastFrustumCullingVisible; }
+        uint32_t LastFrustumCandidates() const override { return get_last_frustum_culling_candidates(); }
+        uint32_t LastFrustumVisible() const override { return get_last_frustum_culling_visible(); }
 
         // dynamic entity backed by a runtime mesh + optional physics body
         flecs::entity create_dynamic_entity(const char* name, uint32_t meshIndex, uint32_t matIndex,
@@ -244,6 +250,7 @@ namespace engine {
         );
 
         void get_light_data(std::vector<GpuLight>& outLights);
+        void CollectLights(std::vector<GpuLight>& outLights) override { get_light_data(outLights); }
 
     private:
         flecs::world* m_world;

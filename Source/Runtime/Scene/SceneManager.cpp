@@ -489,6 +489,11 @@ namespace engine {
         return batches;
     }
 
+    std::vector<::RenderBatch> SceneManager::BuildSkinnedBatches(
+        glm::mat4* boneBuffer, std::size_t maxBones, std::size_t& outBoneCount) {
+        return get_skinned_batches(boneBuffer, maxBones, outBoneCount);
+    }
+
 
     // =========================================================================
     // 灯光与渲染数据提取
@@ -618,6 +623,10 @@ namespace engine {
             batches.push_back(batch);
                 });
         return batches;
+    }
+
+    std::vector<::RenderBatch> SceneManager::BuildRenderBatches(const SceneRenderRequest& request) {
+        return get_render_batches(request.frustum, request.frustumPadding, request.cameraPosition);
     }
 
     void SceneManager::SetupEntityLOD(flecs::entity e,

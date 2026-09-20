@@ -103,3 +103,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Tests/UI/run-runtime-ui-flow
 - 删除没有消费者的 `BikeTuning` 配置及其奖励写入，避免留下看似可调但实际无效的旧入口。
 
 验证覆盖暂停与设置组合、胜利/失败后的重开、编辑器布局和视口切换、输入边沿清理，以及重开保留画质和编辑器布局。完整 GPU 交互仍需要真实窗口验收。
+
+## 场景渲染与编辑器边界（第一阶段）
+
+当前已把两类职责从 `RenderSystem` 的直接调用中收出：
+
+- `SceneRenderSource` 是场景世界向渲染器提供批次、骨骼批次、灯光和裁剪统计的只读接口。`SceneManager` 实现该接口，但渲染器不再依赖这些 ECS 查询的具体实现。
+- `EditorSceneAdapter` 持有编辑器选中对象和拾取入口。选中状态不再是 `RenderSystem` 的字段；编辑器仍可通过原有 UI 参数接收选中 ID，因此本阶段不改变面板行为。
+- 游戏视口和编辑器视口继续使用同一个 `m_sceneViewportTexId`。编辑器 UI 只显示渲染器提供的场景纹理，并通过适配器提交拾取操作，避免单独复制一套场景绘制逻辑。
+
+这只是边界迁移的第一阶段。编辑器层级树、Inspector、拖放加载和物理 Gizmo 仍直接使用 `SceneManager`，下一阶段再将这些修改操作收进 `EditorSceneAdapter`，然后把 `RenderSystem` 的 GPU 帧调度与 `SceneRenderer` 独立出来。

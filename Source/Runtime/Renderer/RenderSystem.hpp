@@ -74,9 +74,10 @@ namespace lut = labut2;
 #include "../UI/GameUi.hpp"
 #include <imgui.h>
 #include <backends/imgui_impl_vulkan.h>
-#include "../UI/MousePicker.hpp"
 #include "../../ThirdParty/imgui/ImGuizmo/ImGuizmo.h"
 #include "../Physics/PhysicsSystem.hpp"
+#include "../Scene/SceneRenderSource.hpp"
+#include "../Scene/EditorSceneAdapter.hpp"
 #include "../UserState/StateViews.hpp"
 #include <glm/gtx/matrix_decompose.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -118,7 +119,8 @@ namespace engine {
 
 
         explicit RenderSystem(bool& appRunning, SceneManager* sceneManager = nullptr)
-            : mAppRunning(appRunning), mSceneManager(sceneManager) {
+            : mAppRunning(appRunning), mSceneManager(sceneManager),
+              mSceneRenderSource(sceneManager), mEditorScene(sceneManager) {
         }
 
         void SetInitProgressCallback(InitProgressCallback callback) {
@@ -128,6 +130,7 @@ namespace engine {
     private:
         bool& mAppRunning;
         SceneManager* mSceneManager;
+        SceneRenderSource* mSceneRenderSource;
         engine::AnimationSystem* mAnimationSystem = nullptr;
         engine::AudioSystem* mAudioSystem = nullptr;
         InitProgressCallback mInitProgressCallback;
@@ -244,7 +247,7 @@ namespace engine {
             WaitForGpuIdle();
             mTriggerSystem.ClearTriggers();
             allParticles.clear();
-            mSelectedEntityId = 0;
+            mEditorScene.ClearSelection();
             mPortalEnabled = false;
             mPortal2Enabled = false;
             mPortalPreviewPairLinked = false;
@@ -966,7 +969,7 @@ namespace engine {
                 static uint32_t originalMaterialIdx = 0;
 
                 // debug: 选中更换材质方便观察==============
-                //if (mSelectedEntityId != lastSelectedId) {
+                //if (mEditorScene.Selection() != lastSelectedId) {
                 //    auto& world = mSceneManager->get_world();
 
                 //    // 1. 恢复材质
@@ -978,8 +981,8 @@ namespace engine {
                 //    }
 
                 //    // 2. 选中高亮
-                //    if (mSelectedEntityId != 0) {
-                //        flecs::entity currentEntity = world.entity(mSelectedEntityId);
+                //    if (mEditorScene.Selection() != 0) {
+                //        flecs::entity currentEntity = world.entity(mEditorScene.Selection());
                 //        if (currentEntity.is_alive() && currentEntity.has<MaterialComponent>()) {
                 //            const MaterialComponent& matComp = currentEntity.get<MaterialComponent>();
 
@@ -990,12 +993,12 @@ namespace engine {
                 //            currentEntity.set<MaterialComponent>({ highlightIdx });
                 //        }
                 //    }
-                //    lastSelectedId = mSelectedEntityId;
+                //    lastSelectedId = mEditorScene.Selection();
                 //}
             // debug: 选中更换材质（方便观察==============
 
                 // 获取全局鼠标位置和 Viewport 数据
-                EngineUi::DrawSceneViewport(m_sceneViewportTexId, this, mSceneManager, view, gizmoProj, mSelectedEntityId, mState->editor, mState->render);
+                EngineUi::DrawSceneViewport(m_sceneViewportTexId, this, mSceneManager, view, gizmoProj, mEditorScene.Selection(), mState->editor, mState->render);
                 vpSize = EngineUi::GetSceneViewportSize();
                 ImVec2 mousePosAbs = ImGui::GetMousePos();
                 ImVec2 vpPos = EngineUi::GetSceneViewportPos();
@@ -1033,7 +1036,7 @@ namespace engine {
                 }
 
                 if (mState->editor.showEngineUi && mState->editor.showParticlePanel) {
-                    EngineUi::DrawParticlePanel(mState->render, mState->editor, this, mSelectedEntityId);
+                    EngineUi::DrawParticlePanel(mState->render, mState->editor, this, mEditorScene.Selection());
                 }
 
                 if (mState->editor.showEngineUi && mState->editor.showConsole) {
@@ -1045,7 +1048,7 @@ namespace engine {
                 }
 
                 if (mState->editor.showEngineUi && (mState->editor.showSceneHierarchy || mState->editor.showEntityInspector)) {
-                    EngineUi::DrawSceneHierarchy(this, mSceneManager, view, gizmoProj, mSelectedEntityId, mState->editor);
+                    EngineUi::DrawSceneHierarchy(this, mSceneManager, view, gizmoProj, mEditorScene.Selection(), mState->editor);
                 }
                 //light UI
                 if (mState->editor.showEngineUi && mState->editor.showLightPanel) {
@@ -1088,29 +1091,29 @@ namespace engine {
                     viewportCanPick &&
                     !ImGuizmo::IsOver())
                 {
-                    flecs::entity hitEntity = MousePicker::PickEntity(
+                    flecs::entity hitEntity = mEditorScene.Pick(
                         localMouseX, localMouseY,  // 传局部鼠标坐标
                         vpSize.x, vpSize.y,        // 传真实的视口大小
-                        mState->camera.State().camera2world, gizmoProj, mSceneManager
+                        mState->camera.State().camera2world, gizmoProj
                     );
 
                     if (hitEntity.is_alive()) {
-                        mSelectedEntityId = hitEntity.id();
+                        mEditorScene.Selection() = hitEntity.id();
                         mState->editor.activeParticleIndex = -1;
                         engine::EngineUi::LogPrint("[Raycast] Hit Object ID: {}\n", hitEntity.id());
                     }
                     else {
                         engine::EngineUi::LogPrint("[Raycast] Hit Nothing\n");
                         mState->editor.activeParticleIndex = -1;
-                        mSelectedEntityId = 0;
+                        mEditorScene.Selection() = 0;
                     }
                 }
 
 
                 // EngineUi::DrawSceneHierarchy(mSceneManager);
-                if (mSelectedEntityId != 0 && mSceneManager) {
+                if (mEditorScene.Selection() != 0 && mSceneManager) {
                     auto& world = mSceneManager->get_world();
-                    flecs::entity selectedEntity = world.entity(mSelectedEntityId);
+                    flecs::entity selectedEntity = world.entity(mEditorScene.Selection());
                     auto* physics = mSceneManager->get_physics_system();
                     uint32_t selectedBodyID = JPH::BodyID::cInvalidBodyID;
                     bool hasDebugBody = selectedEntity.is_alive() && physics && TryGetDebugBodyID(selectedEntity, selectedBodyID);
@@ -1166,11 +1169,11 @@ namespace engine {
                             if (glm::decompose(lt.matrix, currentScale, rotation, translation, skew, perspective)) {
 
                                 static std::unordered_map<flecs::entity_t, glm::vec3> scaleCache;
-                                if (scaleCache.find(mSelectedEntityId) == scaleCache.end()) {
-                                    scaleCache[mSelectedEntityId] = currentScale;
+                                if (scaleCache.find(mEditorScene.Selection()) == scaleCache.end()) {
+                                    scaleCache[mEditorScene.Selection()] = currentScale;
                                 }
 
-                                glm::vec3& lastSyncedScale = scaleCache[mSelectedEntityId];
+                                glm::vec3& lastSyncedScale = scaleCache[mEditorScene.Selection()];
                                 float delta = glm::distance(currentScale, lastSyncedScale);
                                 if (delta > 0.001f) {
                                     glm::vec3 safeScale = currentScale;
@@ -1597,10 +1600,10 @@ namespace engine {
 
             //std::vector<RenderBatch> finalBatches = mSceneManager ? mSceneManager->get_render_batches(activeFrustum) : std::vector<RenderBatch>{};
             glm::vec3 camPosWorld = glm::vec3(sceneUniforms.cameraPos);
-            std::vector<RenderBatch> finalBatches = mSceneManager ? mSceneManager->get_render_batches(activeFrustum, mState->render.frustumCullingPadding, camPosWorld) : std::vector<RenderBatch>{};
+            std::vector<RenderBatch> finalBatches = mSceneManager ? mSceneRenderSource->BuildRenderBatches({ activeFrustum, mState->render.frustumCullingPadding, camPosWorld }) : std::vector<RenderBatch>{};
             if (mSceneManager) {
-                mState->renderStats.frustumCullingTotalCandidates = mSceneManager->get_last_frustum_culling_candidates(); // new frustum culling
-                mState->renderStats.frustumCullingVisibleCandidates = mSceneManager->get_last_frustum_culling_visible(); // new frustum culling
+                mState->renderStats.frustumCullingTotalCandidates = mSceneRenderSource->LastFrustumCandidates(); // new frustum culling
+                mState->renderStats.frustumCullingVisibleCandidates = mSceneRenderSource->LastFrustumVisible(); // new frustum culling
             }
             // 2. 如果正在拖拽预览，把预览的 Batch 强行加进列表最后面！
             auto appendPreviewBatches = [&](std::vector<RenderBatch>& batches) {
@@ -1618,7 +1621,7 @@ namespace engine {
             // =========================================================
             std::vector<engine::GpuLight> lights;
             if (mSceneManager) {
-                mSceneManager->get_light_data(lights);
+                mSceneRenderSource->CollectLights(lights);
                 sceneUniforms.lightCount = static_cast<uint32_t>(std::min(lights.size(), std::size(sceneUniforms.lights)));
                 for (size_t i = 0; i < sceneUniforms.lightCount; ++i) {
                     sceneUniforms.lights[i] = lights[i];
@@ -1690,7 +1693,7 @@ namespace engine {
                 void* ptr;
                 vmaMapMemory(mAllocator.allocator, mBoneSSBO.allocation, &ptr);
                 size_t boneCount = 0;
-                skinnedBatches = mSceneManager->get_skinned_batches(
+                skinnedBatches = mSceneRenderSource->BuildSkinnedBatches(
                     static_cast<glm::mat4*>(ptr), kMaxBoneMatrices, boneCount);
                 vmaUnmapMemory(mAllocator.allocator, mBoneSSBO.allocation);
             }
@@ -1751,7 +1754,7 @@ namespace engine {
 
                 if (portalTransitionPlayerBodyID != UINT32_MAX) {
                     const std::vector<RenderBatch> unculledBatches =
-                        mSceneManager->get_render_batches(nullptr, 0.0f, camPosWorld);
+                        mSceneRenderSource->BuildRenderBatches({ nullptr, 0.0f, camPosWorld });
                     for (const auto& batch : unculledBatches) {
                         if (batch.compoundBodyID == portalTransitionPlayerBodyID) {
                             portalTransitionStaticCloneSources.push_back(batch);
@@ -1883,20 +1886,20 @@ namespace engine {
             if (mSceneManager && portalVisibleForFrame) {
                 Frustum portalFrustum = BuildFrustum(portalSceneUniform.projCam);
                 const Frustum* portalActiveFrustum = mState->render.frustumCullingEnabled ? &portalFrustum : nullptr;
-                portalBatches = mSceneManager->get_render_batches(
+                portalBatches = mSceneRenderSource->BuildRenderBatches({
                     portalActiveFrustum,
                     mState->render.frustumCullingPadding,
-                    glm::vec3(portalSceneUniform.cameraPos));
+                    glm::vec3(portalSceneUniform.cameraPos) });
                 appendPreviewBatches(portalBatches);
                 portalBatchesRefetched = true;
             }
             if (mSceneManager && portal2VisibleForFrame) {
                 Frustum portal2Frustum = BuildFrustum(portal2SceneUniform.projCam);
                 const Frustum* portal2ActiveFrustum = mState->render.frustumCullingEnabled ? &portal2Frustum : nullptr;
-                portal2Batches = mSceneManager->get_render_batches(
+                portal2Batches = mSceneRenderSource->BuildRenderBatches({
                     portal2ActiveFrustum,
                     mState->render.frustumCullingPadding,
-                    glm::vec3(portal2SceneUniform.cameraPos));
+                    glm::vec3(portal2SceneUniform.cameraPos) });
                 appendPreviewBatches(portal2Batches);
                 portal2BatchesRefetched = true;
             }
@@ -3448,7 +3451,7 @@ void InitSkybox()
 
         //===========================UI System================================
         // UI System 保存当前选中的实体 ID saved selected entity ID for UI system
-        flecs::entity_t mSelectedEntityId = 0;
+        EditorSceneAdapter mEditorScene;
         UIManager* mRuntimeUiManager = nullptr;
         // RenderSystem ?????? UI ?????????? RuntimeUiController?
         std::shared_ptr<ImGuiPreviewRenderer> mRuntimeUiRenderer;
