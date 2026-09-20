@@ -865,13 +865,13 @@ namespace engine {
                 (particle.getEmitterShape() != EmitterShape::Sphere || particle.config.triggerControlled);
             gizmoMatrix = glm::translate(glm::mat4(1.0f), particle.config.emitterPos);
 		}
-		else if (editor.showEngineUi && selected_id != 0 && sceneManager) {
-			flecs::entity selectedEntity = sceneManager->get_world().entity(selected_id);
-			if (selectedEntity.is_alive() && selectedEntity.has<LocalTransform>()) {
+		else if (editor.showEngineUi && selected_id != 0 && editorScene.Scene()) {
+			const EditorEntitySnapshot selectedEntity = editorScene.Inspect(selected_id);
+			if (selectedEntity.alive && selectedEntity.hasTransform) {
 				drawGizmo = true;
-				gizmoMatrix = selectedEntity.get<LocalTransform>().matrix;
-                if (m_current_inspected_id != selectedEntity.id() || (!ImGuizmo::IsUsing() && !ImGui::IsAnyItemActive()))
-                    drawGizmo = SyncTransformCache(selectedEntity.id(), gizmoMatrix);
+				gizmoMatrix = selectedEntity.transform;
+                if (m_current_inspected_id != selectedEntity.id || (!ImGuizmo::IsUsing() && !ImGui::IsAnyItemActive()))
+                    drawGizmo = SyncTransformCache(selectedEntity.id, gizmoMatrix);
 			}
 		}
 
@@ -1724,26 +1724,26 @@ namespace engine {
 			// &editor.showSceneHierarchy，ImGui 会自动在右上角生成关闭按钮 [X]// ImGui will automatically generate a close button [X] in the top right corner when we pass &editor.showSceneHierarchy
 			if (ImGui::Begin(PanelTitle("Scene Hierarchy", "SceneHierarchy").c_str(), &editor.showSceneHierarchy))
 			{
-				if (sceneManager && &sceneManager->get_world() != nullptr) {
+				if (editorScene.Scene()) {
 					// 显示实体总数// Display total entity count
-					ImGui::Text(_SL("Total Entities: %d"), sceneManager->get_entity_count());
+					ImGui::Text(_SL("Total Entities: %d"), editorScene.EntityCount());
 					ImGui::Separator();
 
-					auto& world = sceneManager->get_world();
+					const auto entities = editorScene.ListEntities();
 
 					// 滚动子窗口来容纳实体列表// Use a child window to contain the entity list and allow scrolling
 					if (ImGui::BeginChild("EntityList", ImVec2(0, 0), true)) {
 						// 遍历所有带有 MeshComponent 的实体 (Iterate all entities with MeshComponent)
-						world.each([&](flecs::entity entity, MeshComponent& meshComponent) {
-							std::string name = entity.name().size() > 0 ? entity.name().c_str() : "ID: " + std::to_string(entity.id());
+						for (const auto& entity : entities) {
+							const std::string& name = entity.name;
 
 							// 渲染可选项Selectable
-							bool is_selected = (selected_id == entity.id());
+							bool is_selected = (selected_id == entity.id);
 							if (ImGui::Selectable(name.c_str(), is_selected)) {
-								selected_id = entity.id(); // 更新当前选中的实体 ID
+								selected_id = entity.id; // 更新当前选中的实体 ID
 								editor.activeParticleIndex = -1;
 							}
-							});
+						}
 					}
 					ImGui::EndChild();
 
@@ -1791,8 +1791,9 @@ namespace engine {
 
 		// 🪟 2. Entity Inspector & ImGuizmo (实体属性检查器 & 3D 交互坐标轴)
 
-        if (selected_id != 0 && sceneManager && !sceneManager->get_world().entity(selected_id).is_alive()) selected_id = 0;
-        if (editor.showEntityInspector && (selected_id == 0 || !sceneManager)) {
+        const EditorEntitySnapshot inspected = editorScene.Inspect(selected_id);
+        if (selected_id != 0 && !inspected.alive) selected_id = 0;
+        if (editor.showEntityInspector && (selected_id == 0 || !editorScene.Scene())) {
             if (ImGui::Begin(PanelTitle("Entity Inspector", "EntityInspector").c_str(), &editor.showEntityInspector)) {
                 ImGui::TextWrapped("Select an entity in the hierarchy or scene viewport to inspect its components.");
                 if (editor.activeParticleIndex >= 0 && ImGui::Button("Open Particles")) editor.showParticlePanel = true;
@@ -1800,12 +1801,11 @@ namespace engine {
             ImGui::End();
         }
 
-		if (selected_id != 0 && sceneManager) {
-			auto& world = sceneManager->get_world();
-			flecs::entity selectedEntity = world.entity(selected_id); // 获取当前选中的实体
+		if (selected_id != 0 && inspected.alive) {
+			const EditorEntitySnapshot selectedEntity = inspected;
 
 			// 安全检查：如果选中的实体在上一帧被销毁了，立刻清空选中状态并提前退出
-			if (!selectedEntity.is_alive()) {
+			if (!selectedEntity.alive) {
 				selected_id = 0;
 				return;
 			}
@@ -1820,23 +1820,22 @@ namespace engine {
 
 				if (ImGui::Begin(PanelTitle("Entity Inspector", "EntityInspector").c_str(), &editor.showEntityInspector)) {
 
-					ImGui::TextColored(editor_theme::Color(editor_theme::kText), "[ %s ]", selectedEntity.name().c_str());
+					ImGui::TextColored(editor_theme::Color(editor_theme::kText), "[ %s ]", selectedEntity.name.c_str());
 					ImGui::Separator();
 
 					// 可见性切换组件// Visibility Toggle Component
-					if (selectedEntity.has<EntityStatus>()) {
-						bool visible = selectedEntity.get<EntityStatus>().should_render;
+					if (selectedEntity.alive) {
+						bool visible = selectedEntity.visible;
 						if (ImGui::Checkbox(_SL("Visible"), &visible))
 							editorScene.SetVisible(selected_id, visible);
 					}
 
 					// 变换组件 (LocalTransform)
-					if (selectedEntity.has<LocalTransform>()) {
-						LocalTransform* localTransform = &selectedEntity.get_mut<LocalTransform>();
-						if (localTransform) {
-                            bool canEditTransform = m_current_inspected_id == selectedEntity.id();
+ 					if (selectedEntity.hasTransform) {
+                            glm::mat4 localTransform = selectedEntity.transform;
+                            bool canEditTransform = m_current_inspected_id == selectedEntity.id;
                             if (!canEditTransform || !ImGui::IsAnyItemActive())
-                                canEditTransform = SyncTransformCache(selectedEntity.id(), localTransform->matrix);
+                                canEditTransform = SyncTransformCache(selectedEntity.id, localTransform);
                             if (!canEditTransform) {
                                 ImGui::TextWrapped("This transform has zero scale, shear or invalid values and cannot be edited as TRS.");
                             }
@@ -1867,11 +1866,11 @@ namespace engine {
 							if (is_modified) {
 								ImGuizmo::RecomposeMatrixFromComponents(
 									m_ui_translation, m_ui_rotation, m_ui_scale,
-									glm::value_ptr(localTransform->matrix)
+									glm::value_ptr(localTransform)
 								);
-								editorScene.SetTransform(selected_id, localTransform->matrix);
+								editorScene.SetTransform(selected_id, localTransform);
 							}
-                            }
+
 						}
 					}
 
@@ -1882,7 +1881,7 @@ namespace engine {
 						editorScene.Destroy(selected_id);
 					}
 					// 键盘快捷键删除 (Delete 键)
-					if (selectedEntity.is_alive() &&
+					if (selectedEntity.alive &&
 						ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
 						!(editor.showGameUiEditor && UIEditorWindow::WantsKeyboardCapture()) &&
 						ImGui::IsKeyPressed(ImGuiKey_Delete) &&

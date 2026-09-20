@@ -450,12 +450,13 @@ namespace engine {
         std::vector<RenderBatch> batches;
         size_t boneOffset = 0;
 
-        m_world->query<WorldTransform, MeshComponent, MaterialComponent, SkinComponent>()
+        m_world->query<WorldTransform, MeshComponent, MaterialComponent, SkinComponent, const OpacityComponent*>()
             .each([&](flecs::entity e,
                 WorldTransform& wt,
                 MeshComponent& mc,
                 MaterialComponent& matc,
-                SkinComponent& sc)
+                SkinComponent& sc,
+                const OpacityComponent* op)
                 {
                     if (e.has<EntityStatus>() && !e.get<EntityStatus>().should_render)
                         return;
@@ -473,7 +474,7 @@ namespace engine {
                     batch.meshIndex = mc.meshIndex;
                     batch.materialIndex = matc.materialIndex;
                     batch.transform = wt.matrix;
-                    batch.alphaMultiplier = 1.0f;
+                    batch.ditherFade = op ? op->currentFade : 1.0f;
                     batch.entityId = e.id();
                     batch.isSkinned = true;
                     batch.boneBaseIndex = static_cast<uint32_t>(boneOffset);
@@ -597,7 +598,7 @@ namespace engine {
                 }
             }
 
-            float alpha = op ? op->currentAlpha : 1.0f;
+            float ditherFade = op ? op->currentFade : 1.0f;
 
             // 检查实体的渲染层决定是否投射阴影
             bool castsShadow = true;
@@ -611,7 +612,7 @@ namespace engine {
             batch.meshIndex = selectedMesh;
             batch.materialIndex = matc.materialIndex;
             batch.transform = wt.matrix;
-            batch.alphaMultiplier = alpha;
+            batch.ditherFade = ditherFade;
             batch.entityId = e.id();
             batch.castShadow = castsShadow;
             if (e.has<CompoundParent>()) {
@@ -759,9 +760,9 @@ namespace engine {
 
                 m_world->defer_begin();
                 m_world->query<OpacityComponent>().each([&](flecs::entity e, OpacityComponent& op) {
-                    op.currentAlpha += (op.targetAlpha - op.currentAlpha) * 8.0f * dt;
-                    op.targetAlpha = 1.0f;
-                    if (op.currentAlpha >= 0.99f && op.targetAlpha == 1.0f) {
+                    op.currentFade += (op.targetFade - op.currentFade) * 8.0f * dt;
+                    op.targetFade = 1.0f;
+                    if (op.currentFade >= 0.99f && op.targetFade == 1.0f) {
                         e.remove<OpacityComponent>();
                     }
                     });
@@ -798,14 +799,14 @@ namespace engine {
                                 m_world->query<const PhysicsBody>().each([&](flecs::entity e, const PhysicsBody& pb) {
                                     if (pb.bodyID == hitBodyID) {
                                         if (!e.has<OpacityComponent>()) e.set<OpacityComponent>({ 1.0f, 0.3f });
-                                        else e.get_mut<OpacityComponent>().targetAlpha = 0.3f;
+                                        else e.get_mut<OpacityComponent>().targetFade = 0.3f;
                                     }
                                     });
 
                                 m_world->query<const CompoundParent>().each([&](flecs::entity e, const CompoundParent& cp) {
                                     if (cp.bodyID == hitBodyID) {
                                         if (!e.has<OpacityComponent>()) e.set<OpacityComponent>({ 1.0f, 0.3f });
-                                        else e.get_mut<OpacityComponent>().targetAlpha = 0.3f;
+                                        else e.get_mut<OpacityComponent>().targetFade = 0.3f;
                                     }
                                     });
 

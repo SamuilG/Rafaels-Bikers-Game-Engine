@@ -98,6 +98,21 @@ float G_CookTorrance(float NdotL, float NdotV, float NdotH, float VdotH)
 
 #include "shadow_sampling.glsl"
 
+// Ordered 4x4 dither used by the camera occlusion fade.  The object stays in
+// the opaque, depth-writing pipeline; only individual fragments are removed.
+float ditherThreshold4x4(vec2 fragCoord)
+{
+    ivec2 cell = ivec2(mod(floor(fragCoord), 4.0));
+    int index = cell.x + cell.y * 4;
+    const float bayer[16] = float[](
+         0.0,  8.0,  2.0, 10.0,
+        12.0,  4.0, 14.0,  6.0,
+         3.0, 11.0,  1.0,  9.0,
+        15.0,  7.0, 13.0,  5.0
+    );
+    return (bayer[index] + 0.5) / 16.0;
+}
+
 vec3 getNormalFromMap()
 {
     vec3 sampled = texture(uTexNormal, v2fTexCoord).xyz;
@@ -138,6 +153,13 @@ void main()
     float finalAlpha = texColor.a * pc.baseColorFactor.a;
 
     if (finalAlpha < pc.alphaCutoff) {
+        discard;
+    }
+
+    // emissiveFactor.a is unused by the material model and carries the
+    // per-instance dither coverage for both static and skinned meshes.
+    float ditherFade = clamp(pc.emissiveFactor.a, 0.0, 1.0);
+    if (ditherFade < 0.9999 && ditherFade <= ditherThreshold4x4(gl_FragCoord.xy)) {
         discard;
     }
 

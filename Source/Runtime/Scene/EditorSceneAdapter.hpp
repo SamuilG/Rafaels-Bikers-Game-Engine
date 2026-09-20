@@ -2,6 +2,9 @@
 
 #include <cstdint>
 #include <cmath>
+#include <string>
+#include <vector>
+#include <utility>
 #include <glm/glm.hpp>
 #include <flecs.h>
 #include "../UI/MousePicker.hpp"
@@ -13,6 +16,15 @@ namespace engine {
 
 class SceneManager;
 
+struct EditorEntitySnapshot {
+    flecs::entity_t id = 0;
+    std::string name;
+    bool alive = false;
+    bool visible = true;
+    bool hasTransform = false;
+    glm::mat4 transform = glm::mat4(1.0f);
+};
+
 // Editor-only scene operations. Runtime gameplay and SceneManager remain the
 // owners of the world; this adapter owns only editor selection and picking.
 class EditorSceneAdapter final {
@@ -21,6 +33,36 @@ public:
 
     void SetScene(SceneManager* scene) { mScene = scene; }
     SceneManager* Scene() const { return mScene; }
+
+    int EntityCount() const { return mScene ? mScene->get_entity_count() : 0; }
+
+    EditorEntitySnapshot Inspect(flecs::entity_t id) const {
+        EditorEntitySnapshot snapshot;
+        snapshot.id = id;
+        if (!mScene) return snapshot;
+        flecs::entity entity = mScene->get_world().entity(id);
+        snapshot.alive = entity.is_alive();
+        if (!snapshot.alive) return snapshot;
+        snapshot.name = entity.name().size() > 0
+            ? entity.name().c_str() : "ID: " + std::to_string(id);
+        if (entity.has<EntityStatus>()) snapshot.visible = entity.get<EntityStatus>().should_render;
+        if (entity.has<LocalTransform>()) {
+            snapshot.hasTransform = true;
+            snapshot.transform = entity.get<LocalTransform>().matrix;
+        }
+        return snapshot;
+    }
+
+    std::vector<EditorEntitySnapshot> ListEntities() const {
+        std::vector<EditorEntitySnapshot> entities;
+        if (!mScene) return entities;
+        entities.reserve(static_cast<std::size_t>(EntityCount()));
+        mScene->get_world().each([&](flecs::entity entity, MeshComponent&) {
+            EditorEntitySnapshot snapshot = Inspect(entity.id());
+            if (snapshot.alive) entities.push_back(std::move(snapshot));
+        });
+        return entities;
+    }
 
     flecs::entity Pick(float mouseX, float mouseY, float viewportWidth,
         float viewportHeight, const glm::mat4& camera2world,
@@ -94,6 +136,29 @@ public:
 
     bool IsAlive(flecs::entity_t id) const {
         return mScene && mScene->get_world().entity(id).is_alive();
+    }
+
+    bool TryGetDebugBodyId(flecs::entity_t id, uint32_t& outBodyId) const {
+        if (!mScene) return false;
+        flecs::entity entity = mScene->get_world().entity(id);
+        if (!entity.is_alive()) return false;
+        if (entity.has<PhysicsBody>()) {
+            outBodyId = entity.get<PhysicsBody>().bodyID;
+            return true;
+        }
+        if (entity.has<CompoundParent>()) {
+            outBodyId = entity.get<CompoundParent>().bodyID;
+            return true;
+        }
+        return false;
+    }
+
+    bool TryGetDebugShape(flecs::entity_t id, JPH::TransformedShape& outShape) const {
+        uint32_t bodyId = JPH::BodyID::cInvalidBodyID;
+        PhysicsSystem* physics = mScene ? mScene->get_physics_system() : nullptr;
+        if (!physics || !TryGetDebugBodyId(id, bodyId)) return false;
+        outShape = physics->get_body_interface().GetTransformedShape(JPH::BodyID(bodyId));
+        return true;
     }
 
 private:

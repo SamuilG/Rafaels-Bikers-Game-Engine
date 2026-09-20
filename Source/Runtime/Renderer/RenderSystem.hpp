@@ -533,7 +533,6 @@ namespace engine {
             }
 
             mPipe = create_triangle_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
-            mAlphaPipe = create_alpha_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
             mPortalSurfacePipe = create_portal_surface_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
             mThumbnailAlphaPipe = create_alpha_pipeline_1_attachment(mWindow, mPipeLayout.handle, VK_FORMAT_R8G8B8A8_UNORM);
             mShadowPipe = create_shadow_pipeline(mWindow, mPipeLayout.handle);
@@ -550,7 +549,6 @@ namespace engine {
             mBoneLayout = create_bone_descriptor_layout(mWindow);
             mSkinnedPipeLayout = create_skinned_pipeline_layout(mWindow, mSceneLayout.handle, mObjectLayout.handle, mBoneLayout.handle);
             mSkinnedPipe = create_skinned_pipeline(mWindow, mSkinnedPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
-            mSkinnedAlphaPipe = create_skinned_alpha_pipeline(mWindow, mSkinnedPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
             mShadowSkinnedPipe = create_shadow_skinned_pipeline(mWindow, mSkinnedPipeLayout.handle);
             CreateDebugViewPipelines();
 
@@ -1114,15 +1112,15 @@ namespace engine {
 
                 // EngineUi::DrawSceneHierarchy(mSceneManager);
                 if (mEditorScene.Selection() != 0 && mSceneManager) {
-                    auto& world = mSceneManager->get_world();
-                    flecs::entity selectedEntity = world.entity(mEditorScene.Selection());
-                    auto* physics = mSceneManager->get_physics_system();
+                    flecs::entity selectedEntity = mEditorScene.SelectedEntity();
                     uint32_t selectedBodyID = JPH::BodyID::cInvalidBodyID;
-                    bool hasDebugBody = selectedEntity.is_alive() && physics && TryGetDebugBodyID(selectedEntity, selectedBodyID);
+                    bool hasDebugBody = mEditorScene.TryGetDebugBodyId(mEditorScene.Selection(), selectedBodyID);
 
                     if (mState->editor.showEngineUi && hasDebugBody && (mState->editor.debugSelectionBounds || mState->editor.debugCollisionShapes)) {
-                        JPH::BodyInterface& bodyInterface = physics->get_body_interface();
-                        JPH::TransformedShape ts = bodyInterface.GetTransformedShape(JPH::BodyID(selectedBodyID));
+                        JPH::TransformedShape ts{};
+                        if (!mEditorScene.TryGetDebugShape(mEditorScene.Selection(), ts)) {
+                            ts = JPH::TransformedShape{};
+                        }
 
                         if (mState->editor.debugSelectionBounds) {
                             physics_debug::DrawSelectionBounds(mDebugRenderer, ts, glm::vec3(0.0f, 1.0f, 0.0f));
@@ -1133,36 +1131,9 @@ namespace engine {
                         }
                     }
 
-                    if (selectedEntity.is_alive() && ImGuizmo::IsUsing() && selectedEntity.has<PhysicsBody>() && physics) {
+                    if (selectedEntity.is_alive() && ImGuizmo::IsUsing() && hasDebugBody) {
                         const auto& lt = selectedEntity.get<LocalTransform>();
-                        auto pb = selectedEntity.get<PhysicsBody>();
-                        //auto* physics = mSceneManager->get_physics_system();
-
-                        JPH::BodyInterface& bodyInterface = physics->get_body_interface();
-                        JPH::BodyID joltBodyID(pb.bodyID);
-
-                        //获取包围盒
-                        //get AABB from Jolt
-                        JPH::TransformedShape ts = bodyInterface.GetTransformedShape(joltBodyID);
-                        JPH::AABox aabb = ts.GetWorldSpaceBounds();
-                        JPH::Vec3 size = aabb.GetExtent() * 2.0f;
-                        
-						//Debug Renderer 画包围盒 draw AABB from Jolt using Debug Renderer==========================
-                        glm::vec3 center(aabb.GetCenter().GetX(), aabb.GetCenter().GetY(), aabb.GetCenter().GetZ());
-                        glm::vec3 extents(aabb.GetExtent().GetX(), aabb.GetExtent().GetY(), aabb.GetExtent().GetZ());
-
-                        //draw
-                        //mDebugRenderer.DrawBox(center, extents, glm::vec3(0.0f, 1.0f, 0.0f));
-                        // =========================================================================
-                        
-                        //debug
-                        if (false) engine::EngineUi::LogPrint("[Physics Debug] Entity: {} | Size: ({:.2f}, {:.2f}, {:.2f})\n",
-                            selectedEntity.name() ? selectedEntity.name() : "Unknown",
-                            size.GetX(), size.GetY(), size.GetZ());
-
-                        if (physics) {
-                            mEditorScene.ApplyTransform(mEditorScene.Selection(), lt.matrix);
-                        }
+                        mEditorScene.ApplyTransform(mEditorScene.Selection(), lt.matrix);
                     }
                 }
 
@@ -1216,7 +1187,6 @@ namespace engine {
 
                 if (changes.changedFormat) {
                     mPipe = create_triangle_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
-                    mAlphaPipe = create_alpha_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
                     mPortalSurfacePipe = create_portal_surface_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
                     mThumbnailAlphaPipe = create_alpha_pipeline_1_attachment(mWindow, mPipeLayout.handle, VK_FORMAT_R8G8B8A8_UNORM);
                     CreateDebugViewPipelines();
@@ -1481,7 +1451,6 @@ namespace engine {
             }
 
             VkPipeline  currentOpaque = mPipe.handle;
-            VkPipeline  currentAlpha = mAlphaPipe.handle;
             auto const* currentDescs = &mMaterialDescriptors;
 
             // Debug modes use a dedicated single-color pass, including skinned meshes.
@@ -1969,7 +1938,6 @@ namespace engine {
             record_commands(
                 mCmdBuffers[mFrameIndex],
                 currentOpaque,
-                currentAlpha,
                 colorTarget,           // 现在的 Swapchain 目标
                 depthTarget,
                 mWindow.swapchainExtent,
@@ -2053,7 +2021,6 @@ namespace engine {
                 mDebugRenderer,
                 // Skeletal skinning
                 currentSkinned,
-                mSkinnedAlphaPipe.handle,
                 mSkinnedPipeLayout.handle,
                 mBoneDescriptorSet,
                 & mMeshJointIndices,
@@ -3298,7 +3265,7 @@ void InitSkybox()
         lut::DescriptorSetLayout mSceneLayout, mObjectLayout, mPostLayout;
         lut::PipelineLayout      mPipeLayout, mPostPipeLayout;
 
-        lut::Pipeline mPipe, mAlphaPipe;
+        lut::Pipeline mPipe;
         lut::Pipeline mPortalSurfacePipe;
         std::array<lut::Pipeline, view_mode::Count> mDebugViewPipes;
         std::array<lut::Pipeline, view_mode::Count> mSkinnedDebugViewPipes;
@@ -3355,7 +3322,6 @@ void InitSkybox()
         VkDescriptorSet          mBoneDescriptorSet = VK_NULL_HANDLE;
         lut::PipelineLayout      mSkinnedPipeLayout;
         lut::Pipeline            mSkinnedPipe;
-        lut::Pipeline            mSkinnedAlphaPipe;
 
         // UBOs
         lut::Buffer              mSceneUBO;

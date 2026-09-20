@@ -697,6 +697,9 @@ namespace engine {
                 pc.roughnessFactor = 1.0f;
                 pc.alphaCutoff = 0.5f;
             }
+            // Thumbnails are not camera-occlusion batches; keep them fully
+            // covered when using the shared default fragment shader.
+            pc.emissiveFactor.a = 1.0f;
 
             vkCmdPushConstants(cmd, mPipeLayout.handle, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants), &pc);
             vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mPipeLayout.handle, 1, 1, &previewMaterialDescriptors[batch.materialIndex], 0, nullptr);

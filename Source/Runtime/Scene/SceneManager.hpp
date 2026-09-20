@@ -85,7 +85,11 @@ struct RenderBatch {
     uint32_t  meshIndex;
     uint32_t  materialIndex;
     glm::mat4 transform;
-    float     alphaMultiplier = 1.0f;
+    // Fraction of the object kept by the opaque dither-fade pass.  This is
+    // intentionally not an alpha value: faded geometry still uses the normal
+    // depth-tested pipeline and individual fragments are discarded in the
+    // material shader.
+    float     ditherFade = 1.0f;
     uint64_t  entityId = 0;
     uint32_t  compoundBodyID = UINT32_MAX;
     bool      castShadow = true; // ������Ⱦ���������Ҫ��Ҫ����Ӱ
@@ -108,8 +112,8 @@ struct EngineMesh generate_uv_sphere(float radius, uint32_t rings, uint32_t sect
 namespace flecs { class world; }
 
 struct OpacityComponent {
-    float currentAlpha = 1.0f; // ��ǰ͸����
-    float targetAlpha = 1.0f; // Ŀ��͸���� (����ƽ������)
+    float currentFade = 1.0f; // 当前保留覆盖率
+    float targetFade = 1.0f; // 目标保留覆盖率
 };
 
 // Distance-based LOD component.

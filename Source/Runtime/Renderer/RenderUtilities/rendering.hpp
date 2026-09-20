@@ -21,7 +21,6 @@ namespace lut = labut2;
 void record_commands(
 	VkCommandBuffer aCmdBuff,
 	VkPipeline aGraphicsPipe,
-	VkPipeline aAlphaPipe,
 	ImageAndView const& aSwapchainAttach,
 	ImageAndView const& aDepthAttach,
 	VkExtent2D const& aImageExtent,
@@ -99,7 +98,6 @@ void record_commands(
 	engine::DebugRenderer& aDebugRenderer,
 	// --- Skeletal skinning (optional; pass VK_NULL_HANDLE to skip) ---
 	VkPipeline aSkinnedPipe                                          = VK_NULL_HANDLE,
-	VkPipeline aSkinnedAlphaPipe                                     = VK_NULL_HANDLE,
 	VkPipelineLayout aSkinnedPipeLayout                              = VK_NULL_HANDLE,
 	VkDescriptorSet  aBoneDescriptorSet                              = VK_NULL_HANDLE,
 	const std::unordered_map<uint32_t, lut::Buffer>* aMeshJoints    = nullptr,

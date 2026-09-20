@@ -45,7 +45,6 @@ static_assert(offsetof(ObjectPC, clipPlane) == 112);
 void record_commands(
 	VkCommandBuffer aCmdBuff,
 	VkPipeline aGraphicsPipe,
-	VkPipeline aAlphaPipe,
 	ImageAndView const& aSwapchainAttach,
 	ImageAndView const& aDepthAttach,
 	VkExtent2D const& aImageExtent,
@@ -121,7 +120,6 @@ void record_commands(
 	engine::DebugRenderer& aDebugRenderer,
 	// --- Skeletal skinning (optional; pass VK_NULL_HANDLE to skip) ---
 	VkPipeline aSkinnedPipe,
-	VkPipeline aSkinnedAlphaPipe,
 	VkPipelineLayout aSkinnedPipeLayout,
 	VkDescriptorSet  aBoneDescriptorSet,
 	const std::unordered_map<uint32_t, lut::Buffer>* aMeshJoints,
@@ -339,10 +337,8 @@ void record_commands(
                 pc.clipPlane = batch.clipPlane;
                 pc.boneBaseIndex = skinned ? batch.boneBaseIndex : 0;
                 pc.baseColorFactor = material < aMaterials.size() ? aMaterials[material].baseColorFactor : glm::vec4(1.0f);
-                pc.baseColorFactor.a *= batch.alphaMultiplier;
-                pc.alphaCutoff = material < aMaterials.size() ? aMaterials[material].alphaCutoff : 0.5f;
-                if (batch.alphaMultiplier < 0.99f && (material >= aMaterials.size() || aMaterials[material].alphaMaskTexture < 0))
-                    pc.alphaCutoff = -1.0f;
+				pc.emissiveFactor.a = batch.ditherFade;
+				pc.alphaCutoff = material < aMaterials.size() ? aMaterials[material].alphaCutoff : 0.5f;
                 vkCmdPushConstants(aCmdBuff, layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
                 vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1, 1, &aMaterialDescriptors[material], 0, nullptr);
                 vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[mesh].buffer, &offset);
@@ -446,7 +442,6 @@ void record_commands(
 				}
 				uint32_t meshIdx = batch.meshIndex;
 				uint32_t matIdx = batch.materialIndex;
-				//if (batch.alphaMultiplier < 0.99f) continue;
 				// 銆愬叧閿€戯細杩欓噷涓€瀹氳涔樹笂 lightVP锛岀畻鍑烘姇褰辩┖闂寸煩闃碉紒
 				glm::mat4 lightModel = shadowSceneUniform.lightVP[i] * batch.transform;
 
@@ -689,11 +684,6 @@ void record_commands(
 				continue;
 			}
 
-			bool isMasked = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0);
-			if (!isMasked && batch.alphaMultiplier < 0.99f) {
-				continue;
-			}
-
 			ObjectPC pcData{};
 			pcData.transform = batch.transform;
 			pcData.clipPlane = batch.clipPlane;
@@ -712,7 +702,7 @@ void record_commands(
 				pcData.alphaCutoff = 0.5f;
 			}
 
-			pcData.baseColorFactor.a *= batch.alphaMultiplier;
+			pcData.emissiveFactor.a = batch.ditherFade;
 
 			vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ObjectPC), &pcData);
 			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
@@ -748,13 +738,6 @@ void record_commands(
 					continue;
 				}
 
-				const bool isAlpha =
-					(matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0) ||
-					(batch.alphaMultiplier < 0.99f);
-				if (isAlpha) {
-					continue;
-				}
-
 				auto jIt = aMeshJoints->find(meshIdx);
 				auto wIt = aMeshWeights->find(meshIdx);
 				if (jIt == aMeshJoints->end() || wIt == aMeshWeights->end()) {
@@ -779,6 +762,7 @@ void record_commands(
 					pc.roughnessFactor = 0.8f;
 					pc.alphaCutoff = 0.5f;
 				}
+				pc.emissiveFactor.a = batch.ditherFade;
 
 				vkCmdPushConstants(aCmdBuff, aSkinnedPipeLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(SkinnedPC), &pc);
 				vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
@@ -1097,12 +1081,6 @@ void record_commands(
 		uint32_t matIdx = batch.materialIndex;
 		uint32_t meshIdx = batch.meshIndex;
 
-		bool isMasked = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0);
-
-		if (!isMasked && batch.alphaMultiplier < 0.99f) {
-			continue;
-		}
-
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsPipe);
 		auto const& meshInfo = aMeshInfos[meshIdx];
 
@@ -1127,7 +1105,7 @@ void record_commands(
 			pcData.alphaCutoff = 0.5f;
 		}
 
-		pcData.baseColorFactor.a *= batch.alphaMultiplier;
+		pcData.emissiveFactor.a = batch.ditherFade;
 
 		// 鍘嬪叆绠＄嚎
 		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ObjectPC), &pcData);
@@ -1225,15 +1203,6 @@ void record_commands(
 
 		for (const auto& batch : *aSkinnedBatches) {
 			uint32_t meshIdx = batch.meshIndex; uint32_t matIdx = batch.materialIndex;
-			// 鍙敾涓嶉€忔槑鐨?
-			const bool isMasked = matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0;
-            // Buffer diagnostics need cutout depth/normals, including animated meshes.
-            // Preserve Default's existing transparent-pass routing.
-            const bool isAlpha = engine::view_mode::IsBuffer(aSceneUniform.renderMode)
-                ? (!isMasked && batch.alphaMultiplier < 0.99f)
-                : (isMasked || batch.alphaMultiplier < 0.99f);
-			if (isAlpha) continue;
-
 			auto jIt = aMeshJoints->find(meshIdx); auto wIt = aMeshWeights->find(meshIdx);
 			if (jIt == aMeshJoints->end() || wIt == aMeshWeights->end()) continue;
 
@@ -1250,6 +1219,7 @@ void record_commands(
 			else {
 				pc.baseColorFactor = glm::vec4(1.0f); pc.emissiveFactor = glm::vec4(0.0f); pc.metallicFactor = 0.0f; pc.roughnessFactor = 0.8f; pc.alphaCutoff = 0.5f;
 			}
+			pc.emissiveFactor.a = batch.ditherFade;
 
 			vkCmdPushConstants(aCmdBuff, aSkinnedPipeLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(SkinnedPC), &pc);
 			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
@@ -1539,92 +1509,6 @@ void record_commands(
 	vkCmdSetViewport(aCmdBuff, 0, 1, &vp);
 	vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
 	vkCmdDraw(aCmdBuff, 3, 1, 0, 0);
-
-	// --- 2. 鐢诲崐閫忔槑闈欐€佺墿浣?---
-	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aAlphaPipe);
-	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
-
-	 kZeroOffset = 0; // 銆愪慨澶?1銆戯細琛ヤ笂绫诲瀷澹版槑
-	for (const auto& batch : aBatches) {
-		uint32_t meshIdx = batch.meshIndex; uint32_t matIdx = batch.materialIndex;
-		bool isMatMasked = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0);
-		if (isMatMasked) continue;
-		if (batch.alphaMultiplier >= 0.99f) continue;
-
-		auto const& meshInfo = aMeshInfos[meshIdx];
-		ObjectPC pcData{};
-		pcData.transform = batch.transform;
-		pcData.clipPlane = batch.clipPlane;
-		if (matIdx < aMaterials.size()) {
-			pcData.baseColorFactor = aMaterials[matIdx].baseColorFactor; pcData.emissiveFactor = aMaterials[matIdx].emissiveFactor;
-			pcData.metallicFactor = aMaterials[matIdx].metallicFactor; pcData.roughnessFactor = aMaterials[matIdx].roughnessFactor;
-			pcData.alphaCutoff = aMaterials[matIdx].alphaCutoff;
-		}
-		else {
-			pcData.baseColorFactor = glm::vec4(1.0f); pcData.emissiveFactor = glm::vec4(0.0f);
-			pcData.metallicFactor = 0.0f; pcData.roughnessFactor = 0.8f; pcData.alphaCutoff = 0.5f;
-		}
-		pcData.baseColorFactor.a *= batch.alphaMultiplier;
-		pcData.alphaCutoff = -1.0f;
-
-		vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ObjectPC), &pcData);
-		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
-		vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &kZeroOffset);
-		vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &kZeroOffset);
-		vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &kZeroOffset);
-		vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
-		vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(meshInfo.indices.size()), 1, 0, 0, 0);
-	}
-
-	// --- 3. 鐢诲崐閫忔槑楠ㄩ鍔ㄧ敾 ---
-	if (aSkinnedAlphaPipe != VK_NULL_HANDLE && aSkinnedBatches && !aSkinnedBatches->empty() && aBoneDescriptorSet != VK_NULL_HANDLE) {
-		struct alignas(16) SkinnedPC {
-			glm::mat4 transform;        // offset 0
-			glm::vec4 baseColorFactor;  // offset 64
-			glm::vec4 emissiveFactor;   // offset 80 (matches default.frag)
-			float metallicFactor;       // offset 96
-			float roughnessFactor;      // offset 100
-			float alphaCutoff;          // offset 104
-			uint32_t boneBaseIndex;     // offset 108
-			glm::vec4 clipPlane;        // offset 112
-		};
-		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedAlphaPipe);
-		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
-		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 2, 1, &aBoneDescriptorSet, 0, nullptr);
-
-		for (const auto& batch : *aSkinnedBatches) {
-			uint32_t meshIdx = batch.meshIndex; uint32_t matIdx = batch.materialIndex;
-			bool isAlpha = (matIdx < aMaterials.size() && aMaterials[matIdx].alphaMaskTexture >= 0) || (batch.alphaMultiplier < 0.99f);
-			if (!isAlpha) continue;
-
-			auto jIt = aMeshJoints->find(meshIdx); auto wIt = aMeshWeights->find(meshIdx);
-			if (jIt == aMeshJoints->end() || wIt == aMeshWeights->end()) continue;
-
-			SkinnedPC pc{};
-			pc.transform = batch.transform; pc.boneBaseIndex = batch.boneBaseIndex;
-			pc.clipPlane = batch.clipPlane;
-			if (matIdx < aMaterials.size()) {
-				pc.baseColorFactor = aMaterials[matIdx].baseColorFactor;
-				pc.emissiveFactor = aMaterials[matIdx].emissiveFactor;
-				pc.metallicFactor = aMaterials[matIdx].metallicFactor;
-				pc.roughnessFactor = aMaterials[matIdx].roughnessFactor;
-				pc.alphaCutoff = aMaterials[matIdx].alphaCutoff;
-			}
-			else {
-				pc.baseColorFactor = glm::vec4(1.0f); pc.emissiveFactor = glm::vec4(0.0f); pc.metallicFactor = 0.0f; pc.roughnessFactor = 0.8f; pc.alphaCutoff = 0.5f;
-			}
-			pc.baseColorFactor.a *= batch.alphaMultiplier;
-
-			vkCmdPushConstants(aCmdBuff, aSkinnedPipeLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(SkinnedPC), &pc);
-			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSkinnedPipeLayout, 1, 1, &aMaterialDescriptors[matIdx], 0, nullptr);
-
-			VkDeviceSize z = 0;
-			vkCmdBindVertexBuffers(aCmdBuff, 0, 1, &aMeshPositions[meshIdx].buffer, &z); vkCmdBindVertexBuffers(aCmdBuff, 1, 1, &aMeshTexCoords[meshIdx].buffer, &z);
-			vkCmdBindVertexBuffers(aCmdBuff, 2, 1, &aMeshNormals[meshIdx].buffer, &z); vkCmdBindVertexBuffers(aCmdBuff, 3, 1, &jIt->second.buffer, &z); vkCmdBindVertexBuffers(aCmdBuff, 4, 1, &wIt->second.buffer, &z);
-			vkCmdBindIndexBuffer(aCmdBuff, aMeshIndices[meshIdx].buffer, 0, VK_INDEX_TYPE_UINT32);
-			vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(aMeshInfos[meshIdx].indices.size()), 1, 0, 0, 0);
-		}
-	}
 
 	// --- 4. 鐢荤矑瀛愮郴缁?---
 	if (particlesEnabled) {

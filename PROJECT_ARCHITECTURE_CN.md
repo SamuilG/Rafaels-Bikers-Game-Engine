@@ -125,7 +125,7 @@ m_currentScene->Init(renderSystem, sceneManager, physicsSystem, inputSystem, eve
 - `CompoundParent`：复合刚体子部件共享一个 Jolt BodyID，并带 local offset。
 - `EntityStatus`：控制是否渲染、是否启用物理同步。
 - `LayerComponent`：渲染层，如 default/emissive/transparent。
-- `OpacityComponent`：第三人称遮挡物 X-Ray 淡化。
+- `OpacityComponent`：第三人称遮挡物的 dither fade 覆盖率。
 - `LODComponent`：距离 LOD。
 - `RiderBinding`：角色跟随自行车座位。
 - `AnimationComponent` / `SkinComponent`：骨骼动画。
@@ -151,7 +151,7 @@ m_currentScene->Init(renderSystem, sceneManager, physicsSystem, inputSystem, eve
 - 从 Jolt 读取 `PhysicsBody` 的位置/旋转，写回 `LocalTransform`。
 - 对 `CompoundParent` 子部件，根据复合 body 的 transform 和 local offset 更新部件位置。
 - 对自行车部件做额外动画：前轮/后轮转动，车把转向，踏板联动。
-- 做第三人称相机遮挡检测：相机到车之间的物体被加 `OpacityComponent`，渲染时半透明。
+- 做第三人称相机遮挡检测：相机到车之间的物体被加 `OpacityComponent`，在不透明管线中按屏幕空间 Bayer 抖动裁剪片元。
 - 更新骑手 `RiderBinding` 和 `RiderIKComponent` 的目标点。
 - 调 `m_world->progress(dt)` 运行 Flecs 内部系统，比如 WorldTransform 继承。
 
