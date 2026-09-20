@@ -15,6 +15,7 @@ namespace engine {
 
     class RenderSystem;
     class SceneManager;
+    class EditorSceneAdapter;
     class AudioSystem;
     class CameraController;
     struct PlayerState;
@@ -70,7 +71,7 @@ namespace engine {
         
 		//绘制 3D 渲染画面、图标、Gizmo 坐标轴//Draw the 3D rendered scene, icons, and Gizmo axes
         static ImDrawList* GetSceneViewportDrawList();
-        static void DrawSceneViewport(VkDescriptorSet sceneTexId, RenderSystem* renderSys, SceneManager* sceneManager, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, EditorState& editor, const RenderSettings& render);
+        static void DrawSceneViewport(VkDescriptorSet sceneTexId, RenderSystem* renderSys, SceneManager* sceneManager, EditorSceneAdapter& editorScene, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, EditorState& editor, const RenderSettings& render);
 
 
         //================Editor Panels 编辑器面板=============================
@@ -93,7 +94,7 @@ namespace engine {
         static void DrawAudioPanel(EditorState& editor, AudioSystem* audioSystem);
 
 		// 场景层级面板与属性检查器（Inspector）//Scene Hierarchy panel with property inspector (Inspector)
-        static void DrawSceneHierarchy(RenderSystem* renderSys, SceneManager* sceneManager, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, EditorState& editor);
+        static void DrawSceneHierarchy(RenderSystem* renderSys, SceneManager* sceneManager, EditorSceneAdapter& editorScene, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, EditorState& editor);
 		
 
     private:

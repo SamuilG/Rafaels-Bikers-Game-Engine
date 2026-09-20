@@ -78,6 +78,7 @@ namespace lut = labut2;
 #include "../Physics/PhysicsSystem.hpp"
 #include "../Scene/SceneRenderSource.hpp"
 #include "../Scene/EditorSceneAdapter.hpp"
+#include "../Scene/SceneRenderer.hpp"
 #include "../UserState/StateViews.hpp"
 #include <glm/gtx/matrix_decompose.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -120,7 +121,8 @@ namespace engine {
 
         explicit RenderSystem(bool& appRunning, SceneManager* sceneManager = nullptr)
             : mAppRunning(appRunning), mSceneManager(sceneManager),
-              mSceneRenderSource(sceneManager), mEditorScene(sceneManager) {
+              mEditorScene(sceneManager) {
+            mSceneRenderer.SetSource(sceneManager);
         }
 
         void SetInitProgressCallback(InitProgressCallback callback) {
@@ -130,7 +132,7 @@ namespace engine {
     private:
         bool& mAppRunning;
         SceneManager* mSceneManager;
-        SceneRenderSource* mSceneRenderSource;
+        SceneRenderer mSceneRenderer;
         engine::AnimationSystem* mAnimationSystem = nullptr;
         engine::AudioSystem* mAudioSystem = nullptr;
         InitProgressCallback mInitProgressCallback;
@@ -998,7 +1000,7 @@ namespace engine {
             // debug: 选中更换材质（方便观察==============
 
                 // 获取全局鼠标位置和 Viewport 数据
-                EngineUi::DrawSceneViewport(m_sceneViewportTexId, this, mSceneManager, view, gizmoProj, mEditorScene.Selection(), mState->editor, mState->render);
+                EngineUi::DrawSceneViewport(m_sceneViewportTexId, this, mSceneManager, mEditorScene, view, gizmoProj, mEditorScene.Selection(), mState->editor, mState->render);
                 vpSize = EngineUi::GetSceneViewportSize();
                 ImVec2 mousePosAbs = ImGui::GetMousePos();
                 ImVec2 vpPos = EngineUi::GetSceneViewportPos();
@@ -1048,7 +1050,7 @@ namespace engine {
                 }
 
                 if (mState->editor.showEngineUi && (mState->editor.showSceneHierarchy || mState->editor.showEntityInspector)) {
-                    EngineUi::DrawSceneHierarchy(this, mSceneManager, view, gizmoProj, mEditorScene.Selection(), mState->editor);
+                    EngineUi::DrawSceneHierarchy(this, mSceneManager, mEditorScene, view, gizmoProj, mEditorScene.Selection(), mState->editor);
                 }
                 //light UI
                 if (mState->editor.showEngineUi && mState->editor.showLightPanel) {
@@ -1159,43 +1161,7 @@ namespace engine {
                             size.GetX(), size.GetY(), size.GetZ());
 
                         if (physics) {
-                            physics->set_body_transform(pb.bodyID, lt.matrix);//transform同步synchronous
-
-                            // SCALE缩放同步
-                            glm::vec3 currentScale, translation, skew;
-                            glm::quat rotation;
-                            glm::vec4 perspective;
-
-                            if (glm::decompose(lt.matrix, currentScale, rotation, translation, skew, perspective)) {
-
-                                static std::unordered_map<flecs::entity_t, glm::vec3> scaleCache;
-                                if (scaleCache.find(mEditorScene.Selection()) == scaleCache.end()) {
-                                    scaleCache[mEditorScene.Selection()] = currentScale;
-                                }
-
-                                glm::vec3& lastSyncedScale = scaleCache[mEditorScene.Selection()];
-                                float delta = glm::distance(currentScale, lastSyncedScale);
-                                if (delta > 0.001f) {
-                                    glm::vec3 safeScale = currentScale;
-                                    //negative or zero scale can cause Jolt to break, so clamp it to a small positive value
-                                    for (int i = 0; i < 3; ++i) {
-                                        if (std::abs(safeScale[i]) < 0.001f) {
-                                            safeScale[i] = (safeScale[i] >= 0.0f) ? 0.001f : -0.001f;
-                                        }
-                                    }
-
-                                    physics->set_body_scale(pb.bodyID, safeScale, translation, rotation);
-                                    lastSyncedScale = safeScale;
-                                }
-                            }
-
-                            if (bodyInterface.GetMotionType(joltBodyID) != JPH::EMotionType::Static) {
-                                bodyInterface.SetLinearAndAngularVelocity(
-                                    joltBodyID, JPH::Vec3::sZero(), JPH::Vec3::sZero()
-                                );
-                            }
-
-                            selectedEntity.modified<LocalTransform>();
+                            mEditorScene.ApplyTransform(mEditorScene.Selection(), lt.matrix);
                         }
                     }
                 }
@@ -1600,10 +1566,10 @@ namespace engine {
 
             //std::vector<RenderBatch> finalBatches = mSceneManager ? mSceneManager->get_render_batches(activeFrustum) : std::vector<RenderBatch>{};
             glm::vec3 camPosWorld = glm::vec3(sceneUniforms.cameraPos);
-            std::vector<RenderBatch> finalBatches = mSceneManager ? mSceneRenderSource->BuildRenderBatches({ activeFrustum, mState->render.frustumCullingPadding, camPosWorld }) : std::vector<RenderBatch>{};
+            std::vector<RenderBatch> finalBatches = mSceneRenderer.BuildOpaque({ activeFrustum, mState->render.frustumCullingPadding, camPosWorld });
             if (mSceneManager) {
-                mState->renderStats.frustumCullingTotalCandidates = mSceneRenderSource->LastFrustumCandidates(); // new frustum culling
-                mState->renderStats.frustumCullingVisibleCandidates = mSceneRenderSource->LastFrustumVisible(); // new frustum culling
+                mState->renderStats.frustumCullingTotalCandidates = mSceneRenderer.LastFrustumCandidates(); // new frustum culling
+                mState->renderStats.frustumCullingVisibleCandidates = mSceneRenderer.LastFrustumVisible(); // new frustum culling
             }
             // 2. 如果正在拖拽预览，把预览的 Batch 强行加进列表最后面！
             auto appendPreviewBatches = [&](std::vector<RenderBatch>& batches) {
@@ -1621,7 +1587,7 @@ namespace engine {
             // =========================================================
             std::vector<engine::GpuLight> lights;
             if (mSceneManager) {
-                mSceneRenderSource->CollectLights(lights);
+                lights = mSceneRenderer.CollectLights();
                 sceneUniforms.lightCount = static_cast<uint32_t>(std::min(lights.size(), std::size(sceneUniforms.lights)));
                 for (size_t i = 0; i < sceneUniforms.lightCount; ++i) {
                     sceneUniforms.lights[i] = lights[i];
@@ -1693,7 +1659,7 @@ namespace engine {
                 void* ptr;
                 vmaMapMemory(mAllocator.allocator, mBoneSSBO.allocation, &ptr);
                 size_t boneCount = 0;
-                skinnedBatches = mSceneRenderSource->BuildSkinnedBatches(
+                skinnedBatches = mSceneRenderer.BuildSkinned(
                     static_cast<glm::mat4*>(ptr), kMaxBoneMatrices, boneCount);
                 vmaUnmapMemory(mAllocator.allocator, mBoneSSBO.allocation);
             }
@@ -1754,7 +1720,7 @@ namespace engine {
 
                 if (portalTransitionPlayerBodyID != UINT32_MAX) {
                     const std::vector<RenderBatch> unculledBatches =
-                        mSceneRenderSource->BuildRenderBatches({ nullptr, 0.0f, camPosWorld });
+                        mSceneRenderer.BuildOpaque({ nullptr, 0.0f, camPosWorld });
                     for (const auto& batch : unculledBatches) {
                         if (batch.compoundBodyID == portalTransitionPlayerBodyID) {
                             portalTransitionStaticCloneSources.push_back(batch);
@@ -1886,7 +1852,7 @@ namespace engine {
             if (mSceneManager && portalVisibleForFrame) {
                 Frustum portalFrustum = BuildFrustum(portalSceneUniform.projCam);
                 const Frustum* portalActiveFrustum = mState->render.frustumCullingEnabled ? &portalFrustum : nullptr;
-                portalBatches = mSceneRenderSource->BuildRenderBatches({
+                portalBatches = mSceneRenderer.BuildOpaque({
                     portalActiveFrustum,
                     mState->render.frustumCullingPadding,
                     glm::vec3(portalSceneUniform.cameraPos) });
@@ -1896,7 +1862,7 @@ namespace engine {
             if (mSceneManager && portal2VisibleForFrame) {
                 Frustum portal2Frustum = BuildFrustum(portal2SceneUniform.projCam);
                 const Frustum* portal2ActiveFrustum = mState->render.frustumCullingEnabled ? &portal2Frustum : nullptr;
-                portal2Batches = mSceneRenderSource->BuildRenderBatches({
+                portal2Batches = mSceneRenderer.BuildOpaque({
                     portal2ActiveFrustum,
                     mState->render.frustumCullingPadding,
                     glm::vec3(portal2SceneUniform.cameraPos) });

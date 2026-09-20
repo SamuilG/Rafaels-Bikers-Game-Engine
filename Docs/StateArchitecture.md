@@ -112,4 +112,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Tests/UI/run-runtime-ui-flow
 - `EditorSceneAdapter` 持有编辑器选中对象和拾取入口。选中状态不再是 `RenderSystem` 的字段；编辑器仍可通过原有 UI 参数接收选中 ID，因此本阶段不改变面板行为。
 - 游戏视口和编辑器视口继续使用同一个 `m_sceneViewportTexId`。编辑器 UI 只显示渲染器提供的场景纹理，并通过适配器提交拾取操作，避免单独复制一套场景绘制逻辑。
 
-这只是边界迁移的第一阶段。编辑器层级树、Inspector、拖放加载和物理 Gizmo 仍直接使用 `SceneManager`，下一阶段再将这些修改操作收进 `EditorSceneAdapter`，然后把 `RenderSystem` 的 GPU 帧调度与 `SceneRenderer` 独立出来。
+这一阶段已经继续收口编辑器修改入口：可见性、变换、物理同步、删除和拾取由 `EditorSceneAdapter` 提交；`EngineUi` 保留布局和控件绘制，不再直接负责这些写操作。`SceneRenderer` 现在统一代理主视口、传送门视口、骨骼批次和灯光数据准备，仍不拥有 Vulkan 资源。
+
+编辑器层级树、内容浏览器的资源加载以及粒子面板仍需要更细的适配接口；GPU 命令录制和交换链生命周期也仍由 `RenderSystem` 管理。这些是后续继续缩小 `RenderSystem` 公开接口的边界。

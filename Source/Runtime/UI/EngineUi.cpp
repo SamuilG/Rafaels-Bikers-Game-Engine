@@ -36,6 +36,7 @@
 #include "SwitchLanguage.hpp" 
 #include "../Renderer/RenderSystem.hpp"
 #include "../Scene/SceneManager.hpp" 
+#include "../Scene/EditorSceneAdapter.hpp"
 #include "../Particle/ParticleSystem.hpp"
 #include "../Physics/PhysicsSystem.hpp"
 #include "../Renderer/RenderUtilities/light.hpp"
@@ -679,7 +680,7 @@ namespace engine {
 	}
 
 
-	void EngineUi::DrawSceneViewport(VkDescriptorSet sceneTexId, RenderSystem* renderSys, SceneManager* sceneManager, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, EditorState& editor, const RenderSettings& render) {
+	void EngineUi::DrawSceneViewport(VkDescriptorSet sceneTexId, RenderSystem* renderSys, SceneManager* sceneManager, EditorSceneAdapter& editorScene, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, EditorState& editor, const RenderSettings& render) {
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, editor.showEngineUi ? 1.0f : 0.0f);
 		ImGui::PushStyleColor(ImGuiCol_WindowBg, editor.showEngineUi
@@ -897,11 +898,8 @@ namespace engine {
 					renderSys->GetParticles()[editor.activeParticleIndex]->config.emitterPos = glm::vec3(gizmoMatrix[3]);
 				}
 				else if (selected_id != 0 && sceneManager) {
-					flecs::entity selectedEntity = sceneManager->get_world().entity(selected_id);
-					LocalTransform* lt = &selectedEntity.get_mut<LocalTransform>();
-                    lt->matrix = gizmoMatrix;
-                    SyncTransformCache(selectedEntity.id(), gizmoMatrix);
-					selectedEntity.modified<LocalTransform>();
+                    editorScene.SetTransform(selected_id, gizmoMatrix);
+                    SyncTransformCache(selected_id, gizmoMatrix);
 				}
 			}
 		}
@@ -1710,7 +1708,7 @@ namespace engine {
 		ImGui::End();
 	}
 
-	void EngineUi::DrawSceneHierarchy(RenderSystem* renderSys, SceneManager* sceneManager, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, EditorState& editor)
+	void EngineUi::DrawSceneHierarchy(RenderSystem* renderSys, SceneManager* sceneManager, EditorSceneAdapter& editorScene, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, EditorState& editor)
 	{
 		// 获取当前屏幕分辨率 (Current screen resolution)
 
@@ -1827,10 +1825,9 @@ namespace engine {
 
 					// 可见性切换组件// Visibility Toggle Component
 					if (selectedEntity.has<EntityStatus>()) {
-						EntityStatus* entityStatus = &selectedEntity.get_mut<EntityStatus>();
-						if (entityStatus) {
-							ImGui::Checkbox(_SL("Visible"), &entityStatus->should_render);
-						}
+						bool visible = selectedEntity.get<EntityStatus>().should_render;
+						if (ImGui::Checkbox(_SL("Visible"), &visible))
+							editorScene.SetVisible(selected_id, visible);
 					}
 
 					// 变换组件 (LocalTransform)
@@ -1872,11 +1869,7 @@ namespace engine {
 									m_ui_translation, m_ui_rotation, m_ui_scale,
 									glm::value_ptr(localTransform->matrix)
 								);
-								selectedEntity.modified<LocalTransform>();
-                                if (selectedEntity.has<PhysicsBody>()) {
-                                    if (auto* physics = sceneManager->get_physics_system())
-                                        physics->set_body_transform(selectedEntity.get<PhysicsBody>().bodyID, localTransform->matrix);
-                                }
+								editorScene.SetTransform(selected_id, localTransform->matrix);
 							}
                             }
 						}
@@ -1886,8 +1879,7 @@ namespace engine {
 
 					// 删除按钮// Delete Button
 					if (ImGui::Button(_SL("Delete Entity"), ImVec2(-1, 0))) {
-						selectedEntity.destruct();
-						selected_id = 0;
+						editorScene.Destroy(selected_id);
 					}
 					// 键盘快捷键删除 (Delete 键)
 					if (selectedEntity.is_alive() &&
@@ -1895,8 +1887,7 @@ namespace engine {
 						!(editor.showGameUiEditor && UIEditorWindow::WantsKeyboardCapture()) &&
 						ImGui::IsKeyPressed(ImGuiKey_Delete) &&
 						!ImGui::GetIO().WantTextInput) {
-						selectedEntity.destruct();
-						selected_id = 0;
+						editorScene.Destroy(selected_id);
 					}
 				}
 				ImGui::End();
