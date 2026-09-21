@@ -6,10 +6,11 @@
 namespace engine {
 
 struct RuntimeUiStateView {
+    // Runtime game UI owns game flow and presentation preferences only.
+    // Editor workspace state is intentionally kept out of this view.
     GameFlowController& gameFlow;
     const PlayerController& player;
     GameplayPreferences& preferences;
-    EditorState& editor;
     RuntimeUiState& runtimeUi;
 };
 
@@ -36,7 +37,7 @@ struct RendererStateView {
     RuntimeUiState& runtimeUi;
     GameplayPreferences& preferences;
 
-    RuntimeUiStateView RuntimeUi() { return {gameFlow, player, preferences, editor, runtimeUi}; }
+    RuntimeUiStateView RuntimeUi() { return {gameFlow, player, preferences, runtimeUi}; }
 };
 
 }

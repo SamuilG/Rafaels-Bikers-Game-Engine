@@ -22,7 +22,7 @@ struct UserState {
     GameplayState Gameplay() { return {gameFlow, player, camera, level, renderOverrides, preferences}; }
     SceneStateView Scene() const { return {gameFlow, player, camera, render, editor}; }
     RendererStateView Renderer() { return {gameFlow, player, camera, level, render, renderOverrides, capabilities, renderStats, editor, runtimeUi, preferences}; }
-    RuntimeUiStateView RuntimeUi() { return {gameFlow, player, preferences, editor, runtimeUi}; }
+    RuntimeUiStateView RuntimeUi() { return {gameFlow, player, preferences, runtimeUi}; }
 
     // Scene lifetimes end independently of device capabilities and user/workspace settings.
     void ResetSession() {

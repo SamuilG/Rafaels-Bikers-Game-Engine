@@ -22,8 +22,11 @@ inline bool RenderSystem::BuildRuntimeUiRenderContext(UIRenderContext& outContex
         return false;
     }
 
-    const ImVec2 viewportPos = EngineUi::GetSceneViewportPos();
-    const ImVec2 viewportSize = EngineUi::GetSceneViewportSize();
+    // The normal game canvas is owned by GameUi. EngineUi is consulted only
+    // for the explicit editor-side Runtime UI preview.
+    const bool editorPreview = mState && mState->editor.showEngineUi;
+    const ImVec2 viewportPos = editorPreview ? EngineUi::GetSceneViewportPos() : GameUi::GetViewportPos();
+    const ImVec2 viewportSize = editorPreview ? EngineUi::GetSceneViewportSize() : GameUi::GetViewportSize();
     if (viewportSize.x <= 1.0f || viewportSize.y <= 1.0f) {
         return false;
     }
@@ -58,10 +61,9 @@ inline bool RenderSystem::BuildRuntimeUiRenderContext(UIRenderContext& outContex
     outContext.hudOpacityMultiplier = mRuntimeUiManager ? std::clamp(mRuntimeUiManager->GetSettings().hudOpacity, 0.0f, 1.0f) : 1.0f;
     outContext.speedTextScale = mRuntimeUiManager ? std::clamp(mRuntimeUiManager->GetSettings().speedTextScale, 0.1f, 4.0f) : 1.0f;
     outContext.selectedElementId = mRuntimeUiDebugSelectedElementId;
-    ImDrawList* runtimeUiDrawList = nullptr;
-    if (mState && mState->editor.showEngineUi) {
-        runtimeUiDrawList = EngineUi::GetSceneViewportDrawList();
-    }
+    ImDrawList* runtimeUiDrawList = editorPreview
+        ? EngineUi::GetSceneViewportDrawList()
+        : GameUi::GetViewportDrawList();
     if (!runtimeUiDrawList) {
         runtimeUiDrawList = ImGui::GetForegroundDrawList(ImGui::GetMainViewport());
     }

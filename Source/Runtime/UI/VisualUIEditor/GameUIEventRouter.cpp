@@ -150,10 +150,6 @@ namespace engine {
         uiManager.RegisterEventHandler("RestartGame", [this](const std::string& eventName) {
             HandleRestartGame(eventName);
         });
-        uiManager.RegisterEventHandler("OpenEditor", [this](const std::string& eventName) {
-            HandleOpenEditor(eventName);
-        });
-
         uiManager.RegisterEventHandler("TestButton", [this](const std::string& eventName) {
             HandleTestButton(eventName);
         });
@@ -309,10 +305,6 @@ namespace engine {
         }
         SyncHudHintUi();
         mState.runtimeUi.showRuntimeUi = true;
-        if (state != GameFlowState::Playing || settingsOpen ||
-            (mHasPresentedFlow && !IsGameplayScreenFlow(mPresentedFlow))) {
-            mState.editor.showEngineUi = false;
-        }
         mPresentedFlow = state;
         mPresentedSettingsOpen = settingsOpen;
         mPresentedRevision = flow.Revision();
@@ -324,16 +316,6 @@ namespace engine {
         if (RequestFlow(GameFlowCommand::Start, eventName)) {
             EngineUi::ShowToast("[ Runtime UI: Start Game ]");
         }
-    }
-
-    void GameUIEventRouter::HandleOpenEditor(const std::string& eventName) {
-        if (!RequestFlow(GameFlowCommand::Start, eventName)) return;
-#ifndef GAME_ONLY
-        if (mState.gameFlow.State() == GameFlowState::Playing) {
-            mState.editor.showEngineUi = true;
-            EngineUi::ShowToast("[ Editor Mode ]");
-        }
-#endif
     }
 
     void GameUIEventRouter::HandlePauseGame(const std::string& eventName) {

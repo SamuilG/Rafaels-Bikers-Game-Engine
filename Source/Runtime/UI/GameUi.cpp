@@ -2,7 +2,6 @@
 
 #include "../Renderer/RenderSystem.hpp"
 #include "../UserState/PlayerState.hpp"
-#include "../UserState/EditorState.hpp"
 
 #include <algorithm>
 #include <array>
@@ -14,6 +13,9 @@
 namespace engine {
     namespace {
         float s_smoothedSpeedKmh = 0.0f;
+        ImVec2 s_viewportPos = ImVec2(0.0f, 0.0f);
+        ImVec2 s_viewportSize = ImVec2(1280.0f, 720.0f);
+        ImDrawList* s_viewportDrawList = nullptr;
         enum class UiAnchor {
             TopLeft,
             TopCenter,
@@ -285,7 +287,7 @@ namespace engine {
             return style;
         }
 
-        void DrawImageSpeedometerDemo(RenderSystem* renderSys, const PlayerState& player, const EditorState& editor, const ImVec2& viewportPos, const ImVec2& viewportSize) {
+        void DrawImageSpeedometerDemo(RenderSystem* renderSys, const PlayerState& player, const ImVec2& viewportPos, const ImVec2& viewportSize) {
             if (!renderSys || viewportSize.x <= 1.0f || viewportSize.y <= 1.0f) {
                 return;
             }
@@ -433,12 +435,12 @@ namespace engine {
             ImGui::End();
         }
 
-        void DrawViewportHint(const PlayerState& player, const EditorState& editor, const ImVec2& viewportPos, const ImVec2& viewportSize) {
+        void DrawViewportHint(const PlayerState& player, const ImVec2& viewportPos, const ImVec2& viewportSize) {
             if (viewportSize.x <= 1.0f || viewportSize.y <= 1.0f) {
                 return;
             }
 
-            const char* engineUiLabel = editor.showEngineUi ? "F1 Hide Engine UI" : "F1 Show Engine UI";
+            constexpr const char* engineUiLabel = "F1 Show Engine UI";
 
             ImGui::SetNextWindowBgAlpha(0.0f);
             ImGui::SetNextWindowPos(viewportPos, ImGuiCond_Always);
@@ -484,10 +486,29 @@ namespace engine {
 
     void GameUi::ResetTransientState() {
         s_smoothedSpeedKmh = 0.0f;
+        s_viewportDrawList = nullptr;
     }
 
-    void GameUi::DrawHud(RenderSystem* renderSys, const PlayerState& player, const EditorState& editor, const ImVec2& viewportPos, const ImVec2& viewportSize) {
-        DrawImageSpeedometerDemo(renderSys, player, editor, viewportPos, viewportSize);
-        DrawViewportHint(player, editor, viewportPos, viewportSize);
+    void GameUi::SetViewport(const ImVec2& viewportPos, const ImVec2& viewportSize, ImDrawList* drawList) {
+        s_viewportPos = viewportPos;
+        s_viewportSize = viewportSize;
+        s_viewportDrawList = drawList;
+    }
+
+    ImVec2 GameUi::GetViewportPos() {
+        return s_viewportPos;
+    }
+
+    ImVec2 GameUi::GetViewportSize() {
+        return s_viewportSize;
+    }
+
+    ImDrawList* GameUi::GetViewportDrawList() {
+        return s_viewportDrawList;
+    }
+
+    void GameUi::DrawHud(RenderSystem* renderSys, const PlayerState& player, const ImVec2& viewportPos, const ImVec2& viewportSize) {
+        DrawImageSpeedometerDemo(renderSys, player, viewportPos, viewportSize);
+        DrawViewportHint(player, viewportPos, viewportSize);
     }
 } // namespace engine

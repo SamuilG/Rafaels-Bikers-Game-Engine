@@ -57,8 +57,6 @@ namespace engine {
         void HandleMenuBack(const std::string& eventName);
         // Enter Loading; gameplay resumes only after successful host reload.
         void HandleRestartGame(const std::string& eventName);
-        // 以编辑器模式启动游戏（开启引擎 UI）。
-        void HandleOpenEditor(const std::string& eventName);
         // 调试按钮事件，方便验证整条运行时点击链路。
         void HandleTestButton(const std::string& eventName);
         void HandleApplySettings(const std::string& eventName);

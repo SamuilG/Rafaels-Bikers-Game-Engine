@@ -986,6 +986,12 @@ namespace engine {
 
                 // 获取全局鼠标位置和 Viewport 数据
                 EngineUi::DrawSceneViewport(m_sceneViewportTexId, this, mSceneManager, mEditorScene, view, gizmoProj, mEditorScene.Selection(), mState->editor, mState->render);
+                if (!mState->editor.showEngineUi) {
+                    GameUi::SetViewport(
+                        EngineUi::GetSceneViewportPos(),
+                        EngineUi::GetSceneViewportSize(),
+                        EngineUi::GetSceneViewportDrawList());
+                }
                 vpSize = EngineUi::GetSceneViewportSize();
                 ImVec2 mousePosAbs = ImGui::GetMousePos();
                 ImVec2 vpPos = EngineUi::GetSceneViewportPos();
@@ -1003,7 +1009,7 @@ namespace engine {
 				
 				//game HUD============================
                 if (!mState->editor.showEngineUi && mState->gameFlow.CanSimulate()) {
-                    GameUi::DrawHud(this, mState->player.State(), mState->editor, EngineUi::GetSceneViewportPos(), EngineUi::GetSceneViewportSize());
+                    GameUi::DrawHud(this, mState->player.State(), GameUi::GetViewportPos(), GameUi::GetViewportSize());
                 }
 
 
