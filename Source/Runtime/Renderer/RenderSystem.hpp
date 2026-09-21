@@ -752,19 +752,6 @@ namespace engine {
                 particleImGuiTextureDict[path] = imguiTexId;
             }
 
-            // 初始化默认粒子群组
-            glm::vec3 ePos[] = { {2, 0.5, 2}, {3, 0.5, 2}, {4, 0.5, 2}, {2, 0.8, 2} };
-            for (int i = 0; i < 4; i++) {
-                auto ps = std::make_unique<ParticleSystem>();
-                ps->setEmitterShape(i == 3 ? EmitterShape::Sphere : EmitterShape::Cone);
-                ps->config.textureDescriptor = particleTextureDict[cfg::ParticleTextures[i % 2 == 0 ? 0 : 1]];
-                ps->config.uiIconDescriptor = particleImGuiTextureDict[cfg::ParticleTextures[5]];
-                ps->config.useTexture = 1;
-                ps->config.emitterPos = ePos[i];
-                ps->init(mAllocator, 500, ePos[i]);
-                allParticles.push_back(std::move(ps));
-            }
-
             InitThumbnailPipeline();
 
             namespace fs = std::filesystem;
