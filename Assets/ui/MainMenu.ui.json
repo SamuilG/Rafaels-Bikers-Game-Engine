@@ -1753,7 +1753,7 @@
                         "z": 0.9800000190734863,
                         "w": 1.0
                     },
-                    "texturePath": "Assets/Textures/logo.png",
+                    "texturePath": "Assets/Textures/escape_velocity_logo.png",
                     "fontPath": "",
                     "fontSize": 16.0,
                     "opacity": 1.0,
@@ -1779,7 +1779,7 @@
                     "borderRadius": 8.0
                 },
                 "widgetData": {
-                    "imagePath": "Assets/Textures/logo.png",
+                    "imagePath": "Assets/Textures/escape_velocity_logo.png",
                     "preserveAspectRatio": true
                 },
                 "events": {
