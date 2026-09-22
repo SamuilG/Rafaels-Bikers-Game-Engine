@@ -109,9 +109,16 @@ namespace {
         Near(player.State().bikeSpeed, 36.0f, 0.0001f, "teleport preserves speed");
         Near(player.State().bikeSteerAngle, 0, 0.0001f, "teleport clears steering history");
         SameVector(player.State().position, glm::vec3(9, 10, 11), "teleport publishes new position");
+        const auto resetTeleportRevision = player.State().motionResetRevision;
+        player.NotifyTeleported(1.2f, glm::vec3(12, 13, 14), true);
+        Require(player.State().motionResetRevision == resetTeleportRevision,
+            "momentum-preserving teleport keeps the accumulated drive state");
+        Near(player.State().bikeSpeed, 36.0f, 0.0001f, "momentum-preserving teleport keeps extreme speed");
+        SameVector(player.State().position, glm::vec3(12, 13, 14),
+            "momentum-preserving teleport still publishes its destination");
         player.PublishMotion(35.99f, 0, 0, 0);
         Require(!player.State().isExtremeSpeed, "dropping below the threshold clears extreme speed");
-        SameVector(player.State().position, glm::vec3(9, 10, 11), "motion-only feedback preserves position");
+        SameVector(player.State().position, glm::vec3(12, 13, 14), "motion-only feedback preserves position");
         player.Die();
         player.UpdateEffects(0.16f);
         Near(player.State().deathFactor, 1, 0.0001f, "death effect reaches its peak");
@@ -295,8 +302,8 @@ namespace {
                 FiniteCamera(camera);
                 ++frames;
             }
-            Require(frames >= 6 && frames < 30 && !camera.State().portalCameraActive,
-                "camera crossing completes portal handoff after its minimum hold time");
+            Require(frames >= 1 && frames < 30 && !camera.State().portalCameraActive,
+                "camera crossing completes portal handoff before the portal reaches the near plane");
             Require(camera.State().mode == (startFree ? CameraMode::Free : CameraMode::Follow),
                 "natural portal completion restores the original basic mode");
             Near(camera.State().targetFov, 52, 0.0001f, "portal handoff retains the manual lens preference");
@@ -304,10 +311,16 @@ namespace {
             Require(camera.State().Distance > 0 && camera.State().Distance <= 5.001f,
                 "handoff preserves a bounded, nonzero camera boom");
             request.teleportImmediately = true;
+            const float distanceBeforeTeleport = camera.State().Distance;
+            const float targetDistanceBeforeTeleport = camera.State().targetDistance;
             Require(camera.BeginPortal(request), "immediate teleport accepts the mapped camera pose");
             Require(!camera.State().portalCameraActive &&
                 camera.State().mode == (startFree ? CameraMode::Free : CameraMode::Follow),
                 "instant teleport does not force Follow or leave a portal takeover active");
+            Near(camera.State().Distance, distanceBeforeTeleport, 0.0001f,
+                "instant teleport preserves the current camera distance");
+            Near(camera.State().targetDistance, targetDistanceBeforeTeleport, 0.0001f,
+                "instant teleport preserves the camera distance target");
             FiniteCamera(camera);
         }
         std::puts("PASS natural portal handoff and immediate teleport restore Follow/Free without stale takeover state");

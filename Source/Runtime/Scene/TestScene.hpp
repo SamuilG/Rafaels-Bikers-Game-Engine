@@ -12,7 +12,7 @@ namespace engine {
 
         void Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, GameplayState* state, AnimationSystem* anima, AudioSystem* audio) override;
         void Update(float dt) override;
-        void RefreshPlayerMotion() override;
+        void RefreshPlayerMotion(float dt) override;
         void Shutdown() override;
 
     private:

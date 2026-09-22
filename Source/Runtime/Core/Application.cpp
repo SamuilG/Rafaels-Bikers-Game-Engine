@@ -186,7 +186,7 @@ namespace engine {
                 }
                 sys->Update(dt);
                 if (sys.get() == physicsSystem) {
-                    if (m_currentScene) m_currentScene->RefreshPlayerMotion();
+                    if (m_currentScene) m_currentScene->RefreshPlayerMotion(dt);
                     mState.player.UpdateEffects(dt);
                 }
             }

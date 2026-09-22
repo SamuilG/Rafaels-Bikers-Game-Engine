@@ -32,5 +32,12 @@ void main() {
     vSurfaceAspect = max(length(worldRight), 0.0001) / max(length(worldUp), 0.0001);
 
     vec4 worldPos = pc.transform * vec4(inPosition, 1.0);
-    gl_Position = uScene.projCam * worldPos;
+    vec4 clipPos = uScene.projCam * worldPos;
+
+    // Vulkan's clip volume uses 0 <= z <= w. Keep the portal mask on the
+    // near plane during camera handoff instead of dropping the whole quad.
+    if (clipPos.w > 0.0) {
+        clipPos.z = max(clipPos.z, 0.0001 * clipPos.w);
+    }
+    gl_Position = clipPos;
 }

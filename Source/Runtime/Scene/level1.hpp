@@ -25,7 +25,7 @@ namespace engine {
         glm::vec3 m_deployPortalCheckpointForward = glm::vec3(0.0f, 0.0f, -1.0f);
         void Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, GameplayState* state, AnimationSystem* anima, AudioSystem* audio) override;
         void Update(float dt) override;
-        void RefreshPlayerMotion() override;
+        void RefreshPlayerMotion(float dt) override;
         void Shutdown() override;
         void OnParticleGroupRemoved(size_t particleIndex);
 

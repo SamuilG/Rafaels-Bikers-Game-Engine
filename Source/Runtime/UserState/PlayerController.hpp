@@ -65,14 +65,24 @@ public:
         SetPosition(position);
     }
 
-    void NotifyTeleported(float yaw) {
+    void NotifyTeleported(float yaw, bool preserveDriveState) {
         PublishMotion(mState.bikeSpeed, yaw, 0.0f, 0.0f);
-        ++mState.motionResetRevision;
+        if (!preserveDriveState) {
+            ++mState.motionResetRevision;
+        }
+    }
+
+    void NotifyTeleported(float yaw) {
+        NotifyTeleported(yaw, false);
+    }
+
+    void NotifyTeleported(float yaw, const glm::vec3& position, bool preserveDriveState) {
+        NotifyTeleported(yaw, preserveDriveState);
+        SetPosition(position);
     }
 
     void NotifyTeleported(float yaw, const glm::vec3& position) {
-        NotifyTeleported(yaw);
-        SetPosition(position);
+        NotifyTeleported(yaw, position, false);
     }
 
     void UnlockJump() { mState.jumpEnabled = true; }

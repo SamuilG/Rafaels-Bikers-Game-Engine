@@ -79,6 +79,7 @@ public:
         mState.portalCameraTimer = 0.0f;
         mState.portalCameraBoomLength = 0.0f;
         mState.portalCameraStartSide = 1.0f;
+        mState.portalCameraHandoffDistance = 0.20f;
         mState.portalCameraPosition = glm::vec3(0.0f);
         mState.portalCameraTargetPosition = glm::vec3(0.0f);
         mState.portalCameraBoomOffset = glm::vec3(0.0f);
@@ -121,13 +122,24 @@ public:
         if (mState.mode == CameraMode::Cinematic) return false;
         const float cap = std::max(0.1f, mState.Distance > 0.1f ? mState.Distance : mState.targetDistance);
         if (request.teleportImmediately) {
+            const float preservedDistance = std::max(mState.Distance, 0.1f);
+            const float preservedTargetDistance = std::max(mState.targetDistance, 0.1f);
             glm::mat4 mapped = request.portalMap * mState.camera2world;
             mapped[3] += glm::vec4(request.exitCorrection, 0.0f);
             const glm::vec3 target = request.mappedFollowTarget + glm::vec3(0,1.6f,0);
             const glm::vec3 offset = glm::vec3(mapped[3]) - target;
-            const float distance = std::clamp(glm::length(offset), 0.1f, cap);
-            mapped[3] = glm::vec4(target + normalize_or(offset, glm::vec3(mapped[2])) * distance, 1.0f);
-            return ApplyTeleportPose(mapped, request.mappedFollowTarget, distance);
+            mapped[3] = glm::vec4(
+                target + normalize_or(offset, glm::vec3(mapped[2])) * preservedDistance,
+                1.0f);
+            const bool applied = ApplyTeleportPose(mapped, request.mappedFollowTarget, preservedDistance);
+            if (applied) {
+                // Extreme-speed traversal is a rigid-space transform. Preserve
+                // both sides of the distance interpolator so the portal itself
+                // cannot introduce a zoom pulse or restart the chase-camera blend.
+                mState.Distance = preservedDistance;
+                mState.targetDistance = preservedTargetDistance;
+            }
+            return applied;
         }
         CancelPortal();
         mState.mode = CameraMode::Portal;
@@ -137,6 +149,7 @@ public:
         mState.portalCameraEntrySurface = request.entrySurface;
         mState.portalCameraExitSurface = request.exitSurface;
         mState.portalCameraInverseExitSurface = glm::inverse(request.exitSurface);
+        mState.portalCameraHandoffDistance = std::max(request.cameraHandoffDistance, 0.0f);
         const glm::mat4 exitToEntry = request.entrySurface * portal_half_turn() * glm::inverse(request.exitSurface);
         mState.portalCameraTargetPosition = transform_point(exitToEntry, request.mappedFollowTarget + glm::vec3(0,1.6f,0));
         const glm::vec3 offset = glm::vec3(mState.camera2world[3]) - mState.portalCameraTargetPosition;
@@ -294,11 +307,10 @@ public:
 			cam_pos = mState.portalCameraPosition;
 			const glm::mat4 entryInverse = glm::inverse(mState.portalCameraEntrySurface);
 			const float cameraEntryLocalZ = glm::vec3(entryInverse * glm::vec4(cam_pos, 1.0f)).z;
-			constexpr float kPortalCameraMinHoldTime = 0.10f;
-			constexpr float kPortalCameraHandoffDistance =
-				0.04f + 0.1f + 0.06f;
-			if (mState.portalCameraTimer >= kPortalCameraMinHoldTime &&
-				mState.portalCameraStartSide * cameraEntryLocalZ <= kPortalCameraHandoffDistance) {
+			const float signedEntryDistance = mState.portalCameraStartSide * cameraEntryLocalZ;
+			// Near-plane safety takes priority over presentation timing. Delaying the
+			// handoff here leaves the portal quad between the camera and its near plane.
+			if (signedEntryDistance <= mState.portalCameraHandoffDistance) {
 				const glm::mat4 entryToExit = mState.portalCameraExitSurface *
 					portal_half_turn() *
 					entryInverse;

@@ -2448,7 +2448,7 @@ namespace engine {
         {
             const glm::vec3 cameraPos = glm::vec3(sceneUniform.cameraPos);
             const glm::vec3 portalLocalPos = glm::vec3(glm::inverse(surfaceTransform) * glm::vec4(cameraPos, 1.0f));
-            if (portalLocalPos.z < -cfg::kPortalSurfaceHalfDepth) {
+            if (portalLocalPos.z < 0.0f) {
                 return false;
             }
 
@@ -2474,24 +2474,16 @@ namespace engine {
             constexpr float kPortalHalfDepth = cfg::kPortalSurfaceHalfDepth;
 
             EngineMesh mesh{};
-            // Render the portal screen as two separated caps. When the camera
-            // near plane cuts the cap closest to the viewer, the far cap keeps
-            // the portal image filled, avoiding a one-frame clipping flash.
+            // Keep one logical portal plane. Near-plane safety is handled in
+            // portal.vert and by the camera handoff; two separated caps switch
+            // apparent size near the viewer and still leave a clipped gap.
             mesh.positions = {
-                {-0.5f, -0.5f,  kPortalHalfDepth},
-                { 0.5f, -0.5f,  kPortalHalfDepth},
-                { 0.5f,  0.5f,  kPortalHalfDepth},
-                {-0.5f,  0.5f,  kPortalHalfDepth},
-                {-0.5f, -0.5f, -kPortalHalfDepth},
-                { 0.5f, -0.5f, -kPortalHalfDepth},
-                { 0.5f,  0.5f, -kPortalHalfDepth},
-                {-0.5f,  0.5f, -kPortalHalfDepth}
+                {-0.5f, -0.5f, 0.0f},
+                { 0.5f, -0.5f, 0.0f},
+                { 0.5f,  0.5f, 0.0f},
+                {-0.5f,  0.5f, 0.0f}
             };
             mesh.texcoords = {
-                {0.0f, 1.0f},
-                {1.0f, 1.0f},
-                {1.0f, 0.0f},
-                {0.0f, 0.0f},
                 {0.0f, 1.0f},
                 {1.0f, 1.0f},
                 {1.0f, 0.0f},
@@ -2501,15 +2493,10 @@ namespace engine {
                 {0.0f, 0.0f, 1.0f},
                 {0.0f, 0.0f, 1.0f},
                 {0.0f, 0.0f, 1.0f},
-                {0.0f, 0.0f, 1.0f},
-                {0.0f, 0.0f, -1.0f},
-                {0.0f, 0.0f, -1.0f},
-                {0.0f, 0.0f, -1.0f},
-                {0.0f, 0.0f, -1.0f}
+                {0.0f, 0.0f, 1.0f}
             };
             mesh.indices = {
-                0, 1, 2, 2, 3, 0,
-                4, 7, 6, 6, 5, 4
+                0, 1, 2, 2, 3, 0
             };
             mesh.localAabbMin = glm::vec3(-0.5f, -0.5f, -kPortalHalfDepth);
             mesh.localAabbMax = glm::vec3(0.5f, 0.5f, kPortalHalfDepth);

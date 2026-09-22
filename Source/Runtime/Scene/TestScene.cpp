@@ -369,7 +369,7 @@ namespace engine {
 		});
 	}
 
-	void TestScene::RefreshPlayerMotion() {
+	void TestScene::RefreshPlayerMotion(float /*dt*/) {
 		if (m_bikeController) m_bikeController->SampleMotion();
 		if (mState) {
 			if (m_previousAliveState && !mState->player.State().isAlive) {

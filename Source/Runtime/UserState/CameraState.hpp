@@ -27,6 +27,7 @@ struct CameraState {
     float portalCameraTimer = 0.0f;
     float portalCameraBoomLength = 0.0f;
     float portalCameraStartSide = 1.0f;
+    float portalCameraHandoffDistance = 0.20f;
     glm::vec3 portalCameraPosition = glm::vec3(0.0f);
     glm::vec3 portalCameraTargetPosition = glm::vec3(0.0f);
     glm::vec3 portalCameraBoomOffset = glm::vec3(0.0f);
@@ -50,6 +51,7 @@ struct PortalCameraRequest {
     glm::mat4 portalMap = glm::mat4(1.0f);
     glm::vec3 exitCorrection = glm::vec3(0.0f);
     glm::vec3 mappedFollowTarget = glm::vec3(0.0f);
+    float cameraHandoffDistance = 0.20f;
     bool teleportImmediately = false;
 };
 } // namespace engine

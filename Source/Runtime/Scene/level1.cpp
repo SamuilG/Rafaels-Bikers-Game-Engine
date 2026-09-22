@@ -1699,7 +1699,13 @@ namespace engine {
 				const glm::mat4 portalMap = PortalSpaceMap(portal.surfaceTransform, portal.exitSurfaceTransform);
 				glm::vec3 mappedBodyPos = TransformPoint(portalMap, bodyWorldPos);
 				glm::vec3 mappedSamplePos = TransformPoint(portalMap, samplePos);
-				glm::vec3 mappedFollowTarget = TransformPoint(portalMap, mState->camera.State().followTargetPos);
+				// Portal crossing is resolved immediately after the physics step. The
+				// published player/camera target still describes the pre-step pose, so
+				// carry the physical displacement into the target before mapping it.
+				const glm::vec3 currentFollowTarget =
+					mState->camera.State().followTargetPos +
+					(bodyWorldPos - mState->player.State().position);
+				glm::vec3 mappedFollowTarget = TransformPoint(portalMap, currentFollowTarget);
 				glm::vec3 mappedForward = NormalizeFlat(TransformVector(portalMap, currentForward));
 				glm::vec3 mappedVelocity = TransformVector(portalMap, currentVelocity);
 				glm::vec3 mappedAngularVelocity = TransformVector(portalMap, currentAngularVelocity);
@@ -1743,14 +1749,21 @@ namespace engine {
 					mappedAngularVelocity.y,
 					mappedAngularVelocity.z);
 
+				const bool preserveExtremeTraversal =
+					mState->player.State().isExtremeSpeed ||
+					currentSpeed >= kDeployExtremeSpeedThreshold;
+
 				PortalCameraRequest cameraRequest{};
 				cameraRequest.entrySurface = portal.surfaceTransform;
 				cameraRequest.exitSurface = portal.exitSurfaceTransform;
 				cameraRequest.portalMap = portalMap;
 				cameraRequest.exitCorrection = exitCorrection;
 				cameraRequest.mappedFollowTarget = mappedFollowTarget;
-				cameraRequest.teleportImmediately =
-					mState->player.State().isExtremeSpeed || currentSpeed >= kDeployExtremeSpeedThreshold;
+				cameraRequest.cameraHandoffDistance =
+					cfg::kPortalSurfaceHalfDepth +
+					cfg::kCameraNear +
+					cfg::kPortalCameraClipSafetyMargin;
+				cameraRequest.teleportImmediately = preserveExtremeTraversal;
 				mState->camera.BeginPortal(cameraRequest);
 
 				mState->level.portalTransitionVisualActive = true;
@@ -1764,7 +1777,13 @@ namespace engine {
 				bi.SetLinearVelocity(id, exitVel);
 				bi.SetAngularVelocity(id, exitAngularVel);
 
-				mState->player.NotifyTeleported(mappedYaw, glm::vec3(static_cast<float>(exitPos.GetX()), static_cast<float>(exitPos.GetY()), static_cast<float>(exitPos.GetZ())));
+				mState->player.NotifyTeleported(
+					mappedYaw,
+					glm::vec3(
+						static_cast<float>(exitPos.GetX()),
+						static_cast<float>(exitPos.GetY()),
+						static_cast<float>(exitPos.GetZ())),
+					preserveExtremeTraversal);
 
 				if (m_audio) {
 					m_audio->PlayOneShot("PortalWarp");
@@ -1782,7 +1801,11 @@ namespace engine {
 		}
 	}
 
-	void level::RefreshPlayerMotion() {
+	void level::RefreshPlayerMotion(float dt) {
+		// Physics advances after level::Update(). Resolve a portal crossing here,
+		// before the camera and renderer consume the new body pose, so the camera
+		// never renders one frame on the wrong side of the portal surface.
+		UpdatePortalTeleport(dt);
 		if (m_bikeController) m_bikeController->SampleMotion();
 		if (mState) {
 			if (m_previousAliveState && !mState->player.State().isAlive) {
@@ -2155,8 +2178,6 @@ namespace engine {
 			}
 		}
 
-		UpdatePortalTeleport(dt);
-		
 		// =========================================================
 		// 长按 DEPLOY 键：急速状态下展开传送门；死亡时在尸体处原地复活
 		// =========================================================
