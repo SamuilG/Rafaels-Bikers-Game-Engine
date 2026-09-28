@@ -1,7 +1,10 @@
 #pragma once
 
+#include "CameraController.hpp"
+
 namespace engine {
 struct EditorState {
+    CameraController sceneCamera;
     int renderMode = 0; // Stable IDs are defined in Renderer/RenderUtilities/ViewMode.hpp.
     bool editorViewportBackdrop = true; // Neutral editor background; disable to preview scene sky.
     bool editorViewportSkybox = false;  // Render the scene skybox in the editor viewport.
@@ -28,5 +31,12 @@ struct EditorState {
     float lodDebugDistance = -1.0f;   // -1 = inactive; positive value overrides distance for testing
     int activeParticleIndex = -1;
     bool isSceneViewportHovered = false;
+    bool isSceneViewportFocused = false;
+    bool isSceneViewportVisible = false;
+    bool isGameViewportHovered = false;
+    bool isGameViewportFocused = false;
+    bool isGameViewportVisible = false;
+    bool focusGameViewport = false;
+    bool focusSceneViewport = false;
 };
 }

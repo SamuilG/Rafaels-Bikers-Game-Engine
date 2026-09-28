@@ -66,3 +66,19 @@ the PNG display clips values above 1, while those HDR values remain checked.
 This suite passed on an NVIDIA GeForce RTX 2060 SUPER with Vulkan 1.4.351.
 The available driver environment did not expose `VK_LAYER_KHRONOS_validation`;
 the successful run therefore verifies GPU output, not validation-layer silence.
+
+## CPU frame timing statistics
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tests/Rendering/run-frame-performance-tests.ps1
+```
+
+Builds the production `FramePerformanceStatistics` header with MSVC and tests
+warmup without zero padding, independent CPU/GPU histories, multiple 120-frame
+ring rollovers, NaN/infinity/negative sample rejection, valid zero samples, and
+reset/reuse. No graphics device or application window is needed. Output is written
+to `Intermediate/Diagnostics/frame-performance`.
+
+See [the timing guide](../../Docs/Performance.md) for metric definitions and VSync
+controls. These CPU tests verify aggregation, not timestamp query placement or
+presentation behavior on a graphics device.

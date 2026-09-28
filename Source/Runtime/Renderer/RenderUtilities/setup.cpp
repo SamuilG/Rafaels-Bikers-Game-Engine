@@ -903,8 +903,8 @@ lut::ImageWithView create_depth_buffer(lut::VulkanWindow const& aWindow, lut::Al
 
 	if (auto const res = vmaCreateImage(aAllocator.allocator, &imageInfo, &allocInfo, &image, &allocation, nullptr); VK_SUCCESS != res)
 	{
-		throw lut::Error("Unable to create depth buffer image\n"
-			"vmaCreateImage() returned {}", lut::to_string(res)
+		throw lut::Error("Unable to create depth buffer image ({} x {})\n"
+			"vmaCreateImage() returned {}", imageInfo.extent.width, imageInfo.extent.height, lut::to_string(res)
 		);
 	}
 

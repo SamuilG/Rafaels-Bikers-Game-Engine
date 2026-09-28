@@ -13,6 +13,7 @@ namespace engine {
     
     class ImGuiPreviewRenderer final : public UIRenderer {
     public:
+        static void ResetFontCache();
         // 贴图解析器由 RenderSystem 注入，内部复用引擎现有的缩略图 / descriptor 管线。
         void SetTextureResolver(std::function<void*(const std::string&)> resolver);
 

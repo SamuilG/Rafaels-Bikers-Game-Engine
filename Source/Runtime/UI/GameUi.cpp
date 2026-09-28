@@ -13,9 +13,6 @@
 namespace engine {
     namespace {
         float s_smoothedSpeedKmh = 0.0f;
-        ImVec2 s_viewportPos = ImVec2(0.0f, 0.0f);
-        ImVec2 s_viewportSize = ImVec2(1280.0f, 720.0f);
-        ImDrawList* s_viewportDrawList = nullptr;
         enum class UiAnchor {
             TopLeft,
             TopCenter,
@@ -433,80 +430,13 @@ namespace engine {
             ImGui::End();
         }
 
-        void DrawViewportHint(const ImVec2& viewportPos, const ImVec2& viewportSize) {
-            if (viewportSize.x <= 1.0f || viewportSize.y <= 1.0f) {
-                return;
-            }
-
-            constexpr const char* engineUiLabel = "F1 Show Engine UI";
-
-            ImGui::SetNextWindowBgAlpha(0.0f);
-            ImGui::SetNextWindowPos(viewportPos, ImGuiCond_Always);
-            ImGui::SetNextWindowSize(viewportSize, ImGuiCond_Always);
-
-            ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration
-                | ImGuiWindowFlags_NoDocking
-                | ImGuiWindowFlags_NoSavedSettings
-                | ImGuiWindowFlags_NoFocusOnAppearing
-                | ImGuiWindowFlags_NoInputs
-                | ImGuiWindowFlags_NoNav
-                | ImGuiWindowFlags_NoMove;
-
-            if (!ImGui::Begin("Game HUD Hint Overlay###SpeedometerDemo", nullptr, flags)) {
-                ImGui::End();
-                return;
-            }
-
-            ImDrawList* drawList = ImGui::GetWindowDrawList();
-            ImFont* font = ImGui::GetFont();
-            
-            const float fontSize = 18.0f;
-
-            ImVec2 engineTextSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, engineUiLabel);
-            //ImVec2 hintTextSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, hintText);
-
-            ImVec2 engineTextPos(
-                viewportPos.x + viewportSize.x - 24.0f - engineTextSize.x,
-                viewportPos.y + viewportSize.y - 52.0f);
-            /*ImVec2 hintPos(
-                viewportPos.x + viewportSize.x - 24.0f - hintTextSize.x,
-                viewportPos.y + viewportSize.y - 28.0f);*/
-
-            drawList->AddText(font, fontSize, ImVec2(engineTextPos.x + 1.0f, engineTextPos.y + 1.0f), IM_COL32(0, 0, 0, 180), engineUiLabel);
-            drawList->AddText(font, fontSize, engineTextPos, IM_COL32(255, 255, 255, 235), engineUiLabel);
-
-            //drawList->AddText(font, fontSize, ImVec2(hintPos.x + 1.0f, hintPos.y + 1.0f), IM_COL32(0, 0, 0, 180), hintText);
-            //drawList->AddText(font, fontSize, hintPos, IM_COL32(255, 255, 255, 235), hintText);
-
-            ImGui::End();
-        }
     } // namespace
 
     void GameUi::ResetTransientState() {
         s_smoothedSpeedKmh = 0.0f;
-        s_viewportDrawList = nullptr;
-    }
-
-    void GameUi::SetViewport(const ImVec2& viewportPos, const ImVec2& viewportSize, ImDrawList* drawList) {
-        s_viewportPos = viewportPos;
-        s_viewportSize = viewportSize;
-        s_viewportDrawList = drawList;
-    }
-
-    ImVec2 GameUi::GetViewportPos() {
-        return s_viewportPos;
-    }
-
-    ImVec2 GameUi::GetViewportSize() {
-        return s_viewportSize;
-    }
-
-    ImDrawList* GameUi::GetViewportDrawList() {
-        return s_viewportDrawList;
     }
 
     void GameUi::DrawHud(const HudData& hud, const ImVec2& viewportPos, const ImVec2& viewportSize, const TextureResolver& resolveTexture) {
         DrawImageSpeedometerDemo(hud, viewportPos, viewportSize, resolveTexture);
-        DrawViewportHint(viewportPos, viewportSize);
     }
 } // namespace engine

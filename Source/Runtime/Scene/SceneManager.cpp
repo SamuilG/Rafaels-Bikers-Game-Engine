@@ -66,6 +66,8 @@ namespace engine {
 
     void SceneManager::Init() 
     {
+        mStaticEntityCounter = mDynamicEntityCounter = mCompoundEntityCounter = 0;
+        mCustomEntityCounter = mAnimatedEntityCounter = 0;
         m_world = new flecs::world();
 
         m_world->component<LODComponent>();
@@ -150,10 +152,9 @@ namespace engine {
         cache_model_for_culling(model, baseMeshIdx, baseMatIdx);
         flecs::entity firstEntity = flecs::entity::null();
 
-        static int static_counter = 0;
         for (const auto& instance : model.scenes) {
             std::string name = instance.name.empty() ? "StaticObject" : instance.name;
-            name += "_" + std::to_string(static_counter++);
+            name += "_" + std::to_string(mStaticEntityCounter++);
 
             auto e = m_world->entity(name.c_str())
                 .add<StaticObject>()
@@ -184,10 +185,9 @@ namespace engine {
         cache_model_for_culling(model, baseMeshIdx, baseMatIdx);
         flecs::entity firstEntity = flecs::entity::null();
 
-        static int dynamic_counter = 0;
         for (const auto& instance : model.scenes) {
             std::string name = instance.name.empty() ? "DynamicObject" : instance.name;
-            name += "_" + std::to_string(dynamic_counter++);
+            name += "_" + std::to_string(mDynamicEntityCounter++);
 
             auto e = m_world->entity(name.c_str())
                 .add<DynamicObject>()
@@ -238,10 +238,9 @@ namespace engine {
         glm::mat4 invBody = glm::inverse(bodyWorldTransform);
 
         ;
-        static int compound_counter = 0;
         for (const auto& instance : model.scenes) {
             std::string name = instance.name.empty() ? "CompoundPart" : instance.name;
-            name += "_" + std::to_string(compound_counter++);
+            name += "_" + std::to_string(mCompoundEntityCounter++);
 
             glm::mat4 localOffset = invBody * instance.transform;
 
@@ -296,10 +295,9 @@ namespace engine {
 
         glm::mat4 invBody = glm::inverse(bodyWorldTransform);
 
-        static int c_counter = 0;
         for (const auto& instance : model.scenes) {
             std::string name = instance.name.empty() ? "CPart" : instance.name;
-            name += "_" + std::to_string(c_counter++);
+            name += "_" + std::to_string(mCustomEntityCounter++);
 
             glm::mat4 localOffset = invBody * instance.transform;
 
@@ -404,10 +402,9 @@ namespace engine {
 
         cache_model_for_culling(model, baseMeshIdx, baseMatIdx);
 
-        int counter = 0;
         for (const auto& instance : model.scenes) {
             std::string name = instance.name.empty() ? "AnimatedObject" : instance.name;
-            name += "_" + std::to_string(counter++);
+            name += "_" + std::to_string(mAnimatedEntityCounter++);
 
             uint32_t globalMeshIdx = instance.meshIndex + baseMeshIdx;
             auto e = m_world->entity(name.c_str())

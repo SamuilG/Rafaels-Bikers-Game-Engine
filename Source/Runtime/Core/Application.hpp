@@ -2,13 +2,15 @@
 #include <vector>
 #include <memory>
 #include <chrono>
+#include <string_view>
 #include "System.h"
+#include "ApplicationOptions.hpp"
+#include "EditorPlayController.hpp"
 #include "../Scene/GameScene.hpp"
 
 #include "../UserState/UserState.hpp"
 
 namespace engine {
-    class BikeController;
     class PhysicsSystem;
     class SceneManager;
     class RenderSystem;
@@ -20,10 +22,9 @@ namespace engine {
     class Application {
     public:
         using ProgressCallback = std::function<void(float, std::string_view)>;
-        explicit Application(ProgressCallback progress = {});
+        explicit Application(ApplicationOptions options, ProgressCallback progress = {});
         void ShowMainWindow();
 
-        Application();
         ~Application();
         void Run();
 
@@ -38,6 +39,13 @@ namespace engine {
     private:
         void ReportProgress(float progress, std::string_view stage) const;
         bool ReloadCurrentScene();
+        std::unique_ptr<GameScene> CreateScene() const;
+        void ApplySceneWorkspace();
+        std::string StartEditorPlay();
+        void StopEditorPlay();
+        void ApplyEditorSceneToPlay();
+        void ResetRuntimeUi();
+        struct EditorPlaySession;
 
         float CalcDeltaTime() {
             auto now = std::chrono::steady_clock::now();
@@ -46,6 +54,7 @@ namespace engine {
             return dt;
         }
 
+        ApplicationOptions mOptions;
         std::vector<std::unique_ptr<System>> Systems;
         bool Running = true;
 
@@ -54,8 +63,6 @@ namespace engine {
         std::chrono::steady_clock::time_point mLastTime
             = std::chrono::steady_clock::now();
 
-        // Stored for post-Init sphere setup
-        std::unique_ptr<BikeController> m_bikeController;
         PhysicsSystem* physicsSystem = nullptr;
         SceneManager* sceneManager = nullptr;
         RenderSystem* renderSystem = nullptr;
@@ -69,6 +76,8 @@ namespace engine {
         std::unique_ptr<GameScene> m_currentScene;
 
         AudioSystem* audioSystem = nullptr;
+        EditorPlayController mEditorPlay;
+        std::unique_ptr<EditorPlaySession> mEditorPlaySession;
     };
 
 } // namespace engine

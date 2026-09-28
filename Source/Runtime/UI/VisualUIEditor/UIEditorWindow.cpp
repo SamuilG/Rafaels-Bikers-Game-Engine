@@ -657,12 +657,17 @@ namespace engine {
         float ComputeScaledBorderWidth(const UIElement& element, float scale);
         float ComputeScaledBorderRadius(const UIElement& element, float scale);
 
+        std::unordered_map<std::string, ImFont*>& GetPreviewFontCache() {
+            static std::unordered_map<std::string, ImFont*> cache;
+            return cache;
+        }
+
         ImFont* ResolvePreviewFont(const std::string& fontPath) {
             if (fontPath.empty()) {
                 return nullptr;
             }
 
-            static std::unordered_map<std::string, ImFont*> fontCache;
+            auto& fontCache = GetPreviewFontCache();
             std::filesystem::path resolvedPath(fontPath);
             if (!resolvedPath.is_absolute()) {
                 const std::string normalized = resolvedPath.generic_string();
@@ -4940,6 +4945,17 @@ namespace engine {
         // 帧末提交一次：用户松手 / 失焦后才会真正入栈，
         // 把一次拖拽 / 一段输入折叠成一个 undo step。
         CommitHistoryIfChanged(session);
+    }
+
+    void UIEditorWindow::ResetForNewProject() {
+        GetTexturePreviewResolver() = {};
+        GetRuntimeUiFileChangedCallback() = {};
+        GetSession() = UiEditorSession{};
+        GetPreviewFontCache().clear();
+        GetTextureAssetPathCache().clear();
+        GetFontAssetPathCache().clear();
+        GetThemeAssetPathCache().clear();
+        AreAssetPathCachesInitialized() = false;
     }
 
     void UIEditorWindow::SetTexturePreviewResolver(std::function<void*(const std::string&)> resolver) {

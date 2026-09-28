@@ -2,8 +2,11 @@
 
 #include "EngineUi.hpp"
 #include "EditorLayout.hpp"
+#include "GameViewportCanvas.hpp"
 #include "EditorTransform.hpp"
 #include "EditorTheme.hpp"
+#include "../Core/EditorPlayController.hpp"
+#include "../Project/SceneSnapshotValidation.hpp"
 #include "../UserState/CameraController.hpp"
 #include "../UserState/EditorState.hpp"
 #include "../UserState/RenderSettings.hpp"
@@ -21,6 +24,12 @@
 #include <unordered_set>
 #include <format>
 #include <algorithm>
+#include <stdexcept>
+
+#if defined(_WIN32)
+#include <Windows.h>
+#include <commdlg.h>
+#endif
 
 #include <imgui.h>
 #include "../../ThirdParty/imgui/ImGuizmo/ImGuizmo.h"
@@ -54,6 +63,34 @@ namespace engine {
 
 	namespace {
         bool s_ResetEditorLayout = false;
+        std::string s_CurrentDirectory = "Assets";
+        char s_NewFolderName[128] = "NewFolder";
+        std::string s_CreateFolderError;
+
+        std::string ChooseProjectFile(const std::string& currentProject) {
+#if defined(_WIN32)
+            wchar_t filename[32768] = {};
+            std::wstring initialDirectory;
+            if (!currentProject.empty())
+                initialDirectory = fs::absolute(fs::path(currentProject)).parent_path().wstring();
+            OPENFILENAMEW dialog{};
+            dialog.lStructSize = sizeof(dialog);
+            dialog.hwndOwner = GetActiveWindow();
+            dialog.lpstrTitle = L"Open Steer Engine Project";
+            dialog.lpstrFilter = L"Steer Engine Project\0*.steerproject;*.steerproj;*.json\0All Files\0*.*\0\0";
+            dialog.lpstrFile = filename;
+            dialog.nMaxFile = static_cast<DWORD>(sizeof(filename) / sizeof(filename[0]));
+            dialog.lpstrInitialDir = initialDirectory.empty() ? nullptr : initialDirectory.c_str();
+            dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_EXPLORER;
+            if (GetOpenFileNameW(&dialog)) return fs::path(filename).string();
+            const DWORD error = CommDlgExtendedError();
+            if (error != 0)
+                throw std::runtime_error("The project file dialog failed (code " + std::to_string(error) + ").");
+            return {}; // User cancellation does not queue any host action.
+#else
+            throw std::runtime_error("The native project picker is available on Windows. Use Open Example Project on this platform.");
+#endif
+        }
 
         std::string PanelTitle(const char* label, const char* id) {
             return std::string(_SL(label)) + "###" + id;
@@ -541,6 +578,8 @@ namespace engine {
 
 
 		// 写入文件// Write to file
+        const fs::path parentDirectory = fs::path(filepath).parent_path();
+        if (!parentDirectory.empty()) fs::create_directories(parentDirectory);
 		std::ofstream file(filepath);
 		if (file.is_open()) {
 			file << root.dump(4);
@@ -565,9 +604,10 @@ namespace engine {
 		json root;
 		try {
 			file >> root;
+            ValidateSceneSnapshot(root);
 		}
-		catch (json::parse_error& e) {
-			LogPrintf("[Error] JSON parsing failed: %s\n", e.what());
+		catch (const std::exception& e) {
+			LogPrintf("[Error] Invalid scene snapshot %s: %s\n", filepath.c_str(), e.what());
 			return false;
 		}
 
@@ -579,7 +619,7 @@ namespace engine {
 				std::string name = entityJson["Name"].get<std::string>();
 				flecs::entity e = world.lookup(name.c_str());
 
-				if (e.is_alive() && e.has<LocalTransform>()) {
+				if (IsEntityAlive(e) && e.has<LocalTransform>()) {
 					//读取TRS// Read TRS components
 					glm::vec3 pos = JsonToVec3(entityJson["Position"]);
 					glm::vec3 eulerRot = JsonToVec3(entityJson["Rotation"]);
@@ -668,6 +708,57 @@ namespace engine {
 	static ImVec2 s_SceneViewportSize = ImVec2(1280.0f, 720.0f); // 默认尺寸
 	static ImVec2 s_SceneViewportPos = ImVec2(0.0f, 0.0f);//默认位置
 	static ImDrawList* s_SceneViewportDrawList = nullptr;
+    static ImVec2 s_GameViewportSize = ImVec2(1280.0f, 720.0f);
+    static ImVec2 s_GameViewportPos = ImVec2(0.0f, 0.0f);
+    static ImDrawList* s_GameViewportDrawList = nullptr;
+    static bool s_GameViewportVisible = false;
+    ImVec2 EngineUi::GetGameViewportSize() { return s_GameViewportSize; }
+    ImVec2 EngineUi::GetGameViewportPos() { return s_GameViewportPos; }
+    ImDrawList* EngineUi::GetGameViewportDrawList() { return s_GameViewportDrawList; }
+    bool EngineUi::IsGameViewportVisible() { return s_GameViewportVisible; }
+
+    void EngineUi::DrawGameViewport(VkDescriptorSet gameTexId, EditorState& editor, bool playing, bool paused) {
+        editor.isGameViewportHovered = false;
+        editor.isGameViewportFocused = false;
+        editor.isGameViewportVisible = false;
+        s_GameViewportVisible = false;
+        s_GameViewportDrawList = nullptr;
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 1.0f));
+        if (editor.focusGameViewport) {
+            ImGui::SetNextWindowFocus();
+            editor.focusGameViewport = false;
+        }
+        if (ImGui::Begin(editor_layout::kGameViewport)) {
+            const ImVec2 size = ImGui::GetContentRegionAvail();
+            s_GameViewportPos = ImGui::GetCursorScreenPos();
+            if (size.x > 1.0f && size.y > 1.0f) {
+                s_GameViewportSize = size;
+                s_GameViewportVisible = true;
+                editor.isGameViewportVisible = true;
+                s_GameViewportDrawList = ImGui::GetWindowDrawList();
+                const auto input = editor_viewport::DrawGameCanvas((ImTextureID)gameTexId, size);
+                editor.isGameViewportHovered = input.hovered;
+                editor.isGameViewportFocused = input.focused;
+                if (!playing) {
+                    const char* message = "Press Play to run the project in this viewport";
+                    const ImVec2 textSize = ImGui::CalcTextSize(message);
+                    s_GameViewportDrawList->AddText(ImVec2(s_GameViewportPos.x + (size.x - textSize.x) * 0.5f,
+                        s_GameViewportPos.y + (size.y - textSize.y) * 0.5f), IM_COL32(220, 220, 220, 255), message);
+                }
+                else if (paused) {
+                    const ImVec2 labelPos(s_GameViewportPos.x + 10.0f, s_GameViewportPos.y + 10.0f);
+                    const ImVec2 textSize = ImGui::CalcTextSize("Simulation paused");
+                    s_GameViewportDrawList->AddRectFilled(ImVec2(labelPos.x - 4, labelPos.y - 4),
+                        ImVec2(labelPos.x + textSize.x + 4, labelPos.y + textSize.y + 4), IM_COL32(0, 0, 0, 180));
+                    s_GameViewportDrawList->AddText(labelPos, IM_COL32(255, 255, 255, 255), "Simulation paused");
+                }
+            }
+        }
+        ImGui::End();
+        ImGui::PopStyleColor();
+        ImGui::PopStyleVar();
+    }
 	ImVec2 EngineUi::GetSceneViewportSize() {
 		return s_SceneViewportSize;
 	}
@@ -702,14 +793,22 @@ namespace engine {
 				| ImGuiWindowFlags_NoNavFocus;
 		}
 
+        if (editor.focusSceneViewport) {
+            ImGui::SetNextWindowFocus();
+            editor.focusSceneViewport = false;
+        }
 		if (!ImGui::Begin(viewportWindowName, nullptr, viewportFlags)) {
             editor.isSceneViewportHovered = false;
+            editor.isSceneViewportFocused = false;
+            editor.isSceneViewportVisible = false;
             s_SceneViewportDrawList = nullptr;
             ImGui::End();
             ImGui::PopStyleColor();
             ImGui::PopStyleVar(2);
             return;
         }
+		editor.isSceneViewportVisible = true;
+		editor.isSceneViewportFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 		s_SceneViewportDrawList = ImGui::GetWindowDrawList();
 
 		// 1. 获取视口绝大坐标和尺寸// Get the absolute position and size of the viewport
@@ -916,9 +1015,6 @@ namespace engine {
 	void EngineUi::DrawContentBrowser(RenderSystem* renderSys, SceneManager* sceneManager, EditorState& editor) {
         if (!editor.showContentBrowser) return;
 		(void)sceneManager; //The browser only needs asset browsing and drag/drop here.
-		static std::string s_CurrentDirectory = "Assets"; //当前浏览的文件夹路径//Track the active folder inside Assets.
-		static char s_NewFolderName[128] = "NewFolder"; //Buffer for the create-folder popup.
-		static std::string s_CreateFolderError; //Show inline folder-creation errors in the popup.
 		const fs::path assetsRoot("Assets");
 		const std::string folderIconPath = "Assets/Textures/Folder.png"; //文件夹图标// Use Folder.png as the shared folder thumbnail source.
 
@@ -1220,8 +1316,9 @@ namespace engine {
     }
 
     void EngineUi::DrawEditorWorkspace() {
-        editor_layout::DrawDockspace(s_ResetEditorLayout);
-        s_ResetEditorLayout = false;
+        if (editor_layout::DrawDockspace(s_ResetEditorLayout)) {
+            s_ResetEditorLayout = false;
+        }
     }
 
     void EngineUi::DrawConsole(EditorState& editor) {
@@ -1233,6 +1330,12 @@ namespace engine {
         if (!editor.showRenderSettings) return;
         if (ImGui::Begin(PanelTitle("Render Settings", "RenderSettings").c_str(), &editor.showRenderSettings)) {
             ImGui::TextDisabled("Changes apply to the current session.");
+            ImGui::SeparatorText("Presentation");
+            ImGui::Checkbox("VSync", &render.vsyncEnabled);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("On: synchronize with the display. Off: request unlimited presentation.\nThe driver may still limit the frame rate.");
+            if (!render.vsyncEnabled)
+                ImGui::TextWrapped("Unlimited requested. Tearing may occur. See Diagnostics for the actual mode.");
             if (editor.renderMode != 0) ImGui::TextWrapped("%s", _SL("Diagnostic views display their rendering data directly. Return to Default to adjust scene effects."));
             ImGui::BeginDisabled(editor.renderMode != 0);
             ImGui::SeparatorText("Rendering");
@@ -1475,7 +1578,7 @@ namespace engine {
 		}
 
 		flecs::entity selectedLight = world.entity(m_selected_light_id);
-		if (m_selected_light_id == 0 || !selectedLight.is_alive() || !selectedLight.has<LightComponent>()) {
+		if (m_selected_light_id == 0 || !IsEntityAlive(selectedLight) || !selectedLight.has<LightComponent>()) {
 			m_selected_light_id = lightIds.front();
 			selectedLight = world.entity(m_selected_light_id);
 		}
@@ -1499,7 +1602,7 @@ namespace engine {
 			ImGui::EndCombo();
 		}
 
-		if (!selectedLight.is_alive() || !selectedLight.has<LightComponent>()) {
+		if (!IsEntityAlive(selectedLight) || !selectedLight.has<LightComponent>()) {
 			ImGui::TextDisabled("Selected light is no longer valid.");
 			ImGui::End();
 			return;
@@ -1670,7 +1773,72 @@ namespace engine {
 			return;
 		}
 
-		ImGui::TextUnformatted("Selection Debug");
+        ImGui::SeparatorText("Frame timing");
+        const auto& performance = statistics.performance;
+        const auto cpu = performance.CpuAverage();
+        const bool cpuReady = performance.CpuSampleCount() != 0;
+        const bool gpuReady = performance.GpuSampleCount() != 0;
+        if (cpuReady && cpu.totalMs > 0.0)
+            ImGui::Text("%.1f FPS / %.2f ms", 1000.0 / cpu.totalMs, cpu.totalMs);
+        else
+            ImGui::TextDisabled("Frame timing: waiting for samples");
+        ImGui::TextDisabled("Average: CPU %u / GPU %u frames",
+            static_cast<unsigned>(performance.CpuSampleCount()),
+            static_cast<unsigned>(performance.GpuSampleCount()));
+        if (ImGui::BeginTable("FrameTimingTable", 2, ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("Metric", ImGuiTableColumnFlags_WidthStretch, 2.0f);
+            ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+            const auto timingRow = [](const char* label, double milliseconds, bool ready, const char* help) {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(label);
+                if (ImGui::IsItemHovered()) {
+                    ImGui::BeginTooltip();
+                    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 28.0f);
+                    ImGui::TextUnformatted(help);
+                    ImGui::PopTextWrapPos();
+                    ImGui::EndTooltip();
+                }
+                ImGui::TableNextColumn();
+                if (ready) ImGui::Text("%.2f ms", milliseconds);
+                else ImGui::TextDisabled("N/A");
+            };
+            timingRow("CPU work", cpu.cpuWorkMs, cpuReady,
+                "Frame wall time minus fence wait, image acquisition and presentation call. Includes update, UI, command recording, submission and driver work; not CPU utilization.");
+            timingRow("GPU execution", performance.GpuAverageMs(), capabilities.gpuTimestampsSupported && gpuReady,
+                "GPU timestamp duration for recently completed graphics frames. Results arrive asynchronously. CPU and GPU overlap, so these times must not be added.");
+            timingRow("Frame total", cpu.totalMs, cpuReady,
+                "Complete sampled frame wall time, including CPU work and the waits below. Loading and swapchain recreation frames are excluded.");
+            timingRow("Fence wait", cpu.fenceWaitMs, cpuReady,
+                "CPU time waiting for GPU work to complete before reusing a frame's rendering resources.");
+            timingRow("Acquire wait", cpu.acquireWaitMs, cpuReady,
+                "CPU time inside swapchain image acquisition, including any wait for an available image.");
+            timingRow("Present call", cpu.presentCallMs, cpuReady,
+                "CPU time inside the presentation API call. Includes driver work and any blocking; it does not measure GPU completion or display scanout.");
+            timingRow("Presentation wait", cpu.acquireWaitMs + cpu.presentCallMs, cpuReady,
+                "Combined acquisition and presentation call wall time. Includes driver overhead; this is not a measurement of display latency. Already included in Frame total.");
+            ImGui::EndTable();
+        }
+        if (!capabilities.gpuTimestampsSupported)
+            ImGui::TextWrapped("GPU timing unavailable on this device / queue.");
+        else if (!gpuReady)
+            ImGui::TextDisabled("GPU timing: awaiting completed frame");
+        const char* presentMode = "Unknown";
+        switch (capabilities.activePresentMode) {
+        case 0: presentMode = "Immediate (unlimited)"; break;
+        case 1: presentMode = "Mailbox (unlimited)"; break;
+        case 2: presentMode = "FIFO (VSync)"; break;
+        case 3: presentMode = "FIFO relaxed (adaptive)"; break;
+        }
+        ImGui::TextWrapped("Present: %s", presentMode);
+        if (capabilities.vsyncFallback)
+            ImGui::TextWrapped("Unlimited presentation unavailable; using VSync fallback.");
+        if (ImGui::CollapsingHeader("How to read timings")) {
+            ImGui::TextWrapped("CPU and GPU run in parallel. Do not add their times. GPU values come from recently completed frames; every metric averages up to 120 valid samples.");
+            ImGui::TextWrapped("High acquire / present time with low CPU / GPU time often indicates synchronization or a frame cap. Fence wait can indicate GPU back-pressure. Use a Release build when comparing performance.");
+        }
+        ImGui::Separator();
+        ImGui::TextUnformatted("Selection Debug");
         if (editor.renderMode != 0) ImGui::TextDisabled("%s", _SL("Selection wireframes require Default view."));
         ImGui::BeginDisabled(editor.renderMode != 0);
 		ImGui::Checkbox("Selection Bounds (AABB)", &editor.debugSelectionBounds);
@@ -1680,9 +1848,7 @@ namespace engine {
 		ImGui::TextWrapped("Selection Bounds draws the selected body's world-space AABB. Collision Shapes draws the selected body's physics shape wireframe.");
 		ImGui::Separator();
 
-        ImGui::SeparatorText("Frame & visibility");
-        const float fps = ImGui::GetIO().Framerate;
-        ImGui::Text("%.1f FPS / %.2f ms", fps, fps > 0.0f ? 1000.0f / fps : 0.0f);
+        ImGui::SeparatorText("Visibility");
         ImGui::Text("Visible static batches: %u / %u", statistics.frustumCullingVisibleCandidates, statistics.frustumCullingTotalCandidates);
         const char* modes[] = { _SL("Default"), _SL("Mipmaps"), _SL("Depth"), _SL("Derivatives"), _SL("Overdraw"), _SL("Overshading"),
             "SSAO", "SSR", _SL("Normals"), _SL("Wireframe"), "Albedo", _SL("Shadow") };
@@ -1977,38 +2143,119 @@ namespace engine {
 		ImGui::End();
 	}
 
-    void EngineUi::DrawMainMenuBar(RenderSystem* renderSys, SceneManager* sceneManager, EditorState& editor, const RenderCapabilities& capabilities, bool& appRunning) {
+    void EngineUi::DrawMainMenuBar(RenderSystem* renderSys, SceneManager* sceneManager, EditorState& editor, const RenderCapabilities& capabilities, bool& appRunning, EditorPlayController* play) {
         if (!editor.showEngineUi) return;
-        const auto snapshot = [&](bool save) {
+        const auto showPlayTransition = [](const char* message) {
+            ShowToast(message);
+            // The next frame may block on scene initialization: show full opacity now.
+            s_ToastTimer = TOAST_DURATION - 0.2f;
+        };
+        EditorProjectActions* project = renderSys ? &renderSys->ProjectActions() : nullptr;
+        const std::string snapshotPath = project && !project->snapshotFile.empty()
+            ? project->snapshotFile : "Assets/MySceneSave.json";
+        const auto reportError = [&](const std::string& error) {
+            if (project) project->error = error;
+            LogPrintf("[Project] %s\n", error.c_str());
+            ShowToast(error);
+            editor.showConsole = true;
+        };
+        const auto openProject = [&](const std::string& path) {
+            if (path.empty()) return;
+            if (play && play->IsPlaying()) {
+                ShowToast("Stop Play mode before opening another project");
+                return;
+            }
+            if (!project || !project->openProject) {
+                reportError("This host does not support opening projects.");
+                return;
+            }
             try {
-                const bool ok = save ? SaveProject(sceneManager, renderSys, "Assets/MySceneSave.json")
-                                     : LoadProject(sceneManager, renderSys, "Assets/MySceneSave.json");
+                const std::string error = project->openProject(path);
+                if (!error.empty()) reportError(error);
+                else appRunning = false; // The host rebuilds only after this Application is destroyed.
+            }
+            catch (const std::exception& error) { reportError(error.what()); }
+        };
+        const auto browseProject = [&]() {
+            if (play && play->IsPlaying()) return;
+            try {
+                openProject(ChooseProjectFile(project ? project->projectFile : std::string{}));
+            }
+            catch (const std::exception& error) { reportError(error.what()); }
+        };
+        const auto snapshot = [&](bool save) {
+            if (play && play->IsPlaying()) {
+                ShowToast("Stop Play mode before saving or loading the editable scene");
+                return;
+            }
+            try {
+                const bool ok = save ? SaveProject(sceneManager, renderSys, snapshotPath)
+                                     : LoadProject(sceneManager, renderSys, snapshotPath);
                 ShowToast(ok ? (save ? "Scene snapshot saved" : "Scene snapshot loaded") : "Snapshot failed - see Console");
                 if (!ok) editor.showConsole = true;
             }
-            catch (const std::exception& error) {
-                LogPrintf("[Error] Scene snapshot failed: %s\n", error.what());
-                ShowToast("Snapshot failed - see Console");
-                editor.showConsole = true;
-            }
+            catch (const std::exception& error) { reportError(error.what()); }
         };
-        // UI authoring owns its own save shortcut. Do not save the scene while typing.
+        // UI authoring owns its own save shortcut. Do not handle project keys while typing.
         if (!ImGui::GetIO().WantTextInput && !(editor.showGameUiEditor && UIEditorWindow::WantsKeyboardCapture()) && ImGui::GetIO().KeyCtrl) {
             if (ImGui::IsKeyPressed(ImGuiKey_S, false)) snapshot(true);
-            if (ImGui::IsKeyPressed(ImGuiKey_O, false)) snapshot(false);
+            if (ImGui::IsKeyPressed(ImGuiKey_O, false)) {
+                if (ImGui::GetIO().KeyShift) snapshot(false);
+                else if (project && project->openProject) browseProject();
+            }
         }
         if (!ImGui::BeginMainMenuBar()) return;
         if (ImGui::BeginMenu(_SL("File"))) {
-            if (ImGui::MenuItem(_SL("Save Scene Snapshot"), "Ctrl+S")) snapshot(true);
-            if (ImGui::MenuItem(_SL("Load Scene Snapshot"), "Ctrl+O")) snapshot(false);
-            ImGui::TextDisabled("Assets/MySceneSave.json");
+            if (ImGui::MenuItem(_SL("Open Project..."), "Ctrl+O", false, project && static_cast<bool>(project->openProject) && (!play || !play->IsPlaying()))) browseProject();
+            if (project && !project->exampleProjectFile.empty()) {
+                if (ImGui::MenuItem(_SL("Open Example Project"), nullptr, false, static_cast<bool>(project->openProject) && (!play || !play->IsPlaying())))
+                    openProject(project->exampleProjectFile);
+            }
+            if (ImGui::MenuItem(_SL("Close Project"), nullptr, false,
+                project && !project->projectFile.empty() && static_cast<bool>(project->closeProject) && (!play || !play->IsPlaying()))) {
+                try {
+                    project->closeProject();
+                    appRunning = false;
+                }
+                catch (const std::exception& error) { reportError(error.what()); }
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem(_SL("Save Scene Snapshot"), "Ctrl+S", false, !play || !play->IsPlaying())) snapshot(true);
+            if (ImGui::MenuItem(_SL("Load Scene Snapshot"), "Ctrl+Shift+O", false, !play || !play->IsPlaying())) snapshot(false);
+            ImGui::TextDisabled("%s", snapshotPath.c_str());
             ImGui::Separator();
             ImGui::TextWrapped("Snapshots store named entity transforms and particle settings. They do not save a complete project.");
             ImGui::Separator();
             if (ImGui::MenuItem(_SL("Exit Engine"), "F4")) appRunning = false;
             ImGui::EndMenu();
         }
+        if (ImGui::BeginMenu(_SL("Project"))) {
+            ImGui::TextUnformatted(project && !project->projectName.empty() ? project->projectName.c_str() : "No project open");
+            if (project && !project->projectFile.empty()) ImGui::TextWrapped("%s", project->projectFile.c_str());
+            ImGui::Separator();
+            if (play) {
+                if (ImGui::MenuItem("Play in Editor", nullptr, false, play->Available() && !play->IsPlaying()) && play->RequestPlay()) showPlayTransition("Starting play session...");
+                if (ImGui::MenuItem(play->IsPaused() ? "Resume" : "Pause", nullptr, false, play->IsPlaying())) play->RequestPause();
+                if (ImGui::MenuItem("Stop", nullptr, false, play->IsPlaying()) && play->RequestStop()) showPlayTransition("Stopping play session...");
+                ImGui::Separator();
+            }
+            if (ImGui::MenuItem("Run Saved Project in Separate Window", nullptr, false,
+                project && !project->projectFile.empty() && static_cast<bool>(project->runProject) && (!play || !play->IsPlaying()))) {
+                try {
+                    const std::string error = project->runProject();
+                    if (!error.empty()) reportError(error);
+                    else ShowToast("Project started in a separate game window");
+                }
+                catch (const std::exception& error) { reportError(error.what()); }
+            }
+            ImGui::TextWrapped("Play runs inside Game Viewport. Stop restores the editable scene, including unsaved changes.");
+            ImGui::TextWrapped("The separate window command uses the saved snapshot. Save before launching it to include edits.");
+            ImGui::EndMenu();
+        }
         if (ImGui::BeginMenu(_SL("Window"))) {
+            if (ImGui::MenuItem("Scene Viewport")) editor.focusSceneViewport = true;
+            if (play && ImGui::MenuItem("Game Viewport")) editor.focusGameViewport = true;
+            ImGui::Separator();
             ImGui::MenuItem(_SL("Scene Hierarchy"), nullptr, &editor.showSceneHierarchy);
             ImGui::MenuItem(_SL("Entity Inspector"), nullptr, &editor.showEntityInspector);
             ImGui::MenuItem(_SL("Assets"), nullptr, &editor.showContentBrowser);
@@ -2029,7 +2276,8 @@ namespace engine {
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu(_SL("View"))) {
-            ImGui::MenuItem(_SL("Engine UI"), "F1", &editor.showEngineUi);
+            if (!project || !project->openProject)
+                ImGui::MenuItem(_SL("Engine UI"), "F1", &editor.showEngineUi);
             ImGui::MenuItem(_SL("Neutral Viewport Background"), nullptr, &editor.editorViewportBackdrop, editor.renderMode == 0);
             ImGui::MenuItem(_SL("Show Viewport Skybox"), nullptr, &editor.editorViewportSkybox, editor.renderMode == 0);
             ImGui::MenuItem(_SL("Viewport Grid"), nullptr, &editor.editorViewportGrid, editor.renderMode == 0);
@@ -2053,13 +2301,78 @@ namespace engine {
         if (ImGui::BeginMenu(_SL("Help"))) {
             ImGui::TextUnformatted("Steer Engine Editor");
             ImGui::Separator();
-            ImGui::TextUnformatted("F1: switch editor / game view");
+            if (!project || !project->openProject) ImGui::TextUnformatted("F1: switch editor / game view");
+            else ImGui::TextUnformatted("Play: run in Game Viewport. Pause: freeze simulation. Stop: return to editing.");
             ImGui::TextUnformatted("W / E / R: translate / rotate / scale in viewport");
             ImGui::TextUnformatted("Drag models from Assets into the scene.");
             ImGui::TextUnformatted("Window: open panels. View: reset docking layout.");
             ImGui::EndMenu();
         }
+        if (play) {
+            const float controlsWidth = 235.0f;
+            ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX() + ImGui::GetStyle().ItemSpacing.x,
+                (ImGui::GetWindowWidth() - controlsWidth) * 0.5f));
+            ImGui::BeginDisabled(!play->Available() || play->IsPlaying());
+            if (ImGui::Button("Play", ImVec2(65.0f, 0.0f)) && play->RequestPlay()) showPlayTransition("Starting play session...");
+            ImGui::EndDisabled();
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                ImGui::SetTooltip(play->Available() ? "Run this project in Game Viewport" : "Open a runnable project first");
+            ImGui::SameLine();
+            ImGui::BeginDisabled(!play->IsPlaying());
+            if (ImGui::Button(play->IsPaused() ? "Resume" : "Pause", ImVec2(75.0f, 0.0f))) play->RequestPause();
+            ImGui::SameLine();
+            if (ImGui::Button("Stop", ImVec2(65.0f, 0.0f)) && play->RequestStop()) showPlayTransition("Stopping play session...");
+            ImGui::EndDisabled();
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                ImGui::SetTooltip("Discard runtime changes and return to the editable scene");
+            if (play->PendingCommand() == EditorPlayController::Command::Play ||
+                play->PendingCommand() == EditorPlayController::Command::Stop) {
+                ImGui::SameLine();
+                ImGui::TextUnformatted(play->PendingCommand() == EditorPlayController::Command::Play ? "Loading..." : "Stopping...");
+            }
+            else if (play->IsPlaying()) {
+                ImGui::SameLine();
+                ImGui::TextUnformatted(play->IsPaused() ? "Paused" : "Playing");
+            }
+            else if (!play->Error().empty()) {
+                ImGui::SameLine();
+                ImGui::TextColored(ImVec4(0.85f, 0.2f, 0.15f, 1.0f), "Play failed");
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", play->Error().c_str());
+            }
+        }
         ImGui::EndMainMenuBar();
+
+        if (project && !project->error.empty() && !ImGui::IsPopupOpen("Project Error###EditorProjectError"))
+            ImGui::OpenPopup("Project Error###EditorProjectError");
+        if (ImGui::BeginPopupModal("Project Error###EditorProjectError", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 560.0f);
+            ImGui::TextUnformatted(project ? project->error.c_str() : "Project action failed.");
+            ImGui::PopTextWrapPos();
+            if (ImGui::Button("OK", ImVec2(100.0f, 0.0f))) {
+                if (project) project->error.clear();
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
+    }
+
+    void EngineUi::ResetForNewProject() {
+        s_ResetEditorLayout = false;
+        s_CurrentDirectory = "Assets";
+        std::snprintf(s_NewFolderName, sizeof(s_NewFolderName), "%s", "NewFolder");
+        s_CreateFolderError.clear();
+        s_GameViewportDrawList = nullptr;
+        s_GameViewportVisible = false;
+        s_GameViewportPos = ImVec2(0.0f, 0.0f);
+        s_GameViewportSize = ImVec2(1280.0f, 720.0f);
+        s_SceneViewportDrawList = nullptr;
+        s_SceneViewportPos = ImVec2(0.0f, 0.0f);
+        s_SceneViewportSize = ImVec2(1280.0f, 720.0f);
+        m_current_inspected_id = 0;
+        m_selected_light_id = 0;
+        s_ParticleIconTexId = VK_NULL_HANDLE;
+        s_ToastMessage.clear();
+        s_ToastTimer = 0.0f;
     }
 
 	VkDescriptorSet EngineUi::s_ParticleIconTexId = VK_NULL_HANDLE;

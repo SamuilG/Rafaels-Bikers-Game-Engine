@@ -25,11 +25,11 @@ public:
     // below remain pending until the next invocation. Reload completion may
     // publish Playing, but the rebuilt scene never simulates a partial frame.
     template<typename Reload>
-    static FrameExecution BeginFrame(GameFlowController& flow, Reload&& reload) {
+    static FrameExecution BeginFrame(GameFlowController& flow, Reload&& reload, bool editingProject = false) {
         flow.CommitPendingRequests();
         const bool reloadHandled = flow.TakeReloadRequest();
         if (reloadHandled) flow.CompleteReload(reload());
-        return FrameExecution::Plan(flow, reloadHandled);
+        return FrameExecution::Plan(flow, reloadHandled, editingProject);
     }
 
     static void Execute(const FrameExecution& frame, float dt, const FrameSteps& steps) {

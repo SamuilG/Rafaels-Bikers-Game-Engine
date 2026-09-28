@@ -9,6 +9,8 @@
 #endif
 
 #include "../Core/System.h"
+#include "../Core/EditorPlayController.hpp"
+#include <utility>
 
 #include <volk/volk.h>
 
@@ -51,6 +53,7 @@ using namespace labut2::literals;
 #include "../Rhi/to_string.hpp"
 #include "../Rhi/descriptors.hpp"
 #include "../Rhi/vulkan_window.hpp"
+#include "../Rhi/GpuFrameTimer.hpp"
 #include "../Scene/model_loader/stb_image.h"
 
 
@@ -71,7 +74,8 @@ namespace lut = labut2;
 #include "../UI/ui.hpp"
 #include "../UI/EngineUi.hpp"
 #include "../UI/EditorTheme.hpp"
-#include "../UI/GameUi.hpp"
+#include "../UI/SceneViewport.hpp"
+#include "../Project/EditorProjectActions.hpp"
 #include <imgui.h>
 #include <backends/imgui_impl_vulkan.h>
 #include "../../ThirdParty/imgui/ImGuizmo/ImGuizmo.h"
@@ -186,6 +190,8 @@ namespace engine {
         }
 
         bool ApplyDisplaySettings(const RuntimeDisplaySettings& settings) {
+            // Embedded game settings never resize or take over the editor window.
+            if (mEditorPlayController && mEditorPlayController->Available()) return false;
             if (!mWindow.window) {
                 return false;
             }
@@ -232,6 +238,192 @@ namespace engine {
             return true;
         }
 
+        // Configure once before Init; each executable chooses its UI capabilities.
+        void ConfigureHost(bool editorAvailable, bool showEditorInitially, bool runtimeUiEnabled) {
+            mEditorAvailable = editorAvailable;
+            mShowEditorInitially = editorAvailable && showEditorInitially;
+            mRuntimeUiEnabled = runtimeUiEnabled;
+            mGameContentUiEnabled = runtimeUiEnabled;
+            if (mState) mState->editor.showEngineUi = mShowEditorInitially;
+        }
+
+        using GameHudDraw = std::function<void(const HudData&, const ImVec2&, const ImVec2&)>;
+        void SetGameHudCallbacks(GameHudDraw draw, std::function<void()> reset) {
+            mGameHudDraw = std::move(draw);
+            mGameHudReset = std::move(reset);
+        }
+
+        void SetEditorProjectActions(EditorProjectActions actions) {
+            mEditorProjectActions = std::move(actions);
+        }
+        EditorProjectActions& ProjectActions() { return mEditorProjectActions; }
+
+        // Resources belong to a world; the editor keeps its complete set while
+        // the disposable play world is active. The device and pipelines stay shared.
+        struct SceneTransientResources {
+            EngineModel model = {};
+            std::vector<lut::Image> textures = {};
+            std::vector<lut::ImageView> textureViews = {};
+            std::vector<lut::Buffer> positions = {};
+            std::vector<lut::Buffer> texCoords = {};
+            std::vector<lut::Buffer> normals = {};
+            std::vector<lut::Buffer> indices = {};
+            std::unordered_map<uint32_t, lut::Buffer> jointIndices = {};
+            std::unordered_map<uint32_t, lut::Buffer> jointWeights = {};
+            std::vector<VkDescriptorSet> materials = {};
+            std::vector<VkDescriptorSet> debugMaterials = {};
+            std::unordered_map<std::string, std::vector<RenderBatch>> previewCache = {};
+            std::vector<std::unique_ptr<ParticleSystem>> particles = {};
+            std::function<void(DebugRenderer&)> debugDraw = {};
+            std::function<bool(size_t)> triggerQuery = {};
+            std::function<void(size_t)> groupRemoved = {};
+            std::function<bool(size_t)> ownershipQuery = {};
+            uint32_t runtimeMaterial = 0;
+            uint32_t portalMesh = UINT32_MAX;
+            bool portalEnabled = false;
+            bool portal2Enabled = false;
+            bool portalsLinked = false;
+            glm::mat4 portalTransform = glm::mat4(1.0f);
+            glm::mat4 portal2Transform = glm::mat4(1.0f);
+            glm::vec3 portalPosition = glm::vec3(0.0f);
+            glm::vec3 portalTarget = glm::vec3(0.0f);
+            glm::vec3 portalUp = glm::vec3(0.0f, 1.0f, 0.0f);
+            float portalFov = 75.0f;
+            glm::vec3 portal2Position = glm::vec3(0.0f);
+            glm::vec3 portal2Target = glm::vec3(0.0f);
+            glm::vec3 portal2Up = glm::vec3(0.0f, 1.0f, 0.0f);
+            float portal2Fov = 75.0f;
+            flecs::entity_t selection = 0;
+            lut::DescriptorPool materialPool;
+        };
+
+        const CpuFrameTimings& LastFrameTimings() const { return mFrameTimings; }
+        bool HasPresentedFrame() const { return mPresentedFrame; }
+        void ResetPerformanceHistory() {
+            if (mState) mState->renderStats.performance.Reset();
+            mGpuTimer.DiscardPending();
+        }
+        void PublishPresentationMode() {
+            mState->capabilities.activePresentMode = static_cast<uint32_t>(mWindow.presentMode);
+            mState->capabilities.vsyncFallback = !mState->render.vsyncEnabled &&
+                (mWindow.presentMode == VK_PRESENT_MODE_FIFO_KHR || mWindow.presentMode == VK_PRESENT_MODE_FIFO_RELAXED_KHR);
+        }
+        void SetEditorPlayController(EditorPlayController* play) { mEditorPlayController = play; }
+        EditorPlayController* GetEditorPlayController() const { return mEditorPlayController; }
+        bool IsEditorPlaying() const { return mEditorPlayController && mEditorPlayController->IsPlaying(); }
+        bool IsEmbeddedGameVisible() const {
+            return mState && mState->editor.showEngineUi && IsEditorPlaying() &&
+                mState->editor.isGameViewportVisible;
+        }
+        bool GameViewportAcceptsInput() const {
+            if (!mState || !mState->editor.showEngineUi) return true;
+            return IsEmbeddedGameVisible() && mState->editor.isGameViewportFocused &&
+                !mState->editor.inputCapturesKeyboard &&
+                (mState->editor.isGameViewportHovered || (mInputSystem && mInputSystem->IsMouseCaptured()));
+        }
+        const CameraState& RenderCameraState() const {
+            return mState->editor.showEngineUi && !mRenderingGameViewport
+                ? mState->editor.sceneCamera.State() : mState->camera.State();
+        }
+        int ActiveRenderMode() const {
+            return mState->editor.showEngineUi && !mRenderingGameViewport ? mState->editor.renderMode : 0;
+        }
+        void SetActiveScene(SceneManager* scene, AnimationSystem* animation) {
+            ResetPerformanceHistory();
+            mSceneManager = scene;
+            mAnimationSystem = animation;
+            mSceneRenderer.SetSource(scene);
+            mEditorScene.SetScene(scene);
+            mEditorScene.ClearSelection();
+            mDebugRenderer.Clear();
+        }
+
+        SceneTransientResources TakeSceneTransientResources() {
+            WaitForGpuIdle();
+            auto nextPool = lut::create_descriptor_pool(mWindow);
+            SceneTransientResources saved;
+            saved.model = std::exchange(mModel, EngineModel{});
+            saved.textures = std::exchange(mModelTextures, std::vector<lut::Image>{});
+            saved.textureViews = std::exchange(mModelTextureViews, std::vector<lut::ImageView>{});
+            saved.positions = std::exchange(mMeshPositions, std::vector<lut::Buffer>{});
+            saved.texCoords = std::exchange(mMeshTexCoords, std::vector<lut::Buffer>{});
+            saved.normals = std::exchange(mMeshNormals, std::vector<lut::Buffer>{});
+            saved.indices = std::exchange(mMeshIndices, std::vector<lut::Buffer>{});
+            saved.jointIndices = std::exchange(mMeshJointIndices, std::unordered_map<uint32_t, lut::Buffer>{});
+            saved.jointWeights = std::exchange(mMeshJointWeights, std::unordered_map<uint32_t, lut::Buffer>{});
+            saved.materials = std::exchange(mMaterialDescriptors, std::vector<VkDescriptorSet>{});
+            saved.debugMaterials = std::exchange(mDebugMaterialDescriptors, std::vector<VkDescriptorSet>{});
+            saved.previewCache = std::exchange(m_previewPrefabCache, std::unordered_map<std::string, std::vector<RenderBatch>>{});
+            saved.particles = std::exchange(allParticles, std::vector<std::unique_ptr<ParticleSystem>>{});
+            saved.debugDraw = std::exchange(mSceneDebugDraw, std::function<void(DebugRenderer&)>{});
+            saved.triggerQuery = std::exchange(mParticleGroupTriggerQuery, std::function<bool(size_t)>{});
+            saved.groupRemoved = std::exchange(mParticleGroupRemovedCallback, std::function<void(size_t)>{});
+            saved.ownershipQuery = std::exchange(mParticleGroupOwnershipQuery, std::function<bool(size_t)>{});
+            saved.runtimeMaterial = std::exchange(mRuntimeMatIndex, uint32_t(0));
+            saved.portalMesh = std::exchange(mPortalMeshIndex, uint32_t(UINT32_MAX));
+            saved.portalEnabled = std::exchange(mPortalEnabled, bool(false));
+            saved.portal2Enabled = std::exchange(mPortal2Enabled, bool(false));
+            saved.portalsLinked = std::exchange(mPortalPreviewPairLinked, bool(false));
+            saved.portalTransform = std::exchange(mPortalSurfaceTransform, glm::mat4(glm::mat4(1.0f)));
+            saved.portal2Transform = std::exchange(mPortal2SurfaceTransform, glm::mat4(glm::mat4(1.0f)));
+            saved.portalPosition = std::exchange(mPortalCameraPosition, glm::vec3(glm::vec3(0.0f)));
+            saved.portalTarget = std::exchange(mPortalCameraTarget, glm::vec3(glm::vec3(0.0f)));
+            saved.portalUp = std::exchange(mPortalCameraUp, glm::vec3(glm::vec3(0.0f, 1.0f, 0.0f)));
+            saved.portalFov = std::exchange(mPortalCameraFovDegrees, float(75.0f));
+            saved.portal2Position = std::exchange(mPortal2CameraPosition, glm::vec3(glm::vec3(0.0f)));
+            saved.portal2Target = std::exchange(mPortal2CameraTarget, glm::vec3(glm::vec3(0.0f)));
+            saved.portal2Up = std::exchange(mPortal2CameraUp, glm::vec3(glm::vec3(0.0f, 1.0f, 0.0f)));
+            saved.portal2Fov = std::exchange(mPortal2CameraFovDegrees, float(75.0f));
+            saved.materialPool = std::exchange(mModelDescPool, std::move(nextPool));
+            saved.selection = mEditorScene.Selection();
+            mEditorScene.ClearSelection();
+            ClearModelPreview();
+            mDebugRenderer.Clear();
+            return saved;
+        }
+
+        void RestoreSceneTransientResources(SceneTransientResources&& saved) {
+            WaitForGpuIdle();
+            mModelTextureViews.clear();
+            mModel = std::move(saved.model);
+            mModelTextures = std::move(saved.textures);
+            mModelTextureViews = std::move(saved.textureViews);
+            mMeshPositions = std::move(saved.positions);
+            mMeshTexCoords = std::move(saved.texCoords);
+            mMeshNormals = std::move(saved.normals);
+            mMeshIndices = std::move(saved.indices);
+            mMeshJointIndices = std::move(saved.jointIndices);
+            mMeshJointWeights = std::move(saved.jointWeights);
+            mMaterialDescriptors = std::move(saved.materials);
+            mDebugMaterialDescriptors = std::move(saved.debugMaterials);
+            m_previewPrefabCache = std::move(saved.previewCache);
+            allParticles = std::move(saved.particles);
+            mSceneDebugDraw = std::move(saved.debugDraw);
+            mParticleGroupTriggerQuery = std::move(saved.triggerQuery);
+            mParticleGroupRemovedCallback = std::move(saved.groupRemoved);
+            mParticleGroupOwnershipQuery = std::move(saved.ownershipQuery);
+            mRuntimeMatIndex = std::move(saved.runtimeMaterial);
+            mPortalMeshIndex = std::move(saved.portalMesh);
+            mPortalEnabled = std::move(saved.portalEnabled);
+            mPortal2Enabled = std::move(saved.portal2Enabled);
+            mPortalPreviewPairLinked = std::move(saved.portalsLinked);
+            mPortalSurfaceTransform = std::move(saved.portalTransform);
+            mPortal2SurfaceTransform = std::move(saved.portal2Transform);
+            mPortalCameraPosition = std::move(saved.portalPosition);
+            mPortalCameraTarget = std::move(saved.portalTarget);
+            mPortalCameraUp = std::move(saved.portalUp);
+            mPortalCameraFovDegrees = std::move(saved.portalFov);
+            mPortal2CameraPosition = std::move(saved.portal2Position);
+            mPortal2CameraTarget = std::move(saved.portal2Target);
+            mPortal2CameraUp = std::move(saved.portal2Up);
+            mPortal2CameraFovDegrees = std::move(saved.portal2Fov);
+            mModelDescPool = std::move(saved.materialPool);
+            mEditorScene.Selection() = saved.selection;
+            ClearModelPreview();
+            mDebugRenderer.Clear();
+            if (mGameHudReset) mGameHudReset();
+        }
+
         //==============UI System=========
         RuntimeUiController* GetRuntimeUiController() const {
             return mRuntimeUiController.get();
@@ -246,6 +438,7 @@ namespace engine {
         // Call after the old game scene has released its callbacks/controllers.
         void ClearSceneTransientResources() {
             WaitForGpuIdle();
+            ResetPerformanceHistory();
             allParticles.clear();
             mEditorScene.ClearSelection();
             mPortalEnabled = false;
@@ -254,7 +447,8 @@ namespace engine {
             mRuntimeUiDebugSelectedElementId = 0;
             mRuntimeUiDebugSelectedScreenName.clear();
             mRuntimeUiDebugEnablePicking = false;
-            GameUi::ResetTransientState();
+            SceneViewport::Reset();
+            if (mGameHudReset) mGameHudReset();
         }
         //==========UI System（particle）======================
         // 存储 ImGui 专用的贴图描述符// Store ImGui-specific texture descriptors
@@ -433,6 +627,11 @@ namespace engine {
 
         void Init() override
         {
+            UIEditorWindow::ResetForNewProject();
+            ImGuiPreviewRenderer::ResetFontCache();
+            EngineUi::ResetForNewProject();
+            SceneViewport::Reset();
+            if (mState) mState->editor.showEngineUi = mShowEditorInitially;
             ReportInitProgress(0.02f, "Creating render window...");
             // ==========================================
             // 1. 核心设备与内存池初始化
@@ -444,6 +643,7 @@ namespace engine {
             mAllocator = lut::create_allocator(mWindow);
             mCmdPool = lut::create_command_pool(mWindow, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
             mDescPool = lut::create_descriptor_pool(mWindow);
+            mModelDescPool = lut::create_descriptor_pool(mWindow);
             mParticleDescPool = lut::create_descriptor_pool(mWindow);
             ReportInitProgress(0.14f, "Allocating render memory...");
             // ==========================================
@@ -532,6 +732,8 @@ namespace engine {
                 mRenderFinished.emplace_back(lut::create_semaphore(mWindow.device));
             }
 
+            mState->capabilities.gpuTimestampsSupported = mGpuTimer.Initialize(mWindow, mCmdBuffers.size());
+            PublishPresentationMode();
             mPipe = create_triangle_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
             mPortalSurfacePipe = create_portal_surface_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
             mThumbnailAlphaPipe = create_alpha_pipeline_1_attachment(mWindow, mPipeLayout.handle, VK_FORMAT_R8G8B8A8_UNORM);
@@ -706,7 +908,7 @@ namespace engine {
                     }
                 });
 
-            if (mState) {
+            if (mState && mRuntimeUiEnabled) {
                 mRuntimeUiController = std::make_unique<RuntimeUiController>(mAppRunning, mState->RuntimeUi());
                 mRuntimeUiController->SetAudioSystem(mAudioSystem);
                 mRuntimeUiController->SetDisplaySettingsCallbacks(
@@ -722,7 +924,7 @@ namespace engine {
                 mRuntimeUiManager = mRuntimeUiController->GetManager();
                 mRuntimeUiRenderer = mRuntimeUiController->GetRendererShared();
             }
-            else {
+            else if (mRuntimeUiEnabled) {
                 EngineUi::LogPrint("[RuntimeUI] Skipped RuntimeUiController init because the state view is null\n");
             }
             // ==========================================
@@ -882,27 +1084,30 @@ namespace engine {
 
         void Update(float dt) override
         {
+            mFrameTimings = {};
+            mPresentedFrame = false;
+            PublishPresentationMode();
             // GLFW events and raw action states are sampled by InputSystem at
             // the start of Application's frame. Rendering consumes that
             // snapshot and does not poll a second time.
             // Player death effects are advanced by the gameplay owner.
-            if (mRuntimeUiController) mRuntimeUiController->SyncGameFlowUi();
-            const auto cameraMode = mState->camera.State().mode;
-            const bool editorCamera = mState->editor.showEngineUi &&
-                (cameraMode == CameraMode::Follow || cameraMode == CameraMode::Free);
+            if (!mEditorAvailable) mState->editor.showEngineUi = false;
+            if (mRuntimeUiEnabled && mRuntimeUiController) mRuntimeUiController->SyncGameFlowUi();
+            const bool editorCamera = mState->editor.showEngineUi && !mRenderingGameViewport;
             if (!mState->frame.runSimulationSystems && !editorCamera && mInputSystem) {
                 mInputSystem->SetMouseCaptured(false);
             }
 
             imguiRenderer.BeginFrame(mState->editor.showEngineUi);
             mState->editor.inputCapturesKeyboard =
-                ImGui::GetIO().WantCaptureKeyboard || ImGui::GetIO().KeyCtrl ||
+                ImGui::GetIO().WantTextInput || ImGui::GetIO().KeyCtrl ||
                 ImGui::GetIO().KeyAlt || ImGui::GetIO().KeySuper ||
-                (mState->editor.showGameUiEditor && UIEditorWindow::WantsKeyboardCapture());
+                (mState->editor.showGameUiEditor && UIEditorWindow::WantsKeyboardCapture()) ||
+                ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
             mState->editor.inputCapturesMouse = ImGui::GetIO().WantCaptureMouse ||
                 (mState->editor.showGameUiEditor && UIEditorWindow::WantsMouseCapture());
             // Debug shortcuts use the same validated commands as runtime buttons.
-            if (!mState->editor.showEngineUi && !ImGui::GetIO().WantTextInput && mRuntimeUiManager) {
+            if (mRuntimeUiEnabled && !mState->editor.showEngineUi && !ImGui::GetIO().WantTextInput && mRuntimeUiManager) {
                 if (ImGui::IsKeyPressed(ImGuiKey_G, false)) {
                     mRuntimeUiManager->TriggerEvent("ShowGameOver");
                 }
@@ -914,7 +1119,7 @@ namespace engine {
 
 
             if (mState->editor.showEngineUi) {
-                EngineUi::DrawMainMenuBar(this, mSceneManager, mState->editor, mState->capabilities, mAppRunning);
+                EngineUi::DrawMainMenuBar(this, mSceneManager, mState->editor, mState->capabilities, mAppRunning, mEditorPlayController);
                 if (mState->editor.showEngineUi) {
                     EngineUi::DrawEditorWorkspace();
                 }
@@ -935,13 +1140,15 @@ namespace engine {
 
 
                 //View 矩阵
-                glm::mat4 view = glm::inverse(mState->camera.State().camera2world);
+                const auto& sceneCamera = mState->editor.showEngineUi
+                    ? mState->editor.sceneCamera.State() : mState->camera.State();
+                glm::mat4 view = glm::inverse(sceneCamera.camera2world);
                 //Aspect Ratio
                 //float aspect = (float)mWindow.swapchainExtent.width / (float)mWindow.swapchainExtent.height;
                 float aspect = width / height;
 
                 //FOV: use the live camera FOV so picking and drag placement match the rendered scene.
-                float fovRadians = glm::radians(std::clamp(mState->camera.State().cameraFov, 10.0f, 120.0f));
+                float fovRadians = glm::radians(std::clamp(sceneCamera.cameraFov, 10.0f, 120.0f));
 
                 glm::mat4 gizmoProj = glm::perspective(
                     fovRadians,
@@ -986,12 +1193,22 @@ namespace engine {
 
                 // 获取全局鼠标位置和 Viewport 数据
                 EngineUi::DrawSceneViewport(m_sceneViewportTexId, this, mSceneManager, mEditorScene, view, gizmoProj, mEditorScene.Selection(), mState->editor, mState->render);
-                if (!mState->editor.showEngineUi) {
-                    GameUi::SetViewport(
+                const bool previouslyRenderingGame = mRenderingGameViewport;
+                if (mState->editor.showEngineUi) {
+                    EngineUi::DrawGameViewport(m_sceneViewportTexId, mState->editor, IsEditorPlaying(),
+                        mEditorPlayController && mEditorPlayController->IsPaused());
+                    mRenderingGameViewport = mState->editor.isGameViewportVisible;
+                    SceneViewport::Set(EngineUi::GetGameViewportPos(), EngineUi::GetGameViewportSize(),
+                        EngineUi::GetGameViewportDrawList());
+                } else {
+                    mRenderingGameViewport = true;
+                    SceneViewport::Set(
                         EngineUi::GetSceneViewportPos(),
                         EngineUi::GetSceneViewportSize(),
                         EngineUi::GetSceneViewportDrawList());
                 }
+                if (mInputSystem && previouslyRenderingGame != mRenderingGameViewport)
+                    mInputSystem->SetMouseCaptured(false);
                 vpSize = EngineUi::GetSceneViewportSize();
                 ImVec2 mousePosAbs = ImGui::GetMousePos();
                 ImVec2 vpPos = EngineUi::GetSceneViewportPos();
@@ -1008,9 +1225,9 @@ namespace engine {
 
 				
 				//game HUD============================
-                if (!mState->editor.showEngineUi && mState->frame.runSimulationSystems && mGameContentUiEnabled) {
-                    GameUi::DrawHud(mState->hud, GameUi::GetViewportPos(), GameUi::GetViewportSize(),
-                        [this](const char* path) { return (ImTextureID)GetContentBrowserThumbnail(path); });
+                if ((!mState->editor.showEngineUi || IsEmbeddedGameVisible()) &&
+                    mState->frame.flowState == GameFlowState::Playing && mGameContentUiEnabled) {
+                    if (mGameHudDraw) mGameHudDraw(mState->hud, SceneViewport::GetPos(), SceneViewport::GetSize());
                 }
 
 
@@ -1050,7 +1267,7 @@ namespace engine {
                 }
 				//camera UI
                 if (mState->editor.showEngineUi && mState->editor.showCameraPanel) {
-                    EngineUi::DrawCameraPanel(mState->camera, mState->player.State(), mState->editor);
+                    EngineUi::DrawCameraPanel(mState->editor.sceneCamera, mState->player.State(), mState->editor);
                 }
 				//debug UI
                 if (mState->editor.showEngineUi && mState->editor.showDebugPanel) {
@@ -1088,10 +1305,10 @@ namespace engine {
                     flecs::entity hitEntity = mEditorScene.Pick(
                         localMouseX, localMouseY,  // 传局部鼠标坐标
                         vpSize.x, vpSize.y,        // 传真实的视口大小
-                        mState->camera.State().camera2world, gizmoProj
+                        sceneCamera.camera2world, gizmoProj
                     );
 
-                    if (hitEntity.is_alive()) {
+                    if (IsEntityAlive(hitEntity)) {
                         mEditorScene.Selection() = hitEntity.id();
                         mState->editor.activeParticleIndex = -1;
                         engine::EngineUi::LogPrint("[Raycast] Hit Object ID: {}\n", hitEntity.id());
@@ -1110,7 +1327,7 @@ namespace engine {
                     uint32_t selectedBodyID = JPH::BodyID::cInvalidBodyID;
                     bool hasDebugBody = mEditorScene.TryGetDebugBodyId(mEditorScene.Selection(), selectedBodyID);
 
-                    if (mState->editor.showEngineUi && hasDebugBody && (mState->editor.debugSelectionBounds || mState->editor.debugCollisionShapes)) {
+                    if (mState->editor.showEngineUi && mState->editor.isSceneViewportVisible && hasDebugBody && (mState->editor.debugSelectionBounds || mState->editor.debugCollisionShapes)) {
                         JPH::TransformedShape ts{};
                         if (!mEditorScene.TryGetDebugShape(mEditorScene.Selection(), ts)) {
                             ts = JPH::TransformedShape{};
@@ -1125,7 +1342,7 @@ namespace engine {
                         }
                     }
 
-                    if (selectedEntity.is_alive() && ImGuizmo::IsUsing() && hasDebugBody) {
+                    if (IsEntityAlive(selectedEntity) && ImGuizmo::IsUsing() && hasDebugBody) {
                         const auto& lt = selectedEntity.get<LocalTransform>();
                         mEditorScene.ApplyTransform(mEditorScene.Selection(), lt.matrix);
                     }
@@ -1139,10 +1356,11 @@ namespace engine {
             EngineUi::DrawToast(dt);
 
             const bool editorCapturesKeyboard = mState->editor.showEngineUi &&
-                (ImGui::GetIO().WantCaptureKeyboard || ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeyAlt || ImGui::GetIO().KeySuper ||
+                (ImGui::GetIO().WantTextInput || ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeyAlt || ImGui::GetIO().KeySuper ||
                  (mState->editor.showGameUiEditor && UIEditorWindow::WantsKeyboardCapture()));
             if (mInputSystem && mInputSystem->IsActionPressed("Quit")) {
-                glfwSetWindowShouldClose(mWindow.window, GLFW_TRUE);
+                if (IsEditorPlaying()) mEditorPlayController->RequestStop();
+                else glfwSetWindowShouldClose(mWindow.window, GLFW_TRUE);
             }
 
             if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("BloomToggle")) {
@@ -1172,12 +1390,22 @@ namespace engine {
                 return;
             }
 
+            if (mWindow.vsyncEnabled != mState->render.vsyncEnabled) {
+                mWindow.vsyncEnabled = mState->render.vsyncEnabled;
+                mRecreateSwapchain = true;
+            }
             if (mRecreateSwapchain) {
                 // We need to destroy several objects, which may still be in use by the GPU
                 vkDeviceWaitIdle(mWindow.device);
 
                 // Recreate them
                 auto const changes = lut::recreate_swapchain(mWindow);
+                if (changes.deferred) {
+                    // Keep the recreate request pending while the surface is
+                    // unavailable, and balance this frame without GPU work.
+                    ImGui::EndFrame();
+                    return;
+                }
 
                 if (changes.changedFormat) {
                     mPipe = create_triangle_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
@@ -1309,6 +1537,8 @@ namespace engine {
                     UpdateSceneDescriptorSkybox();
                 }
 
+                PublishPresentationMode();
+                ResetPerformanceHistory();
                 mRecreateSwapchain = false;
                 //===========================UI System================================
                 ImGui::EndFrame(); // 结束 ImGui 帧
@@ -1319,12 +1549,19 @@ namespace engine {
             // Advance to next frame
             mFrameIndex = (mFrameIndex + 1) % mCmdBuffers.size();
 
+            const auto fenceStart = std::chrono::steady_clock::now();
             // Make sure that the frame resources are no longer in use
             if (auto res = vkWaitForFences(mWindow.device, 1,
                 &mFrameDone[mFrameIndex].handle, VK_TRUE,
                 std::numeric_limits<std::uint64_t>::max()); VK_SUCCESS != res)
                 throw lut::Error("vkWaitForFences: {}", lut::to_string(res));
 
+            mFrameTimings.fenceWaitMs = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - fenceStart).count();
+            if (const auto gpuMs = mGpuTimer.ConsumeCompleted(static_cast<uint32_t>(mFrameIndex)))
+                mState->renderStats.performance.AddGpuSample(*gpuMs);
+
+            const auto acquireStart = std::chrono::steady_clock::now();
             // Acquire next swap chain image
             std::uint32_t imageIndex = 0;
             auto acquireRes = vkAcquireNextImageKHR(
@@ -1333,6 +1570,8 @@ namespace engine {
                 mImageAvailable[mFrameIndex].handle,
                 VK_NULL_HANDLE, &imageIndex);
 
+            mFrameTimings.acquireWaitMs = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - acquireStart).count();
             if (acquireRes == VK_SUBOPTIMAL_KHR || acquireRes == VK_ERROR_OUT_OF_DATE_KHR) {
                 mRecreateSwapchain = true;
                 mFrameIndex = (mFrameIndex + mCmdBuffers.size() - 1) % mCmdBuffers.size();
@@ -1355,7 +1594,7 @@ namespace engine {
                     mState->render.particlesEnabled = !mState->render.particlesEnabled;
                     std::printf("Particles: %s\n", mState->render.particlesEnabled ? "ON" : "OFF");
                 }
-                if (mState->frame.runSimulationSystems && !editorCapturesKeyboard && mInputSystem->IsActionPressed("CameraThirdPersonToggle")) {
+                if (mState->frame.runSimulationSystems && GameViewportAcceptsInput() && !editorCapturesKeyboard && mInputSystem->IsActionPressed("CameraThirdPersonToggle")) {
                     // T
                     if (mState->camera.State().thirdPersonMode) mState->camera.RequestFree();
                     else mState->camera.RequestFollow();
@@ -1363,43 +1602,52 @@ namespace engine {
 
                 }
               
-#ifndef GAME_ONLY
-                if (mInputSystem->IsActionPressed("ToggleEngineUi")) {
+                if (mEditorAvailable && !mEditorProjectActions.openProject && mInputSystem->IsActionPressed("ToggleEngineUi")) {
                     mState->editor.showEngineUi = !mState->editor.showEngineUi;
                     EngineUi::ShowToast(mState->editor.showEngineUi ? "[ Engine UI Visible ]" : "[ Engine UI Hidden ]");
                 }
-#endif
 
-                if (mInputSystem->IsActionPressed("MenuBack") &&
-                    !mState->editor.showEngineUi && !editorCapturesKeyboard && mRuntimeUiManager) {
+                if (mRuntimeUiEnabled && mInputSystem->IsActionPressed("MenuBack") &&
+                    GameViewportAcceptsInput() && !editorCapturesKeyboard && mRuntimeUiManager) {
                     mRuntimeUiManager->TriggerEvent("MenuBack");
                 }
 
-#ifndef GAME_ONLY
-                // Debug Render Modes
-                if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("Default")) mState->editor.renderMode = 0;
-                if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugMipmap")) mState->editor.renderMode = 1;
-                if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugDepth")) mState->editor.renderMode = 2;
-                if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugDerivatives")) mState->editor.renderMode = 3;
-                if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugMosaic")) mState->render.mosaicEnabled = !mState->render.mosaicEnabled;
-                if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugOverdraw")) mState->editor.renderMode = 4;
-                if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugOvershading")) mState->editor.renderMode = 5;
+                if (mEditorAvailable) {
+                    // Debug Render Modes
+                    if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("Default")) mState->editor.renderMode = 0;
+                    if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugMipmap")) mState->editor.renderMode = 1;
+                    if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugDepth")) mState->editor.renderMode = 2;
+                    if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugDerivatives")) mState->editor.renderMode = 3;
+                    if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugMosaic")) mState->render.mosaicEnabled = !mState->render.mosaicEnabled;
+                    if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugOverdraw")) mState->editor.renderMode = 4;
+                    if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugOvershading")) mState->editor.renderMode = 5;
 
-                if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("PrintCameraPos")) {
-                    auto const pos = mState->camera.State().camera2world[3];
-                    std::printf("Camera Pos: %.4f, %.4f, %.4f\n", pos.x, pos.y, pos.z);
+                    if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("PrintCameraPos")) {
+                        auto const pos = mState->camera.State().camera2world[3];
+                        std::printf("Camera Pos: %.4f, %.4f, %.4f\n", pos.x, pos.y, pos.z);
+                    }
                 }
-#endif
             }
             //
 
             // Update state
-            const auto currentCameraMode = mState->camera.State().mode;
-            const bool canEditCamera = !mState->frame.reloadHandled && mState->editor.showEngineUi &&
-                (currentCameraMode == CameraMode::Follow || currentCameraMode == CameraMode::Free);
-            if ((mState->frame.runSimulationSystems || canEditCamera) &&
-                !(mState->editor.showEngineUi && ImGui::GetIO().WantTextInput))
-                update_camera(mState->camera, mState->player.State(), mState->editor, dt, mInputSystem);
+            // Editor and gameplay cameras have independent ownership.
+            if (mState->editor.showEngineUi) {
+                const bool sceneInput = mState->editor.isSceneViewportVisible &&
+                    !mState->editor.inputCapturesKeyboard &&
+                    (mState->editor.isSceneViewportHovered || (mInputSystem && mInputSystem->IsMouseCaptured()));
+                if (sceneInput)
+                    update_camera(mState->editor.sceneCamera, mState->player.State(), mState->editor, dt, mInputSystem);
+                if (mInputSystem && (mState->editor.inputCapturesKeyboard ||
+                    (mRenderingGameViewport && (!GameViewportAcceptsInput() || !mState->frame.runSimulationSystems))))
+                    mInputSystem->SetMouseCaptured(false);
+            }
+            if (mState->frame.runSimulationSystems || (!IsEditorPlaying() && mRenderingGameViewport)) {
+                EditorState gameRoute;
+                update_camera(mState->camera, mState->player.State(), gameRoute,
+                    mState->frame.runSimulationSystems ? dt : 0.0f,
+                    GameViewportAcceptsInput() && !editorCapturesKeyboard ? mInputSystem : nullptr);
+            }
 
             //// Prepare data for this frame
             //glsl::SceneUniform sceneUniforms{};
@@ -1412,7 +1660,8 @@ namespace engine {
 
 			//重新获取一次 UI 视口尺寸//re-fetch UI viewport size
          
-            ImVec2 finalVpSize = EngineUi::GetSceneViewportSize();
+            ImVec2 finalVpSize = mState->editor.showEngineUi && mRenderingGameViewport
+                ? EngineUi::GetGameViewportSize() : EngineUi::GetSceneViewportSize();
             float finalWidth = std::max(1.0f, std::abs(finalVpSize.x));
             float finalHeight = std::max(1.0f, std::abs(finalVpSize.y));
             // 【关键修复】：调用函数！
@@ -1420,7 +1669,7 @@ namespace engine {
                 sceneUniforms,
                 static_cast<uint32_t>(finalWidth),
                 static_cast<uint32_t>(finalHeight),
-                mState->camera.State(), mState->editor.renderMode
+                RenderCameraState(), ActiveRenderMode()
             );
 
             // 【新增】：将 IBL 状态同步给 Shader
@@ -1444,13 +1693,13 @@ namespace engine {
             auto const* currentDescs = &mMaterialDescriptors;
 
             // Debug modes use a dedicated single-color pass, including skinned meshes.
-            const bool debugView = view_mode::IsGeometry(mState->editor.renderMode);
+            const bool debugView = view_mode::IsGeometry(ActiveRenderMode());
             VkPipeline currentSkinned = mSkinnedPipe.handle;
             if (debugView) {
-                const size_t index = static_cast<size_t>(mState->editor.renderMode);
+                const size_t index = static_cast<size_t>(ActiveRenderMode());
                 currentOpaque = mDebugViewPipes[index].handle;
                 currentSkinned = mSkinnedDebugViewPipes[index].handle;
-                if (mState->editor.renderMode == view_mode::Mipmaps) currentDescs = &mDebugMaterialDescriptors;
+                if (ActiveRenderMode() == view_mode::Mipmaps) currentDescs = &mDebugMaterialDescriptors;
             }
             const VkClearColorValue clearColor = { 0.1f, 0.1f, 0.1f, 1.f };
 
@@ -1536,12 +1785,12 @@ namespace engine {
                 }
             }
             // Draw scene-provided debug geometry without evaluating gameplay.
-            if (mSceneDebugDraw) mSceneDebugDraw(mDebugRenderer);
-            const bool editorBackdrop = mState->editor.showEngineUi &&
+            if (mState->editor.showEngineUi && !mRenderingGameViewport && mSceneDebugDraw) mSceneDebugDraw(mDebugRenderer);
+            const bool editorBackdrop = mState->editor.showEngineUi && !mRenderingGameViewport &&
                 mState->editor.editorViewportBackdrop &&
                 !mState->editor.editorViewportSkybox &&
                 mState->editor.renderMode == 0;
-            if (mState->editor.showEngineUi && mState->editor.editorViewportGrid && mState->editor.renderMode == 0) {
+            if (mState->editor.showEngineUi && !mRenderingGameViewport && mState->editor.editorViewportGrid && ActiveRenderMode() == 0) {
                 // A world-space XZ grid: scene depth occludes it like other editor helpers.
                 // Scale by camera height to keep the line count bounded while zooming out.
                 const float step = std::pow(10.0f, std::floor(std::log10(std::max(std::abs(camPosWorld.y) * 0.25f, 1.0f))));
@@ -1684,7 +1933,7 @@ namespace engine {
             uint32_t portal2RecursiveSceneUniformCount = 0;
             if (portalVisibleForFrame) {
                 if (mPortalPreviewPairLinked && mState) {
-                    glm::mat4 viewerCameraWorld = mState->camera.State().camera2world;
+                    glm::mat4 viewerCameraWorld = RenderCameraState().camera2world;
                     if (!portalMainVisibleForFrame && portalVisibleInPortal2View) {
                         viewerCameraWorld = glm::inverse(portal2SceneUniform.camera);
                     }
@@ -1716,7 +1965,7 @@ namespace engine {
             }
             if (portal2VisibleForFrame) {
                 if (mPortalPreviewPairLinked && mState) {
-                    glm::mat4 viewerCameraWorld = mState->camera.State().camera2world;
+                    glm::mat4 viewerCameraWorld = RenderCameraState().camera2world;
                     if (!portal2MainVisibleForFrame && portal2VisibleInPortalView) {
                         viewerCameraWorld = glm::inverse(portalSceneUniform.camera);
                     }
@@ -1826,7 +2075,7 @@ namespace engine {
                 editorBackdrop,
                 mBufferViewPipe.handle,
                 mSpeedPostPipeLayout.handle,
-                mBufferViewDescriptors[view_mode::IsBuffer(mState->editor.renderMode) ? mState->editor.renderMode - view_mode::SSAO : 0][mFrameIndex],
+                mBufferViewDescriptors[view_mode::IsBuffer(ActiveRenderMode()) ? ActiveRenderMode() - view_mode::SSAO : 0][mFrameIndex],
 
                 // 【新增】：将极速管线和目标传给 rendering.cpp
                 mSpeedPostPipe.handle,
@@ -1844,7 +2093,7 @@ namespace engine {
                 mShadowPipe.handle,
                 shadowTarget,
                 mShadowCascadeViews,
-                mState->render.particlesEnabled&& mState->editor.renderMode == 0,
+                mState->render.particlesEnabled&& ActiveRenderMode() == 0,
                 mParticlePipe.handle,
                 allParticles,
                 mDebugLinePipe.handle,
@@ -1901,7 +2150,8 @@ namespace engine {
                 portalVisibleInPortalView,
                 portalVisibleInPortal2View,
                 portal2VisibleInPortalView,
-                portal2VisibleInPortal2View
+                portal2VisibleInPortal2View,
+                &mGpuTimer, static_cast<uint32_t>(mFrameIndex)
             );
 			//clear debug renderer data after uploading
             mDebugRenderer.Clear();
@@ -1912,15 +2162,21 @@ namespace engine {
                 mImageAvailable[mFrameIndex].handle,
                 mRenderFinished[imageIndex].handle);
 
+            mGpuTimer.Submitted(static_cast<uint32_t>(mFrameIndex));
+            const auto presentStart = std::chrono::steady_clock::now();
             present_results(mWindow.presentQueue, mWindow.swapchain,
                 imageIndex, mRenderFinished[imageIndex].handle,
                 mRecreateSwapchain);
+            mFrameTimings.presentCallMs = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - presentStart).count();
+            mPresentedFrame = !mRecreateSwapchain;
         }
 
         void Shutdown() override
         {
             // 1. 确保 GPU 已经完全停下，再开始拆除资源
             vkDeviceWaitIdle(mWindow.device);
+            mGpuTimer.Shutdown();
 
             // (Removed redundant RAII wrapper destructions)
 
@@ -1932,6 +2188,18 @@ namespace engine {
             allParticles.clear();
             // trigger: clear all trigger volumes on shutdown
             mDebugRenderer.Shutdown(mAllocator);
+            // Project switching rebuilds this host in the same process. Drop
+            // callbacks and all ImGui-owned pointers before destroying its context.
+            UIEditorWindow::ResetForNewProject();
+            ImGuiPreviewRenderer::ResetFontCache();
+            EngineUi::ResetForNewProject();
+            SceneViewport::Reset();
+            mRuntimeUiManager = nullptr;
+            mRuntimeUiRenderer.reset();
+            mRuntimeUiController.reset();
+            if (mGameHudReset) mGameHudReset();
+            mGameHudDraw = {};
+            mGameHudReset = {};
             ::imguiRenderer.Shutdown();
 
         }
@@ -2346,7 +2614,7 @@ namespace engine {
 
         VkDescriptorSet BuildPortalSurfaceDesc(VkImageView portalView)
         {
-            VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, mObjectLayout.handle);
+            VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mModelDescPool.handle, mObjectLayout.handle);
             WritePortalSurfaceDesc(ds, portalView);
             return ds;
         }
@@ -2503,7 +2771,7 @@ namespace engine {
 
         glm::mat4 BuildLinkedPortalCameraWorld(const glm::mat4& sourceSurface, const glm::mat4& destinationSurface) const
         {
-            return BuildLinkedPortalCameraWorldFromCamera(sourceSurface, destinationSurface, mState->camera.State().camera2world);
+            return BuildLinkedPortalCameraWorldFromCamera(sourceSurface, destinationSurface, RenderCameraState().camera2world);
         }
 
         glm::mat4 BuildLinkedPortalCameraWorldFromCamera(
@@ -2521,7 +2789,7 @@ namespace engine {
             if (!mState) {
                 return fallbackFovDegrees;
             }
-            return std::clamp(mState->camera.State().cameraFov, 10.0f, 120.0f);
+            return std::clamp(RenderCameraState().cameraFov, 10.0f, 120.0f);
         }
 
         glsl::SceneUniform BuildPortalSceneUniformForCameraTransform(
@@ -2594,7 +2862,7 @@ namespace engine {
 
         void AddOneMaterialDescriptor(VkSampler sampler, std::vector<VkDescriptorSet>& out, const EngineMaterial& mat)
         {
-            VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, mObjectLayout.handle);
+            VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mModelDescPool.handle, mObjectLayout.handle);
 
             // 0: BaseColor (基础色)
             VkImageView baseView = mDefaultGrayView.handle;
@@ -2646,7 +2914,7 @@ namespace engine {
         void AddOneGrayDescriptor(VkSampler sampler, std::vector<VkDescriptorSet>& out)
         {
             VkDescriptorSet ds = lut::alloc_desc_set(
-                mWindow, mDescPool.handle, mObjectLayout.handle);
+                mWindow, mModelDescPool.handle, mObjectLayout.handle);
 
             VkImageView grayView = mDefaultGrayView.handle;
             VkDescriptorImageInfo imgs[3]{};
@@ -3065,11 +3333,15 @@ void InitSkybox()
 
         //UserState  mState{};
 
+        CpuFrameTimings mFrameTimings;
+        bool mPresentedFrame = false;
+        lut::GpuFrameTimer mGpuTimer;
         bool       mRecreateSwapchain = false;
         std::size_t mFrameIndex = 0;
 
         lut::CommandPool    mCmdPool;
         lut::DescriptorPool mDescPool;
+        lut::DescriptorPool mModelDescPool;
         lut::DescriptorPool mParticleDescPool;
 
         std::vector<VkCommandBuffer>  mCmdBuffers;
@@ -3199,8 +3471,16 @@ void InitSkybox()
         //===========================UI System================================
         // UI System 保存当前选中的实体 ID saved selected entity ID for UI system
         EditorSceneAdapter mEditorScene;
+        EditorProjectActions mEditorProjectActions;
+        EditorPlayController* mEditorPlayController = nullptr;
+        bool mRenderingGameViewport = false;
         UIManager* mRuntimeUiManager = nullptr;
+        bool mEditorAvailable = true;
+        bool mShowEditorInitially = false;
+        bool mRuntimeUiEnabled = true;
         bool mGameContentUiEnabled = true;
+        GameHudDraw mGameHudDraw;
+        std::function<void()> mGameHudReset;
         // RenderSystem ?????? UI ?????????? RuntimeUiController?
         std::shared_ptr<ImGuiPreviewRenderer> mRuntimeUiRenderer;
         std::unique_ptr<RuntimeUiController> mRuntimeUiController;

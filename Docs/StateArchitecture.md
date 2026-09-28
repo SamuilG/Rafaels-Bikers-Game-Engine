@@ -144,8 +144,14 @@ Application 使用 `Core/FrameScheduler.hpp` 固定执行顺序，系统注册�
 
 这些游戏数据在调用 Renderer 前完成，所以交换链获取失败或跳过呈现不会漏掉玩法更新。GPU 粒子更新/上传仍由 Renderer 管理；粒子本身的完整模拟拆分、车辆物理和 SceneManager 中剩余的车辆专用逻辑不属于本次边界。
 
-## 默认 Demo 入口与空引擎场景
+## 独立 Editor / Demo 宿主
 
-Application 的启动与重开统一调用 `CreateDefaultScene()`，默认创建 `level`，加载 Bikers 关卡、车辆、触发器和游戏菜单。职责拆分不改变 Demo 的默认启动行为。
+构建目标现已分为共享 Engine、BikersProject 静态库和独立 Editor / Demo 程序，详见 `BuildTargets.md`。两个入口通过 `ApplicationOptions` 提供场景工厂，Application 的启动与重开统一调用该工厂。Demo 读取 `.steerproj` 并通过 BikersProject 创建 `level`，加载关卡、车辆、触发器和游戏菜单。
 
-`Source/Runtime/Scene/blank.cpp` 保留为空场景实现，供开发时显式选择；它不加载 Bikers 模型、车辆物理、关卡触发器或车辆音频，并关闭游戏内容 UI。因此把它设为默认入口时，会出现只有天空或编辑器网格、层级树实体数为 0 的画面。它复用同一个 RenderSystem 和 EngineUi，并初始化 Free 相机，但当前没有面向用户的场景选择入口。
+Editor 未打开工程时使用 `blank` 显示空工作区。打开 Bikers 工程后，由同一内容库创建完整场景。`EditorPlayController` 在统一帧边界处理 Play / Pause / Stop；编辑态和编辑器暂停态通过 `FrameScheduler` 关闭玩法、物理和游戏动画，编辑相机、场景变换传播和渲染继续工作。工程开关在当前帧结束和旧 Application 析构后完成，资源目录与 UI 缓存一并切换；具体流程见 `Projects.md`。
+
+Play 保留原编辑世界及其物理、音频、动画和场景 GPU 资源，在同一窗口创建运行实例；Stop 销毁运行实例并恢复原编辑世界，不通过磁盘快照覆盖未保存改动。已有实体按完整路径匹配，同步变换、启用状态、灯光及物理参数；新增/删除实体与任意组件结构尚未实现完整复制。Jolt 全局类型注册由两个物理世界共同持有，最后一个世界关闭时才释放。
+
+Scene / Game 是同级标签，共用一个渲染目标；Scene 使用 `EditorState::sceneCamera`，Game 使用游戏相机。Game 标签可见、获得焦点且鼠标位于视口或被捕获时，才接受玩家输入。文字编辑和弹出菜单屏蔽游戏键盘输入；切换视口释放鼠标捕获。游戏 HUD、菜单与点击坐标限制在 Game 画布内。游戏的退出操作请求 Stop，独立 Demo 中仍然退出程序。
+
+编辑器 Pause 与游戏菜单暂停各自保留状态：Resume 只解除编辑器门控，不强行关闭游戏菜单。宿主音频静音独立于用户音量。Play 会重新加载模型和纹理，当前并非即时世界克隆，Debug 下加载可能较长。

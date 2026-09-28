@@ -18,8 +18,6 @@ public:
     void RefreshPlayerMotion(float dt) override;
     void Shutdown() override;
 
-    bool UsesVehicleAudio() const override { return false; }
-
 private:
     RenderSystem* m_render = nullptr;
     SceneManager* m_scene = nullptr;

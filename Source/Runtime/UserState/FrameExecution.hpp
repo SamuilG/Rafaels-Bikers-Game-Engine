@@ -15,13 +15,13 @@ struct FrameExecution {
     bool runSimulationSystems = false;
     bool runPresentation = true;
 
-    static FrameExecution Plan(const GameFlowController& flow, bool reloadWasHandled) {
+    static FrameExecution Plan(const GameFlowController& flow, bool reloadWasHandled, bool editingProject = false) {
         FrameExecution plan;
         plan.flowState = flow.State();
         plan.settingsOpen = flow.IsSettingsOpen();
         plan.flowRevision = flow.Revision();
         plan.reloadHandled = reloadWasHandled;
-        plan.runGameplay = flow.CanSimulate() && !reloadWasHandled;
+        plan.runGameplay = flow.CanSimulate() && !reloadWasHandled && !editingProject;
         plan.runSimulationSystems = plan.runGameplay;
         return plan;
     }

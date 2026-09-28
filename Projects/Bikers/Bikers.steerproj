@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "name": "Rafael's Bikers",
+  "contentModule": "bikers",
+  "startupScene": "level1",
+  "assetRoot": "../../Assets",
+  "sceneSnapshot": "Scenes/Main.snapshot.json"
+}

@@ -13,6 +13,8 @@ namespace engine {
     class UIEditorWindow {
     public:
         static void Draw(EditorState& state);
+        // Clear project assets and ImGui-owned pointers before destroying the context.
+        static void ResetForNewProject();
         // 复用引擎现有的缩略图 / 贴图解析能力，让编辑器画布能直接显示 Assets 里的图片。
         static void SetTexturePreviewResolver(std::function<void*(const std::string&)> resolver);
         // 当编辑器保存 / 编译 UI 文件后，通过回调通知运行时 UI 热重载。

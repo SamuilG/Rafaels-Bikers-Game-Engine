@@ -4,14 +4,14 @@ workspace "EngineWorkspace"
     language "C++"
     cppdialect "C++23"
     platforms { "x64" }
-    configurations { "Debug", "Release", "Game" }
+    configurations { "Debug", "Release" }
 
     flags { "NoPCH", "MultiProcessorCompile" }
 
     -- [Garbage] Route all intermediate build files (.obj, .pdb) to the Intermediate folder
     objdir "Intermediate/Obj/%{prj.name}/%{cfg.buildcfg}-%{cfg.platform}"
 
-    startproject "Engine"
+    startproject "Demo"
 
     -- ==========================================
     -- Global Compiler and System Settings
@@ -39,9 +39,6 @@ workspace "EngineWorkspace"
         optimize "On"
         defines { "NDEBUG=1" }
 
-    filter "configurations:Game"
-        optimize "On"
-        defines { "NDEBUG=1", "GAME_ONLY=1" }
     filter "*"
 
     -- ==========================================
@@ -166,23 +163,16 @@ workspace "EngineWorkspace"
 
     filter "*"
     -- ==========================================
-    -- Project 4: Core Engine Application
+    -- Shared compile contract for the engine and both application hosts.
+    -- Renderer implementation is currently header-heavy, so these targets must
+    -- use the same definitions rather than selecting behavior with GAME_ONLY.
     -- ==========================================
-    project "Engine"
-        -- [Garbage] Hide the Engine project file in the Intermediate folder
-        location "Intermediate/Projects" 
-        kind "ConsoleApp"
-        
-        -- [Useful] Output the final Engine executable to the root Bin folder
-        targetdir "Bin"            
-        -- Ensure Visual Studio debugger runs from the root to locate Assets properly
-        debugdir "%{wks.location}" 
-        
+    local function engineCompileSettings()
         defines {
             "GLM_ENABLE_EXPERIMENTAL",
             "GLM_FORCE_RADIANS",
             "NOMINMAX",
-            "FLECS_STATIC",
+            "flecs_STATIC",
             "JPH_CROSS_PLATFORM_DETERMINISTIC",
             "ZSTD_DISABLE_ASM=1"
         }
@@ -205,12 +195,46 @@ workspace "EngineWorkspace"
             "ThirdParty/JoltPhysics",
             "ThirdParty/imgui",
 			"ThirdParty/imgui/backends",
-			"ThirdParty/imgui/ImGuizmo",
+            "ThirdParty/imgui/ImGuizmo",
         }
-        
+
+        filter "system:windows"
+            defines { "VK_USE_PLATFORM_WIN32_KHR" }
+
+        filter "system:linux"
+            defines { "VK_USE_PLATFORM_XLIB_KHR" }
+        filter "*"
+    end
+
+    local bikersFiles = {
+        "Source/Runtime/Scene/level1.cpp", "Source/Runtime/Scene/level1.hpp",
+        "Source/Runtime/Scene/TestScene.cpp", "Source/Runtime/Scene/TestScene.hpp",
+        "Source/Runtime/Physics/bikeController.cpp", "Source/Runtime/Physics/bikeController.hpp",
+        "Source/Runtime/UI/GameUi.cpp", "Source/Runtime/UI/GameUi.hpp",
+    }
+
+    local demoFiles = {
+        "Source/Runtime/LoadEngineSplash/**",
+    }
+
+    local editorFiles = {
+        "Source/Runtime/Scene/blank.cpp", "Source/Runtime/Scene/blank.hpp",
+    }
+
+    -- ==========================================
+    -- Project 4: Shared Engine Static Library
+    -- Existing editor facilities still belong to this shared library; moving
+    -- their implementation behind an editor module is a separate boundary.
+    -- ==========================================
+    project "Engine"
+        location "Intermediate/Projects"
+        kind "StaticLib"
+        targetdir "Intermediate/Bin/%{cfg.buildcfg}-%{cfg.platform}/%{prj.name}"
+        engineCompileSettings()
+
         files {
-            "main.cpp",
-            "Source/**.hpp", "Source/**.cpp", "Source/**.h", "Source/**.c",
+            "Source/Runtime/**.hpp", "Source/Runtime/**.cpp",
+            "Source/Runtime/**.h", "Source/Runtime/**.c",
             
             "ThirdParty/volk/src/volk.c",
             "ThirdParty/VulkanMemoryAllocator/src/*.cpp",
@@ -222,26 +246,58 @@ workspace "EngineWorkspace"
 			"ThirdParty/imgui/ImGuizmo/ImGuizmo.cpp",
 			"ThirdParty/imgui/ImGuizmo/ImGuizmo.h",
         }
-        
+        removefiles(bikersFiles)
+        removefiles(demoFiles)
+        removefiles(editorFiles)
+
         filter "files:ThirdParty/flecs-4.1.4/distr/flecs.c"
             flags { "NoPCH" }
             compileas "C"
         filter "*"
 
-        links { "GLFW", "JoltPhysics" ,"ImGui" }
-        dependson { "Shaders" } 
+    -- Native project content shares the host's Engine/ImGui/Flecs instances.
+    project "BikersProject"
+        location "Intermediate/Projects"
+        kind "StaticLib"
+        targetdir "Intermediate/Bin/%{cfg.buildcfg}-%{cfg.platform}/%{prj.name}"
+        engineCompileSettings()
+        files { "Source/Projects/Bikers/**.cpp", "Source/Projects/Bikers/**.hpp" }
+        files(bikersFiles)
+
+    local function applicationSettings()
+        location "Intermediate/Projects"
+        kind "ConsoleApp"
+        targetdir "Bin/%{cfg.buildcfg}-%{cfg.platform}"
+        debugdir "%{wks.location}"
+        files { "Source/Applications/ApplicationPaths.hpp" }
+        engineCompileSettings()
+
+        links { "BikersProject", "Engine", "GLFW", "JoltPhysics", "ImGui" }
+        dependson { "Shaders" }
 
         filter "system:windows"
-            defines { "VK_USE_PLATFORM_WIN32_KHR" }
-            links { "opengl32" }
-            
+            links { "opengl32", "comdlg32" }
+
         filter "system:linux"
-            defines { "VK_USE_PLATFORM_XLIB_KHR" }
             links { "vulkan", "X11", "Xrandr", "Xi", "Xcursor", "Xinerama", "pthread", "GL" }
         filter "*"
+    end
 
     -- ==========================================
-    -- Project 5: Automatic Shader Compilation
+    -- Projects 6-7: Editor and Demo Application Hosts
+    -- ==========================================
+    project "Editor"
+        applicationSettings()
+        files { "Source/Applications/Editor/**.cpp", "Source/Applications/Editor/**.hpp" }
+        files(editorFiles)
+
+    project "Demo"
+        applicationSettings()
+        files { "Source/Applications/Demo/**.cpp", "Source/Applications/Demo/**.hpp" }
+        files(demoFiles)
+
+    -- ==========================================
+    -- Project 8: Automatic Shader Compilation
     -- ==========================================
     project "Shaders"
         -- [Garbage] Hide the Shaders project file in the Intermediate folder

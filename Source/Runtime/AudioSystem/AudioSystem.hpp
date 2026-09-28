@@ -25,6 +25,9 @@ namespace engine {
         float GetPitch(const std::string& name) const;
         void SetMasterVolume(float volume);
         float GetMasterVolume() const;
+        // Editor transport mute is independent of the user's volume setting.
+        // Safe before initialization and retained across audio-device reloads.
+        void SetHostMuted(bool muted);
         void SetRuntimeVolume(const std::string& name, float volume);
         void Stop(const std::string& name);
         std::vector<std::string> GetSoundNames() const;

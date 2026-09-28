@@ -113,6 +113,7 @@ namespace engine {
     private:
 
 
+        bool mOwnsJoltRegistration = false;
         std::unique_ptr<JPH::TempAllocatorImpl> m_tempAllocator;
         std::unique_ptr<JPH::JobSystemThreadPool> m_jobSystem;
         std::unique_ptr<JPH::PhysicsSystem> m_physicsSystem;

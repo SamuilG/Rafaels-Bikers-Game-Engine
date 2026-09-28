@@ -18,6 +18,7 @@ namespace engine {
     class EditorSceneAdapter;
     class AudioSystem;
     class CameraController;
+    class EditorPlayController;
     struct PlayerState;
     struct EditorState;
     struct RenderSettings;
@@ -42,14 +43,15 @@ namespace engine {
 
         //================Editor workspace and scene snapshots================
 		// 绘制顶部主菜单栏//Draw the top main menu bar
-        static void DrawMainMenuBar(RenderSystem* renderSys, SceneManager* sceneManager, EditorState& editor, const RenderCapabilities& capabilities, bool& appRunning);
+        static void DrawMainMenuBar(RenderSystem* renderSys, SceneManager* sceneManager, EditorState& editor, const RenderCapabilities& capabilities, bool& appRunning, EditorPlayController* play = nullptr);
 
         static void DrawEditorWorkspace();
+        static void ResetForNewProject();
 		
         // Save named entity transforms and particle settings (not a full project).
         static bool SaveProject(SceneManager* sceneManager, RenderSystem* renderSys, const std::string& filepath);
 		
-        // Restore a scene snapshot onto the currently loaded scene.
+        // Restore a scene snapshot onto the currently loaded scene (Ctrl+Shift+O).
         static bool LoadProject(SceneManager* sceneManager, RenderSystem* renderSys, const std::string& filepath);
 
 
@@ -71,6 +73,11 @@ namespace engine {
         
 		//绘制 3D 渲染画面、图标、Gizmo 坐标轴//Draw the 3D rendered scene, icons, and Gizmo axes
         static ImDrawList* GetSceneViewportDrawList();
+        static ImVec2 GetGameViewportSize();
+        static ImVec2 GetGameViewportPos();
+        static ImDrawList* GetGameViewportDrawList();
+        static bool IsGameViewportVisible();
+        static void DrawGameViewport(VkDescriptorSet gameTexId, EditorState& editor, bool playing, bool paused);
         static void DrawSceneViewport(VkDescriptorSet sceneTexId, RenderSystem* renderSys, SceneManager* sceneManager, EditorSceneAdapter& editorScene, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, EditorState& editor, const RenderSettings& render);
 
 

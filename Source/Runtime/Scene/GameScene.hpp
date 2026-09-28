@@ -31,10 +31,6 @@ namespace engine {
         virtual void OnParticleGroupRemoved(size_t particleIndex) {}
         virtual bool IsParticleGroupSceneControlled(size_t particleIndex) const { return false; }
 
-        // Game scenes may opt into game-specific services such as vehicle audio.
-        // The blank engine entry leaves these services disabled.
-        virtual bool UsesVehicleAudio() const { return true; }
-
         virtual void Shutdown() = 0;
 
     protected:

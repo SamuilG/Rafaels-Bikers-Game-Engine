@@ -45,7 +45,12 @@ without a commit, checks that visible screens and committed state stay unchanged
 then advances the production `FrameScheduler::BeginFrame` boundary. It checks rapid
 pause/settings/back ordering and rejected transitions without displaying pending
 screens. `SyncGameFlowUi()` is tested as presentation-only. Both build variants run
-nine groups.
+twelve groups. The quit-handler cases cover injection before initialization,
+replacement after initialization, real Exit-button input, every exit event alias,
+and restoration of standalone exit behavior when the handler is cleared. A
+hosted game queues Stop through this callback without closing its editor.
+The session-reset case exercises a held UI control, repeated flow revisions,
+screen reloading and retained host callbacks/renderer bindings.
 
 Reloads use
 the same host protocol as Application: `TakeReloadRequest()`, then

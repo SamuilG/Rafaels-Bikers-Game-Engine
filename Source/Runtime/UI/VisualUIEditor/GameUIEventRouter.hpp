@@ -2,6 +2,7 @@
 #include "../../UserState/StateViews.hpp"
 
 #include <string>
+#include <functional>
 #include "../../UserState/GameFlowController.hpp"
 
 namespace engine {
@@ -19,11 +20,13 @@ namespace engine {
         // router 只持有外部系统的引用，不拥有它们的生命周期。
         GameUIEventRouter(RuntimeUiController& runtimeUiController, RuntimeUiStateView state, bool& appRunning);
         void SetAudioSystem(AudioSystem* audioSystem);
+        void SetQuitHandler(std::function<void()> handler);
 
         // 把当前支持的事件名统一注册到 UIManager。
         void Bind(UIManager& uiManager);
         // Present the authoritative flow state; unchanged revisions do no work.
         bool SyncGameFlowUi();
+        void InvalidatePresentation();
 
     private:
         struct SettingsState {
@@ -45,7 +48,7 @@ namespace engine {
         void HandleOpenSettings(const std::string& eventName);
         // Remove only the settings overlay and its independent pause reason.
         void HandleCloseSettings(const std::string& eventName);
-        // 使用引擎现有 appRunning 退出机制关闭程序。
+        // Hosts may route game Exit to editor Stop; standalone games close.
         void HandleQuitGame(const std::string& eventName);
         // Queue a reload to the main menu; Application reports completion.
         void HandleBackToMainMenu(const std::string& eventName);
@@ -80,6 +83,7 @@ namespace engine {
         RuntimeUiStateView mState;              // 用户状态引用（控制游戏流程状态）
         bool& mAppRunning;              // 应用运行标志引用（置 false 则退出程序）
         AudioSystem* mAudioSystem = nullptr;
+        std::function<void()> mQuitHandler;
         SettingsState mSettingsState;
         bool mHasPresentedFlow = false;
         bool mPresentedSettingsOpen = false;

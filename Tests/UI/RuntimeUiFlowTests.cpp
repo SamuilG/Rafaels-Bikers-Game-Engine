@@ -383,6 +383,83 @@ namespace {
         std::puts("PASS runtime flow preserves editor workspace, restores hidden game UI and handles the real exit button");
     }
 
+    void TestQuitHandlerBeforeInitialize() {
+        bool running = true;
+        int stopRequests = 0;
+        UserState state;
+        RuntimeUiController controller(running, state.RuntimeUi());
+        controller.SetQuitHandler([&] { ++stopRequests; });
+        controller.Initialize([](const std::string&) -> void* { return nullptr; });
+        const auto revision = state.gameFlow.Revision();
+        for (const char* event : {"QuitGame", "ExitGame", "MainMenu.ExitGame"}) {
+            Require(controller.DispatchEvent(event), "all game exit aliases reach the host handler");
+        }
+        Require(stopRequests == 3 && running, "pre-initialization host callback queues Stop without closing editor");
+        Require(state.gameFlow.Revision() == revision && !state.gameFlow.HasPendingRequests(),
+            "game exit does not publish or invent a game-flow transition");
+        std::puts("PASS quit handler configured before initialization routes every alias without exiting host");
+    }
+
+    void TestQuitHandlerReplacementAndRealButton() {
+        Fixture f;
+        int oldRequests = 0;
+        bool stopRequested = false;
+        f.controller.SetQuitHandler([&] { ++oldRequests; });
+        f.controller.SetQuitHandler([&] { stopRequested = true; });
+        f.ClickInFrame("MainMenu", "ExitButton");
+        Require(stopRequested && oldRequests == 0 && f.running,
+            "real Exit button uses current host handler and leaves editor alive");
+        f.Flow(GameFlowState::MainMenu);
+        f.Visible({"MainMenu"});
+        f.controller.SetQuitHandler({});
+        stopRequested = false;
+        f.ClickInFrame("MainMenu", "ExitButton");
+        Require(!f.running && !stopRequested, "clearing host handler restores standalone exit behavior");
+        Fixture paused;
+        int pausedStopRequests = 0;
+        paused.controller.SetQuitHandler([&] { ++pausedStopRequests; });
+        paused.Event("StartGame");
+        paused.Event("MenuBack");
+        paused.Flow(GameFlowState::Paused);
+        paused.ClickInFrame("PauseMenu", "QuitButton");
+        Require(pausedStopRequests == 1 && paused.running,
+            "real PauseMenu Quit button routes to host Stop without closing editor");
+        std::puts("PASS real Exit button respects replaced host callback and standalone fallback after clearing");
+    }
+
+    void TestResetSessionPresentation() {
+        Fixture f;
+        auto* manager = f.controller.GetManager();
+        auto renderer = f.controller.GetRendererShared();
+        int stopRequests = 0;
+        f.controller.SetQuitHandler([&] { ++stopRequests; });
+        f.Manager().GetSettings().globalScale = 1.25f;
+        f.Click("MainMenu", "SettingsButton");
+        f.Click("Settings", "Toggle_001");
+        f.Manager().HandleMouseDown();
+        Require(f.Manager().GetPressedElementId() != 0, "outgoing session has a real held UI control");
+        const auto revision = f.state.gameFlow.Revision();
+        f.controller.ResetForSession();
+        Require(f.controller.GetManager() == manager && f.controller.GetRendererShared() == renderer,
+            "session reset preserves renderer and manager bindings");
+        Require(f.Manager().GetLoadedScreens().empty() && f.Manager().GetPressedElementId() == 0 &&
+            f.Manager().GetRecentEvents().empty(), "session reset releases widgets, held input and old events");
+        Require(f.Manager().GetSettings().globalScale == 1.25f,
+            "session reset preserves user UI presentation settings");
+        Require(f.controller.SyncGameFlowUi(), "same-revision session is presented after reset");
+        Require(f.state.gameFlow.Revision() == revision, "UI reset never modifies game-flow revision");
+        f.Visible({"MainMenu", "Settings"});
+        Require(f.Element<UIToggle>("Settings", "Toggle_001").isOn,
+            "new session settings discard the outgoing pending edit");
+        f.state.gameFlow = GameFlowController{};
+        f.controller.ResetForSession();
+        Require(f.controller.SyncGameFlowUi(), "restarted revision zero is presented after another reset");
+        f.Visible({"MainMenu"});
+        f.ClickInFrame("MainMenu", "ExitButton");
+        Require(stopRequests == 1 && f.running, "reset retains host Quit callback and event binding");
+        std::puts("PASS UI session reset clears transient widgets/input and re-presents reused revisions without rebinding renderer");
+    }
+
     void TestGameplayDrivenSynchronization() {
         Fixture f;
         Require(!f.controller.DispatchEvent("Unknown.GameFlow.Event"), "unknown event is rejected by runtime facade");
@@ -493,6 +570,9 @@ int main() {
     TestReloadAndResults();
     TestFailedReloadRetry();
     TestEditorAndQuit();
+    TestQuitHandlerBeforeInitialize();
+    TestQuitHandlerReplacementAndRealButton();
+    TestResetSessionPresentation();
     TestGameplayDrivenSynchronization();
     TestDeferredUiEventsAndOrdering();
     TestMissingDestination();

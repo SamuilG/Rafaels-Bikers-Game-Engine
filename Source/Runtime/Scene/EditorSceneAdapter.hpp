@@ -9,6 +9,7 @@
 #include <flecs.h>
 #include "../UI/MousePicker.hpp"
 #include "SceneManager.hpp"
+#include "EntityValidity.hpp"
 #include "../Physics/PhysicsSystem.hpp"
 #include <glm/gtx/matrix_decompose.hpp>
 
@@ -39,9 +40,9 @@ public:
     EditorEntitySnapshot Inspect(flecs::entity_t id) const {
         EditorEntitySnapshot snapshot;
         snapshot.id = id;
-        if (!mScene) return snapshot;
+        if (!mScene || id == 0) return snapshot;
         flecs::entity entity = mScene->get_world().entity(id);
-        snapshot.alive = entity.is_alive();
+        snapshot.alive = IsEntityAlive(entity);
         if (!snapshot.alive) return snapshot;
         snapshot.name = entity.name().size() > 0
             ? entity.name().c_str() : "ID: " + std::to_string(id);
@@ -79,22 +80,23 @@ public:
     void ClearSelection() { mSelectedEntityId = 0; }
 
     flecs::entity SelectedEntity() const {
-        return mScene ? mScene->get_world().entity(mSelectedEntityId) : flecs::entity::null();
+        return mScene && mSelectedEntityId != 0
+            ? mScene->get_world().entity(mSelectedEntityId) : flecs::entity::null();
     }
 
     bool SetVisible(flecs::entity_t id, bool visible) {
-        if (!mScene) return false;
+        if (!mScene || id == 0) return false;
         flecs::entity entity = mScene->get_world().entity(id);
-        if (!entity.is_alive() || !entity.has<EntityStatus>()) return false;
+        if (!IsEntityAlive(entity) || !entity.has<EntityStatus>()) return false;
         entity.get_mut<EntityStatus>().should_render = visible;
         entity.modified<EntityStatus>();
         return true;
     }
 
     bool SetTransform(flecs::entity_t id, const glm::mat4& transform, bool syncPhysics = true) {
-        if (!mScene) return false;
+        if (!mScene || id == 0) return false;
         flecs::entity entity = mScene->get_world().entity(id);
-        if (!entity.is_alive() || !entity.has<LocalTransform>()) return false;
+        if (!IsEntityAlive(entity) || !entity.has<LocalTransform>()) return false;
         entity.get_mut<LocalTransform>().matrix = transform;
         entity.modified<LocalTransform>();
         if (syncPhysics && entity.has<PhysicsBody>()) {
@@ -126,22 +128,22 @@ public:
     }
 
     bool Destroy(flecs::entity_t id) {
-        if (!mScene) return false;
+        if (!mScene || id == 0) return false;
         flecs::entity entity = mScene->get_world().entity(id);
-        if (!entity.is_alive()) return false;
+        if (!IsEntityAlive(entity)) return false;
         entity.destruct();
         if (mSelectedEntityId == id) ClearSelection();
         return true;
     }
 
     bool IsAlive(flecs::entity_t id) const {
-        return mScene && mScene->get_world().entity(id).is_alive();
+        return mScene && id != 0 && IsEntityAlive(mScene->get_world().entity(id));
     }
 
     bool TryGetDebugBodyId(flecs::entity_t id, uint32_t& outBodyId) const {
-        if (!mScene) return false;
+        if (!mScene || id == 0) return false;
         flecs::entity entity = mScene->get_world().entity(id);
-        if (!entity.is_alive()) return false;
+        if (!IsEntityAlive(entity)) return false;
         if (entity.has<PhysicsBody>()) {
             outBodyId = entity.get<PhysicsBody>().bodyID;
             return true;

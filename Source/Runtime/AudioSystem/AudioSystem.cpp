@@ -22,6 +22,11 @@ namespace engine {
         ma_engine engine{};
         bool initialized = false;
         float masterVolume = 1.0f;
+        bool hostMuted = false;
+
+        void ApplyMasterVolume() {
+            if (initialized) ma_engine_set_volume(&engine, hostMuted ? 0.0f : masterVolume);
+        }
 		// Map of sound names to their corresponding sound entries
 		// Each entry contains the sound object and its properties like volume and pitch.
         std::unordered_map<std::string, SoundEntry> sounds;
@@ -58,7 +63,7 @@ namespace engine {
         }
 
         m_impl->initialized = true;
-        ma_engine_set_volume(&m_impl->engine, m_impl->masterVolume);
+        m_impl->ApplyMasterVolume();
         std::cout << "[AudioSystem] Initialized." << std::endl;
     }
 
@@ -251,7 +256,14 @@ namespace engine {
         if (!m_impl->initialized) return;
 
         m_impl->masterVolume = std::clamp(volume, 0.0f, 1.0f);
-        ma_engine_set_volume(&m_impl->engine, m_impl->masterVolume);
+        m_impl->ApplyMasterVolume();
+    }
+
+    void AudioSystem::SetHostMuted(bool muted)
+    {
+        if (m_impl->hostMuted == muted) return;
+        m_impl->hostMuted = muted;
+        m_impl->ApplyMasterVolume();
     }
 
     float AudioSystem::GetMasterVolume() const

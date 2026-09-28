@@ -125,6 +125,7 @@ namespace engine {
 
             mEventRouter = std::make_unique<GameUIEventRouter>(*this, mState, mAppRunning);
             mEventRouter->SetAudioSystem(mAudioSystem);
+            mEventRouter->SetQuitHandler(mQuitHandler);
             mEventRouter->Bind(*mUiManager);
         }
 
@@ -133,6 +134,13 @@ namespace engine {
             if (mEventRouter) {
                 mEventRouter->SetAudioSystem(audioSystem);
             }
+        }
+
+        // A host can turn game Exit into a deferred editor Stop. Leave empty
+        // for standalone applications, which retain the app-running fallback.
+        void SetQuitHandler(std::function<void()> handler) {
+            mQuitHandler = std::move(handler);
+            if (mEventRouter) mEventRouter->SetQuitHandler(mQuitHandler);
         }
 
         void SetDisplaySettingsCallbacks(DisplaySettingsQuery query, DisplaySettingsApply apply) {
@@ -159,6 +167,18 @@ namespace engine {
         // UI/level requests only enqueue commands; they do not switch screens.
         bool SyncGameFlowUi() {
             return mEventRouter && mEventRouter->SyncGameFlowUi();
+        }
+
+        // Call only at a host frame boundary, after the outgoing scene releases
+        // its widgets. Keep the manager, renderer, settings and host callbacks
+        // alive; reload session screens without retaining stale flow revisions.
+        void ResetForSession() {
+            if (mUiManager) {
+                mUiManager->ClearInputState();
+                mUiManager->ClearScreens();
+                mUiManager->ClearRecentEvents();
+            }
+            if (mEventRouter) mEventRouter->InvalidatePresentation();
         }
 
         bool DispatchEvent(const std::string& eventName) {
@@ -557,6 +577,7 @@ namespace engine {
         std::shared_ptr<ImGuiPreviewRenderer> mRenderer;
         std::unique_ptr<GameUIEventRouter> mEventRouter;
         AudioSystem* mAudioSystem = nullptr;
+        std::function<void()> mQuitHandler;
         DisplaySettingsQuery mDisplaySettingsQuery;
         DisplaySettingsApply mDisplaySettingsApply;
     };

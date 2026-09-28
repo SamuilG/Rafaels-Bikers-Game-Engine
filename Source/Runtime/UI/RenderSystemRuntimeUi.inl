@@ -5,14 +5,15 @@ inline bool RenderSystem::HasRuntimeUiScreen() const {
 }
 
 inline bool RenderSystem::ShouldRenderRuntimeUi() const {
-    return mState && mGameContentUiEnabled && mState->runtimeUi.showRuntimeUi && !mState->editor.showEngineUi && HasRuntimeUiScreen();
+    return mState && mRuntimeUiEnabled && mGameContentUiEnabled && mState->runtimeUi.showRuntimeUi && (!mState->editor.showEngineUi || IsEmbeddedGameVisible()) && HasRuntimeUiScreen();
 }
 
 inline bool RenderSystem::ShouldRenderRuntimeUiDebugPreview() const {
-    return mState &&
+    return mState && mRuntimeUiEnabled &&
         mState->runtimeUi.showRuntimeUi &&
         mState->editor.showEngineUi &&
-        mState->editor.showRuntimeUiDebugPanel &&
+        mState->editor.showRuntimeUiDebugPanel && !mRenderingGameViewport &&
+        mState->editor.isSceneViewportVisible &&
         mRuntimeUiDebugShowLivePreview &&
         HasRuntimeUiScreen();
 }
@@ -22,11 +23,12 @@ inline bool RenderSystem::BuildRuntimeUiRenderContext(UIRenderContext& outContex
         return false;
     }
 
-    // The normal game canvas is owned by GameUi. EngineUi is consulted only
+    // The normal runtime canvas is owned by the host. EngineUi is consulted only
     // for the explicit editor-side Runtime UI preview.
-    const bool editorPreview = mState && mState->editor.showEngineUi;
-    const ImVec2 viewportPos = editorPreview ? EngineUi::GetSceneViewportPos() : GameUi::GetViewportPos();
-    const ImVec2 viewportSize = editorPreview ? EngineUi::GetSceneViewportSize() : GameUi::GetViewportSize();
+    const bool editorPreview = mState && mState->editor.showEngineUi && !IsEmbeddedGameVisible();
+    if (editorPreview && !mState->editor.isSceneViewportVisible) return false;
+    const ImVec2 viewportPos = editorPreview ? EngineUi::GetSceneViewportPos() : SceneViewport::GetPos();
+    const ImVec2 viewportSize = editorPreview ? EngineUi::GetSceneViewportSize() : SceneViewport::GetSize();
     if (viewportSize.x <= 1.0f || viewportSize.y <= 1.0f) {
         return false;
     }
@@ -63,8 +65,11 @@ inline bool RenderSystem::BuildRuntimeUiRenderContext(UIRenderContext& outContex
     outContext.selectedElementId = mRuntimeUiDebugSelectedElementId;
     ImDrawList* runtimeUiDrawList = editorPreview
         ? EngineUi::GetSceneViewportDrawList()
-        : GameUi::GetViewportDrawList();
+        : SceneViewport::GetDrawList();
     if (!runtimeUiDrawList) {
+        // A hidden editor tab has no canvas. Never let its debug/runtime UI
+        // spill into the editor's global foreground draw list.
+        if (mState && mState->editor.showEngineUi) return false;
         runtimeUiDrawList = ImGui::GetForegroundDrawList(ImGui::GetMainViewport());
     }
     outContext.nativeContext = runtimeUiDrawList;
@@ -109,7 +114,7 @@ inline void RenderSystem::ForwardRuntimeUiMouseInput() {
         return;
     }
 
-    if (!ShouldRenderRuntimeUi()) {
+    if (!ShouldRenderRuntimeUi() || !GameViewportAcceptsInput()) {
         mRuntimeUiManager->ClearInputState();
         return;
     }

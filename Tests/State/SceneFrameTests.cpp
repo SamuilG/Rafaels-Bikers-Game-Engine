@@ -1,5 +1,10 @@
 #include "Runtime/Scene/SceneFrameUpdate.hpp"
+#include "Runtime/Scene/EntityValidity.hpp"
 #include "Runtime/Core/FrameScheduler.hpp"
+
+#if !defined(FLECS_DEBUG) || defined(NDEBUG) || defined(FLECS_NDEBUG)
+#error Entity validity regressions must run with real Flecs Debug assertions enabled.
+#endif
 
 #include <cmath>
 #include <cstdio>
@@ -148,11 +153,58 @@ namespace {
             "world resumes on the following frame without consuming the reload again");
         std::puts("PASS successful reload's Playing state cannot bypass its stopped ECS frame gate");
     }
+
+    void TestEmptyEntityHandles() {
+        flecs::world world;
+        const flecs::entity nullHandle;
+        const auto emptySelection = world.entity(flecs::entity_t{0});
+        const auto missingEntity = world.lookup("MissingEditorSelection");
+        Require(nullHandle.id() == 0, "default entity handle has no entity ID");
+        Require(emptySelection.id() == 0 && emptySelection.world() == world.c_ptr(),
+            "empty editor selection retains a real world with entity ID zero");
+        Require(missingEntity.id() == 0 && missingEntity.world() == world.c_ptr(),
+            "missing lookup retains a real world with entity ID zero");
+        Require(!IsEntityAlive(nullHandle), "default null handle is safely rejected");
+        Require(!IsEntityAlive(emptySelection), "world-backed empty selection is safely rejected");
+        Require(!IsEntityAlive(missingEntity), "failed lookup is safely rejected");
+        std::puts("PASS real Flecs Debug safely rejects null, zero-ID selection and missing lookup handles");
+    }
+
+    void TestAliveAndDeletedEntityHandles() {
+        flecs::world world;
+        auto entity = world.entity("SelectedEntity");
+        const flecs::entity_view selection = entity;
+        Require(IsEntityAlive(entity) && IsEntityAlive(selection),
+            "live entity and retained editor selection are accepted");
+        Require(IsEntityAlive(world.lookup("SelectedEntity")), "successful name lookup is accepted");
+        entity.destruct();
+        Require(!IsEntityAlive(selection), "selection becomes invalid after the entity is deleted");
+        Require(!IsEntityAlive(world.lookup("SelectedEntity")), "deleted name lookup is safely rejected");
+        std::puts("PASS real Flecs live selections are accepted and deleted selections are rejected");
+    }
+
+    void TestRecycledEntityDoesNotReviveSelection() {
+        flecs::world world;
+        auto original = world.entity();
+        const flecs::entity_view oldSelection = original;
+        const auto oldId = original.id();
+        original.destruct();
+        const auto replacement = world.entity();
+        Require((oldId & ECS_ENTITY_MASK) == (replacement.id() & ECS_ENTITY_MASK),
+            "real Flecs recycles the deleted entity's slot for this regression");
+        Require(oldId != replacement.id(), "recycled entity has a new generation");
+        Require(IsEntityAlive(replacement), "replacement entity is alive");
+        Require(!IsEntityAlive(oldSelection), "a recycled slot does not revive an old editor selection");
+        std::puts("PASS recycled Flecs entity slots keep stale-generation editor selections invalid");
+    }
 }
 
 int main() {
     TestPauseFreezesWorldAndResumesTimers();
     TestMenuAndSettingsKeepOnlyTransformsAlive();
     TestReloadCompletionKeepsWorldStopped();
-    std::puts("PASS all production SceneFrameUpdate regressions (real Flecs world, no GPU/window)");
+    TestEmptyEntityHandles();
+    TestAliveAndDeletedEntityHandles();
+    TestRecycledEntityDoesNotReviveSelection();
+    std::puts("PASS all 6 production scene frame/entity validity regression groups (real Flecs Debug, no GPU/window)");
 }

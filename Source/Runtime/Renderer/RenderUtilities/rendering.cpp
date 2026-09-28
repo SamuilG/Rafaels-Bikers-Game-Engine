@@ -171,7 +171,9 @@ void record_commands(
 	bool aPortalVisibleInPortalView,
 	bool aPortalVisibleInPortal2View,
 	bool aPortal2VisibleInPortalView,
-	bool aPortal2VisibleInPortal2View
+	bool aPortal2VisibleInPortal2View,
+	const lut::GpuFrameTimer* aGpuTimer,
+	std::uint32_t aGpuTimerSlot
 )
 {
 	// Begin command buffer
@@ -185,6 +187,8 @@ void record_commands(
 			"vkBeginCommandBuffer() returned {}", lut::to_string(res)
 		);
 	}
+
+	if (aGpuTimer) aGpuTimer->Begin(aCmdBuff, aGpuTimerSlot);
 
 	auto uploadSceneUniform = [&](glsl::SceneUniform const& sceneUniform) {
 		constexpr VkPipelineStageFlags kShaderStages = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
@@ -232,6 +236,7 @@ void record_commands(
 			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 			VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, range);
 
+		if (aGpuTimer) aGpuTimer->End(aCmdBuff, aGpuTimerSlot);
 		if (auto const res = vkEndCommandBuffer(aCmdBuff); VK_SUCCESS != res)
 		{
 			throw lut::Error("Unable to end recording command buffer\n"

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <format>
+#include <utility>
 #include <vector>
 
 #include "../EngineUi.hpp"
@@ -70,6 +71,10 @@ namespace engine {
 
     void GameUIEventRouter::SetAudioSystem(AudioSystem* audioSystem) {
         mAudioSystem = audioSystem;
+    }
+
+    void GameUIEventRouter::SetQuitHandler(std::function<void()> handler) {
+        mQuitHandler = std::move(handler);
     }
 
     void GameUIEventRouter::Bind(UIManager& uiManager) {
@@ -255,6 +260,14 @@ namespace engine {
         // Presentation follows the committed revision on the next frame. Changing
         // screens here would let UI and world systems observe different states.
         return true;
+    }
+
+    void GameUIEventRouter::InvalidatePresentation() {
+        mHasPresentedFlow = false;
+        mPresentedSettingsOpen = false;
+        mPresentedFlow = GameFlowState::MainMenu;
+        mPresentedRevision = 0;
+        mSettingsState = SettingsState{};
     }
 
     bool GameUIEventRouter::SyncGameFlowUi() {
@@ -457,10 +470,18 @@ namespace engine {
         const auto [width, height] = kSupportedResolutions[clampedIndex];
         return std::format("{} x {}", width, height);
     }
-    // QuitGame / ExitGame：直接关闭应用。
+    // QuitGame / ExitGame follow the current host's game-session lifetime.
     void GameUIEventRouter::HandleQuitGame(const std::string& eventName) {
-        mAppRunning = false;
-        EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> exit application\n", eventName);
+        if (mQuitHandler) {
+            // The editor queues Stop at the next frame boundary; the UI must
+            // not destroy its own manager while dispatching a button event.
+            mQuitHandler();
+            EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> host quit handler\n", eventName);
+        }
+        else {
+            mAppRunning = false;
+            EngineUi::LogPrint("[RuntimeUI] Routed '{}' -> exit application\n", eventName);
+        }
     }
 
     void GameUIEventRouter::HandleBackToMainMenu(const std::string& eventName) {

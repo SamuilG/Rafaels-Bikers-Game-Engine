@@ -10,6 +10,7 @@
 #include "camera.hpp"
 #include "../../Rhi/vkobject.hpp"
 #include "../../Rhi/vulkan_window.hpp"
+#include "../../Rhi/GpuFrameTimer.hpp"
 #include "../../Rhi/vkbuffer.hpp"
 #include "../../Scene/SceneManager.hpp"
 #include "../../Particle/ParticleSystem.hpp"
@@ -152,7 +153,9 @@ void record_commands(
 	bool aPortalVisibleInPortalView = false,
 	bool aPortalVisibleInPortal2View = false,
 	bool aPortal2VisibleInPortalView = false,
-	bool aPortal2VisibleInPortal2View = false
+	bool aPortal2VisibleInPortal2View = false,
+	const lut::GpuFrameTimer* aGpuTimer = nullptr,
+	std::uint32_t aGpuTimerSlot = 0
 );
 
 

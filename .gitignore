@@ -4,7 +4,9 @@ Bin/
 bin/
 bin-int/
 Build/
+!Tests/Build/
 Cache/
+.steer/
 *.spv
 .xmake/
 *.sln

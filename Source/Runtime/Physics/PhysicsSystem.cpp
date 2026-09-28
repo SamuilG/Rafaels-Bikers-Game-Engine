@@ -54,6 +54,8 @@ namespace BroadPhaseLayers
 
 namespace engine {
 
+namespace { unsigned gPhysicsWorldCount = 0; }
+
 class PhysicsSystem::BPLayerInterfaceImpl final : public JPH::BroadPhaseLayerInterface
 {
 public:
@@ -183,13 +185,17 @@ PhysicsSystem::~PhysicsSystem()
 
 void PhysicsSystem::Init()
 {
-	JPH::RegisterDefaultAllocator();
-
-	JPH::Trace = TraceImpl;
-	JPH_IF_ENABLE_ASSERTS(JPH::AssertFailed = AssertFailedImpl;)
-
-	JPH::Factory::sInstance = new JPH::Factory();
-	JPH::RegisterTypes();
+	if (mOwnsJoltRegistration) return;
+	// Editor and play worlds coexist. Jolt's global factory outlives both.
+	if (gPhysicsWorldCount == 0) {
+		JPH::RegisterDefaultAllocator();
+		JPH::Trace = TraceImpl;
+		JPH_IF_ENABLE_ASSERTS(JPH::AssertFailed = AssertFailedImpl;)
+		JPH::Factory::sInstance = new JPH::Factory();
+		JPH::RegisterTypes();
+	}
+	++gPhysicsWorldCount;
+	mOwnsJoltRegistration = true;
 
 	m_tempAllocator = std::make_unique<JPH::TempAllocatorImpl>(10 * 1024 * 1024);
 	m_jobSystem = std::make_unique<JPH::JobSystemThreadPool>(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers, std::thread::hardware_concurrency() - 1);
@@ -235,18 +241,20 @@ void PhysicsSystem::Update(float dt)
 }
 void PhysicsSystem::Shutdown()
 {
-	if (m_physicsSystem) {
-		m_physicsSystem = nullptr;
-		m_jobSystem = nullptr;
-		m_tempAllocator = nullptr;
-		
-		m_bpLayerInterface = nullptr;
-		m_objectVsBroadphaseFilter = nullptr;
-		m_objectVsObjectFilter = nullptr;
-
-		JPH::UnregisterTypes();
-		delete JPH::Factory::sInstance;
-		JPH::Factory::sInstance = nullptr;
+	m_physicsSystem.reset();
+	m_contactListener.reset();
+	m_jobSystem.reset();
+	m_tempAllocator.reset();
+	m_bpLayerInterface.reset();
+	m_objectVsBroadphaseFilter.reset();
+	m_objectVsObjectFilter.reset();
+	if (mOwnsJoltRegistration) {
+		mOwnsJoltRegistration = false;
+		if (--gPhysicsWorldCount == 0) {
+			JPH::UnregisterTypes();
+			delete JPH::Factory::sInstance;
+			JPH::Factory::sInstance = nullptr;
+		}
 	}
 }
 

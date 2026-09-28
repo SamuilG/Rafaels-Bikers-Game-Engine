@@ -22,7 +22,14 @@ ini save/load into a fresh context, explicit reset, and migration from the old
 the user's `imgui.ini` is never read or modified. Actual Chinese/English titles
 come from the production Translator; switching language must preserve stable
 window IDs and saved docking. The real panel submission order must leave Entity
-Inspector and Assets as the default active tabs.
+Inspector, Assets and Scene as the default active tabs. Game is a peer of Scene
+on the same rendering surface. A saved workspace without a Game window gains
+the new tab without changing custom panels or split ratios; selecting either
+viewport remains stable across frames. The viewport dock cannot split or undock
+into two simultaneous render windows. Zero and tiny initial viewports
+must defer layout creation; restoring a usable size or reloading their ini must
+produce the normal defaults. Existing custom layouts survive these unusable
+sizes and ini saves, and a pending reset waits until the viewport is usable.
 
 User tab changes in the same context are preserved. Across restarts the saved
 dock nodes and split sizes are restored, but tool visibility uses application
@@ -46,6 +53,8 @@ Integrate by calling `engine::editor_layout::DrawDockspace()` before editor
 windows, replacing the previous `DockSpaceOverViewport` call. Use the header's
 window-title constants for each panel. Calling `DrawDockspace(true)` restores the
 default docking positions; panel visibility remains the application's concern.
+Its boolean return value indicates that the viewport was usable: retain a reset
+request while it returns false, then clear the request after a true result.
 
 The theme suite applies the production `EditorTheme.hpp` to real ImGui and
 ImGuizmo contexts, checks palette/borders and text contrast, exercises a mouse
@@ -61,3 +70,9 @@ In the engine, F1 enters the paper-themed editor. View > Neutral Viewport
 Background and View > Viewport Grid control the editor backdrop and the
 depth-tested XZ reference grid. Disable the background to preview the scene sky
 and camera effects. Game view retains its existing style and authored UI colors.
+
+Run Tests/EditorUI/run-editor-play-tests.ps1 for six CPU transport regression groups.
+They exercise deferred Play/Pause/Stop, blank-host rejection, Stop precedence,
+failed-load retry, editor/in-game pause independence, and the production frame
+scheduler while editing. GPU world retention and Scene/Game input routing require
+the editor integration smoke test.

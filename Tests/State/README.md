@@ -19,10 +19,19 @@ independent reasons to stop simulation and are committed only at boundaries.
 These are CPU tests; they do not run a Jolt vehicle, open a window or validate GPU rendering. Runtime UI integration is covered separately by `Tests/UI`.
 
 Run `powershell -NoProfile -ExecutionPolicy Bypass -File Tests/State/run-scene-frame-tests.ps1`
-for three additional groups using the real Flecs library and production
+for six additional groups using the real Flecs library and production
 `UpdateSceneWorld` helper. They register ordinary simulation, interval-timer and
 transform systems, verify that paused/menu/settings/reload frames run only
 transform propagation without advancing either world clock, and verify that
 simulation and interval timers resume together. This specifically guards against
 `world.progress(0)` measuring wall time and `time_scale=0` advancing raw-time timers.
 Logs are written to `Intermediate/Diagnostics/scene-frame`.
+
+The three entity-validity groups call the production `IsEntityAlive` helper with
+default null handles, world-backed entity ID zero selections, failed name
+lookups, live entities, deleted entities, and recycled entity IDs with a new
+generation. Empty selection in the Editor inspector must safely return false
+without entering Flecs' invalid-ID assertion; a recycled slot must not revive a
+stale selection. The suite fails to compile if Flecs Debug assertions are
+disabled, and its runner builds the real Flecs C implementation without
+`NDEBUG` or `FLECS_NDEBUG`.

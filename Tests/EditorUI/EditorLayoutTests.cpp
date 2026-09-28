@@ -1,4 +1,5 @@
 #include "Runtime/UI/EditorLayout.hpp"
+#include "Runtime/UI/GameViewportCanvas.hpp"
 #include "Runtime/UI/SwitchLanguage.hpp"
 
 #include <cmath>
@@ -10,7 +11,7 @@ namespace layout = engine::editor_layout;
 
 namespace {
     constexpr const char* kCoreWindows[] = {
-        layout::kSceneHierarchy, layout::kEntityInspector, layout::kSceneViewport,
+        layout::kSceneHierarchy, layout::kEntityInspector, layout::kSceneViewport, layout::kGameViewport,
         layout::kAssets, layout::kConsole
     };
     constexpr const char* kOptionalWindows[] = {
@@ -37,6 +38,10 @@ namespace {
 
     struct HeadlessContext {
         ImGuiContext* context;
+        bool gameCanvasHovered = false;
+        bool gameCanvasFocused = false;
+        ImVec2 gameCanvasPosition;
+        ImVec2 gameCanvasSize;
 
         HeadlessContext(int width, int height, const std::string& ini = {}) {
             context = ImGui::CreateContext();
@@ -66,9 +71,20 @@ namespace {
         }
 
         void Windows(bool optional = true) {
-            const auto draw = [](const char* name) {
-                ImGui::Begin(PanelTitle(name).c_str());
-                ImGui::TextUnformatted("Editor panel");
+            const auto draw = [this](const char* name) {
+                const bool visible = ImGui::Begin(PanelTitle(name).c_str());
+                if (name == layout::kGameViewport) {
+                    gameCanvasHovered = gameCanvasFocused = false;
+                    if (visible) {
+                        gameCanvasPosition = ImGui::GetCursorScreenPos();
+                        gameCanvasSize = ImGui::GetContentRegionAvail();
+                        const auto input = engine::editor_viewport::DrawGameCanvas((ImTextureID)1, gameCanvasSize);
+                        gameCanvasHovered = input.hovered;
+                        gameCanvasFocused = input.focused;
+                    }
+                } else {
+                    ImGui::TextUnformatted("Editor panel");
+                }
                 ImGui::End();
             };
             // Match production submission order: early tool/console windows
@@ -80,6 +96,7 @@ namespace {
             draw(layout::kSceneHierarchy);
             draw(layout::kEntityInspector);
             draw(layout::kSceneViewport);
+            draw(layout::kGameViewport);
             if (optional) {
                 for (const char* name : kOptionalWindows) {
                     if (name != layout::kRenderSettings && name != layout::kParticles) draw(name);
@@ -87,11 +104,12 @@ namespace {
             }
         }
 
-        void Frame(bool reset = false, bool optional = true) {
+        bool Frame(bool reset = false, bool optional = true) {
             Begin();
-            layout::DrawDockspace(reset);
+            const bool ready = layout::DrawDockspace(reset);
             Windows(optional);
             ImGui::Render();
+            return ready;
         }
 
         void Settle(bool optional = true) {
@@ -123,15 +141,22 @@ namespace {
         auto& hierarchy = Window(layout::kSceneHierarchy);
         auto& inspector = Window(layout::kEntityInspector);
         auto& scene = Window(layout::kSceneViewport);
+        auto& game = Window(layout::kGameViewport);
         auto& assets = Window(layout::kAssets);
         auto& console = Window(layout::kConsole);
         const auto* viewport = ImGui::GetMainViewport();
         Require(ImGui::DockBuilderGetCentralNode(RootId()) == scene.DockNode,
             "scene viewport owns central node");
+        Require(scene.DockId == game.DockId, "scene and game use peer viewport tabs");
+        Require((scene.DockNode->MergedFlags & ImGuiDockNodeFlags_NoDockingSplit) != 0 &&
+            (scene.DockNode->MergedFlags & ImGuiDockNodeFlags_NoUndocking) != 0,
+            "single rendering surface cannot be split into simultaneous viewport windows");
         Require(hierarchy.DockId != scene.DockId && inspector.DockId != scene.DockId &&
             assets.DockId != scene.DockId, "main editor regions are separate");
         Require(assets.DockId == console.DockId, "assets and console share bottom tabs");
         if (checkActiveTabs) {
+            Require(scene.DockNode->SelectedTabId == scene.TabId,
+                "scene is the default active viewport before Play");
             Require(inspector.DockNode->SelectedTabId == inspector.TabId,
                 "inspector is the default active right tab regardless of submission order");
             Require(assets.DockNode->SelectedTabId == assets.TabId,
@@ -187,6 +212,7 @@ namespace {
         ImGui::DockBuilderDockWindow(layout::kEntityInspector, left);
         for (const char* title : kOptionalWindows) ImGui::DockBuilderDockWindow(title, left);
         ImGui::DockBuilderDockWindow(layout::kSceneViewport, center);
+        ImGui::DockBuilderDockWindow(layout::kGameViewport, center);
         ImGui::DockBuilderDockWindow(layout::kConsole, center);
         ImGui::DockBuilderDockWindow(layout::kAssets, bottom);
         ImGui::DockBuilderFinish(RootId());
@@ -197,6 +223,8 @@ namespace {
         Require(Window(layout::kEntityInspector).DockId == hierarchy.DockId, "custom inspector stays on the left");
         Require(Window(layout::kConsole).DockId == Window(layout::kSceneViewport).DockId,
             "custom console stays tabbed with scene");
+        Require(Window(layout::kGameViewport).DockId == Window(layout::kSceneViewport).DockId,
+            "game remains a peer of scene in custom layouts");
         Require(Window(layout::kAssets).DockId != Window(layout::kConsole).DockId,
             "custom assets and console remain separate");
         Near(hierarchy.DockNode->Size.x / ImGui::GetMainViewport()->WorkSize.x, 0.34f, 0.015f,
@@ -263,6 +291,168 @@ namespace {
         }
     }
 
+    void TestExistingWorkspaceAddsGameTab() {
+        std::string saved;
+        ImGuiID sceneDock = 0;
+        {
+            HeadlessContext fixture(1280, 720);
+            fixture.Settle();
+            fixture.Begin();
+            BuildCustomLayout();
+            layout::DrawDockspace();
+            fixture.Windows();
+            ImGui::Render();
+            fixture.Settle();
+            sceneDock = Window(layout::kSceneViewport).DockId;
+            saved = fixture.Save();
+        }
+        // An existing editor.ini has no Game Viewport window section.
+        const size_t gameStart = saved.find("[Window][GameViewportEditor]");
+        Require(gameStart != std::string::npos, "saved layout includes the Game viewport section");
+        const size_t nextSection = saved.find("\n[", gameStart + 1);
+        saved.erase(gameStart, nextSection == std::string::npos ? std::string::npos : nextSection - gameStart);
+        {
+            HeadlessContext fixture(1280, 720, saved);
+            fixture.Settle();
+            CheckCustom();
+            Require(Window(layout::kSceneViewport).DockId == sceneDock,
+                "adding Game to an existing workspace retains the Scene dock ID");
+            ImGui::FocusWindow(&Window(layout::kGameViewport));
+            fixture.Settle();
+            Require(Window(layout::kGameViewport).DockNode->SelectedTabId == Window(layout::kGameViewport).TabId,
+                "user can select Game and it remains active across frames");
+            ImGui::FocusWindow(&Window(layout::kSceneViewport));
+            fixture.Settle();
+            Require(Window(layout::kSceneViewport).DockNode->SelectedTabId == Window(layout::kSceneViewport).TabId,
+                "user can return to Scene without rebuilding the workspace");
+        }
+        std::puts("PASS existing workspace gains a peer Game tab without replacing custom layout; viewport selection persists");
+    }
+
+    void TestGameCanvasMousePressRelease() {
+        HeadlessContext fixture(1280, 720);
+        fixture.Settle();
+        ImGui::FocusWindow(&Window(layout::kGameViewport));
+        fixture.Settle();
+        ImGuiIO& io = ImGui::GetIO();
+        const ImVec2 center(fixture.gameCanvasPosition.x + fixture.gameCanvasSize.x * 0.5f,
+            fixture.gameCanvasPosition.y + fixture.gameCanvasSize.y * 0.5f);
+        io.AddMousePosEvent(center.x, center.y);
+        fixture.Frame();
+        fixture.Frame();
+        Require(fixture.gameCanvasHovered && fixture.gameCanvasFocused, "Game canvas accepts a pointer over its content");
+        for (int click = 0; click < 3; ++click) {
+            io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+            fixture.Frame();
+            Require(fixture.gameCanvasHovered, "Game canvas accepts mouse-down");
+            for (int heldFrame = 0; heldFrame < 3; ++heldFrame) {
+                fixture.Frame();
+                Require(fixture.gameCanvasHovered && fixture.gameCanvasFocused,
+                    "Game canvas remains interactive while mouse-down spans multiple frames");
+            }
+            io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+            fixture.Frame();
+            Require(fixture.gameCanvasHovered && ImGui::IsMouseReleased(ImGuiMouseButton_Left),
+                "Game canvas delivers mouse-up without clearing the runtime press");
+            fixture.Frame();
+        }
+        const ImVec2 outside = Window(layout::kSceneHierarchy).InnerRect.GetCenter();
+        io.AddMousePosEvent(outside.x, outside.y);
+        fixture.Frame();
+        fixture.Frame();
+        Require(!fixture.gameCanvasHovered, "other editor panels do not receive Game pointer input");
+        ImGui::FocusWindow(&Window(layout::kSceneHierarchy));
+        fixture.Frame();
+        io.AddMousePosEvent(center.x, center.y);
+        fixture.Frame();
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+        fixture.Frame();
+        Require(fixture.gameCanvasHovered && fixture.gameCanvasFocused,
+            "first press on Game content focuses its canvas before runtime input is forwarded");
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+        fixture.Frame();
+        Require(fixture.gameCanvasHovered && fixture.gameCanvasFocused && ImGui::IsMouseReleased(ImGuiMouseButton_Left),
+            "first click after editing another panel retains a valid runtime mouse-up");
+        std::puts("PASS Game canvas retains input through repeated multi-frame mouse clicks and blocks pointers outside its content");
+    }
+
+    void TestDeferredInitialLayout() {
+        for (const ImVec2 size : {ImVec2(0, 0), ImVec2(0, 720), ImVec2(1280, 0),
+                ImVec2(1, 1), ImVec2(64, 64), ImVec2(1280, 24)}) {
+            std::string saved;
+            {
+                HeadlessContext fixture(static_cast<int>(size.x), static_cast<int>(size.y));
+                for (int frame = 0; frame < 3; ++frame) {
+                    Require(!fixture.Frame(), "unusable initial viewport defers docking");
+                    Require(ImGui::DockBuilderGetNode(RootId()) == nullptr,
+                        "unusable initial viewport cannot commit a default docking tree");
+                }
+                saved = fixture.Save();
+                ImGui::GetIO().DisplaySize = ImVec2(1280, 720);
+                fixture.Settle();
+                CheckDefault();
+            }
+            {
+                // Closing before a usable first frame must not poison the next launch.
+                HeadlessContext fixture(1280, 720, saved);
+                fixture.Settle();
+                CheckDefault();
+            }
+        }
+        std::puts("PASS zero and tiny initial viewports defer docking; recovery and ini reload use defaults");
+    }
+
+    void TestUnavailableViewportPreservesCustomLayout() {
+        HeadlessContext fixture(1280, 720);
+        fixture.Settle();
+        fixture.Begin();
+        BuildCustomLayout();
+        layout::DrawDockspace();
+        fixture.Windows();
+        ImGui::Render();
+        fixture.Settle();
+        CheckCustom();
+        const ImGuiID savedSceneDock = Window(layout::kSceneViewport).DockId;
+        const ImGuiID savedHierarchyDock = Window(layout::kSceneHierarchy).DockId;
+        std::string saved;
+        for (const ImVec2 size : {ImVec2(0, 0), ImVec2(64, 64)}) {
+            ImGui::GetIO().DisplaySize = size;
+            for (int frame = 0; frame < 4; ++frame) {
+                Require(!fixture.Frame(), "unusable viewport keeps existing layout dormant");
+                Require(Window(layout::kSceneViewport).DockId == savedSceneDock &&
+                    Window(layout::kSceneHierarchy).DockId == savedHierarchyDock,
+                    "dormant dockspace retains existing window bindings");
+            }
+            saved = fixture.Save();
+            ImGui::GetIO().DisplaySize = ImVec2(1280, 720);
+            fixture.Settle();
+            CheckCustom();
+        }
+        // A requested reset must survive several unusable frames unchanged.
+        bool pendingReset = true;
+        for (const ImVec2 size : {ImVec2(0, 0), ImVec2(64, 64)}) {
+            ImGui::GetIO().DisplaySize = size;
+            for (int frame = 0; frame < 4; ++frame) {
+                if (fixture.Frame(pendingReset)) pendingReset = false;
+                Require(pendingReset, "layout reset remains pending until a usable viewport");
+                Require(Window(layout::kSceneViewport).DockId == savedSceneDock,
+                    "deferred reset does not replace the custom docking tree");
+            }
+        }
+        ImGui::GetIO().DisplaySize = ImVec2(1280, 720);
+        if (fixture.Frame(pendingReset)) pendingReset = false;
+        Require(!pendingReset, "usable viewport consumes the pending reset");
+        fixture.Settle();
+        CheckDefault();
+        // Verify serialization during the unusable period preserves custom sizes.
+        {
+            HeadlessContext restored(1280, 720, saved);
+            restored.Settle();
+            CheckCustom();
+        }
+        std::puts("PASS custom docking survives zero/tiny viewports and ini save; reset waits until usable");
+    }
+
     void TestLanguageSwitch() {
         std::string saved;
         ImGuiID customSceneDock = 0;
@@ -309,6 +499,10 @@ int main() {
     TestClosedOptionalPanels();
     TestPersistenceAndReset();
     TestOldDockspaceMigration();
+    TestExistingWorkspaceAddsGameTab();
+    TestGameCanvasMousePressRelease();
+    TestDeferredInitialLayout();
+    TestUnavailableViewportPreservesCustomLayout();
     TestLanguageSwitch();
     std::puts("PASS all editor layout tests (real ImGui docking; no window or graphics backend)");
 }

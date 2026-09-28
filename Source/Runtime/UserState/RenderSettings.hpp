@@ -1,9 +1,11 @@
 #pragma once
 #include <cstdint>
 #include <optional>
+#include "FramePerformance.hpp"
 
 namespace engine {
 struct RenderSettings {
+    bool vsyncEnabled = true; // Requests display synchronization; actual mode is a capability.
     bool iblEnabled = true;
     bool bloomEnabled = true;
     bool ssrEnabled = true;
@@ -17,9 +19,13 @@ struct RenderSettings {
     float bloomStrength = 2.2f;      // Preserve the renderer's original composite strength.
 };
 struct RenderCapabilities {
+    bool gpuTimestampsSupported = false;
+    uint32_t activePresentMode = 2; // VkPresentModeKHR numeric value, without a Vulkan dependency.
+    bool vsyncFallback = false; // Requested unlimited presentation is unavailable.
     bool wireframeSupported = false; // Set from the active Vulkan device; read-only in the UI.
 };
 struct RenderStatistics {
+    FramePerformanceStatistics performance;
     float frustumCullingOffFps = 0.0f; //off frustum culling fps
     float frustumCullingOnFps = 0.0f; // On frustum culling fps
     uint32_t frustumCullingTotalCandidates = 0; // new frustum culling

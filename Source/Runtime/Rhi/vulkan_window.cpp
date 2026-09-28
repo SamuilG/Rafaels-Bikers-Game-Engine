@@ -1,4 +1,6 @@
 #include "vulkan_window.hpp"
+#include "SwapchainExtent.hpp"
+#include "PresentMode.hpp"
 
 // SOLUTION_TAGS: vulkan-(ex-[^12]|cw-.)
 
@@ -37,13 +39,15 @@ namespace
 	std::vector<VkSurfaceFormatKHR> get_surface_formats( VkPhysicalDevice, VkSurfaceKHR );
 	std::unordered_set<VkPresentModeKHR> get_present_modes( VkPhysicalDevice, VkSurfaceKHR );
 
-	std::tuple<VkSwapchainKHR,VkFormat,VkExtent2D> create_swapchain(
+	std::optional<std::tuple<VkSwapchainKHR,VkFormat,VkExtent2D,VkPresentModeKHR>> create_swapchain(
 		VkPhysicalDevice,
 		VkSurfaceKHR,
 		VkDevice,
 		GLFWwindow*,
+		bool aVsyncEnabled,
 		std::vector<std::uint32_t> const& aQueueFamilyIndices = {},
-		VkSwapchainKHR aOldSwapchain = VK_NULL_HANDLE
+		VkSwapchainKHR aOldSwapchain = VK_NULL_HANDLE,
+		bool* aOldSwapchainRetired = nullptr
 	);
 
 	void get_swapchain_images( VkDevice, VkSwapchainKHR, std::vector<VkImage>& );
@@ -88,6 +92,8 @@ namespace labut2
 		, surface( std::exchange( aOther.surface, VK_NULL_HANDLE ) )
 		, presentFamilyIndex( aOther.presentFamilyIndex )
 		, presentQueue( std::exchange( aOther.presentQueue, VK_NULL_HANDLE ) )
+		, vsyncEnabled( aOther.vsyncEnabled )
+		, presentMode( aOther.presentMode )
 		, swapchain( std::exchange( aOther.swapchain, VK_NULL_HANDLE ) )
 		, swapImages( std::move( aOther.swapImages ) )
 		, swapViews( std::move( aOther.swapViews ) )
@@ -102,6 +108,8 @@ namespace labut2
 		std::swap( surface, aOther.surface );
 		std::swap( presentFamilyIndex, aOther.presentFamilyIndex );
 		std::swap( presentQueue, aOther.presentQueue );
+		std::swap( vsyncEnabled, aOther.vsyncEnabled );
+		std::swap( presentMode, aOther.presentMode );
 		std::swap( swapchain, aOther.swapchain );
 		std::swap( swapImages, aOther.swapImages );
 		std::swap( swapViews, aOther.swapViews );
@@ -322,7 +330,9 @@ namespace labut2
 		}
 
 		// Create swap chain
-		std::tie(ret.swapchain, ret.swapchainFormat, ret.swapchainExtent) = create_swapchain(ret.physicalDevice, ret.surface, ret.device, ret.window, queueFamilyIndices);
+		auto initialSwapchain = create_swapchain(ret.physicalDevice, ret.surface, ret.device, ret.window, ret.vsyncEnabled, queueFamilyIndices);
+		if (!initialSwapchain) throw Error("Cannot initialize a swapchain for an unavailable window surface.");
+		std::tie(ret.swapchain, ret.swapchainFormat, ret.swapchainExtent, ret.presentMode) = *initialSwapchain;
 
 		// Get swap chain images & create associated image views
 		get_swapchain_images(ret.device, ret.swapchain, ret.swapImages);
@@ -341,14 +351,6 @@ namespace labut2
         // keep old swapchain for creation call
         VkSwapchainKHR oldSwapchain = aWindow.swapchain;
 
-        // destroy old image views
-        for( auto view : aWindow.swapViews )
-            vkDestroyImageView( aWindow.device, view, nullptr );
-
-        // clear old swap data
-        aWindow.swapViews.clear();
-        aWindow.swapImages.clear();
-
         // prepare queue families if separate graphics/present queues
         std::vector<std::uint32_t> queueFamilyIndices;
         if( aWindow.presentFamilyIndex != aWindow.graphicsFamilyIndex )
@@ -357,17 +359,31 @@ namespace labut2
             queueFamilyIndices.emplace_back( aWindow.presentFamilyIndex );
         }
 
-        try
-        {
-            // create new swapchain
-            std::tie(aWindow.swapchain, aWindow.swapchainFormat, aWindow.swapchainExtent) = create_swapchain( aWindow.physicalDevice, aWindow.surface, aWindow.device, aWindow.window, queueFamilyIndices, oldSwapchain );
+        // Keep the old swapchain and all dependent resources untouched while
+        // minimized. The caller retries next frame without acquiring/presenting.
+        bool oldSwapchainRetired = false;
+        auto replacement = create_swapchain(aWindow.physicalDevice, aWindow.surface,
+            aWindow.device, aWindow.window, aWindow.vsyncEnabled, queueFamilyIndices, oldSwapchain, &oldSwapchainRetired);
+        if (!replacement) {
+            // vkCreateSwapchainKHR retires oldSwapchain even when it fails.
+            // Destroy it before the next attempt; a retired handle cannot be
+            // supplied as oldSwapchain again. A zero extent never gets here.
+            if (oldSwapchainRetired) {
+                for (auto view : aWindow.swapViews)
+                    vkDestroyImageView(aWindow.device, view, nullptr);
+                aWindow.swapViews.clear();
+                aWindow.swapImages.clear();
+                vkDestroySwapchainKHR(aWindow.device, oldSwapchain, nullptr);
+                aWindow.swapchain = VK_NULL_HANDLE;
+            }
+            return SwapChanges{false, false, true};
         }
-        catch( ... )
-        {
-            // restore old swapchain on failure
-            aWindow.swapchain = oldSwapchain;
-            throw;
-        }
+
+        std::tie(aWindow.swapchain, aWindow.swapchainFormat, aWindow.swapchainExtent, aWindow.presentMode) = *replacement;
+        for (auto view : aWindow.swapViews)
+            vkDestroyImageView(aWindow.device, view, nullptr);
+        aWindow.swapViews.clear();
+        aWindow.swapImages.clear();
 
         // destroy old swapchain
         vkDestroySwapchainKHR( aWindow.device, oldSwapchain, nullptr );
@@ -421,7 +437,7 @@ namespace
 	}
 
 
-	std::tuple<VkSwapchainKHR,VkFormat,VkExtent2D> create_swapchain( VkPhysicalDevice aPhysicalDev, VkSurfaceKHR aSurface, VkDevice aDevice, GLFWwindow* aWindow, std::vector<std::uint32_t> const& aQueueFamilyIndices, VkSwapchainKHR aOldSwapchain )
+	std::optional<std::tuple<VkSwapchainKHR,VkFormat,VkExtent2D,VkPresentModeKHR>> create_swapchain( VkPhysicalDevice aPhysicalDev, VkSurfaceKHR aSurface, VkDevice aDevice, GLFWwindow* aWindow, bool aVsyncEnabled, std::vector<std::uint32_t> const& aQueueFamilyIndices, VkSwapchainKHR aOldSwapchain, bool* aOldSwapchainRetired )
 	{	// get supported formats and present modes
 
 		auto const formats = get_surface_formats( aPhysicalDev, aSurface );
@@ -446,12 +462,8 @@ namespace
 			}
 		}
 
-		// choose presentation mode
-		VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
-
-		// prefer relaxed FIFO if available
-		if( modes.count( VK_PRESENT_MODE_FIFO_RELAXED_KHR ) )
-			presentMode = VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+		// Keep requested policy separate from the surface-supported active mode.
+		const auto presentMode = lut::ChoosePresentMode(aVsyncEnabled, modes);
 
 		// query capabilities for image count and extent
 		VkSurfaceCapabilitiesKHR caps;
@@ -471,20 +483,11 @@ namespace
 		if( caps.maxImageCount > 0 && imageCount > caps.maxImageCount )
 			imageCount = caps.maxImageCount;
 
-		// compute swapchain extent (framebuffer size if undefined)
-		VkExtent2D extent = caps.currentExtent;
-		if( std::numeric_limits<std::uint32_t>::max() == extent.width )
-		{
-			int width, height;
-			glfwGetFramebufferSize( aWindow, &width, &height );
-
-			// ensure the extent is within the range defined by [ minImageExtent, maxImageExtent ]
-			auto const& min = caps.minImageExtent;
-			auto const& max = caps.maxImageExtent;
-
-			extent.width = std::clamp( std::uint32_t(width), min.width, max.width );
-			extent.height = std::clamp( std::uint32_t(height), min.height, max.height );
-		}
+        int width = 0, height = 0;
+        glfwGetFramebufferSize(aWindow, &width, &height);
+        auto drawableExtent = lut::ChooseSwapchainExtent(caps, width, height);
+        if (!drawableExtent) return std::nullopt;
+        const auto extent = *drawableExtent;
 
 		// fill swapchain create info
 		VkSwapchainCreateInfoKHR chainInfo{};
@@ -516,15 +519,18 @@ namespace
 
 		// create swapchain
 		VkSwapchainKHR chain = VK_NULL_HANDLE;
+		if (aOldSwapchainRetired) *aOldSwapchainRetired = aOldSwapchain != VK_NULL_HANDLE;
 		if( auto const res = vkCreateSwapchainKHR( aDevice, &chainInfo, nullptr, &chain ); VK_SUCCESS != res )
 		{
+			// The surface may become unavailable after the capabilities query.
+			if (res == VK_ERROR_OUT_OF_DATE_KHR) return std::nullopt;
 			throw lut::Error( "Unable to create swap chain\n"
 				"vkCreateSwapchainKHR() returned {}", lut::to_string(res)
 			);
 		}
 
-		// return swapchain, format, extent
-		return { chain, format.format, extent };
+		// Publish the active mode only together with a successfully created swapchain.
+		return std::make_tuple(chain, format.format, extent, presentMode);
 	}
 
 

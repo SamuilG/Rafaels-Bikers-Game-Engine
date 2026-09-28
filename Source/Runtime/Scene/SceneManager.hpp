@@ -240,6 +240,12 @@ namespace engine {
         flecs::world* m_world = nullptr;
         flecs::system mTransformSystem;
         EngineModel mModel;
+        // Stable across scene reloads, unique across imports in the same world.
+        uint32_t mStaticEntityCounter = 0;
+        uint32_t mDynamicEntityCounter = 0;
+        uint32_t mCompoundEntityCounter = 0;
+        uint32_t mCustomEntityCounter = 0;
+        uint32_t mAnimatedEntityCounter = 0;
         PhysicsSystem* m_physics_system; // Optional dependency
 
         void cache_model_for_culling(const EngineModel& model, uint32_t baseMeshIdx, uint32_t baseMatIdx);

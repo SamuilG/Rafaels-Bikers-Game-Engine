@@ -116,13 +116,18 @@ namespace engine {
             return std::max(0.0f, style.borderRadius * context.scale);
         }
 
+        std::unordered_map<std::string, ImFont*>& GetPreviewFontCache() {
+            static std::unordered_map<std::string, ImFont*> cache;
+            return cache;
+        }
+
         ImFont* ResolvePreviewFont(const std::string& fontPath) {
             // 预览字体按路径缓存，避免每帧重复往 ImGui 字体图集里堆字体。
             if (fontPath.empty()) {
                 return nullptr;
             }
 
-            static std::unordered_map<std::string, ImFont*> fontCache;
+            auto& fontCache = GetPreviewFontCache();
             const std::filesystem::path resolvedPath = ResolveAssetPath(fontPath);
             const std::string cacheKey = resolvedPath.generic_string();
             if (const auto iterator = fontCache.find(cacheKey); iterator != fontCache.end()) {
@@ -1003,6 +1008,10 @@ namespace engine {
         }
 
     } // namespace
+
+    void ImGuiPreviewRenderer::ResetFontCache() {
+        GetPreviewFontCache().clear();
+    }
 
     void ImGuiPreviewRenderer::SetTextureResolver(std::function<void*(const std::string&)> resolver) {
         // 外部把“资源路径 -> ImTextureID/VkDescriptorSet”的解析方式注入进来。

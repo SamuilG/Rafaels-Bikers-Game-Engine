@@ -35,6 +35,9 @@ namespace labut2
 			std::uint32_t presentFamilyIndex = 0;
 			VkQueue presentQueue = VK_NULL_HANDLE;
 
+			bool vsyncEnabled = true; // Requested presentation policy.
+			VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR; // Active swapchain mode.
+
 			VkSwapchainKHR swapchain = VK_NULL_HANDLE;
 			std::vector<VkImage> swapImages;
 			std::vector<VkImageView> swapViews;
@@ -49,6 +52,7 @@ namespace labut2
 	{
 		bool changedSize : 1;
 		bool changedFormat: 1;
+		bool deferred = false; // Surface currently has no drawable extent.
 	};
 
 	SwapChanges recreate_swapchain( VulkanWindow& );
