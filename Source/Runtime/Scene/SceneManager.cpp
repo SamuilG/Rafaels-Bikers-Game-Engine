@@ -1,4 +1,5 @@
 #include "SceneManager.hpp"
+#include "SceneFrameUpdate.hpp"
 #include <flecs.h>
 #include <print>
 #include <cmath>
@@ -70,7 +71,7 @@ namespace engine {
         m_world->component<LODComponent>();
 
         // Robust hierarchical transform system
-        m_world->system<WorldTransform, const LocalTransform>("UpdateWorldTransform")
+        mTransformSystem = m_world->system<WorldTransform, const LocalTransform>("UpdateWorldTransform")
             .kind(flecs::OnUpdate)
             .each([](flecs::entity e, WorldTransform& wt, const LocalTransform& lt) {
             auto parent = e.parent();
@@ -87,6 +88,7 @@ namespace engine {
     }
 
     void SceneManager::Shutdown() {
+        mTransformSystem = flecs::system{};
         if (m_world) {
             delete m_world;
             m_world = nullptr;
@@ -479,7 +481,7 @@ namespace engine {
                     batch.isSkinned = true;
                     batch.boneBaseIndex = static_cast<uint32_t>(boneOffset);
                     if (e.has<RiderBinding>()) {
-                        batch.riderBikeEntityId = e.get<RiderBinding>().bikeEntityId;
+                        batch.attachedEntityId = e.get<RiderBinding>().bikeEntityId;
                     }
                     batches.push_back(batch);
 
@@ -660,7 +662,7 @@ namespace engine {
 
     void SceneManager::Update(float dt) {
         // Keep transform propagation alive for editor changes while simulation is paused.
-        if (m_physics_system && (!mState || mState->gameFlow.CanSimulate())) {
+        if (m_physics_system && (!mState || mState->frame.runSimulationSystems)) {
             JPH::BodyInterface& bodyInterface = m_physics_system->get_body_interface();
 
             // 1. 同步普通刚体位置
@@ -856,7 +858,8 @@ namespace engine {
                 chain.worldTarget = glm::vec3(bikeWorld * glm::vec4(chain.localBikeTarget, 1.0f));
             }
                 });
-        m_world->progress(dt);
+        if (mState) UpdateSceneWorld(*m_world, mTransformSystem, mState->frame, dt);
+        else m_world->progress(dt);
     }
 
     void SceneManager::print_all_entities() {

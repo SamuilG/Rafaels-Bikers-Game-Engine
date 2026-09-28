@@ -1,5 +1,12 @@
 #pragma once
-#include "GameplayState.hpp"
+#include "GameFlowController.hpp"
+#include "PlayerController.hpp"
+#include "CameraController.hpp"
+#include "GameplayPreferences.hpp"
+#include "RenderSettings.hpp"
+#include "FrameExecution.hpp"
+#include "../Gameplay/HudData.hpp"
+#include "../Renderer/RenderUtilities/SceneEffects.hpp"
 #include "EditorState.hpp"
 #include "RuntimeUiState.hpp"
 
@@ -15,20 +22,21 @@ struct RuntimeUiStateView {
 };
 
 struct SceneStateView {
-    const GameFlowController& gameFlow;
+    const FrameExecution& frame;
     const PlayerController& player;
     const CameraController& camera;
     const RenderSettings& render;
     const EditorState& editor;
 };
 
-// Rendering can consume player/level outputs but cannot revive the player or
-// change level progress. Mutable flow/preferences are forwarded to runtime UI.
+// Rendering consumes immutable game presentation outputs.
+// Mutable flow/preferences are forwarded to runtime UI.
 struct RendererStateView {
     GameFlowController& gameFlow;
     const PlayerController& player;
     CameraController& camera;
-    const LevelState& level;
+    const HudData& hud;
+    const SceneEffects& effects;
     RenderSettings& render;
     const RenderOverrides& renderOverrides;
     RenderCapabilities& capabilities;
@@ -36,6 +44,8 @@ struct RendererStateView {
     EditorState& editor;
     RuntimeUiState& runtimeUi;
     GameplayPreferences& preferences;
+
+    const FrameExecution& frame;
 
     RuntimeUiStateView RuntimeUi() { return {gameFlow, player, preferences, runtimeUi}; }
 };

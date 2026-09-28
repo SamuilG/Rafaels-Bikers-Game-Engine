@@ -20,6 +20,7 @@
 #include "../UserState/StateViews.hpp"
 #include "../Renderer/RenderUtilities/frustum.hpp"
 #include "SceneRenderSource.hpp"
+#include "RenderBatch.hpp"
 
 // Forward declare EngineModel to avoid including engine_model.hpp here
 // 1. Avoid circular dependency
@@ -80,27 +81,6 @@ struct EntityStatus {
     bool has_physics = true;
 };
 
-// Render batch data
-struct RenderBatch {
-    uint32_t  meshIndex;
-    uint32_t  materialIndex;
-    glm::mat4 transform;
-    // Fraction of the object kept by the opaque dither-fade pass.  This is
-    // intentionally not an alpha value: faded geometry still uses the normal
-    // depth-tested pipeline and individual fragments are discarded in the
-    // material shader.
-    float     ditherFade = 1.0f;
-    uint64_t  entityId = 0;
-    uint32_t  compoundBodyID = UINT32_MAX;
-    bool      castShadow = true; // ������Ⱦ���������Ҫ��Ҫ����Ӱ
-
-    // Skinning (only valid when isSkinned == true)
-    bool      isSkinned = false;
-    uint32_t  boneBaseIndex = 0;  // offset into the bone SSBO
-    uint64_t  riderBikeEntityId = 0;
-    glm::vec4 clipPlane = glm::vec4(0.0f);
-    bool      isPortalClone = false;
-};
 
 // forward declare EngineModel to avoid including engine_model.hpp here
 struct EngineMesh;
@@ -257,7 +237,8 @@ namespace engine {
         void CollectLights(std::vector<GpuLight>& outLights) override { get_light_data(outLights); }
 
     private:
-        flecs::world* m_world;
+        flecs::world* m_world = nullptr;
+        flecs::system mTransformSystem;
         EngineModel mModel;
         PhysicsSystem* m_physics_system; // Optional dependency
 

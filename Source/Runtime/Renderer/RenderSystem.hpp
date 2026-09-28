@@ -89,7 +89,7 @@ namespace lut = labut2;
 #include "../UI/VisualUIEditor/RuntimeUiController.hpp"
 // ================= debug =================
 #include "../Debug/DebugRenderer.hpp"
-#include "../Trigger/trigger.hpp"
+#include "../UI/GameHudBindings.hpp"
 #include "../Debug/PhysicsDebugDraw.hpp"
 #include "../Animation/AnimationSystem.hpp"
 #include <unordered_map>
@@ -115,7 +115,6 @@ namespace engine {
 		//==============camera follow =======================
 		// name of the entity to follow in the scene
 		//TODO 把这个做到ui里面，允许用户输入想要跟随的实体名字，或者在场景视口直接点击选中一个实体进行跟随
-		const char* player = "Bike_0"; 
 
 
 
@@ -247,20 +246,14 @@ namespace engine {
         // Call after the old game scene has released its callbacks/controllers.
         void ClearSceneTransientResources() {
             WaitForGpuIdle();
-            mTriggerSystem.ClearTriggers();
             allParticles.clear();
             mEditorScene.ClearSelection();
             mPortalEnabled = false;
             mPortal2Enabled = false;
             mPortalPreviewPairLinked = false;
-            mPortalEffectTime = 0.0f;
-            mSmoothedSpeedFactor = 0.0f;
-            mRuntimeUiLapTimeSeconds = 0.0f;
-            mRuntimeUiTravelDistanceMeters = 0.0f;
             mRuntimeUiDebugSelectedElementId = 0;
             mRuntimeUiDebugSelectedScreenName.clear();
             mRuntimeUiDebugEnablePicking = false;
-            mMenuBackWasDown = false;
             GameUi::ResetTransientState();
         }
         //==========UI System（particle）======================
@@ -354,7 +347,15 @@ namespace engine {
         //UI System get particle system reference
         std::vector<std::unique_ptr<ParticleSystem>>& GetParticles() { return allParticles; }
         // trigger:
-        TriggerSystem& GetTriggerSystem() { return mTriggerSystem; }
+        void SetSceneDebugDraw(std::function<void(DebugRenderer&)> draw) {
+            mSceneDebugDraw = std::move(draw);
+        }
+        void SetParticleGroupTriggerQuery(std::function<bool(size_t)> query) {
+            mParticleGroupTriggerQuery = std::move(query);
+        }
+        bool IsParticleGroupTriggerControlled(size_t index) const {
+            return mParticleGroupTriggerQuery && mParticleGroupTriggerQuery(index);
+        }
 
         void SetParticleGroupRemovedCallback(std::function<void(size_t)> callback) {
             mParticleGroupRemovedCallback = std::move(callback);
@@ -424,7 +425,6 @@ namespace engine {
         void RemoveParticleGroup(size_t index) {
             if (index < allParticles.size()) {
                 vkDeviceWaitIdle(mWindow.device);
-                mTriggerSystem.OnParticleGroupRemoved(index);
                 if (mParticleGroupRemovedCallback) mParticleGroupRemovedCallback(index);
                 allParticles.erase(allParticles.begin() + index);
             }
@@ -890,7 +890,7 @@ namespace engine {
             const auto cameraMode = mState->camera.State().mode;
             const bool editorCamera = mState->editor.showEngineUi &&
                 (cameraMode == CameraMode::Follow || cameraMode == CameraMode::Free);
-            if (!mState->gameFlow.CanSimulate() && !editorCamera && mInputSystem) {
+            if (!mState->frame.runSimulationSystems && !editorCamera && mInputSystem) {
                 mInputSystem->SetMouseCaptured(false);
             }
 
@@ -907,7 +907,7 @@ namespace engine {
                     mRuntimeUiManager->TriggerEvent("ShowGameOver");
                 }
                 if (ImGui::IsKeyPressed(ImGuiKey_H, false)) {
-                    mRuntimeUiManager->TriggerEvent(mState->gameFlow.State() == GameFlowState::Paused
+                    mRuntimeUiManager->TriggerEvent(mState->gameFlow.PendingState() == GameFlowState::Paused
                         ? "ResumeGame" : "PauseGame");
                 }
             }
@@ -1008,8 +1008,9 @@ namespace engine {
 
 				
 				//game HUD============================
-                if (!mState->editor.showEngineUi && mState->gameFlow.CanSimulate()) {
-                    GameUi::DrawHud(this, mState->player.State(), GameUi::GetViewportPos(), GameUi::GetViewportSize());
+                if (!mState->editor.showEngineUi && mState->frame.runSimulationSystems && mGameContentUiEnabled) {
+                    GameUi::DrawHud(mState->hud, GameUi::GetViewportPos(), GameUi::GetViewportSize(),
+                        [this](const char* path) { return (ImTextureID)GetContentBrowserThumbnail(path); });
                 }
 
 
@@ -1354,7 +1355,7 @@ namespace engine {
                     mState->render.particlesEnabled = !mState->render.particlesEnabled;
                     std::printf("Particles: %s\n", mState->render.particlesEnabled ? "ON" : "OFF");
                 }
-                if (mState->gameFlow.CanSimulate() && !editorCapturesKeyboard && mInputSystem->IsActionPressed("CameraThirdPersonToggle")) {
+                if (mState->frame.runSimulationSystems && !editorCapturesKeyboard && mInputSystem->IsActionPressed("CameraThirdPersonToggle")) {
                     // T
                     if (mState->camera.State().thirdPersonMode) mState->camera.RequestFree();
                     else mState->camera.RequestFollow();
@@ -1369,12 +1370,8 @@ namespace engine {
                 }
 #endif
 
-                const bool menuBackDown = mInputSystem->IsActionHeld("MenuBack")
-                    || (mWindow.window && glfwGetKey(mWindow.window, GLFW_KEY_ESCAPE) == GLFW_PRESS);
-                const bool menuBackPressed = menuBackDown && !mMenuBackWasDown;
-                mMenuBackWasDown = menuBackDown;
-
-                if (menuBackPressed && !mState->editor.showEngineUi && !editorCapturesKeyboard && mRuntimeUiManager) {
+                if (mInputSystem->IsActionPressed("MenuBack") &&
+                    !mState->editor.showEngineUi && !editorCapturesKeyboard && mRuntimeUiManager) {
                     mRuntimeUiManager->TriggerEvent("MenuBack");
                 }
 
@@ -1398,9 +1395,9 @@ namespace engine {
 
             // Update state
             const auto currentCameraMode = mState->camera.State().mode;
-            const bool canEditCamera = mState->editor.showEngineUi &&
+            const bool canEditCamera = !mState->frame.reloadHandled && mState->editor.showEngineUi &&
                 (currentCameraMode == CameraMode::Follow || currentCameraMode == CameraMode::Free);
-            if ((mState->gameFlow.CanSimulate() || canEditCamera) &&
+            if ((mState->frame.runSimulationSystems || canEditCamera) &&
                 !(mState->editor.showEngineUi && ImGui::GetIO().WantTextInput))
                 update_camera(mState->camera, mState->player.State(), mState->editor, dt, mInputSystem);
 
@@ -1459,46 +1456,14 @@ namespace engine {
 
             //================  particle system===================================================
 
-             // trigger
-            if (mState->gameFlow.CanSimulate())
-                mTriggerSystem.ProcessParticleTriggers(mState->player.State().position, allParticles);
-
-            if (mState->render.particlesEnabled && mState->gameFlow.CanSimulate())
-            {
-                for (const auto& ps  : allParticles)
-                {
-                    // trigger: skip particle updates when the trigger system has hidden this particle group.
-                    if (!ps->config.isVisible) {
-                        continue;
-                    }
-
-                    if (ps->getEmitterShape() == EmitterShape::Sphere && !ps->config.triggerControlled)
-                    {
-
-                        auto bat = mSceneManager->find_entity("BaseballBat.nails_0");
-                        if (bat.is_valid() && bat.has<LocalTransform>()) 
-                        {
-                            
-                            const LocalTransform& lt = bat.get<LocalTransform>();
-
-                            glm::vec3 localPos = glm::vec3(lt.matrix[3]);
-                            ps->update(dt, localPos);
-                            ps->upload(mAllocator);
-                            ps->uploadDebug(mAllocator, ps->config.emitterPos);
-                         }
-                    }
-                    else 
-                    {
-                        //直接讀取它自己身上存的位置！
-                        ps->update(dt, ps->config.emitterPos);
-                        ps->upload(mAllocator);
-                        ps->uploadDebug(mAllocator, ps->config.emitterPos);
-                    }
-
+            if (mState->render.particlesEnabled && mState->frame.runSimulationSystems) {
+                for (const auto& ps : allParticles) {
+                    if (!ps->config.isVisible) continue;
+                    ps->update(dt, ps->config.emitterPos);
+                    ps->upload(mAllocator);
+                    ps->uploadDebug(mAllocator, ps->config.emitterPos);
                 }
             }
-            
-            //================particle system===================================================
 
             // update mosaic ubo
             {
@@ -1570,9 +1535,12 @@ namespace engine {
                     break; // 假设场景目前只有一个车灯投射阴影
                 }
             }
-            // trigger: draw every visible trigger volume through DebugRendere
-            mTriggerSystem.DrawTriggers(mDebugRenderer);
-            const bool editorBackdrop = mState->editor.showEngineUi && mState->editor.editorViewportBackdrop && mState->editor.renderMode == 0;
+            // Draw scene-provided debug geometry without evaluating gameplay.
+            if (mSceneDebugDraw) mSceneDebugDraw(mDebugRenderer);
+            const bool editorBackdrop = mState->editor.showEngineUi &&
+                mState->editor.editorViewportBackdrop &&
+                !mState->editor.editorViewportSkybox &&
+                mState->editor.renderMode == 0;
             if (mState->editor.showEngineUi && mState->editor.editorViewportGrid && mState->editor.renderMode == 0) {
                 // A world-space XZ grid: scene depth occludes it like other editor helpers.
                 // Scale by camera height to keep the line count bounded while zooming out.
@@ -1597,25 +1565,6 @@ namespace engine {
 
             float currentBloomStrength = mState->render.bloomEnabled ? mState->render.bloomStrength : 0.0f;
 
-            // =========================================================
-            // 计算极速特效的平滑系数 (Speed Factor)
-            // =========================================================
-            float effectStartSpeed = 20.0f; // 开始出现特效的最低速度
-            float effectMaxSpeed = 40.0f;  // 特效拉满的极限速度
-            float currentSpeed = std::abs(mState->player.State().bikeSpeed);
-
-            float targetSpeedFactor = 0.0f;
-            if (currentSpeed > effectStartSpeed) {
-                targetSpeedFactor = (currentSpeed - effectStartSpeed) / (effectMaxSpeed - effectStartSpeed);
-                targetSpeedFactor = std::clamp(targetSpeedFactor, 0.0f, 1.0f);
-            }
-
-            // 使用 static 变量进行平滑插值，防止掉帧或特效闪烁
-            // 2. 特效弹簧阻尼 (防闪烁)
-            // 【修改这里的 5.0f】：
-            // 调大 (比如 10.0f)：特效响应极其灵敏，一踩油门特效瞬间拉满。
-            // 调小 (比如 2.0f) ：特效会非常缓慢地浮现，有种“逐渐进入超空间”的深邃感
-            mSmoothedSpeedFactor += (targetSpeedFactor - mSmoothedSpeedFactor) * 5.0f * dt;
             std::vector<RenderBatch> skinnedBatches;
             if (mSceneManager && mBoneSSBO.buffer != VK_NULL_HANDLE) {
                 void* ptr;
@@ -1626,125 +1575,14 @@ namespace engine {
                 vmaUnmapMemory(mAllocator.allocator, mBoneSSBO.allocation);
             }
 
-            uint32_t portalTransitionPlayerBodyID = UINT32_MAX;
-            uint64_t portalTransitionPlayerEntityID = 0;
-            std::vector<RenderBatch> portalTransitionStaticCloneSources;
-
-            auto makePortalTransitionClipPlane = [](const glm::mat4& surfaceTransform, bool keepPortalFrontSide) {
-                const glm::mat4 frame = PortalRigidFrame(surfaceTransform);
-                const glm::vec3 portalNormal = NormalizeOr(glm::vec3(frame[2]), glm::vec3(0.0f, 0.0f, 1.0f));
-                const glm::vec3 normal = keepPortalFrontSide ? portalNormal : -portalNormal;
-                const glm::vec3 point = glm::vec3(frame[3]) + normal * 0.025f;
-                return glm::vec4(normal, -glm::dot(normal, point));
-            };
-
-            glm::vec4 portalTransitionRealClipPlane(0.0f);
-            glm::vec4 portalTransitionCloneClipPlane(0.0f);
-            glm::mat4 portalTransitionCloneMap(1.0f);
-
-            const bool portalTransitionVisualActive =
-                mState &&
-                mState->level.portalTransitionVisualActive &&
-                mPortalPreviewPairLinked;
-
-            if (portalTransitionVisualActive && mSceneManager) {
-                auto playerEntity = mSceneManager->find_entity(player);
-                if (playerEntity.is_valid()) {
-                    portalTransitionPlayerEntityID = playerEntity.id();
-                    if (playerEntity.has<CompoundParent>()) {
-                        portalTransitionPlayerBodyID = playerEntity.get<CompoundParent>().bodyID;
-                    }
-                    else if (playerEntity.has<PhysicsBody>()) {
-                        portalTransitionPlayerBodyID = playerEntity.get<PhysicsBody>().bodyID;
-                    }
-                }
-
-                const glm::mat4 entryFrame = PortalRigidFrame(mState->level.portalTransitionEntrySurface);
-                const glm::mat4 exitFrame = PortalRigidFrame(mState->level.portalTransitionExitSurface);
-                const glm::mat4 entryToExit = exitFrame * PortalHalfTurn() * glm::inverse(entryFrame);
-                const glm::mat4 exitToEntry = entryFrame * PortalHalfTurn() * glm::inverse(exitFrame);
-
-                const glm::vec4 entryFrontClip = makePortalTransitionClipPlane(mState->level.portalTransitionEntrySurface, true);
-                const glm::vec4 exitFrontClip = makePortalTransitionClipPlane(mState->level.portalTransitionExitSurface, true);
-
-                if (mState->level.portalTransitionRealAtExit) {
-                    portalTransitionRealClipPlane = exitFrontClip;
-                    portalTransitionCloneClipPlane = entryFrontClip;
-                    portalTransitionCloneMap =
-                        exitToEntry *
-                        glm::translate(glm::mat4(1.0f), -mState->level.portalTransitionExitCorrection);
-                }
-                else {
-                    portalTransitionRealClipPlane = entryFrontClip;
-                    portalTransitionCloneClipPlane = exitFrontClip;
-                    portalTransitionCloneMap = entryToExit;
-                }
-
-                if (portalTransitionPlayerBodyID != UINT32_MAX) {
-                    const std::vector<RenderBatch> unculledBatches =
-                        mSceneRenderer.BuildOpaque({ nullptr, 0.0f, camPosWorld });
-                    for (const auto& batch : unculledBatches) {
-                        if (batch.compoundBodyID == portalTransitionPlayerBodyID) {
-                            portalTransitionStaticCloneSources.push_back(batch);
-                        }
-                    }
-                }
-            }
-
+            auto portalTransition = mState->effects.portalTransition;
+            portalTransition.active = portalTransition.active && mPortalPreviewPairLinked;
+            const auto portalCloneSources = mSceneRenderer.PortalCloneSources(portalTransition, camPosWorld);
             auto applyPortalTransitionVisual = [&](std::vector<RenderBatch>& batches) {
-                if (!portalTransitionVisualActive ||
-                    portalTransitionPlayerBodyID == UINT32_MAX) {
-                    return;
-                }
-
-                std::vector<RenderBatch> cloneSources = portalTransitionStaticCloneSources;
-                if (cloneSources.empty()) {
-                    for (const auto& batch : batches) {
-                        if (!batch.isPortalClone && batch.compoundBodyID == portalTransitionPlayerBodyID) {
-                            cloneSources.push_back(batch);
-                        }
-                    }
-                }
-
-                for (auto& batch : batches) {
-                    if (!batch.isPortalClone && batch.compoundBodyID == portalTransitionPlayerBodyID) {
-                        batch.clipPlane = portalTransitionRealClipPlane;
-                    }
-                }
-
-                std::vector<RenderBatch> clones;
-                clones.reserve(cloneSources.size());
-                for (const auto& source : cloneSources) {
-                    RenderBatch clone = source;
-                    clone.transform = portalTransitionCloneMap * source.transform;
-                    clone.clipPlane = portalTransitionCloneClipPlane;
-                    clone.castShadow = false;
-                    clone.isPortalClone = true;
-                    clones.push_back(clone);
-                }
-
-                batches.insert(batches.end(), clones.begin(), clones.end());
+                SceneRenderer::ApplyOpaquePortalTransition(batches, portalTransition, portalCloneSources);
             };
-
-            if (portalTransitionVisualActive) {
-                applyPortalTransitionVisual(finalBatches);
-
-                if (portalTransitionPlayerEntityID != 0) {
-                    std::vector<RenderBatch> skinnedClones;
-                    for (auto& batch : skinnedBatches) {
-                        if (!batch.isPortalClone && batch.riderBikeEntityId == portalTransitionPlayerEntityID) {
-                            RenderBatch clone = batch;
-                            batch.clipPlane = portalTransitionRealClipPlane;
-                            clone.transform = portalTransitionCloneMap * batch.transform;
-                            clone.clipPlane = portalTransitionCloneClipPlane;
-                            clone.castShadow = false;
-                            clone.isPortalClone = true;
-                            skinnedClones.push_back(clone);
-                        }
-                    }
-                    skinnedBatches.insert(skinnedBatches.end(), skinnedClones.begin(), skinnedClones.end());
-                }
-            }
+            applyPortalTransitionVisual(finalBatches);
+            SceneRenderer::ApplySkinnedPortalTransition(skinnedBatches, portalTransition);
 
             const bool portalEnabledForFrame = mPortalEnabled && mState->editor.renderMode == 0;
             const bool portal2EnabledForFrame = mPortal2Enabled && mState->editor.renderMode == 0;
@@ -1831,7 +1669,7 @@ namespace engine {
                 appendPreviewBatches(portal2Batches);
                 portal2BatchesRefetched = true;
             }
-            if (portalTransitionVisualActive) {
+            if (portalTransition.active) {
                 if (portalBatchesRefetched) {
                     applyPortalTransitionVisual(portalBatches);
                 }
@@ -1908,7 +1746,6 @@ namespace engine {
                     portal2RecursiveSceneUniformCount = 1;
                 }
             }
-            mPortalEffectTime += dt;
             ImageAndView portalColorTarget{ mPortalColorImage.image, mPortalColorImage.view };
             ImageAndView portalBrightTarget{ mPortalBrightImage.image, mPortalBrightImage.view };
             ImageAndView portalNormalTarget{ mPortalNormalImage.image, mPortalNormalImage.view };
@@ -1995,9 +1832,9 @@ namespace engine {
                 mSpeedPostPipe.handle,
                 mSpeedPostPipeLayout.handle,
                 mSpeedPostDescriptors[mFrameIndex],
-                editorBackdrop ? 0.0f : mSmoothedSpeedFactor, // Keep the neutral editor canvas free from camera effects.
-                mState->player.State().isAlive,       // <--- 直接把 userState 里的变量喂给渲染器！
-                editorBackdrop ? 0.0f : mState->player.State().deathFactor,
+                editorBackdrop ? 0.0f : mState->effects.speedFactor, // Keep the neutral editor canvas free from camera effects.
+                mState->effects.subjectAlive,
+                editorBackdrop ? 0.0f : mState->effects.deathFactor,
                 finalSceneTarget,    // 极速特效输出到最终
 
                 // --- 剩下的原有参数 ---
@@ -2058,7 +1895,7 @@ namespace engine {
                 mPortal2SurfaceDesc,
                 mPortal2RecursiveSurfaceDesc,
                 &mPortal2SurfaceTransform,
-                mPortalEffectTime,
+                mState->effects.portalEffectTime,
                 portalMainVisibleForFrame,
                 portal2MainVisibleForFrame,
                 portalVisibleInPortalView,
@@ -2094,7 +1931,6 @@ namespace engine {
 
             allParticles.clear();
             // trigger: clear all trigger volumes on shutdown
-            mTriggerSystem.ClearTriggers();
             mDebugRenderer.Shutdown(mAllocator);
             ::imguiRenderer.Shutdown();
 
@@ -2315,6 +2151,8 @@ namespace engine {
 
         // Allow application to pass in the input system
         void SetInputSystem(engine::InputSystem* sys) { mInputSystem = sys; }
+        void SetGameContentUiEnabled(bool enabled) { mGameContentUiEnabled = enabled; }
+        bool IsGameContentUiEnabled() const { return mGameContentUiEnabled; }
 
         // Wire up the animation system so we can call register_model
         void set_animation_system(engine::AnimationSystem* anim) { mAnimationSystem = anim; }
@@ -2714,9 +2552,6 @@ namespace engine {
         RendererStateView* mState = nullptr;
 
         engine::InputSystem* mInputSystem = nullptr;
-        bool mMenuBackWasDown = false;
-        float mSmoothedSpeedFactor = 0.0f;
-        float mPortalEffectTime = 0.0f;
 
         bool TryGetDebugBodyID(flecs::entity entity, uint32_t& outBodyID) const
         {
@@ -3365,11 +3200,10 @@ void InitSkybox()
         // UI System 保存当前选中的实体 ID saved selected entity ID for UI system
         EditorSceneAdapter mEditorScene;
         UIManager* mRuntimeUiManager = nullptr;
+        bool mGameContentUiEnabled = true;
         // RenderSystem ?????? UI ?????????? RuntimeUiController?
         std::shared_ptr<ImGuiPreviewRenderer> mRuntimeUiRenderer;
         std::unique_ptr<RuntimeUiController> mRuntimeUiController;
-        float mRuntimeUiLapTimeSeconds = 0.0f;
-        float mRuntimeUiTravelDistanceMeters = 0.0f;
         UIElementId mRuntimeUiDebugSelectedElementId = 0;
         std::string mRuntimeUiDebugSelectedScreenName;
         bool mRuntimeUiDebugEnablePicking = false;
@@ -3560,9 +3394,11 @@ void InitSkybox()
         void ClearModelPreview();
         DebugRenderer mDebugRenderer;
         // trigger
-        TriggerSystem mTriggerSystem;
+
 
     private:
+        std::function<void(DebugRenderer&)> mSceneDebugDraw;
+        std::function<bool(size_t)> mParticleGroupTriggerQuery;
         std::function<void(size_t)> mParticleGroupRemovedCallback;
         std::function<bool(size_t)> mParticleGroupOwnershipQuery;
     

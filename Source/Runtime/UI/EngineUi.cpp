@@ -862,7 +862,7 @@ namespace engine {
 		if (editor.showEngineUi && renderSys && render.particlesEnabled && editor.activeParticleIndex >= 0 && editor.activeParticleIndex < renderSys->GetParticles().size()) {
 			auto& particle = *renderSys->GetParticles()[editor.activeParticleIndex];
             drawGizmo = !renderSys->IsParticleGroupSceneControlled(editor.activeParticleIndex) &&
-                (particle.getEmitterShape() != EmitterShape::Sphere || particle.config.triggerControlled);
+                !particle.config.scenePositionControlled;
             gizmoMatrix = glm::translate(glm::mat4(1.0f), particle.config.emitterPos);
 		}
 		else if (editor.showEngineUi && selected_id != 0 && editorScene.Scene()) {
@@ -1315,7 +1315,7 @@ namespace engine {
 
         auto& config = particles[selectedParticle]->config;
         ImGui::InputText(_SL("Name"), config.name, IM_ARRAYSIZE(config.name));
-        const bool triggerOwned = renderSys->GetTriggerSystem().HasParticleBinding(selectedParticle);
+        const bool triggerOwned = renderSys->IsParticleGroupTriggerControlled(selectedParticle);
         const bool sceneOwned = renderSys->IsParticleGroupSceneControlled(selectedParticle);
         ImGui::BeginDisabled(triggerOwned || sceneOwned);
         ImGui::Checkbox(_SL("Visible"), &config.isVisible);
@@ -1349,12 +1349,12 @@ namespace engine {
             int currentShape = static_cast<int>(particles[selectedParticle]->getEmitterShape());
             if (ImGui::Combo(_SL("Emitter Shape"), &currentShape, shapeNames, IM_ARRAYSIZE(shapeNames)))
                 particles[selectedParticle]->setEmitterShape(static_cast<EmitterShape>(currentShape));
-            const bool followsDemoEntity = currentShape == static_cast<int>(EmitterShape::Sphere) && !config.triggerControlled;
-            ImGui::BeginDisabled(followsDemoEntity);
+            const bool followsSceneEntity = config.scenePositionControlled;
+            ImGui::BeginDisabled(followsSceneEntity);
             ImGui::DragFloat3(_SL("Emitter Pos"), &config.emitterPos.x, 0.1f);
             ImGui::EndDisabled();
-            if (followsDemoEntity)
-                ImGui::TextWrapped("This sphere emitter is driven by the demo's bat. Use Cone, Box or Disk for an independent emitter.");
+            if (followsSceneEntity)
+                ImGui::TextWrapped("The scene controls this emitter position through an entity attachment.");
             if (currentShape == static_cast<int>(EmitterShape::Cone))
                 ImGui::SliderFloat(_SL("Cone Spread"), &config.coneSpread, 0.01f, 3.14f);
             if (currentShape == static_cast<int>(EmitterShape::Sphere) || currentShape == static_cast<int>(EmitterShape::Disk))
@@ -2031,6 +2031,7 @@ namespace engine {
         if (ImGui::BeginMenu(_SL("View"))) {
             ImGui::MenuItem(_SL("Engine UI"), "F1", &editor.showEngineUi);
             ImGui::MenuItem(_SL("Neutral Viewport Background"), nullptr, &editor.editorViewportBackdrop, editor.renderMode == 0);
+            ImGui::MenuItem(_SL("Show Viewport Skybox"), nullptr, &editor.editorViewportSkybox, editor.renderMode == 0);
             ImGui::MenuItem(_SL("Viewport Grid"), nullptr, &editor.editorViewportGrid, editor.renderMode == 0);
             if (editor.renderMode != 0) ImGui::TextDisabled("%s", _SL("Available in default render mode"));
             ImGui::Separator();

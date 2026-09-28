@@ -243,16 +243,18 @@ namespace engine {
     }
 
     bool GameUIEventRouter::RequestFlow(GameFlowCommand command, const std::string& eventName) {
-        // Validate the value model before loading assets; only the authoritative
-        // instance queues a real scene reload.
+        // Validate against the complete pending batch before loading assets.
+        // Only queue the real request after its eventual screens are available.
         auto proposed = mState.gameFlow;
         if (!proposed.Request(command)) return false;
-        const GameFlowState preparedFlow = proposed.State() == GameFlowState::Loading
-            ? proposed.ReloadTarget() : proposed.State();
-        if (!PrepareFlowScreens(preparedFlow, proposed.IsSettingsOpen())) return false;
+        const GameFlowState preparedFlow = proposed.PendingState() == GameFlowState::Loading
+            ? proposed.PendingReloadTarget() : proposed.PendingState();
+        if (!PrepareFlowScreens(preparedFlow, proposed.PendingSettingsOpen())) return false;
         if (!mState.gameFlow.Request(command)) return false;
         EngineUi::LogPrint("[RuntimeUI] Routed '{}' through GameFlowController\n", eventName);
-        return SyncGameFlowUi();
+        // Presentation follows the committed revision on the next frame. Changing
+        // screens here would let UI and world systems observe different states.
+        return true;
     }
 
     bool GameUIEventRouter::SyncGameFlowUi() {
@@ -324,7 +326,7 @@ namespace engine {
 
     void GameUIEventRouter::HandleOpenSettings(const std::string& eventName) {
         // Duplicate open preserves pending values and the existing source.
-        if (mState.gameFlow.IsSettingsOpen()) return;
+        if (mState.gameFlow.PendingSettingsOpen()) return;
         RequestFlow(GameFlowCommand::OpenSettings, eventName);
     }
 
@@ -333,13 +335,13 @@ namespace engine {
     }
 
     void GameUIEventRouter::HandleMenuBack(const std::string& eventName) {
-        if (mState.gameFlow.IsSettingsOpen()) {
+        if (mState.gameFlow.PendingSettingsOpen()) {
             HandleCloseSettings(eventName);
         }
-        else if (mState.gameFlow.State() == GameFlowState::Playing) {
+        else if (mState.gameFlow.PendingState() == GameFlowState::Playing) {
             HandlePauseGame(eventName);
         }
-        else if (mState.gameFlow.State() == GameFlowState::Paused) {
+        else if (mState.gameFlow.PendingState() == GameFlowState::Paused) {
             HandleResumeGame(eventName);
         }
     }

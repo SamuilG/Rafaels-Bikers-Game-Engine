@@ -4,6 +4,7 @@ namespace engine {
 struct EditorState {
     int renderMode = 0; // Stable IDs are defined in Renderer/RenderUtilities/ViewMode.hpp.
     bool editorViewportBackdrop = true; // Neutral editor background; disable to preview scene sky.
+    bool editorViewportSkybox = false;  // Render the scene skybox in the editor viewport.
     bool editorViewportGrid = true;     // Depth-tested reference grid on the XZ plane.
     bool showEngineUi = false;//engine UI toggle with key F1
     bool showRenderSettings = true;

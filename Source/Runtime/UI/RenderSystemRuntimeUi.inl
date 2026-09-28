@@ -5,7 +5,7 @@ inline bool RenderSystem::HasRuntimeUiScreen() const {
 }
 
 inline bool RenderSystem::ShouldRenderRuntimeUi() const {
-    return mState && mState->runtimeUi.showRuntimeUi && !mState->editor.showEngineUi && HasRuntimeUiScreen();
+    return mState && mGameContentUiEnabled && mState->runtimeUi.showRuntimeUi && !mState->editor.showEngineUi && HasRuntimeUiScreen();
 }
 
 inline bool RenderSystem::ShouldRenderRuntimeUiDebugPreview() const {
@@ -74,62 +74,19 @@ inline bool RenderSystem::BuildRuntimeUiRenderContext(UIRenderContext& outContex
     return true;
 }
 
-inline void RenderSystem::RefreshRuntimeUiDataContext(float dt) {
+inline void RenderSystem::RefreshRuntimeUiDataContext(float /*dt*/) {
     if (!mRuntimeUiManager || !mState) {
         return;
     }
 
-    if (mState->gameFlow.State() == GameFlowState::MainMenu ||
-        mState->gameFlow.State() == GameFlowState::Loading ||
-        mState->gameFlow.State() == GameFlowState::LoadFailed) {
-        mRuntimeUiLapTimeSeconds = 0.0f;
-        mRuntimeUiTravelDistanceMeters = 0.0f;
-    }
-    else if (mState->gameFlow.CanSimulate()) {
-        mRuntimeUiLapTimeSeconds += dt;
-        mRuntimeUiTravelDistanceMeters += (std::abs(mState->player.State().bikeSpeed) / 3.6f) * dt;
-    }
-
-    const float speedKmh = std::abs(mState->player.State().bikeSpeed);
-    const float speedMph = speedKmh * 0.621371f;
-    
-    const float energy = std::clamp(1.0f - (speedKmh / 60.0f), 0.0f, 1.0f);
-    const float stamina = energy;
-    const bool isLowEnergy = energy <= 0.25f;
-    const glm::vec4 warningColor = isLowEnergy
-        ? glm::vec4(1.0f, 0.26f, 0.22f, 1.0f)
-        : glm::vec4(1.0f, 1.0f, 1.0f, 0.18f);
-
-    const float distanceMeters = mRuntimeUiTravelDistanceMeters;
-    const int currentLap = 1;
     auto& settings = mRuntimeUiManager->GetSettings();
-
     auto& dataContext = mRuntimeUiManager->GetDataContext();
-    dataContext.SetFloat("bike.speedKmh", speedKmh);
-    dataContext.SetFloat("bike.speedMph", speedMph);
-    
-    dataContext.SetFloat("bike.energy", energy);
-    dataContext.SetFloat("bike.stamina", stamina);
-    dataContext.SetFloat("bike.distance", distanceMeters);
-    dataContext.SetBool("bike.isLowEnergy", isLowEnergy);
-    dataContext.SetBool("bike.lowStamina", isLowEnergy);
-    dataContext.SetColor("bike.warningColor", warningColor);
-    dataContext.SetFloat("race.lapTimeSeconds", mRuntimeUiLapTimeSeconds);
-    dataContext.SetFloat("race.bestLapTimeSeconds", mRuntimeUiLapTimeSeconds);
-    dataContext.SetInt("race.currentLap", currentLap);
+    BindHudData(dataContext, mState->hud);
     dataContext.SetFloat("ui.globalScale", settings.globalScale);
     dataContext.SetFloat("ui.hudOpacity", settings.hudOpacity);
     dataContext.SetFloat("ui.speedTextScale", settings.speedTextScale);
     dataContext.SetBool("ui.showDebugHud", settings.showDebugHud);
     dataContext.SetFloat("ui.animationSpeed", settings.animationSpeed);
-
-    const int totalMilliseconds = static_cast<int>(std::round(mRuntimeUiLapTimeSeconds * 1000.0f));
-    const int minutes = totalMilliseconds / 60000;
-    const int seconds = (totalMilliseconds / 1000) % 60;
-    const int milliseconds = totalMilliseconds % 1000;
-    const std::string formattedLapTime = std::format("{:02}:{:02}.{:03}", minutes, seconds, milliseconds);
-    dataContext.SetString("race.lapTime", formattedLapTime);
-    dataContext.SetString("race.bestLapTime", formattedLapTime);
 }
 
 inline void RenderSystem::UpdateRuntimeUi(float dt) {

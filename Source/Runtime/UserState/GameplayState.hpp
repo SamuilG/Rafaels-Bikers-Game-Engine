@@ -5,6 +5,9 @@
 #include "LevelState.hpp"
 #include "GameplayPreferences.hpp"
 #include "RenderSettings.hpp"
+#include "FrameExecution.hpp"
+#include "../Gameplay/HudController.hpp"
+#include "../Gameplay/VehiclePresentation.hpp"
 
 namespace engine {
 // Game code can issue player/camera/flow commands and own its level data.
@@ -16,5 +19,8 @@ struct GameplayState {
     LevelState& level;
     RenderOverrides& renderOverrides;
     const GameplayPreferences& preferences;
+    const FrameExecution& frame;
+    HudController& hud;
+    VehiclePresentation& vehiclePresentation;
 };
 }

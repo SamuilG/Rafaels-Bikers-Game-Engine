@@ -14,6 +14,11 @@ independent pause/settings reasons, rejected transitions and revision stability,
 single-consumer reload requests, completion guards, failures and retries. It does
 not reproduce the state machine in a test-only implementation.
 
+Requests are deferred: the seven flow groups also verify that in-frame requests
+leave committed state/revision unchanged, ordered batches validate against their
+pending projection, duplicates are rejected, one boundary publishes one revision,
+and reload work cannot be consumed before its request is committed.
+
 The UI script builds a separate console executable under
 `Intermediate/Diagnostics/runtime-ui-flow/{editor,game}`. It does not build or
 launch the Engine application and does not require previously built libraries.
@@ -29,15 +34,27 @@ and synchronizes the resulting screens without a synthetic UI event.
 Coverage includes settings opened from all three sources, cancellation, apply,
 reset, failed display changes, repeated opens, rapid back actions, pause/resume,
 result screens, consumed scene-reload requests, failed-load retry and exit buttons,
-temporary screen cleanup, editor entry, quit, background preload and a missing
+temporary screen cleanup, editor-workspace isolation, quit, background preload and a missing
 destination asset. Both immediate visibility and the stack
 after animation updates are checked.
 
-The fixture synchronizes the initial MainMenu with `SyncGameFlowUi()`. Reloads use
+The fixture synchronizes the initial MainMenu with `SyncGameFlowUi()`. Existing
+multi-frame scenarios explicitly commit after each input action before presentation.
+The in-frame group instead sends actual mouse clicks and consecutive router events
+without a commit, checks that visible screens and committed state stay unchanged,
+then advances the production `FrameScheduler::BeginFrame` boundary. It checks rapid
+pause/settings/back ordering and rejected transitions without displaying pending
+screens. `SyncGameFlowUi()` is tested as presentation-only. Both build variants run
+nine groups.
+
+Reloads use
 the same host protocol as Application: `TakeReloadRequest()`, then
 `CompleteReload(success)`, then UI synchronization. No legacy state flags or
 reset-only UI events are used. The host success/failure is simulated; this suite
 does not load or destroy an actual scene and does not test GPU recovery.
+The CPU state suite separately exercises the actual scheduler's complete reload
+ordering, successful/failed reload-frame suppression, and gameplay-requested
+Victory across the real production frame schedule.
 
 `HeadlessUiAdapters.cpp` replaces only logging/toasts and the draw backend. The
 display callbacks model host acceptance/rejection. No audio system is attached;

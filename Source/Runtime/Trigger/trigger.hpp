@@ -1,21 +1,13 @@
 #pragma once
 
 #include <cstddef>
+#include <functional>
 #include <glm/glm.hpp>
-#include <memory>
 #include <vector>
-
-class ParticleSystem;
 
 namespace engine {
 
-    class DebugRenderer;
-
-    enum class TriggerShape {
-        Box,
-        Sphere,
-        Capsule
-    };
+    enum class TriggerShape { Box, Sphere, Capsule };
 
     struct TriggerVolume {
         TriggerShape shape = TriggerShape::Box;
@@ -31,52 +23,49 @@ namespace engine {
         bool isEnabled = true;
         bool oneShot = false;
         bool hasTriggered = false;
-        // trigger: remembers whether the probe was inside on the previous frame so we can print once on enter.
         bool wasInside = false;
-        //进入触发触发回调// trigger: callback fired once when the probe enters this trigger volume.
         std::function<void()> onEnter;
-        //离开触发回调// trigger: callback fired once when the probe exits this trigger volume.
         std::function<void()> onExit;
     };
 
+    struct TriggerParticleState {
+        size_t particleIndex;
+        bool active;
+    };
+
+    // CPU trigger evaluation. The scene bridges particle outputs; rendering only
+    // reads volume geometry. Neither operation participates in trigger execution.
     class TriggerSystem {
     public:
-        //盒体触发器// trigger: create a box trigger
         size_t AddBoxTrigger(const glm::vec3& center, const glm::vec3& extents, size_t particleIndex, const glm::vec3& color = glm::vec3(1.0f, 0.0f, 0.0f), const glm::mat4& transform = glm::mat4(1.0f), bool isVisible = true, bool oneShot = false);
-
-        //球体触发// trigger: create a sphere trigger
         size_t AddSphereTrigger(const glm::vec3& center, float radius, size_t particleIndex, const glm::vec3& color = glm::vec3(0.0f, 0.0f, 1.0f), bool isVisible = true, bool oneShot = false, int segments = 16);
-
-        //胶囊体触发// trigger: create a capsule trigger 
         size_t AddCapsuleTrigger(const glm::vec3& center, float radius, float halfHeight, size_t particleIndex, const glm::vec3& color = glm::vec3(1.0f, 1.0f, 0.0f), bool isVisible = true, bool oneShot = false, int segments = 16);
 
-        // trigger: toggle debug visibility without disabling the trigger logic itself.
+        // Debug visibility has no effect on simulation.
         void SetTriggerVisible(size_t triggerId, bool isVisible);
-
-        // trigger: enable or disable runtime collision checks for one trigger volume.
+        // Disabling resets the crossing state without emitting an exit callback.
         void SetTriggerEnabled(size_t triggerId, bool isEnabled);
-
-        // callback
+        // Mutable captures persist across crossings; replacing or clearing a
+        // callback during its own execution keeps the active callable alive.
         void SetTriggerCallbacks(size_t triggerId, std::function<void()> onEnter, std::function<void()> onExit = {});
-
-        // trigger: clear all stored triggers when rebuilding or unloading a scene.
         void ClearTriggers();
-
-        // Keep particle indices stable when a particle group is removed.
         void OnParticleGroupRemoved(size_t particleIndex);
-
-        // Includes disabled and completed one-shot triggers.
+        // Binding ownership survives disabling and completion of one-shot triggers.
         bool HasParticleBinding(size_t particleIndex) const;
 
-        // trigger: test the probe position against every trigger and sync the result to particle visibility.
-        void ProcessParticleTriggers(const glm::vec3& probePosition, std::vector<std::unique_ptr<ParticleSystem>>& particles);
-
-        // trigger: draw visible trigger volumes through DebugRenderer so the trigger area can be inspected in-scene.
-        void DrawTriggers(DebugRenderer& debugRenderer) const;
+        // A frame evaluates only triggers present at entry. Callback additions are
+        // evaluated next frame; clearing immediately ends this evaluation. Nested
+        // Update calls are ignored. Callbacks may safely change the trigger list.
+        void Update(const glm::vec3& probePosition);
+        const std::vector<TriggerVolume>& Volumes() const { return mTriggers; }
+        // One result per bound index, in index order. Disabled/completed bindings
+        // remain present with active=false; multiple bindings combine with OR.
+        std::vector<TriggerParticleState> ParticleStates() const;
 
     private:
-        // trigger: persistent trigger storage so the same trigger volumes can be reused across frames.
         std::vector<TriggerVolume> mTriggers;
+        size_t mGeneration = 0;
+        bool mUpdating = false;
     };
 
 } // namespace engine

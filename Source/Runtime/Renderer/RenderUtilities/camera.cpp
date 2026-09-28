@@ -10,8 +10,13 @@ void update_camera(engine::CameraController& controller, const engine::PlayerSta
 {
     engine::CameraInput input;
     if (inputSys) {
-        const bool acceptsInput = !editor.showEngineUi || editor.isSceneViewportHovered;
-        if (!acceptsInput && inputSys->IsMouseCaptured()) inputSys->SetMouseCaptured(false);
+        // Once GLFW disables the cursor, ImGui can report the viewport as not
+        // hovered for a frame because the cursor is no longer inside the
+        // window. A captured editor camera must keep consuming input until the
+        // user presses the capture button again; otherwise a short drag loses
+        // control and requires a second middle-click.
+        const bool mouseCaptured = inputSys->IsMouseCaptured();
+        const bool acceptsInput = !editor.showEngineUi || editor.isSceneViewportHovered || mouseCaptured;
         if (acceptsInput && inputSys->IsActionPressed("CaptureMouse"))
             inputSys->SetMouseCaptured(!inputSys->IsMouseCaptured());
         if (acceptsInput) {

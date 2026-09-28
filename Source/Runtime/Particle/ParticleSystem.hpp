@@ -25,6 +25,7 @@ struct ParticleConfig {
     bool isVisible = true;
     //�Ƿ�trigger box����//marks whether this particle system is currently controlled by trigger visibility logic.
     bool triggerControlled = false;
+    bool scenePositionControlled = false; // Published by the scene attachment owner.
 	int useTexture = 0; // �Ƿ�ʹ��������0 = Ĭ��СԲ��ʹ�ã�1 = ʹ����ͼ��
 
     // life time ����ʱ��

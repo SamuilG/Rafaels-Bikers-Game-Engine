@@ -1,6 +1,7 @@
 #include "Runtime/UserState/UserState.hpp"
 #include "Runtime/UserState/StateViews.hpp"
 #include "Runtime/UserState/FrameExecution.hpp"
+#include "Runtime/Core/FrameScheduler.hpp"
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <cmath>
@@ -10,6 +11,7 @@
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 using namespace engine;
 
@@ -17,6 +19,9 @@ static_assert(std::is_same_v<decltype(std::declval<PlayerController&>().State())
 static_assert(std::is_same_v<decltype(std::declval<CameraController&>().State()), const CameraState&>);
 static_assert(!std::is_invocable_v<decltype(&PlayerController::Die), decltype(std::declval<RendererStateView>().player)>);
 static_assert(!std::is_invocable_v<decltype(&PlayerController::Die), decltype(std::declval<RuntimeUiStateView>().player)>);
+static_assert(std::is_same_v<decltype(std::declval<GameplayState>().frame), const FrameExecution&>);
+static_assert(std::is_same_v<decltype(std::declval<SceneStateView>().frame), const FrameExecution&>);
+static_assert(std::is_same_v<decltype(std::declval<RendererStateView>().frame), const FrameExecution&>);
 
 namespace {
     constexpr float kDt = 1.0f / 60.0f;
@@ -344,7 +349,8 @@ namespace {
         state.camera.RequestFree();
         state.camera.SetFov(45);
         Require(state.gameFlow.Request(GameFlowCommand::Start) && state.gameFlow.Request(GameFlowCommand::Restart) &&
-            state.gameFlow.TakeReloadRequest(), "session reset occurs inside the real reload protocol");
+            state.gameFlow.CommitPendingRequests() && state.gameFlow.TakeReloadRequest(),
+            "session reset occurs inside the committed reload protocol");
         const auto loadingRevision = state.gameFlow.Revision();
         state.ResetSession();
         Require(state.gameFlow.State() == GameFlowState::Loading && state.gameFlow.Revision() == loadingRevision &&
@@ -367,19 +373,162 @@ namespace {
     }
 
     void TestFrameExecutionPlan() {
-        const FrameExecution playing = FrameExecution::Plan(true, false);
+        GameFlowController flow;
+        Require(flow.Request(GameFlowCommand::Start) && flow.CommitPendingRequests(), "start first simulated frame");
+        const FrameExecution playing = FrameExecution::Plan(flow, false);
         Require(playing.runGameplay && playing.runSimulationSystems && playing.runPresentation,
             "playing frame runs gameplay, simulation and presentation");
+        Require(playing.flowState == GameFlowState::Playing && !playing.settingsOpen &&
+            playing.flowRevision == flow.Revision(), "plan snapshots the committed flow generation");
 
-        const FrameExecution paused = FrameExecution::Plan(false, false);
+        Require(flow.Request(GameFlowCommand::Pause) && flow.CommitPendingRequests(), "commit pause for following frame");
+        const FrameExecution paused = FrameExecution::Plan(flow, false);
         Require(!paused.runGameplay && !paused.runSimulationSystems && paused.runPresentation,
             "paused frame keeps presentation while stopping simulation");
 
-        const FrameExecution reloaded = FrameExecution::Plan(true, true);
+        Require(flow.Request(GameFlowCommand::Resume) && flow.CommitPendingRequests(), "restore Playing for reload gate test");
+        const FrameExecution reloaded = FrameExecution::Plan(flow, true);
         Require(reloaded.reloadHandled && !reloaded.runGameplay && !reloaded.runSimulationSystems &&
             reloaded.runPresentation,
             "reload completion prevents a partial old/new simulation frame");
+        Require(playing.flowRevision < flow.Revision() && playing.flowState == GameFlowState::Playing &&
+            playing.runSimulationSystems, "later state changes never rewrite an existing frame plan");
         std::puts("PASS fixed frame execution gates input, simulation and presentation");
+    }
+
+    FrameExecution BeginWithoutReload(GameFlowController& flow) {
+        return FrameScheduler::BeginFrame(flow, [] {
+            Require(false, "this frame must not begin a scene reload");
+            return false;
+        });
+    }
+
+    void TestVictoryAtFrameBoundary() {
+        GameFlowController flow;
+        Require(flow.Request(GameFlowCommand::Start), "queue initial start");
+        const FrameExecution playing = BeginWithoutReload(flow);
+        const auto playingRevision = flow.Revision();
+        std::vector<std::string> stages;
+        int renderSimulationCount = 0;
+        FrameSteps steps;
+        const auto record = [&](const char* name, float dt) {
+            stages.emplace_back(name);
+            Near(dt, kDt, 0.0001f, "a playing stage receives the frame delta once");
+            Require(flow.State() == GameFlowState::Playing && flow.Revision() == playingRevision &&
+                playing.flowState == GameFlowState::Playing && playing.runSimulationSystems,
+                "every current-frame consumer sees the same committed Playing generation after a victory request");
+        };
+        steps.gameplay = [&](float dt) {
+            record("gameplay", dt);
+            Require(flow.Request(GameFlowCommand::Victory), "scene submits Victory during gameplay");
+            Require(!flow.Request(GameFlowCommand::Pause), "a later pause cannot displace pending Victory");
+        };
+        steps.events = [&](float dt) { record("events", dt); };
+        steps.physics = [&](float dt) { record("physics", dt); };
+        steps.postPhysics = [&](float dt) { record("postPhysics", dt); };
+        steps.scene = [&](float dt) { record("scene", dt); };
+        steps.animation = [&](float dt) { record("animation", dt); };
+        steps.gameEffects = [&](float dt) { record("gameEffects", dt); };
+        steps.presentation = [&](float dt) {
+            record("presentation", dt);
+            if (playing.runSimulationSystems) ++renderSimulationCount;
+        };
+        steps.audio = [&](float dt) { record("audio", dt); };
+        FrameScheduler::Execute(playing, kDt, steps);
+        Require(stages == std::vector<std::string>{"gameplay", "events", "physics", "postPhysics", "scene", "animation", "gameEffects", "presentation", "audio"},
+            "a scene result cannot split the established frame pipeline between old and new flow");
+        Require(renderSimulationCount == 1 && flow.HasPendingRequests(), "render simulation finishes the result-request frame");
+
+        const FrameExecution victory = BeginWithoutReload(flow);
+        Require(flow.State() == GameFlowState::Victory && victory.flowState == GameFlowState::Victory &&
+            victory.flowRevision == playingRevision + 1 && !victory.runSimulationSystems,
+            "Victory becomes authoritative only at the next frame boundary");
+        stages.clear();
+        const auto forbidden = [](float) { Require(false, "no gameplay or simulation stage may run on a Victory frame"); };
+        steps.gameplay = forbidden; steps.events = forbidden; steps.physics = forbidden;
+        steps.postPhysics = forbidden; steps.animation = forbidden; steps.gameEffects = forbidden;
+        steps.scene = [&](float) { stages.emplace_back("scene"); };
+        steps.presentation = [&](float) {
+            stages.emplace_back("presentation");
+            if (victory.runSimulationSystems) ++renderSimulationCount;
+        };
+        steps.audio = [&](float) { stages.emplace_back("audio"); };
+        FrameScheduler::Execute(victory, kDt, steps);
+        Require(stages == std::vector<std::string>{"scene", "presentation", "audio"} && renderSimulationCount == 1,
+            "next-frame simulation including render simulation stops while scene presentation and audio stay alive");
+        std::puts("PASS gameplay-requested Victory finishes every current-frame stage and stops all next-frame simulation");
+    }
+
+    void TestReloadPipelineAndSettingsBoundaries() {
+        for (const bool success : {false, true}) {
+            UserState state;
+            auto gameplayView = state.Gameplay();
+            auto sceneView = state.Scene();
+            auto rendererView = state.Renderer();
+            Require(state.gameFlow.Request(GameFlowCommand::Start), "queue initial start");
+            state.frame = BeginWithoutReload(state.gameFlow);
+            Require(state.gameFlow.Request(GameFlowCommand::Restart), "queue restart during Playing frame");
+            int reloads = 0;
+            const auto beforeReload = state.frame;
+            state.frame = FrameScheduler::BeginFrame(state.gameFlow, [&] {
+                ++reloads;
+                Require(state.gameFlow.State() == GameFlowState::Loading && !state.gameFlow.CanSimulate() &&
+                    !state.gameFlow.TakeReloadRequest(), "scheduler owns the committed reload once before invoking host work");
+                state.ResetSession();
+                Require(state.frame.flowRevision == beforeReload.flowRevision,
+                    "session reset cannot replace a frame snapshot during reload");
+                return success;
+            });
+            Require(reloads == 1 && state.frame.reloadHandled && !state.frame.runGameplay &&
+                !state.frame.runSimulationSystems && state.frame.runPresentation,
+                "a completed reload frame never partially simulates either scene");
+            Require(state.frame.flowState == (success ? GameFlowState::Playing : GameFlowState::LoadFailed) &&
+                state.frame.flowRevision == state.gameFlow.Revision(), "reload plan snapshots the final host result");
+            Require(&gameplayView.frame == &state.frame && &sceneView.frame == &state.frame &&
+                &rendererView.frame == &state.frame && !rendererView.frame.runSimulationSystems &&
+                sceneView.frame.reloadHandled && gameplayView.frame.reloadHandled,
+                "views created before reload keep sharing the updated application-owned frame, even when state is Playing");
+            std::vector<std::string> stages;
+            FrameSteps steps;
+            const auto forbidden = [](float) { Require(false, "reload completion cannot run any simulation callback"); };
+            steps.gameplay = forbidden; steps.events = forbidden; steps.physics = forbidden;
+            steps.postPhysics = forbidden; steps.animation = forbidden; steps.gameEffects = forbidden;
+            steps.scene = [&](float) { stages.emplace_back("scene"); };
+            steps.presentation = [&](float) {
+                stages.emplace_back("presentation");
+                Require(!rendererView.frame.runSimulationSystems, "renderer particles/HUD/triggers use the stopped reload plan");
+            };
+            steps.audio = [&](float) { stages.emplace_back("audio"); };
+            FrameScheduler::Execute(state.frame, kDt, steps);
+            Require(stages == std::vector<std::string>{"scene", "presentation", "audio"},
+                "reload frame preserves presentation without bypassing simulation gates");
+            state.frame = BeginWithoutReload(state.gameFlow);
+            Require(!state.frame.reloadHandled && state.frame.runSimulationSystems == success && reloads == 1,
+                "next frame runs only a successfully loaded scene and never replays reload work");
+            Require(gameplayView.frame.runGameplay == success && sceneView.frame.runSimulationSystems == success &&
+                rendererView.frame.runSimulationSystems == success,
+                "existing subsystem views observe the new frame together without reconstruction");
+        }
+
+        GameFlowController flow;
+        Require(flow.Request(GameFlowCommand::Start), "queue Playing");
+        auto frame = BeginWithoutReload(flow);
+        Require(flow.Request(GameFlowCommand::Pause) && flow.Request(GameFlowCommand::OpenSettings),
+            "pause and settings may be requested in one input frame");
+        Require(frame.runSimulationSystems && flow.CanSimulate(), "pause requests do not change the active simulation frame");
+        frame = BeginWithoutReload(flow);
+        Require(frame.flowState == GameFlowState::Paused && frame.settingsOpen && !frame.runSimulationSystems,
+            "next frame snapshots both independent pause reasons");
+        Require(flow.Request(GameFlowCommand::Resume), "resume only the pause reason");
+        frame = BeginWithoutReload(flow);
+        Require(frame.flowState == GameFlowState::Playing && frame.settingsOpen && !frame.runSimulationSystems,
+            "resuming while settings stays open does not resume world simulation");
+        Require(flow.Request(GameFlowCommand::CloseSettings), "close the remaining pause reason");
+        Require(!frame.runSimulationSystems, "close-settings request cannot thaw the middle of a paused frame");
+        frame = BeginWithoutReload(flow);
+        Require(frame.runGameplay && frame.runSimulationSystems && !frame.settingsOpen,
+            "world simulation resumes together on the following frame");
+        std::puts("PASS production frame scheduler owns reload completion, renderer gates and independent pause/settings boundaries");
     }
 }
 
@@ -395,5 +544,7 @@ int main() {
     TestPortalHandoffAndImmediateTeleport();
     TestGroupedStateAndViews();
     TestFrameExecutionPlan();
+    TestVictoryAtFrameBoundary();
+    TestReloadPipelineAndSettingsBoundaries();
     std::puts("PASS all real Player/Camera controller and state-boundary tests (CPU only)");
 }

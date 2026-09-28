@@ -8,20 +8,16 @@ if (-not $visualStudio) { throw 'Visual Studio with x64 C++ build tools was not 
 $vcvars = Join-Path $visualStudio 'VC/Auxiliary/Build/vcvars64.bat'
 New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
 
-$sources = @('Tests/EditorUI/TriggerBindingTests.cpp', 'Source/Runtime/Trigger/trigger.cpp',
-    'ThirdParty/flecs-4.1.4/distr/flecs.c')
-$includes = @('Source', 'Source/Runtime/Rhi', 'ThirdParty/glm/include', 'ThirdParty/glfw/include',
-    'ThirdParty/vulkan/include', 'ThirdParty/volk/include', 'ThirdParty/VulkanMemoryAllocator/include',
-    'ThirdParty/flecs-4.1.4/include', 'ThirdParty/imgui', 'ThirdParty/JoltPhysics')
-# Compile the real trigger implementation and flecs initialization dependencies.
-# The test fails if any debug drawing or GPU cleanup boundary is ever entered.
-$arguments = @('/nologo', '/std:c++latest', '/EHsc', '/MD', '/O2', '/GL', '/Gy', '/Gw', '/utf-8',
-    '/DNOMINMAX', '/DGLM_ENABLE_EXPERIMENTAL', '/Dflecs_STATIC=')
+$sources = @('Tests/EditorUI/TriggerBindingTests.cpp', 'Source/Runtime/Trigger/trigger.cpp')
+$includes = @('Source', 'ThirdParty/glm/include')
+# Compile the real trigger implementation with only its CPU dependency, GLM.
+# No renderer, particle system, UI, physics, GPU or test adapters are linked.
+$arguments = @('/nologo', '/std:c++17', '/EHsc', '/MD', '/O2', '/utf-8', '/DNOMINMAX')
 $arguments += $includes | ForEach-Object { '/I"' + (Join-Path $repoRoot $_) + '"' }
 $arguments += $sources | ForEach-Object { '"' + (Join-Path $repoRoot $_) + '"' }
 $arguments += '/Fo"' + $outputDirectory + '\\"'
 $arguments += '/Fe"' + (Join-Path $outputDirectory 'TriggerBindingTests.exe') + '"'
-$arguments += '/link', '/LTCG', '/OPT:REF', '/INCREMENTAL:NO'
+$arguments += '/link', '/INCREMENTAL:NO'
 $buildScript = Join-Path $outputDirectory 'build-tests.cmd'
 $buildCommand = @"
 @echo off

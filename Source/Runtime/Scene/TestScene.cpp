@@ -1,4 +1,5 @@
 #include "TestScene.hpp"
+#include "../Gameplay/BikersPresentation.hpp"
 #include "../Renderer/RenderSystem.hpp"
 #include "../Scene/SceneManager.hpp"
 #include "../Physics/PhysicsSystem.hpp"
@@ -17,6 +18,7 @@ namespace engine {
 	void TestScene::Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, GameplayState* state, AnimationSystem* anima, AudioSystem* audio) {
 		InitBase(render);
 		m_render = render;
+		if (m_render) m_render->SetGameContentUiEnabled(true);
 		m_scene = scene;
 		m_physics = physics;
 		m_input = input;
@@ -303,10 +305,10 @@ namespace engine {
 		triggerParticles[triggerParticleIndex]->config.emitterPos = glm::vec3(50.0f, 1.0f, 20.0f);
 		triggerParticles[triggerParticleIndex]->config.isVisible = false;
 
-		size_t triggerBox01 = m_render->GetTriggerSystem().AddBoxTrigger(
+		size_t triggerBox01 = Triggers().AddBoxTrigger(
 			glm::vec3(50.0f, 1.0f, 20.0f), glm::vec3(2.0f, 2.0f, 2.0f), triggerParticleIndex, glm::vec3(1.0f, 0.0f, 0.0f), glm::mat4(1.0f), true, false);
 
-		m_render->GetTriggerSystem().SetTriggerCallbacks(triggerBox01,
+		Triggers().SetTriggerCallbacks(triggerBox01,
 			[]() { GameScene::Log("trigger box triggered!!\n"); },
 			[]() { GameScene::Log("trigger box exited!!\n"); }
 		);
@@ -326,7 +328,7 @@ namespace engine {
 		constexpr int kTotalCollectibles = 4;
 
 		for (int i = 0; i < kTotalCollectibles; ++i) {
-			size_t tid = m_render->GetTriggerSystem().AddSphereTrigger(
+			size_t tid = Triggers().AddSphereTrigger(
 				kCollectPositions[i],
 				/*radius=*/5.0f,
 				/*particleIndex=*/static_cast<size_t>(-1),
@@ -335,7 +337,7 @@ namespace engine {
 				/*oneShot=*/true
 			);
 
-			m_render->GetTriggerSystem().SetTriggerCallbacks(tid,
+			Triggers().SetTriggerCallbacks(tid,
 				[this, i, collectedCount, kTotalCollectibles]() {
 					int total = ++(*collectedCount);
 					m_event->QueueEvent(std::make_unique<ItemCollectedEvent>(i, total));
@@ -367,6 +369,11 @@ namespace engine {
 			Toast("All collectibles found! MAX SPEED UNLOCKED!");
 			m_allCollectSoundDelay = 0.8f; 
 		});
+	}
+
+	void TestScene::UpdatePresentation(float dt) {
+		if (mState && m_scene && m_render)
+			UpdateBikersPresentation(dt, *mState, *m_scene, m_render->GetParticles());
 	}
 
 	void TestScene::RefreshPlayerMotion(float /*dt*/) {

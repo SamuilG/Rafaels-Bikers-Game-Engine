@@ -10,6 +10,8 @@
 | `player` / `PlayerState` | PlayerController；外界只有 `const State()` | 重置生命、能力、统计和运动快照 |
 | `camera` / `CameraState` | CameraController；外界发送模式、镜头及接管命令 | 重置镜头、接管和平滑历史 |
 | `level` | 当前关卡；收集、电台和传送表现等本局数据 | 重置 |
+| `hud` | HudController；游戏帧发布速度、距离、计时等 HudData | 清零本局统计 |
+| `vehiclePresentation` | 游戏侧生成只读 SceneEffects；含速度、死亡和传送裁剪输出 | 重置效果及计时 |
 | `preferences` | 已应用的游戏偏好，例如提示显示 | 保留 |
 | `render` | 用户画质、后处理与渲染设置 | 保留 |
 | `renderOverrides` | 关卡的临时环境覆盖，目前是 IBL | 清除，恢复用户偏好 |
@@ -24,12 +26,12 @@
 
 | 接口 | 能读写什么 |
 | --- | --- |
-| `GameplayState` 引用上下文 | 流程、玩家及相机命令，关卡数据和环境覆盖；游戏偏好只读，没有编辑器工作区或用户画质写权限 |
-| `SceneStateView` | 只读流程、玩家、相机、渲染设置和编辑器调试参数 |
-| `RendererStateView` | 玩家/关卡只读；相机命令、渲染与编辑器状态；流程和偏好引用用于转交 Runtime UI |
+| `GameplayState` 引用上下文 | 流程、玩家及相机命令，关卡数据、HUD/车辆表现控制器和环境覆盖；游戏偏好只读，没有编辑器工作区或用户画质写权限 |
+| `SceneStateView` | 只读帧执行快照、玩家、相机、渲染设置和编辑器调试参数 |
+| `RendererStateView` | 玩家、HudData、SceneEffects 及帧执行快照只读；不再接收 LevelState；相机命令、渲染与编辑器状态；流程和偏好引用用于转交 Runtime UI |
 | `RuntimeUiStateView` | 流程命令、只读玩家、游戏偏好、界面显示；没有相机或关卡修改接口 |
 | EngineUi 各面板 | 按面板传入 EditorState、RenderSettings、只读统计/能力或 CameraController；不再接收 UserState |
-| GameUi HUD | 只读 PlayerState 与 EditorState |
+| GameUi HUD | 只读 HudData、视口尺寸及局部纹理解析回调；不依赖 RenderSystem、PlayerState 或 Vulkan |
 | BikeController | PlayerController、输入和 Jolt；没有相机或编辑器状态 |
 | PhysicsSystem | 不再保存从未使用的 UserState/InputSystem 指针 |
 
@@ -75,34 +77,48 @@ flowchart LR
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File Tests/State/run-controller-tests.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File Tests/State/run-scene-frame-tests.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File Tests/UI/run-game-flow-tests.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File Tests/UI/run-runtime-ui-flow-tests.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File Tests/UI/run-runtime-ui-flow-tests.ps1 -GameOnly
+powershell -NoProfile -ExecutionPolicy Bypass -File Tests/EditorUI/run-trigger-binding-tests.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File Tests/Gameplay/run-hud-tests.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File Tests/Gameplay/run-vehicle-presentation-tests.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File Tests/Gameplay/run-frame-presentation-tests.ps1
 ```
 
-本轮验证：Debug x64 完整构建通过；状态/控制器 11 组、GameFlow 5 组、UI Editor 与 GameOnly 各 8 组通过。控制器和 UI 测试没有创建真实游戏窗口，未覆盖 GPU 实机交互验收。
+自动回归包括状态/调度 13 组、GameFlow 7 组、UI Editor 与 GameOnly 各 9 组、真实 ECS 帧更新 3 组，以及触发器 10 组、HUD 8 组、车辆表现 7 组、游戏表现帧集成 5 组。调度测试直接调用生产 `FrameScheduler`；集成测试将真实触发器、HUD 和车辆表现控制器接入该调度，验证跳过呈现、暂停、结算及重载的行为。这些测试没有创建真实游戏窗口，未覆盖 GPU 实机交互验收。
+
+`run-scene-frame-tests.ps1` 另外创建真实 Flecs world，覆盖暂停/恢复、菜单/设置和重载完成帧；普通 ECS 系统和定时器在停止帧不运行，编辑器变换仍可传播。该套件直接调用生产 `SceneFrameUpdate.hpp`，同样不创建窗口或 GPU。
 
 ## 输入路由与帧阶段
 
-第 5 步现在由 Application 固定为四个阶段：
+Application 使用 `Core/FrameScheduler.hpp` 固定执行顺序，系统注册顺序只负责初始化与逆序释放，不再隐式决定更新顺序：
 
 1. `InputSystem::Update()` 在帧起点调用 `glfwPollEvents()`，更新键盘、鼠标、滚轮和手柄快照。
-2. Application 消费一次待处理的流程重载，再根据编辑器输入捕获状态设置玩家输入门禁。
-3. 关卡、物理、动画、事件和 SceneManager 共享 `FrameExecution` 的模拟门禁；玩家控制只读取本帧输入。
-4. Renderer、Runtime UI 和 Engine UI 始终进入呈现阶段。暂停时它们继续运行，Follow/Free 编辑器相机仍可调整；Portal/Cinematic 和世界模拟保持冻结。
+2. `FrameScheduler::BeginFrame()` 提交上一帧收集的流程请求；若进入 Loading，则消费一次重载并报告真实结果；最后发布 `UserState::frame`。玩家输入门禁在此之后计算，使用新帧的模拟许可。
+3. `FrameScheduler::Execute()` 依次运行关卡、事件、物理、物理反馈与触发器、场景变换、动画、游戏表现数据、呈现、音频。关卡、事件、物理、反馈、动画和游戏表现数据都使用同一帧快照；场景、呈现、音频在暂停时仍被调用，内部的模拟部分也读取同一快照。
+4. SceneManager 的物理同步、场景触发器与游戏表现数据阶段、Renderer 的游戏相机和粒子模拟，以及车辆音频采样均使用 `frame.runSimulationSystems`，不再各自查询实时 `CanSimulate()`。HUD 和速度/传送效果计时已移到游戏阶段。编辑器基本 Follow/Free 相机在暂停期间仍能调整；重载完成帧禁止推进它，避免旧输入影响新镜头。
 
-编辑器在 ImGui 帧中发布 `inputCapturesKeyboard` / `inputCapturesMouse`，供下一帧路由使用。面板或文本输入获得键盘时，`BikeController`、关卡快捷操作和复活/传送输入均被屏蔽；Renderer 自己的 F1、调试和画质开关仍按编辑器捕获规则处理。玩家输入阻止与世界模拟暂停保持独立。
+`GameFlowController::Request()` 的返回值表示请求是否被接受，不表示流程已经切换。请求按待提交状态依序验证，例如同帧 Pause + OpenSettings 合法，重复 Pause 被拒绝；普通查询只读已提交状态。`PendingState` / `PendingSettingsOpen` / `PendingReloadTarget` 仅供命令决策与 UI 资源预载使用，不能用于本帧系统门禁。
+
+生产代码只有 `FrameScheduler::BeginFrame()` 调用 `CommitPendingRequests()`、`TakeReloadRequest()` 和 `CompleteReload()`。一批有效请求只发布一次 Revision；UI 根据已提交 Revision 换屏。例如关卡在帧 N 提出 Victory，帧 N 的物理、变换、动画和渲染模拟完整执行，帧 N+1 才统一停止并显示胜利页。重载完成帧即使流程已经是 Playing，也保持所有模拟门禁关闭，下一帧才恢复。
+
+暂停与重载完成时，`SceneFrameUpdate.hpp` 只显式运行变换传播系统，不调用整个 Flecs `world.progress()`。这样既可显示编辑器变换，也不会推进普通 ECS 玩法系统或按原始时间工作的定时器；仅传 `dt=0` 或设置 `time_scale=0` 均不足以保证这一点。
+
+编辑器在 ImGui 帧中发布捕获信息，Application 使用上帧键盘捕获与视口悬停屏蔽玩家输入。Renderer 的快捷键和相机仍有各自的焦点判断；鼠标捕获归属的完整统一留待输入路由进一步整理，当前 `inputCapturesMouse` 尚没有消费方。玩家输入阻止与世界模拟暂停保持独立。本次只统一流程提交和帧执行依据，不将这些焦点判断描述为已经完全统一。
 
 ## 生命周期清理
 
 第 6 步将会话状态和进程/编辑器状态分开处理：
 
-- `ReloadCurrentScene()` 继续调用 `UserState::ResetSession()`，只重置玩家、相机、本局关卡、临时环境覆盖、渲染统计和场景选择；画质、能力、游戏偏好和编辑器布局保留。
+- `ReloadCurrentScene()` 继续调用 `UserState::ResetSession()`，只重置玩家、相机、本局关卡、HUD/车辆表现、临时环境覆盖、渲染统计和场景选择；画质、设备能力、游戏偏好和编辑器布局保留。
 - 输入边沿、鼠标增量、滚轮累加器和手柄快照在重载后由 `InputSystem::ResetForNewSession()` 清理，避免重开瞬间重复触发按键动作。
-- 关卡检查点/电台冷却从函数静态变量改为关卡成员，并在 Init/Shutdown 中清零。渲染速度特效、传送特效时间、Runtime UI 计时、调试选中项和 HUD 平滑值在场景临时资源清理时清零。
+- MenuBack/Esc 统一读取 InputSystem 的按下边沿；删除 Renderer 自有的 `mMenuBackWasDown` 和原始 GLFW 补充查询，避免重开后重新解释仍按住的 Esc。
+- 关卡检查点/电台冷却从函数静态变量改为关卡成员，并在 Init/Shutdown 中清零。HUD 统计和车辆效果在 `ResetSession()` 中清零；调试选中项与纯 UI 平滑值仍在渲染侧场景临时资源清理时清零。
 - 删除没有消费者的 `BikeTuning` 配置及其奖励写入，避免留下看似可调但实际无效的旧入口。
 
-验证覆盖暂停与设置组合、胜利/失败后的重开、编辑器布局和视口切换、输入边沿清理，以及重开保留画质和编辑器布局。完整 GPU 交互仍需要真实窗口验收。
+自动回归覆盖暂停与设置组合、胜利/失败后的重开、Runtime UI 与编辑器状态隔离，以及重开保留画质和编辑器布局。输入边沿接入已做源码核查；实际 GLFW 输入、视口焦点切换和完整 GPU 交互仍需真实窗口验收。
 
 ## 场景渲染与编辑器边界（第一阶段）
 
@@ -115,3 +131,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Tests/UI/run-runtime-ui-flow
 这一阶段已经继续收口编辑器修改入口：可见性、变换、物理同步、删除和拾取由 `EditorSceneAdapter` 提交；`EngineUi` 保留布局和控件绘制，不再直接负责这些写操作。`SceneRenderer` 现在统一代理主视口、传送门视口、骨骼批次和灯光数据准备，仍不拥有 Vulkan 资源。
 
 编辑器层级树、内容浏览器的资源加载以及粒子面板仍需要更细的适配接口；GPU 命令录制和交换链生命周期也仍由 `RenderSystem` 管理。这些是后续继续缩小 `RenderSystem` 公开接口的边界。
+
+## 触发器、车辆表现和 HUD 的游戏侧归属
+
+`GameScene` 持有自己的 `TriggerSystem`。物理反馈发布真实玩家位置后，Application 调用 `UpdateTriggers()`；触发器只依赖标准库与 GLM，无粒子组或未绘制画面也能执行。进入/离开回调与粒子可见性输出分开处理，多触发器共用粒子组时取 OR；单次完成或禁用仍保留绑定所有权并输出 inactive。删除粒子组会先重排绑定；场景析构解绑调试绘制、粒子删除及两个所有权查询回调。
+
+`level` 和 `TestScene` 在动画后的 `gameEffects` 阶段调用 `BikersPresentation`，发布 `HudData` / `SceneEffects`，并解析 Demo 球棒的粒子位置绑定。空场景不使用这套 Demo 规则，球形发射器可以使用自己的位置。粒子面板和 gizmo 读取通用 `scenePositionControlled` 标志，不再根据形状猜测游戏绑定。
+
+`VehiclePresentation` 解释玩家速度、死亡系数和关卡穿门状态，输出通用的裁剪平面、空间映射、目标 entity/body ID 与后处理参数。`SceneRenderer` 只据这些数据处理静态与蒙皮批次；主视口和传送门视口共用同一份未裁剪克隆来源。Renderer 不再查找 `Bike_0`、`BaseballBat.nails_0` 或读取 LevelState。
+
+`HudController` 在每个模拟帧累计距离和计时，暂停保持、重开重置。物理速度单位是 m/s，HUD 统一转换为 km/h / mph，距离直接使用 m/s × dt。旧 HUD 的单位标签也改为 km/h。`GameHudBindings` 仅将快照写入 Runtime UI 数据上下文，多次绘制不会多计时。能量仍是 Demo 的速度派生显示，圈数和最佳圈时间也仍是占位逻辑，未引入新的体力或比赛系统。
+
+这些游戏数据在调用 Renderer 前完成，所以交换链获取失败或跳过呈现不会漏掉玩法更新。GPU 粒子更新/上传仍由 Renderer 管理；粒子本身的完整模拟拆分、车辆物理和 SceneManager 中剩余的车辆专用逻辑不属于本次边界。
+
+## 默认 Demo 入口与空引擎场景
+
+Application 的启动与重开统一调用 `CreateDefaultScene()`，默认创建 `level`，加载 Bikers 关卡、车辆、触发器和游戏菜单。职责拆分不改变 Demo 的默认启动行为。
+
+`Source/Runtime/Scene/blank.cpp` 保留为空场景实现，供开发时显式选择；它不加载 Bikers 模型、车辆物理、关卡触发器或车辆音频，并关闭游戏内容 UI。因此把它设为默认入口时，会出现只有天空或编辑器网格、层级树实体数为 0 的画面。它复用同一个 RenderSystem 和 EngineUi，并初始化 Free 相机，但当前没有面向用户的场景选择入口。

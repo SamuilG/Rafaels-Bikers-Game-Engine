@@ -36,9 +36,15 @@ namespace {
     }
 
     void Accept(GameFlowController& flow, GameFlowCommand command) {
+        const auto state = flow.State();
+        const auto settings = flow.IsSettingsOpen();
+        const auto simulates = flow.CanSimulate();
         const auto revision = flow.Revision();
         Require(flow.Request(command), "valid request is accepted");
-        Require(flow.Revision() > revision, "accepted state change advances UI revision");
+        Expect(flow, state, settings, simulates);
+        Require(flow.Revision() == revision, "request cannot publish state during a frame");
+        Require(flow.CommitPendingRequests(), "host publishes accepted requests at the next boundary");
+        Require(flow.Revision() == revision + 1, "one boundary advances the published revision once");
     }
 
     void Finish(GameFlowController& flow, bool success, GameFlowState expected) {
@@ -148,6 +154,66 @@ namespace {
         Finish(flow, true, GameFlowState::MainMenu);
         std::puts("PASS menu reload clears overlays, succeeds or fails safely, and supports retry");
     }
+
+    void TestDeferredBatchAndValidation() {
+        GameFlowController flow;
+        Require(!flow.CommitPendingRequests(), "empty boundary does not publish a change");
+        const auto initialRevision = flow.Revision();
+        Require(flow.Request(GameFlowCommand::Start), "start can queue from MainMenu");
+        Require(!flow.Request(GameFlowCommand::Start), "duplicate start validates against the pending Playing state");
+        Require(flow.Request(GameFlowCommand::Pause) && flow.Request(GameFlowCommand::OpenSettings),
+            "later requests can depend on earlier requests in the same frame");
+        Require(!flow.Request(GameFlowCommand::Pause) && !flow.Request(GameFlowCommand::OpenSettings),
+            "duplicate pending pause and settings requests are rejected");
+        Expect(flow, GameFlowState::MainMenu, false, false);
+        Require(flow.PendingState() == GameFlowState::Paused && flow.PendingSettingsOpen() &&
+            flow.HasPendingRequests() && flow.Revision() == initialRevision,
+            "pending projection is available for routing without publishing it to simulation or UI");
+        Require(flow.Request(GameFlowCommand::CloseSettings) && flow.Request(GameFlowCommand::Resume),
+            "inverse requests operate on the latest pending state in submission order");
+        Expect(flow, GameFlowState::MainMenu, false, false);
+        Require(flow.CommitPendingRequests(), "one boundary publishes the whole validated batch");
+        Expect(flow, GameFlowState::Playing, false, true);
+        Require(flow.Revision() == initialRevision + 1 && !flow.HasPendingRequests() &&
+            !flow.CommitPendingRequests(), "batch publishes one revision and cannot replay");
+
+        const auto playingRevision = flow.Revision();
+        Require(flow.Request(GameFlowCommand::Pause) && flow.Request(GameFlowCommand::Resume),
+            "a net-zero batch remains legal");
+        Expect(flow, GameFlowState::Playing, false, true);
+        Require(flow.CommitPendingRequests() && flow.Revision() == playingRevision + 1,
+            "net-zero batch is consumed once without lingering input");
+        Expect(flow, GameFlowState::Playing, false, true);
+        std::puts("PASS requests stay private within a frame; ordered batches and duplicate rejection publish once");
+    }
+
+    void TestDeferredReloadOwnership() {
+        GameFlowController flow;
+        Accept(flow, GameFlowCommand::Start);
+        const auto revision = flow.Revision();
+        const auto reloadTarget = flow.ReloadTarget();
+        Require(flow.Request(GameFlowCommand::Victory) && flow.Request(GameFlowCommand::Restart),
+            "result and restart can be ordered in one pending batch");
+        Require(flow.PendingState() == GameFlowState::Loading &&
+            flow.PendingReloadTarget() == GameFlowState::Playing,
+            "UI can preload the pending reload destination");
+        Require(!flow.Request(GameFlowCommand::ReturnToMainMenu) && !flow.Request(GameFlowCommand::Resume),
+            "a pending reload excludes conflicting destinations and resume");
+        Expect(flow, GameFlowState::Playing, false, true);
+        Require(flow.Revision() == revision && flow.ReloadTarget() == reloadTarget &&
+            !flow.TakeReloadRequest() && !flow.CompleteReload(true),
+            "host cannot consume or complete a request before the boundary");
+        Require(flow.CommitPendingRequests(), "boundary publishes reload work");
+        Expect(flow, GameFlowState::Loading, false, false);
+        Finish(flow, true, GameFlowState::Playing);
+        Require(!flow.HasPendingRequests() && flow.PendingState() == GameFlowState::Playing &&
+            !flow.CommitPendingRequests(), "completion aligns routing projection without replaying the old batch");
+        Require(flow.Request(GameFlowCommand::Pause), "fresh commands after completion validate against the new scene state");
+        Expect(flow, GameFlowState::Playing, false, true);
+        Require(flow.CommitPendingRequests(), "fresh command waits for another boundary");
+        Expect(flow, GameFlowState::Paused, false, false);
+        std::puts("PASS pending reload cannot start early, conflicting reloads cannot replace it, and completion clears the batch");
+    }
 }
 
 int main() {
@@ -156,5 +222,7 @@ int main() {
     TestResultsAndReload();
     TestFailureAndRetry();
     TestReturnToMainMenu();
+    TestDeferredBatchAndValidation();
+    TestDeferredReloadOwnership();
     std::puts("PASS all real GameFlowController tests (standard C++ only)");
 }

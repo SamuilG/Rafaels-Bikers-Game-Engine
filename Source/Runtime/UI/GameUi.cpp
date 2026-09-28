@@ -1,12 +1,12 @@
 #include "GameUi.hpp"
 
-#include "../Renderer/RenderSystem.hpp"
-#include "../UserState/PlayerState.hpp"
+#include "../Gameplay/HudData.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cfloat>
 
 #include <imgui.h>
 
@@ -66,9 +66,8 @@ namespace engine {
             // ImVec2 backgroundUvMax = ImVec2(1.0f, 1.0f); // Crop / remap texture UV max.
 
             // =========================
-            // Speed conversion / animation
+            // Speed display / animation
             // =========================
-            float speedMultiplier = 3.6f; // Convert current internal speed to km/h. Use 2.23694f for mph.
             float maxDisplaySpeed = 180.0f; // Only affects percent/animation logic, not clamping the printed number.
             float smoothingFactor = 0.12f; // 0 = no motion, 1 = instant update. Higher = snappier numbers.
             bool useSmoothing = true; // false = number instantly follows the real speed.
@@ -80,7 +79,7 @@ namespace engine {
             // Optional, currently unused examples:
             // bool clampPrintedSpeed = false; // true = limit the shown number to maxDisplaySpeed.
             // float fakeTestSpeed = 120.0f; // Useful when previewing UI without gameplay data.
-            // bool overrideSpeedForPreview = false; // true = use fakeTestSpeed instead of player.bikeSpeed.
+            // bool overrideSpeedForPreview = false; // true = use fakeTestSpeed instead of hud.speedKmh.
 
             // =========================
             // Big speed number
@@ -99,10 +98,10 @@ namespace engine {
             // float customNumberFontSize = 52.0f; // Size for the custom font draw call.
 
             // =========================
-            // Unit label (m/s)
+            // Unit label (km/h)
             // =========================
             bool showUnitLabel = true;
-            const char* unitLabel = "m/s";
+            const char* unitLabel = "km/h";
             float unitFontSize = 20.0f;
             float unitFontScale = 1.0f;
             ImVec2 unitOffset = ImVec2(0.0f, 105.0f);
@@ -249,7 +248,6 @@ namespace engine {
             style.backgroundTint = ImVec4(1.0f, 1.0f, 1.0f, 0.92f); // 改 alpha 可以让底图更透明。
             style.fallbackPanelRounding = 18.0f; // 没图时的圆角。
 
-            style.speedMultiplier = 3.6f; // 当前假设内部速度是 m/s，所以转 km/h。
             style.maxDisplaySpeed = 180.0f; // 主要用于百分比/动画强度。
             style.useSmoothing = true; // 开启动画平滑。
             style.smoothingFactor = 0.12f; // 越大越跟手，越小越“有惯性”。
@@ -287,8 +285,8 @@ namespace engine {
             return style;
         }
 
-        void DrawImageSpeedometerDemo(RenderSystem* renderSys, const PlayerState& player, const ImVec2& viewportPos, const ImVec2& viewportSize) {
-            if (!renderSys || viewportSize.x <= 1.0f || viewportSize.y <= 1.0f) {
+        void DrawImageSpeedometerDemo(const HudData& hud, const ImVec2& viewportPos, const ImVec2& viewportSize, const GameUi::TextureResolver& resolveTexture) {
+            if (viewportSize.x <= 1.0f || viewportSize.y <= 1.0f) {
                 return;
             }
 
@@ -318,7 +316,7 @@ namespace engine {
             const ImVec2 widgetMax(widgetMin.x + widgetSize.x, widgetMin.y + widgetSize.y);
 
 
-            const float rawSpeedKmh = std::abs(player.bikeSpeed) * style.speedMultiplier;
+            const float rawSpeedKmh = hud.speedKmh;
             if (style.useSmoothing) {
                 s_smoothedSpeedKmh += (rawSpeedKmh - s_smoothedSpeedKmh) * style.smoothingFactor;
             }
@@ -362,12 +360,12 @@ namespace engine {
                 drawList->PushClipRect(viewportPos, ImVec2(viewportPos.x + viewportSize.x, viewportPos.y + viewportSize.y), true);
             }
 
-            VkDescriptorSet speedometerTexture = VK_NULL_HANDLE;
-            if (style.useBackgroundImage && style.backgroundTexturePath && style.backgroundTexturePath[0] != '\0') {
-                speedometerTexture = renderSys->GetContentBrowserThumbnail(style.backgroundTexturePath);
+            ImTextureID speedometerTexture = 0;
+            if (resolveTexture && style.useBackgroundImage && style.backgroundTexturePath && style.backgroundTexturePath[0] != '\0') {
+                speedometerTexture = resolveTexture(style.backgroundTexturePath);
             }
 
-            if (speedometerTexture != VK_NULL_HANDLE) {
+            if (speedometerTexture != 0) {
                 drawList->AddImage(
                     (ImTextureID)speedometerTexture,
                     scaledWidgetMin,
@@ -426,7 +424,7 @@ namespace engine {
             // drawList->AddRect(widgetMin, widgetMax, IM_COL32(255, 0, 0, 255)); // Manual border.
             // drawList->AddImage(iconTex, iconMin, iconMax); // Add another image on top of the speedometer.
             // drawList->AddText(baseFont, 18.0f, pos, IM_COL32_WHITE, "NITRO"); // Add a mode label.
-            // if (player.isExtremeSpeed) { ... } // Trigger special UI state at high speed.
+            // if (hud.speedKmh > 120.0f) { ... } // Trigger special UI state at high speed.
 
             if (style.clipToViewport) {
                 drawList->PopClipRect();
@@ -435,7 +433,7 @@ namespace engine {
             ImGui::End();
         }
 
-        void DrawViewportHint(const PlayerState& player, const ImVec2& viewportPos, const ImVec2& viewportSize) {
+        void DrawViewportHint(const ImVec2& viewportPos, const ImVec2& viewportSize) {
             if (viewportSize.x <= 1.0f || viewportSize.y <= 1.0f) {
                 return;
             }
@@ -507,8 +505,8 @@ namespace engine {
         return s_viewportDrawList;
     }
 
-    void GameUi::DrawHud(RenderSystem* renderSys, const PlayerState& player, const ImVec2& viewportPos, const ImVec2& viewportSize) {
-        DrawImageSpeedometerDemo(renderSys, player, viewportPos, viewportSize);
-        DrawViewportHint(player, viewportPos, viewportSize);
+    void GameUi::DrawHud(const HudData& hud, const ImVec2& viewportPos, const ImVec2& viewportSize, const TextureResolver& resolveTexture) {
+        DrawImageSpeedometerDemo(hud, viewportPos, viewportSize, resolveTexture);
+        DrawViewportHint(viewportPos, viewportSize);
     }
 } // namespace engine

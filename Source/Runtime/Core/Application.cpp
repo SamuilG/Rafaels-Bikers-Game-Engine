@@ -5,13 +5,20 @@
 #include "../Input/InputSystem.hpp"
 #include "../Event/EventSystem.hpp"
 #include "../Animation/AnimationSystem.hpp"
-#include "../Scene/TestScene.hpp" // 引入你的测试关卡
-#include "../Scene/Level1.hpp" 
+#include "../Scene/level1.hpp"
 #include "../AudioSystem/AudioSystem.hpp"
 #include "../UI/VisualUIEditor/RuntimeUiController.hpp"
-#include "../UserState/FrameExecution.hpp"
+#include "FrameScheduler.hpp"
 
 namespace engine {
+
+    namespace {
+        // Startup and restart must choose the same playable demo. The empty
+        // engine scene remains available for explicit development use.
+        std::unique_ptr<GameScene> CreateDefaultScene() {
+            return std::make_unique<level>();
+        }
+    }
 
     Application::Application(ProgressCallback progress) : mProgressCallback(std::move(progress))
     {
@@ -71,10 +78,12 @@ namespace engine {
             runtimeUiController->PreloadWidget("Assets/ui/Win.ui.json");
         }
 
+        m_currentScene = CreateDefaultScene();
+
 		//audio system 初始化
         ReportProgress(0.74f, "Loading startup audio...");
         // audio system test
-        if (audioSystem) {
+        if (audioSystem && m_currentScene->UsesVehicleAudio()) {
             // Background music is now started by the Radio pickup in level1.
             // audioSystem->LoadSound("BackgroundTestMusic", "Assets/Sounds/Looping_radio_mix.mp3");
             // audioSystem->SetVolume("BackgroundTestMusic", 0.1f);
@@ -105,9 +114,6 @@ namespace engine {
         // ==============================================================
         // 【核心】：加载当前关卡 (未来切换关卡，只需要 new 不同的 Scene 即可)
         // ==============================================================
-        //m_currentScene = std::make_unique<TestScene>();
-        m_currentScene = std::make_unique<level>();
-
         m_currentScene->Init(renderSystem, sceneManager, physicsSystem, inputSystem, eventSystem, &mGameplayState, animationSystem, audioSystem);
         sceneManager->Update(0.0f);
         animationSystem->Update(0.0f);
@@ -130,76 +136,60 @@ namespace engine {
     void Application::Run() {
         mLastTime = std::chrono::steady_clock::now();
         constexpr float kMaxDt = 0.05f;
+        const FrameSteps steps{
+            .gameplay = [this](float dt) { if (m_currentScene) m_currentScene->Update(dt); },
+            .events = [this](float dt) { eventSystem->Update(dt); },
+            .physics = [this](float dt) { physicsSystem->Update(dt); },
+            .postPhysics = [this](float dt) {
+                if (m_currentScene) m_currentScene->RefreshPlayerMotion(dt);
+                mState.player.UpdateEffects(dt);
+                if (m_currentScene) m_currentScene->UpdateTriggers(mState.player.State().position);
+            },
+            .scene = [this](float dt) { sceneManager->Update(dt); },
+            .animation = [this](float dt) { animationSystem->Update(dt); },
+            .gameEffects = [this](float dt) { if (m_currentScene) m_currentScene->UpdatePresentation(dt); },
+            .presentation = [this](float dt) { renderSystem->Update(dt); },
+            .audio = [this](float dt) {
+                audioSystem->Update(dt);
+                if (m_currentScene && m_currentScene->UsesVehicleAudio()) {
+                    const float speed01 = mState.frame.runSimulationSystems
+                        ? std::clamp(mState.player.State().bikeSpeed / 40.0f, 0.0f, 1.0f) : 0.0f;
+                    audioSystem->SetRuntimeVolume("BikeChain", speed01);
+                    audioSystem->SetPitch("BikeChain", 0.75f + speed01 * 1.25f);
+                }
+            }
+        };
 
         while (Running) {
-            float dt = std::min(CalcDeltaTime(), kMaxDt);
+            const float dt = std::min(CalcDeltaTime(), kMaxDt);
 
-            // Phase 1: sample OS input before any gameplay code runs.
-            if (inputSystem) {
-                inputSystem->Update(dt);
-                const bool editorOwnsKeyboard = mState.editor.showEngineUi &&
-                    (mState.editor.inputCapturesKeyboard || !mState.editor.isSceneViewportHovered);
-                inputSystem->SetGameplayInputEnabled(
-                    mState.gameFlow.CanSimulate() && !editorOwnsKeyboard);
-            }
-
-            // Phase 2: consume a pending flow reload before the old scene can
-            // execute another simulation step.
-            bool reloadHandled = false;
-            if (mState.gameFlow.TakeReloadRequest()) {
-                reloadHandled = true;
+            // Sample once, then publish the previous frame's accepted commands.
+            inputSystem->Update(dt);
+            mState.frame = FrameScheduler::BeginFrame(mState.gameFlow, [this]() {
                 try {
-                    const bool loaded = ReloadCurrentScene();
-                    mState.gameFlow.CompleteReload(loaded);
+                    return ReloadCurrentScene();
                 }
                 catch (const std::exception& error) {
                     EngineUi::LogPrintf("Engine reload/recovery failed: %s\n", error.what());
-                    mState.gameFlow.CompleteReload(false);
                     Running = false;
+                    return false;
                 }
-                if (inputSystem) inputSystem->ResetForNewSession();
-                if (renderSystem && renderSystem->GetRuntimeUiController()) {
-                    renderSystem->GetRuntimeUiController()->SyncGameFlowUi();
-                }
+            });
+            if (!Running) break;
+
+            if (mState.frame.reloadHandled) {
+                inputSystem->ResetForNewSession();
                 mLastTime = std::chrono::steady_clock::now();
             }
+            if (auto* ui = renderSystem->GetRuntimeUiController()) ui->SyncGameFlowUi();
 
-            const FrameExecution frame = FrameExecution::Plan(
-                mState.gameFlow.CanSimulate(), reloadHandled);
+            const bool editorOwnsKeyboard = mState.editor.showEngineUi &&
+                (mState.editor.inputCapturesKeyboard || !mState.editor.isSceneViewportHovered);
+            inputSystem->SetGameplayInputEnabled(mState.frame.runGameplay && !editorOwnsKeyboard);
 
-            // Phase 3: gameplay and simulation systems share one gate.
-            if (m_currentScene && frame.runGameplay) {
-                m_currentScene->Update(dt);
-            }
-
-            // Phase 4: presentation remains alive while simulation is paused.
-            for (auto& sys : Systems) {
-                // Input was sampled at the start of the frame. Physics,
-                // animation, events and scene transforms use the same plan.
-                if (sys.get() == inputSystem) {
-                    continue;
-                }
-                if (!frame.runSimulationSystems &&
-                    (sys.get() == physicsSystem || sys.get() == animationSystem ||
-                     sys.get() == eventSystem)) {
-                    continue;
-                }
-                sys->Update(dt);
-                if (sys.get() == physicsSystem) {
-                    if (m_currentScene) m_currentScene->RefreshPlayerMotion(dt);
-                    mState.player.UpdateEffects(dt);
-                }
-            }
-
-            //audio system
-           // 根据自行车速度状态调整音效// Adjust bike chain sound based on bike speed
-            if (audioSystem) {
-                float speed01 = mState.gameFlow.CanSimulate() ? std::clamp(mState.player.State().bikeSpeed / 40.0f, 0.0f, 1.0f) : 0.0f;
-
-                audioSystem->SetRuntimeVolume("BikeChain", speed01);
-                audioSystem->SetPitch("BikeChain", 0.75f + speed01 * 1.25f);
-            }
-
+            // Every consumer sees this same snapshot until the next boundary.
+            // UI/gameplay requests made by these steps cannot change its gates.
+            FrameScheduler::Execute(mState.frame, dt, steps);
         }
     }
 
@@ -216,8 +206,11 @@ namespace engine {
     }
 
     bool Application::ReloadCurrentScene() {
+        // Initialization propagates transforms without advancing a simulation frame.
+        mState.frame = FrameExecution{};
         renderSystem->WaitForGpuIdle();
         const float preserveMasterVolume = audioSystem ? audioSystem->GetMasterVolume() : 1.0f;
+        const bool useVehicleAudio = m_currentScene && m_currentScene->UsesVehicleAudio();
 
         if (m_currentScene) {
             m_currentScene->Shutdown();
@@ -242,12 +235,14 @@ namespace engine {
             audioSystem->Shutdown();
             audioSystem->Init();
             audioSystem->SetMasterVolume(preserveMasterVolume);
-            audioSystem->LoadSound("BikeChain", "Assets/Sounds/BikeChain.mp3");
-            audioSystem->SetVolume("BikeChain", 0.2f);
-            audioSystem->SetRuntimeVolume("BikeChain", 0.0f);
-            audioSystem->SetPitch("BikeChain", 1.0f);
-            audioSystem->PlayLoop("BikeChain");
-            audioSystem->LoadSound("Chain", "Assets/Sounds/BikeChain.mp3");
+            if (useVehicleAudio) {
+                audioSystem->LoadSound("BikeChain", "Assets/Sounds/BikeChain.mp3");
+                audioSystem->SetVolume("BikeChain", 0.2f);
+                audioSystem->SetRuntimeVolume("BikeChain", 0.0f);
+                audioSystem->SetPitch("BikeChain", 1.0f);
+                audioSystem->PlayLoop("BikeChain");
+                audioSystem->LoadSound("Chain", "Assets/Sounds/BikeChain.mp3");
+            }
         }
 
         if (physicsSystem) {
@@ -280,7 +275,7 @@ namespace engine {
         // Only level loading failures can recover to a menu. Rebuilding an engine
         // subsystem above must finish before another frame is allowed to render.
         try {
-            m_currentScene = std::make_unique<level>();
+            m_currentScene = CreateDefaultScene();
             m_currentScene->Init(renderSystem, sceneManager, physicsSystem, inputSystem, eventSystem, &mGameplayState, animationSystem, audioSystem);
             sceneManager->Update(0.0f);
             animationSystem->Update(0.0f);

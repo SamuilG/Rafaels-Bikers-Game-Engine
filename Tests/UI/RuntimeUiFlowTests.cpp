@@ -1,5 +1,6 @@
 #include "Runtime/UI/VisualUIEditor/RuntimeUiController.hpp"
 #include "Runtime/UserState/UserState.hpp"
+#include "Runtime/Core/FrameScheduler.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -67,9 +68,23 @@ namespace {
             Require(element != nullptr, std::string("typed asset element ") + screen + "/" + name);
             return *element;
         }
-        void Event(const std::string& name) {
+        void EventInFrame(const std::string& name) {
             Require(Manager().HasEventHandler(name), "registered event " + name);
             Require(controller.DispatchEvent(name), "runtime facade dispatches registered event " + name);
+        }
+        void NextFrame() {
+            state.frame = FrameScheduler::BeginFrame(state.gameFlow, [] {
+                Require(false, "reload completion must use the explicit test host");
+                return false;
+            });
+            Require(controller.SyncGameFlowUi(), "frame boundary presents committed state");
+        }
+        void Event(const std::string& name) {
+            EventInFrame(name);
+            // Existing scenarios model distinct input frames. In-frame regressions
+            // below call EventInFrame and inspect the state before this boundary.
+            state.gameFlow.CommitPendingRequests();
+            Require(controller.SyncGameFlowUi(), "next input frame presents the submitted event");
         }
         void Settle() {
             // Advance real animation time, without sleeping or creating a GPU/window.
@@ -106,7 +121,7 @@ namespace {
             Require(controller.SyncGameFlowUi(), "completion presents authoritative state");
             Require(!state.gameFlow.CompleteReload(success), "duplicate completion is rejected");
         }
-        void Click(const char* screenName, const char* elementName) {
+        void ClickInFrame(const char* screenName, const char* elementName) {
             Settle();
             auto& screen = Screen(screenName);
             Require(screen.IsVisible(), std::string("click screen visible: ") + screenName);
@@ -141,6 +156,11 @@ namespace {
             const auto& events = Manager().GetRecentEvents();
             Require(std::any_of(events.begin(), events.end(), [&](const auto& entry) { return entry.eventName == event; }),
                 "real mouse-up dispatches JSON event: " + event);
+        }
+        void Click(const char* screenName, const char* elementName) {
+            ClickInFrame(screenName, elementName);
+            state.gameFlow.CommitPendingRequests();
+            Require(controller.SyncGameFlowUi(), "next input frame presents the real button event");
         }
         void ShowTemporaryScreens() {
             for (const char* name : {"AbilityUnlock", "RespawnPrompt", "UFONews"}) {
@@ -335,49 +355,50 @@ namespace {
 
     void TestEditorAndQuit() {
         Fixture f;
-        f.Event("OpenEditor");
+        Require(!f.Manager().HasEventHandler("OpenEditor") && !f.controller.DispatchEvent("OpenEditor"),
+            "runtime game UI has no editor-workspace command");
+        f.state.editor.showEngineUi = true;
+        f.Event("StartGame");
         f.Flow(GameFlowState::Playing);
         f.Visible({"HUD"});
-#ifdef GAME_ONLY
-        Require(!f.state.editor.showEngineUi, "Game-only build does not enable editor");
-#else
-        Require(f.state.editor.showEngineUi, "editor entry enables editor UI");
-#endif
         f.state.runtimeUi.showRuntimeUi = false;
         f.Event("ShowVictory");
         f.Flow(GameFlowState::Victory);
         f.Visible({"Win"});
-        Require(f.state.runtimeUi.showRuntimeUi && !f.state.editor.showEngineUi,
-            "editor victory exposes runtime result screen and hides editor");
+        Require(f.state.runtimeUi.showRuntimeUi && f.state.editor.showEngineUi,
+            "victory exposes runtime result screen without changing editor workspace visibility");
         f.Event("BackToMainMenu");
         f.CompleteReload(true);
-        f.Event("OpenEditor");
+        f.Event("StartGame");
         f.Flow(GameFlowState::Playing);
         f.state.runtimeUi.showRuntimeUi = false;
         f.Event("BackToMainMenu");
         f.CompleteReload(true);
         f.Flow(GameFlowState::MainMenu);
         f.Visible({"MainMenu"});
-        Require(f.state.runtimeUi.showRuntimeUi && !f.state.editor.showEngineUi,
-            "return from editor exposes runtime main menu and hides editor");
+        Require(f.state.runtimeUi.showRuntimeUi && f.state.editor.showEngineUi,
+            "return exposes runtime main menu without changing editor workspace visibility");
         f.Click("MainMenu", "ExitButton");
         Require(!f.running, "actual exit button stops app loop");
-        std::puts("PASS editor configuration and real exit button");
+        std::puts("PASS runtime flow preserves editor workspace, restores hidden game UI and handles the real exit button");
     }
 
     void TestGameplayDrivenSynchronization() {
         Fixture f;
         Require(!f.controller.DispatchEvent("Unknown.GameFlow.Event"), "unknown event is rejected by runtime facade");
         Require(f.state.gameFlow.Request(GameFlowCommand::Start), "gameplay requests Start directly");
-        Require(f.controller.SyncGameFlowUi(), "frame sync presents gameplay request");
+        Require(f.controller.SyncGameFlowUi(), "presentation can run before the next boundary");
+        f.Flow(GameFlowState::MainMenu);
+        f.Visible({"MainMenu"});
+        f.NextFrame();
         f.Visible({"HUD"});
         f.Event("OpenSettings");
         Require(f.state.gameFlow.Request(GameFlowCommand::Pause), "pause reason changes while Settings stays open");
-        Require(f.controller.SyncGameFlowUi(), "frame sync adds independent Pause beneath Settings");
+        f.NextFrame();
         f.Flow(GameFlowState::Paused, true);
         f.Visible({"HUD", "PauseMenu", "Settings"});
         Require(f.state.gameFlow.Request(GameFlowCommand::Resume), "gameplay resumes the pause reason");
-        Require(f.controller.SyncGameFlowUi(), "frame sync removes Pause but retains Settings");
+        f.NextFrame();
         f.Flow(GameFlowState::Playing, true);
         f.Visible({"HUD", "Settings"});
         f.Event("CloseSettings");
@@ -385,7 +406,10 @@ namespace {
         f.Visible({"HUD"});
         f.ShowTemporaryScreens();
         Require(f.state.gameFlow.Request(GameFlowCommand::Victory), "scene completion requests Victory directly");
-        Require(f.controller.SyncGameFlowUi(), "frame sync presents scene-driven Victory");
+        Require(f.controller.SyncGameFlowUi(), "presentation cannot commit scene-driven Victory");
+        f.Flow(GameFlowState::Playing);
+        f.Visible({"HUD", "AbilityUnlock", "RespawnPrompt", "UFONews"});
+        f.NextFrame();
         f.Flow(GameFlowState::Victory);
         f.Visible({"Win"});
         const auto revision = f.state.gameFlow.Revision();
@@ -394,6 +418,53 @@ namespace {
         f.Settle();
         f.Visible({"Win"});
         std::puts("PASS gameplay and UI use the same authority; frame synchronization is presentation-only");
+    }
+
+    void TestDeferredUiEventsAndOrdering() {
+        Fixture f;
+        const auto menuRevision = f.state.gameFlow.Revision();
+        f.ClickInFrame("MainMenu", "StartButton");
+        Require(f.controller.SyncGameFlowUi(), "sync during the click frame is presentation-only");
+        f.Flow(GameFlowState::MainMenu);
+        f.Visible({"MainMenu"});
+        Require(f.state.gameFlow.Revision() == menuRevision && f.state.gameFlow.HasPendingRequests(),
+            "a real Start click queues work without advancing the displayed revision");
+        f.NextFrame();
+        f.Flow(GameFlowState::Playing);
+        f.Visible({"HUD"});
+
+        const auto playingRevision = f.state.gameFlow.Revision();
+        f.EventInFrame("MenuBack");
+        f.EventInFrame("OpenSettings");
+        f.EventInFrame("OpenSettings");
+        Require(f.controller.SyncGameFlowUi(), "sync cannot expose pending pause/settings");
+        f.Flow(GameFlowState::Playing);
+        f.Visible({"HUD"});
+        Require(f.state.gameFlow.Revision() == playingRevision &&
+            f.state.gameFlow.PendingState() == GameFlowState::Paused && f.state.gameFlow.PendingSettingsOpen(),
+            "rapid menu events route against their pending projection without changing the active frame");
+        f.NextFrame();
+        f.Flow(GameFlowState::Paused, true);
+        f.Visible({"HUD", "PauseMenu", "Settings"});
+        Require(f.state.gameFlow.Revision() == playingRevision + 1, "all accepted UI events publish one frame revision");
+
+        f.EventInFrame("MenuBack");
+        f.EventInFrame("MenuBack");
+        f.Flow(GameFlowState::Paused, true);
+        f.Visible({"HUD", "PauseMenu", "Settings"});
+        f.NextFrame();
+        f.Flow(GameFlowState::Playing);
+        f.Visible({"HUD"});
+        Require(!f.state.gameFlow.HasPendingRequests(), "two rapid Back events close settings then resume in order");
+
+        f.EventInFrame("ShowVictory");
+        f.EventInFrame("MenuBack");
+        f.Flow(GameFlowState::Playing);
+        f.Visible({"HUD"});
+        f.NextFrame();
+        f.Flow(GameFlowState::Victory);
+        f.Visible({"Win"});
+        std::puts("PASS real UI clicks and ordered rapid events publish only at the next frame boundary");
     }
 
     void TestMissingDestination() {
@@ -409,6 +480,8 @@ namespace {
         std::filesystem::current_path(originalDirectory);
         f.Flow(GameFlowState::MainMenu);
         f.Visible({"MainMenu"});
+        Require(!f.state.gameFlow.HasPendingRequests() && f.state.gameFlow.PendingState() == GameFlowState::MainMenu &&
+            !f.state.gameFlow.PendingSettingsOpen(), "failed screen preparation queues no hidden transition");
         std::puts("PASS missing settings asset leaves current state and screen usable");
     }
 }
@@ -421,6 +494,7 @@ int main() {
     TestFailedReloadRetry();
     TestEditorAndQuit();
     TestGameplayDrivenSynchronization();
+    TestDeferredUiEventsAndOrdering();
     TestMissingDestination();
     std::puts("PASS all runtime UI flow regressions (real assets/router/manager; no window or GPU)");
 }

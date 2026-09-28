@@ -26,8 +26,12 @@ namespace engine {
         void Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, GameplayState* state, AnimationSystem* anima, AudioSystem* audio) override;
         void Update(float dt) override;
         void RefreshPlayerMotion(float dt) override;
+        void UpdatePresentation(float dt) override;
         void Shutdown() override;
-        void OnParticleGroupRemoved(size_t particleIndex);
+        void OnParticleGroupRemoved(size_t particleIndex) override;
+        bool IsParticleGroupSceneControlled(size_t index) const override {
+            return index != static_cast<size_t>(-1) && index == m_rocketFlameParticleIndex;
+        }
 
     private:
         void ReleaseRocketCamera(bool freezeVictoryPose);

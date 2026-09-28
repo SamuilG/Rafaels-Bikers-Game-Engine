@@ -155,8 +155,8 @@ namespace engine {
             return static_cast<bool>(mUiManager);
         }
 
-        // Call after host/level flow commands and reload completion. UI events
-        // synchronize automatically through GameUIEventRouter.
+        // Present the committed revision after Application's frame boundary.
+        // UI/level requests only enqueue commands; they do not switch screens.
         bool SyncGameFlowUi() {
             return mEventRouter && mEventRouter->SyncGameFlowUi();
         }

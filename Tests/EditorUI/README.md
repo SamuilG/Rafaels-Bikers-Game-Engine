@@ -30,11 +30,17 @@ startup defaults; the initial window focus is managed by ImGui. The suite does
 not claim to restore an optional tool's visibility or focus across restarts.
 
 The separate transform suite uses real ImGuizmo code. The trigger suite compiles
-the production TriggerSystem and exercises particle-binding removal/compaction,
-including disabled and completed one-shot triggers. It creates uninitialized
-ParticleSystem objects solely for real CPU trigger processing; unexpected GPU
-cleanup or debug drawing fails the test. The four link-only graphics adapters
-abort if called; no trigger logic is replaced with a test implementation.
+the production TriggerSystem with only GLM and the C++ standard library. It links
+no ParticleSystem, DebugRenderer, UI, physics or GPU code and uses no adapters.
+Its 10 groups cover unbound triggers with no particles, enter/exit crossings,
+transformed box and capsule geometry, one-shot completion with or without a
+callback, disabled bindings, aggregate OR particle outputs, binding removal and
+index compaction, and callbacks that add, clear, disable or replace triggers.
+Callback additions begin on the next Update; clearing cancels the old evaluation;
+disabling resets crossing state without an exit callback. Completed one-shots
+retain their particle binding but immediately emit inactive output. These tests
+verify the CPU outputs; game-side particle application and GPU rendering require
+separate integration validation. Logs are in `Intermediate/Diagnostics/trigger-bindings`.
 
 Integrate by calling `engine::editor_layout::DrawDockspace()` before editor
 windows, replacing the previous `DockSpaceOverViewport` call. Use the header's

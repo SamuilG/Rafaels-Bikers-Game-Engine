@@ -1,4 +1,5 @@
 ﻿#include "Level1.hpp"
+#include "../Gameplay/BikersPresentation.hpp"
 #include "../Renderer/RenderSystem.hpp"
 #include "../Scene/SceneManager.hpp"
 #include "../Physics/PhysicsSystem.hpp"
@@ -239,7 +240,8 @@ namespace engine {
 
 		if (RuntimeUiController* ui = GetRuntimeUiController()) {
 			ui->RemoveWidgetFromViewPort(kRespawnPromptUiPath);
-			ui->SyncGameFlowUi();
+			// Win becomes visible after the next frame commits Victory.
+			ui->PreloadWidget(kWinUiPath);
 			ui->SetText(
 				kWinUiPath,
 				"DeadCount",
@@ -260,15 +262,8 @@ namespace engine {
 	void level::Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physics, InputSystem* input, EventSystem* eventSys, GameplayState* state, AnimationSystem* anima, AudioSystem* audio) {
 		InitBase(render);
 		m_render = render;
+		if (m_render) m_render->SetGameContentUiEnabled(true);
 		m_rocketFlameParticleIndex = static_cast<size_t>(-1);
-		if (m_render) {
-			m_render->SetParticleGroupRemovedCallback([this](size_t particleIndex) {
-				OnParticleGroupRemoved(particleIndex);
-			});
-			m_render->SetParticleGroupOwnershipQuery([this](size_t particleIndex) {
-				return particleIndex != static_cast<size_t>(-1) && particleIndex == m_rocketFlameParticleIndex;
-			});
-		}
 		m_scene = scene;
 		m_physics = physics;
 		m_input = input;
@@ -718,10 +713,10 @@ namespace engine {
 		triggerParticles[triggerParticleIndex]->config.emitterPos = glm::vec3(50.0f, 1.0f, 20.0f);
 		triggerParticles[triggerParticleIndex]->config.isVisible = false;
 
-		size_t triggerBox01 = m_render->GetTriggerSystem().AddBoxTrigger(
+		size_t triggerBox01 = Triggers().AddBoxTrigger(
 			glm::vec3(50.0f, 1.0f, 20.0f), glm::vec3(2.0f, 2.0f, 2.0f), triggerParticleIndex, glm::vec3(1.0f, 0.0f, 0.0f), glm::mat4(1.0f), true, false);
 
-		m_render->GetTriggerSystem().SetTriggerCallbacks(triggerBox01,
+		Triggers().SetTriggerCallbacks(triggerBox01,
 			[]() { GameScene::Log("trigger box triggered!!\n"); },
 			[]() { GameScene::Log("trigger box exited!!\n"); }
 		);
@@ -820,7 +815,7 @@ namespace engine {
 			auto collectedCount = std::make_shared<int>(0);
 
 			for (int i = 0; i < kTotalCollectibles; ++i) {
-				size_t tid = m_render->GetTriggerSystem().AddSphereTrigger(
+				size_t tid = Triggers().AddSphereTrigger(
 					kCollectPos[i],
 					/*radius=*/2.5f,
 					/*particleIndex=*/static_cast<size_t>(-1),
@@ -829,7 +824,7 @@ namespace engine {
 					/*oneShot=*/true
 				);
 				// ... 前面的代码保持不变 ...
-				m_render->GetTriggerSystem().SetTriggerCallbacks(tid,
+				Triggers().SetTriggerCallbacks(tid,
 					[this, i, collectedCount, kTotalCollectibles]() mutable {
 						ScopedFlecsDefer defer(m_scene->get_world());
 						if (i < static_cast<int>(m_gasPickupEntities.size()) && m_gasPickupEntities[i].is_valid()) {
@@ -1019,7 +1014,7 @@ namespace engine {
 			m_springPickupEntity = m_scene->create_dynamic_entity(
 				"SpringPickup", springMeshIdx, springMatIdx, kSpringTransform);
 
-			size_t jumpPickupTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
+			size_t jumpPickupTrigger = Triggers().AddSphereTrigger(
 				kSpringPickupPos,
 				/*radius=*/2.5f,
 				/*particleIndex=*/static_cast<size_t>(-1),
@@ -1027,7 +1022,7 @@ namespace engine {
 				/*isVisible=*/false,
 				/*oneShot=*/true
 			);
-			m_render->GetTriggerSystem().SetTriggerCallbacks(jumpPickupTrigger,
+			Triggers().SetTriggerCallbacks(jumpPickupTrigger,
 				[this]() {
 					ScopedFlecsDefer defer(m_scene->get_world());
 					mState->player.UnlockJump();
@@ -1098,7 +1093,7 @@ namespace engine {
 			m_hornPickupEntity = m_scene->create_dynamic_entity(
 				"HornPickup", hornMeshIdx, hornMatIdx, kHornTransform);
 
-			size_t hornPickupTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
+			size_t hornPickupTrigger = Triggers().AddSphereTrigger(
 				kHornPickupPos,
 				/*radius=*/2.5f,
 				/*particleIndex=*/static_cast<size_t>(-1),
@@ -1106,7 +1101,7 @@ namespace engine {
 				/*isVisible=*/false,
 				/*oneShot=*/true
 			);
-			m_render->GetTriggerSystem().SetTriggerCallbacks(hornPickupTrigger,
+			Triggers().SetTriggerCallbacks(hornPickupTrigger,
 				[this]() {
 					ScopedFlecsDefer defer(m_scene->get_world());
 					mState->player.UnlockHorn();
@@ -1190,7 +1185,7 @@ namespace engine {
 				printf("[Radio] WARNING: No .mp3 files found in %s\n", radioDir.string().c_str());
 
 			// oneShot=true: fires once on first contact, then permanently disabled
-			size_t radioTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
+			size_t radioTrigger = Triggers().AddSphereTrigger(
 				kRadioPickupPos,
 				/*radius=*/2.5f,
 				/*particleIndex=*/static_cast<size_t>(-1),
@@ -1198,7 +1193,7 @@ namespace engine {
 				/*isVisible=*/false,
 				/*oneShot=*/true
 			);
-			m_render->GetTriggerSystem().SetTriggerCallbacks(radioTrigger,
+			Triggers().SetTriggerCallbacks(radioTrigger,
 				[this]() {
 					ScopedFlecsDefer defer(m_scene->get_world());
 					mState->player.UnlockRadio();
@@ -1277,7 +1272,7 @@ namespace engine {
 			m_newspaperEntity = m_scene->create_dynamic_entity(
 				"NewspaperPickup", newsMeshIdx, newsMatIdx, kNewsTransform);
 
-			size_t newsTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
+			size_t newsTrigger = Triggers().AddSphereTrigger(
 				kNewsPickupPos,
 				/*radius=*/2.5f,
 				/*particleIndex=*/static_cast<size_t>(-1),
@@ -1285,7 +1280,7 @@ namespace engine {
 				/*isVisible=*/false,
 				/*oneShot=*/true
 			);
-			m_render->GetTriggerSystem().SetTriggerCallbacks(newsTrigger,
+			Triggers().SetTriggerCallbacks(newsTrigger,
 				[this]() {
 					ScopedFlecsDefer defer(m_scene->get_world());
 					// Play flip sound
@@ -1339,7 +1334,7 @@ namespace engine {
 			const glm::vec3 kCheckpointPos   = glm::vec3(374.91f, 77.54f, 296.48f);
 			const float     kCheckpointRadius = 19.80f;
 
-			size_t checkpointTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
+			size_t checkpointTrigger = Triggers().AddSphereTrigger(
 				kCheckpointPos,
 				kCheckpointRadius,
 				/*particleIndex=*/static_cast<size_t>(-1),
@@ -1347,7 +1342,7 @@ namespace engine {
 				/*isVisible=*/false,
 				/*oneShot=*/false
 			);
-			m_render->GetTriggerSystem().SetTriggerCallbacks(checkpointTrigger,
+			Triggers().SetTriggerCallbacks(checkpointTrigger,
 				[this, kCheckpointPos]() {
 					m_checkpointPos = kCheckpointPos;
 					m_checkpointYaw = 0.0f;
@@ -1364,7 +1359,7 @@ namespace engine {
 			const glm::vec3 kClearCheckpointPos    = glm::vec3(402.77f, -33.045f, 278.87f);
 			const float     kClearCheckpointRadius = 10.0f;
 
-			size_t clearCheckpointTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
+			size_t clearCheckpointTrigger = Triggers().AddSphereTrigger(
 				kClearCheckpointPos,
 				kClearCheckpointRadius,
 				/*particleIndex=*/static_cast<size_t>(-1),
@@ -1372,7 +1367,7 @@ namespace engine {
 				/*isVisible=*/false,
 				/*oneShot=*/false
 			);
-			m_render->GetTriggerSystem().SetTriggerCallbacks(clearCheckpointTrigger,
+			Triggers().SetTriggerCallbacks(clearCheckpointTrigger,
 				[this]() {
 					m_hasCheckpoint = false;
 					printf("[Checkpoint] Respawn reset to in-place\n");
@@ -1386,7 +1381,7 @@ namespace engine {
 			const glm::vec3 kIblOffPos    = glm::vec3(407.691f, 65.906f, 280.383f);
 			const float     kIblOffRadius = 10.0f;
 
-			size_t iblOffTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
+			size_t iblOffTrigger = Triggers().AddSphereTrigger(
 				kIblOffPos,
 				kIblOffRadius,
 				/*particleIndex=*/static_cast<size_t>(-1),
@@ -1394,7 +1389,7 @@ namespace engine {
 				/*isVisible=*/false,
 				/*oneShot=*/false
 			);
-			m_render->GetTriggerSystem().SetTriggerCallbacks(iblOffTrigger,
+			Triggers().SetTriggerCallbacks(iblOffTrigger,
 				[this]() {
 					if (mState) {
 						mState->renderOverrides.iblEnabled = false;
@@ -1410,7 +1405,7 @@ namespace engine {
 			const glm::vec3 kIblOnPos    = glm::vec3(-178.163f, 9.492f, -77.001f);
 			const float     kIblOnRadius = 4.97f;
 
-			size_t iblOnTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
+			size_t iblOnTrigger = Triggers().AddSphereTrigger(
 				kIblOnPos,
 				kIblOnRadius,
 				/*particleIndex=*/static_cast<size_t>(-1),
@@ -1418,7 +1413,7 @@ namespace engine {
 				/*isVisible=*/false,
 				/*oneShot=*/false
 			);
-			m_render->GetTriggerSystem().SetTriggerCallbacks(iblOnTrigger,
+			Triggers().SetTriggerCallbacks(iblOnTrigger,
 				[this]() {
 					if (mState) {
 						mState->renderOverrides.iblEnabled.reset();
@@ -1437,7 +1432,7 @@ namespace engine {
 		{
 			constexpr glm::vec3 kRocketTriggerPos = glm::vec3(226.0f, 87.0f, -25.0f);
 
-			size_t rocketLaunchTrigger = m_render->GetTriggerSystem().AddSphereTrigger(
+			size_t rocketLaunchTrigger = Triggers().AddSphereTrigger(
 				kRocketTriggerPos,
 				/*radius=*/5.0f,
 				/*particleIndex=*/static_cast<size_t>(-1),
@@ -1445,7 +1440,7 @@ namespace engine {
 				/*isVisible=*/false,
 				/*oneShot=*/true
 			);
-			m_render->GetTriggerSystem().SetTriggerCallbacks(rocketLaunchTrigger,
+			Triggers().SetTriggerCallbacks(rocketLaunchTrigger,
 				[this]() {
 					ScopedFlecsDefer defer(m_scene->get_world());
 					if (!m_rocket2Entities.empty()) {
@@ -1801,6 +1796,11 @@ namespace engine {
 		}
 	}
 
+	void level::UpdatePresentation(float dt) {
+		if (mState && m_scene && m_render)
+			UpdateBikersPresentation(dt, *mState, *m_scene, m_render->GetParticles());
+	}
+
 	void level::RefreshPlayerMotion(float dt) {
 		// Physics advances after level::Update(). Resolve a portal crossing here,
 		// before the camera and renderer consume the new body pose, so the camera
@@ -1896,7 +1896,7 @@ namespace engine {
 			m_winUiDelayTimer -= dt;
 			if (m_winUiDelayTimer <= 0.0f) {
 				ShowWinScreen();
-				if (mState && !mState->gameFlow.CanSimulate()) return;
+				if (m_winUiVisible) return;
 			}
 		}
 
@@ -2475,10 +2475,6 @@ namespace engine {
 	}
 
 	void level::Shutdown() {
-		if (m_render) {
-			m_render->SetParticleGroupRemovedCallback({});
-			m_render->SetParticleGroupOwnershipQuery({});
-		}
 		m_rocketFlameParticleIndex = static_cast<size_t>(-1);
 
 		RemoveWidget(kRespawnPromptUiPath);
