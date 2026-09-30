@@ -9,6 +9,10 @@ struct EditorState {
     bool editorViewportBackdrop = true; // Neutral editor background; disable to preview scene sky.
     bool editorViewportSkybox = false;  // Render the scene skybox in the editor viewport.
     bool editorViewportGrid = true;     // Depth-tested reference grid on the XZ plane.
+    bool showPlayerCameraIcon = true;
+    bool showPlayerCameraFrustum = true;
+    bool playerCameraFrustumUseFarClip = false;
+    float playerCameraFrustumPreviewDistance = 5.0f; // Editor guide only; never changes the game lens.
     bool showEngineUi = false;//engine UI toggle with key F1
     bool showRenderSettings = true;
     bool showContentBrowser = true;

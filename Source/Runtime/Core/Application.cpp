@@ -115,6 +115,7 @@ namespace engine {
         m_currentScene->Init(renderSystem, sceneManager, physicsSystem, inputSystem, eventSystem, &mGameplayState, animationSystem, audioSystem);
         ApplySceneWorkspace();
         sceneManager->Update(0.0f);
+        if (mOptions.editingProject) m_currentScene->RefreshEditorCameraPreview();
         animationSystem->Update(0.0f);
         if (runtimeUiController) runtimeUiController->SyncGameFlowUi();
         ReportProgress(1.0f, "Ready");
@@ -145,7 +146,13 @@ namespace engine {
                 mState.player.UpdateEffects(dt);
                 if (m_currentScene) m_currentScene->UpdateTriggers(mState.player.State().position);
             },
-            .scene = [this](float dt) { sceneManager->Update(dt); },
+            .scene = [this](float dt) {
+                sceneManager->Update(dt);
+                // A paused Play session retains its exact runtime camera.
+                // Only the authoring world follows edits without simulation.
+                if (mOptions.editingProject && !mEditorPlay.IsPlaying() && m_currentScene)
+                    m_currentScene->RefreshEditorCameraPreview();
+            },
             .animation = [this](float dt) { animationSystem->Update(dt); },
             .gameEffects = [this](float dt) { if (m_currentScene) m_currentScene->UpdatePresentation(dt); },
             .presentation = [this](float dt) { renderSystem->Update(dt); },
@@ -297,6 +304,7 @@ namespace engine {
                 eventSystem, &mGameplayState, animationSystem, audioSystem);
             ApplyEditorSceneToPlay();
             sceneManager->Update(0.0f);
+            if (mOptions.editingProject) m_currentScene->RefreshEditorCameraPreview();
             animationSystem->Update(0.0f);
             mState.gameFlow.Request(GameFlowCommand::Start);
             mState.editor.focusGameViewport = true;
@@ -495,6 +503,7 @@ namespace engine {
             m_currentScene->Init(renderSystem, sceneManager, physicsSystem, inputSystem, eventSystem, &mGameplayState, animationSystem, audioSystem);
             ApplySceneWorkspace();
             sceneManager->Update(0.0f);
+            if (mOptions.editingProject) m_currentScene->RefreshEditorCameraPreview();
             animationSystem->Update(0.0f);
             return true;
         }

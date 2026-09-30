@@ -819,6 +819,8 @@ namespace engine {
 		ImVec2 viewportSize = ImGui::GetContentRegionAvail();
 		if (viewportSize.x > 10.0f && viewportSize.y > 10.0f) {
 			s_SceneViewportSize = viewportSize;
+			// Scene/Game are peer tabs in one dock: resize the hidden Game lens too.
+			if (editor.showEngineUi) s_GameViewportSize = viewportSize;
 		}
 
 		// 2. 绘制 3D 画面//	Draw the 3D scene (as an ImGui image)
@@ -2282,6 +2284,19 @@ namespace engine {
             ImGui::MenuItem(_SL("Show Viewport Skybox"), nullptr, &editor.editorViewportSkybox, editor.renderMode == 0);
             ImGui::MenuItem(_SL("Viewport Grid"), nullptr, &editor.editorViewportGrid, editor.renderMode == 0);
             if (editor.renderMode != 0) ImGui::TextDisabled("%s", _SL("Available in default render mode"));
+            ImGui::Separator();
+            ImGui::MenuItem(_SL("Player Camera Icon"), nullptr, &editor.showPlayerCameraIcon);
+            ImGui::MenuItem(_SL("Player Camera Frustum"), nullptr, &editor.showPlayerCameraFrustum);
+            if (ImGui::BeginMenu(_SL("Camera Frustum Display"), editor.showPlayerCameraFrustum)) {
+                ImGui::MenuItem(_SL("Use Camera Far Clip"), nullptr, &editor.playerCameraFrustumUseFarClip);
+                ImGui::BeginDisabled(editor.playerCameraFrustumUseFarClip);
+                ImGui::SetNextItemWidth(180.0f);
+                ImGui::SliderFloat(_SL("Preview Distance"), &editor.playerCameraFrustumPreviewDistance,
+                    0.5f, 30.0f, "%.1f m", ImGuiSliderFlags_AlwaysClamp);
+                ImGui::EndDisabled();
+                ImGui::TextDisabled("%s", _SL("Display only; game clipping is unchanged."));
+                ImGui::EndMenu();
+            }
             ImGui::Separator();
             if (ImGui::MenuItem(_SL("Reset Editor Layout"))) {
                 editor.showSceneHierarchy = editor.showEntityInspector = editor.showContentBrowser = true;

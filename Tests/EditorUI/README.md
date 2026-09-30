@@ -7,12 +7,25 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Tests/EditorUI/run-editor-la
 powershell -NoProfile -ExecutionPolicy Bypass -File Tests/EditorUI/run-editor-transform-tests.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File Tests/EditorUI/run-trigger-binding-tests.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File Tests/EditorUI/run-editor-theme-tests.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File Tests/EditorUI/run-camera-gizmo-tests.ps1
 ```
 
 Requires Visual Studio C++ tools. The script builds the vendored Dear ImGui core
 and `EditorLayoutTests.cpp` into a separate console executable. It does not build
 the Engine, use the runtime UI tests, or initialize a window or graphics backend.
 Logs and build outputs stay under `Intermediate/Diagnostics/editor-layout`.
+
+The camera gizmo suite exercises the production GLM geometry helper without a
+window or Vulkan device. It checks real near/far frustum corners, pose/FOV/aspect,
+RH_ZO projection, clipping against all six planes including segments behind the
+eye, and rejection of invalid inputs. It also checks the default 5-metre display
+guide, unchanged game lens parameters, full-range mode, short far planes, and
+near planes beyond the requested preview depth. The default Bikers spawn view
+must contain all twelve preview edges without clipping their endpoints, guarding
+against the long rays and disconnected far edges of the original 1000-metre guide.
+Outputs stay under
+`Intermediate/Diagnostics/camera-gizmo`. The scene-only icon/line drawing and
+View menu switches are verified in the running editor.
 
 The tests run actual ImGui frames and inspect the resulting docking nodes and
 window content rectangles. They verify defaults at 1280x720 and 1920x1080,

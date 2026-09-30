@@ -24,6 +24,10 @@ namespace engine {
         // Resolve post-physics gameplay state and publish physical feedback before rendering.
         virtual void RefreshPlayerMotion(float dt) {}
 
+        // Publish a camera preview from authoring transforms only. This hook
+        // must not advance gameplay, physics, triggers or camera transitions.
+        virtual void RefreshEditorCameraPreview() {}
+
         // Gameplay evaluation runs in the application simulation phase. Rendering
         // receives only const trigger geometry and particle visibility outputs.
         void UpdateTriggers(const glm::vec3& probePosition);

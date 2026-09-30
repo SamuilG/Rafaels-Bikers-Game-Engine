@@ -98,6 +98,7 @@ namespace lut = labut2;
 #include "../Animation/AnimationSystem.hpp"
 #include <unordered_map>
 #include "RenderUtilities/frustum.hpp"
+#include "../UI/CameraGizmoGeometry.hpp"
 #include "RenderUtilities/SSAO.hpp"
 namespace glsl {
     struct MosaicUniform {
@@ -1086,6 +1087,7 @@ namespace engine {
         {
             mFrameTimings = {};
             mPresentedFrame = false;
+            VkDescriptorSet playerCameraIcon = VK_NULL_HANDLE;
             PublishPresentationMode();
             // GLFW events and raw action states are sampled by InputSystem at
             // the start of Application's frame. Rendering consumes that
@@ -1193,6 +1195,9 @@ namespace engine {
 
                 // 获取全局鼠标位置和 Viewport 数据
                 EngineUi::DrawSceneViewport(m_sceneViewportTexId, this, mSceneManager, mEditorScene, view, gizmoProj, mEditorScene.Selection(), mState->editor, mState->render);
+                if (mState->editor.showEngineUi && mState->editor.isSceneViewportVisible &&
+                    mState->editor.showPlayerCameraIcon && !mEditorProjectActions.projectFile.empty())
+                    playerCameraIcon = GetContentBrowserThumbnail("Assets/Textures/CameraIcon.png");
                 const bool previouslyRenderingGame = mRenderingGameViewport;
                 if (mState->editor.showEngineUi) {
                     EngineUi::DrawGameViewport(m_sceneViewportTexId, mState->editor, IsEditorPlaying(),
@@ -1671,6 +1676,24 @@ namespace engine {
                 static_cast<uint32_t>(finalHeight),
                 RenderCameraState(), ActiveRenderMode()
             );
+
+            if (mState->editor.showEngineUi && !mRenderingGameViewport &&
+                !mEditorProjectActions.projectFile.empty()) {
+                const auto& playerCamera = mState->camera.State();
+                const ImVec2 gameSize = EngineUi::GetGameViewportSize();
+                const auto gameWidth = static_cast<uint32_t>(std::max(1.0f, std::abs(gameSize.x)));
+                const auto gameHeight = static_cast<uint32_t>(std::max(1.0f, std::abs(gameSize.y)));
+                const editor_camera_gizmo::CameraView cameraView{
+                    playerCamera.camera2world, playerCamera.cameraFov,
+                    float(gameWidth) / float(gameHeight), cfg::kCameraNear, cfg::kCameraFar
+                };
+                // ImGui has top-down pixels; the overlay projects with an unflipped
+                // RH_ZO lens and converts NDC Y to screen Y exactly once.
+                glm::mat4 overlayProjection = sceneUniforms.projection;
+                overlayProjection[1][1] *= -1.0f;
+                EngineUi::DrawPlayerCameraGizmo(playerCameraIcon, cameraView,
+                    overlayProjection * sceneUniforms.camera, mState->editor);
+            }
 
             // 【新增】：将 IBL 状态同步给 Shader
             sceneUniforms.iblEnabled = mState->renderOverrides.IblEnabled(mState->render) ? 1 : 0;

@@ -18,6 +18,12 @@ independent reasons to stop simulation and are committed only at boundaries.
 
 These are CPU tests; they do not run a Jolt vehicle, open a window or validate GPU rendering. Runtime UI integration is covered separately by `Tests/UI`.
 
+`run-camera-preview-tests.ps1` checks the production follow-camera preview without
+advancing simulation: spawn placement, edits to the player position, preservation
+of pending orbit/FOV smoothing, matching the runtime follow pose including roll,
+and respecting Free/Cinematic/Portal ownership. Results are written to
+`Intermediate/Diagnostics/camera-preview`.
+
 Run `powershell -NoProfile -ExecutionPolicy Bypass -File Tests/State/run-scene-frame-tests.ps1`
 for six additional groups using the real Flecs library and production
 `UpdateSceneWorld` helper. They register ordinary simulation, interval-timer and

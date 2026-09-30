@@ -11,6 +11,27 @@ class CameraController {
 public:
     const CameraState& State() const { return mState; }
     void ResetForNewRun() { *this = CameraController{}; }
+    // Rebuild an authoring preview from the current orbit without simulating
+    // camera input, smoothing, timers, speed effects or portal transitions.
+    bool RefreshFollowPreview(const PlayerState& player) {
+        if (mState.mode != CameraMode::Follow || !mState.thirdPersonMode || mState.portalCameraActive)
+            return false;
+        if (!std::isfinite(player.position.x) || !std::isfinite(player.position.y) ||
+            !std::isfinite(player.position.z)) return false;
+        const glm::vec3 right(std::cos(mState.Yaw), 0.0f, -std::sin(mState.Yaw));
+        mState.followTargetPos = player.position + right + glm::vec3(0.0f, -1.0f, 0.0f);
+        const glm::vec3 target = mState.followTargetPos + glm::vec3(0.0f, 1.6f, 0.0f);
+        const glm::vec3 offset(
+            mState.Distance * std::cos(mState.Pitch) * std::sin(mState.Yaw),
+            mState.Distance * std::sin(mState.Pitch),
+            mState.Distance * std::cos(mState.Pitch) * std::cos(mState.Yaw));
+        const glm::vec3 position = target + offset;
+        const glm::vec3 forward = glm::normalize(target - position);
+        const glm::mat4 roll = glm::rotate(glm::mat4(1.0f), mState.cameraRoll, forward);
+        const glm::vec3 up = glm::vec3(roll * glm::vec4(0.0f, 1.0f, 0.0f, 0.0f));
+        mState.camera2world = glm::inverse(glm::lookAt(position, target, up));
+        return true;
+    }
     bool RequestFollow() { return RequestMode(CameraMode::Follow); }
     bool RequestFree() { return RequestMode(CameraMode::Free); }
     void SetFollowTarget(const glm::vec3& target) { mState.followTargetPos = target; }

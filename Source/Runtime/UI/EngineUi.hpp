@@ -13,6 +13,8 @@
 
 namespace engine {
 
+    namespace editor_camera_gizmo { struct CameraView; }
+
     class RenderSystem;
     class SceneManager;
     class EditorSceneAdapter;
@@ -73,6 +75,9 @@ namespace engine {
         
 		//绘制 3D 渲染画面、图标、Gizmo 坐标轴//Draw the 3D rendered scene, icons, and Gizmo axes
         static ImDrawList* GetSceneViewportDrawList();
+        // Draw after camera updates, using the same scene pose as this frame's render.
+        static void DrawPlayerCameraGizmo(VkDescriptorSet icon, const editor_camera_gizmo::CameraView& camera,
+            const glm::mat4& sceneViewProjection, const EditorState& editor);
         static ImVec2 GetGameViewportSize();
         static ImVec2 GetGameViewportPos();
         static ImDrawList* GetGameViewportDrawList();

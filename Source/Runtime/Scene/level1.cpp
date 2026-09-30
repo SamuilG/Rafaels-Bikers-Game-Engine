@@ -1801,6 +1801,13 @@ namespace engine {
 			UpdateBikersPresentation(dt, *mState, *m_scene, m_render->GetParticles());
 	}
 
+    void level::RefreshEditorCameraPreview() {
+        if (!mState || !m_bikeController) return;
+        // Sampling the edited body does not run portal crossing or triggers.
+        m_bikeController->SampleMotion();
+        mState->camera.RefreshFollowPreview(mState->player.State());
+    }
+
 	void level::RefreshPlayerMotion(float dt) {
 		// Physics advances after level::Update(). Resolve a portal crossing here,
 		// before the camera and renderer consume the new body pose, so the camera
