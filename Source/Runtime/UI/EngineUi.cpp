@@ -2206,7 +2206,16 @@ namespace engine {
                 else if (project && project->openProject) browseProject();
             }
         }
-        if (!ImGui::BeginMainMenuBar()) return;
+        const float playIconSize = ImGui::GetFontSize() * 2.0f;
+        const float playIconPadding = ImGui::GetFontSize() / 6.0f;
+        // Reserve enough bar height for the blueprint detail to remain readable.
+        if (play) ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+            ImVec2(ImGui::GetStyle().FramePadding.x,
+                (playIconSize + playIconPadding * 2.0f - ImGui::GetFontSize()) * 0.5f));
+        if (!ImGui::BeginMainMenuBar()) {
+            if (play) ImGui::PopStyleVar();
+            return;
+        }
         if (ImGui::BeginMenu(_SL("File"))) {
             if (ImGui::MenuItem(_SL("Open Project..."), "Ctrl+O", false, project && static_cast<bool>(project->openProject) && (!play || !play->IsPlaying()))) browseProject();
             if (project && !project->exampleProjectFile.empty()) {
@@ -2324,22 +2333,46 @@ namespace engine {
             ImGui::EndMenu();
         }
         if (play) {
-            const float controlsWidth = 235.0f;
+            const float controlsWidth = (playIconSize + playIconPadding * 2.0f) * 3.0f
+                + ImGui::GetStyle().ItemSpacing.x * 2.0f;
             ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX() + ImGui::GetStyle().ItemSpacing.x,
                 (ImGui::GetWindowWidth() - controlsWidth) * 0.5f));
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(playIconPadding, playIconPadding));
+            const auto iconButton = [&](const char* id, const char* path, const char* fallback) {
+                const VkDescriptorSet icon = renderSys ? renderSys->GetContentBrowserThumbnail(path) : VK_NULL_HANDLE;
+                if (icon != VK_NULL_HANDLE) {
+                    // The shared texture uploader flips source rows; restore their UI orientation.
+                    return ImGui::ImageButton(id, (ImTextureID)icon,
+                        ImVec2(playIconSize, playIconSize), ImVec2(0, 1), ImVec2(1, 0));
+                }
+                // Keep controls usable if an external asset package lacks the editor icons.
+                ImGui::PushID(id);
+                const bool clicked = ImGui::Button(fallback,
+                    ImVec2(playIconSize + playIconPadding * 2.0f, playIconSize + playIconPadding * 2.0f));
+                ImGui::PopID();
+                return clicked;
+            };
             ImGui::BeginDisabled(!play->Available() || play->IsPlaying());
-            if (ImGui::Button("Play", ImVec2(65.0f, 0.0f)) && play->RequestPlay()) showPlayTransition("Starting play session...");
+            if (iconButton("##EditorPlay", "Assets/Icons/Editor/start.png", ">") && play->RequestPlay()) showPlayTransition("Starting play session...");
             ImGui::EndDisabled();
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-                ImGui::SetTooltip(play->Available() ? "Run this project in Game Viewport" : "Open a runnable project first");
+                ImGui::SetTooltip(play->Available() ? "Play: run this project in Game Viewport" : "Play: open a runnable project first");
             ImGui::SameLine();
             ImGui::BeginDisabled(!play->IsPlaying());
-            if (ImGui::Button(play->IsPaused() ? "Resume" : "Pause", ImVec2(75.0f, 0.0f))) play->RequestPause();
-            ImGui::SameLine();
-            if (ImGui::Button("Stop", ImVec2(65.0f, 0.0f)) && play->RequestStop()) showPlayTransition("Stopping play session...");
-            ImGui::EndDisabled();
+            if (play->IsPaused()) ImGui::PushStyleColor(ImGuiCol_Button,
+                editor_theme::Mix(editor_theme::kPaper, editor_theme::kAccent, 0.24f));
+            if (iconButton("##EditorPause",
+                play->IsPaused() ? "Assets/Icons/Editor/start.png" : "Assets/Icons/Editor/pause.png",
+                play->IsPaused() ? ">" : "||")) play->RequestPause();
+            if (play->IsPaused()) ImGui::PopStyleColor();
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-                ImGui::SetTooltip("Discard runtime changes and return to the editable scene");
+                ImGui::SetTooltip(play->IsPaused() ? "Resume: continue the play session" : "Pause: freeze the play session");
+            ImGui::SameLine();
+            if (iconButton("##EditorStop", "Assets/Icons/Editor/stop.png", "[]") && play->RequestStop()) showPlayTransition("Stopping play session...");
+            ImGui::EndDisabled();
+            ImGui::PopStyleVar();
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                ImGui::SetTooltip("Stop: discard runtime changes and return to the editable scene");
             if (play->PendingCommand() == EditorPlayController::Command::Play ||
                 play->PendingCommand() == EditorPlayController::Command::Stop) {
                 ImGui::SameLine();
@@ -2356,6 +2389,7 @@ namespace engine {
             }
         }
         ImGui::EndMainMenuBar();
+        if (play) ImGui::PopStyleVar();
 
         if (project && !project->error.empty() && !ImGui::IsPopupOpen("Project Error###EditorProjectError"))
             ImGui::OpenPopup("Project Error###EditorProjectError");
