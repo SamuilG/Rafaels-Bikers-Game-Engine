@@ -45,7 +45,6 @@ namespace engine {
         // Mouse specific
         glm::vec2 GetMouseDelta() const { return glm::vec2(static_cast<float>(mMouseDeltaX), static_cast<float>(mMouseDeltaY)); }
         glm::vec2 GetMousePosition() const { return glm::vec2(static_cast<float>(mMouseX), static_cast<float>(mMouseY)); }
-        void SetMouseCaptured(bool captured);
         bool IsMouseCaptured() const;
 
         // Gamepad specific
@@ -73,6 +72,8 @@ namespace engine {
        // void SetWindow(GLFWwindow* window);
 
     private:
+        // Only Update's middle-button edge may change capture mode.
+        void SetMouseCaptured(bool captured);
         GLFWwindow* mWindow = nullptr;
 
         // store bindings for various devices

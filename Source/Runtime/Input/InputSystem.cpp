@@ -179,6 +179,11 @@ namespace engine {
         UpdateKeyboardStates();
         UpdateGamepadStates();
         UpdateMouseStates();
+        // Handle the edge once per input frame, independently of camera routing,
+        // editor focus and pause state. Holding the button must not toggle again.
+        if (IsActionPressed("CaptureMouse")) {
+            SetMouseCaptured(!IsMouseCaptured());
+        }
     }
 
     void InputSystem::ResetForNewSession() {
@@ -347,7 +352,13 @@ namespace engine {
 
     void InputSystem::SetMouseCaptured(bool captured) {
         if (!mWindow) return;
+        if (captured == IsMouseCaptured()) return;
         glfwSetInputMode(mWindow, GLFW_CURSOR, captured ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+        // Cursor mode changes can reposition the cursor. Do not turn that warp
+        // into a camera rotation, including in the current input snapshot.
+        mFirstMouseUpdate = true;
+        mMouseDeltaX = 0.0;
+        mMouseDeltaY = 0.0;
     }
 
     bool InputSystem::IsMouseCaptured() const {

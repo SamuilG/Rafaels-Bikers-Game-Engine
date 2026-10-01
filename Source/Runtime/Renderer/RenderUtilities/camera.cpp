@@ -17,8 +17,6 @@ void update_camera(engine::CameraController& controller, const engine::PlayerSta
         // control and requires a second middle-click.
         const bool mouseCaptured = inputSys->IsMouseCaptured();
         const bool acceptsInput = !editor.showEngineUi || editor.isSceneViewportHovered || mouseCaptured;
-        if (acceptsInput && inputSys->IsActionPressed("CaptureMouse"))
-            inputSys->SetMouseCaptured(!inputSys->IsMouseCaptured());
         if (acceptsInput) {
             const glm::vec2 mouse = inputSys->IsMouseCaptured() ? inputSys->GetMouseDelta() : glm::vec2(0.0f);
             input.lookDelta = mouse * cfg::kCameraMouseSensitivity + inputSys->GetGamepadRightStick() * (2.5f * dt);

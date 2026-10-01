@@ -1095,10 +1095,6 @@ namespace engine {
             // Player death effects are advanced by the gameplay owner.
             if (!mEditorAvailable) mState->editor.showEngineUi = false;
             if (mRuntimeUiEnabled && mRuntimeUiController) mRuntimeUiController->SyncGameFlowUi();
-            const bool editorCamera = mState->editor.showEngineUi && !mRenderingGameViewport;
-            if (!mState->frame.runSimulationSystems && !editorCamera && mInputSystem) {
-                mInputSystem->SetMouseCaptured(false);
-            }
 
             imguiRenderer.BeginFrame(mState->editor.showEngineUi);
             mState->editor.inputCapturesKeyboard =
@@ -1198,7 +1194,6 @@ namespace engine {
                 if (mState->editor.showEngineUi && mState->editor.isSceneViewportVisible &&
                     mState->editor.showPlayerCameraIcon && !mEditorProjectActions.projectFile.empty())
                     playerCameraIcon = GetContentBrowserThumbnail("Assets/Textures/CameraIcon.png");
-                const bool previouslyRenderingGame = mRenderingGameViewport;
                 if (mState->editor.showEngineUi) {
                     EngineUi::DrawGameViewport(m_sceneViewportTexId, mState->editor, IsEditorPlaying(),
                         mEditorPlayController && mEditorPlayController->IsPaused());
@@ -1212,8 +1207,6 @@ namespace engine {
                         EngineUi::GetSceneViewportSize(),
                         EngineUi::GetSceneViewportDrawList());
                 }
-                if (mInputSystem && previouslyRenderingGame != mRenderingGameViewport)
-                    mInputSystem->SetMouseCaptured(false);
                 vpSize = EngineUi::GetSceneViewportSize();
                 ImVec2 mousePosAbs = ImGui::GetMousePos();
                 ImVec2 vpPos = EngineUi::GetSceneViewportPos();
@@ -1639,13 +1632,12 @@ namespace engine {
             // Editor and gameplay cameras have independent ownership.
             if (mState->editor.showEngineUi) {
                 const bool sceneInput = mState->editor.isSceneViewportVisible &&
+                    mState->editor.isSceneViewportFocused &&
+                    !GameViewportAcceptsInput() &&
                     !mState->editor.inputCapturesKeyboard &&
                     (mState->editor.isSceneViewportHovered || (mInputSystem && mInputSystem->IsMouseCaptured()));
                 if (sceneInput)
                     update_camera(mState->editor.sceneCamera, mState->player.State(), mState->editor, dt, mInputSystem);
-                if (mInputSystem && (mState->editor.inputCapturesKeyboard ||
-                    (mRenderingGameViewport && (!GameViewportAcceptsInput() || !mState->frame.runSimulationSystems))))
-                    mInputSystem->SetMouseCaptured(false);
             }
             if (mState->frame.runSimulationSystems || (!IsEditorPlaying() && mRenderingGameViewport)) {
                 EditorState gameRoute;
