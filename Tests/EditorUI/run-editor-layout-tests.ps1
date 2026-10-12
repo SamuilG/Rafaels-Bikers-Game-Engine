@@ -19,6 +19,7 @@ $sources = @(
 $arguments = @('/nologo', '/std:c++latest', '/EHsc', '/MDd', '/Od', '/Zi', '/utf-8', '/MP2', '/D_DEBUG=1')
 $arguments += '/I"' + (Join-Path $repoRoot 'Source') + '"'
 $arguments += '/I"' + (Join-Path $repoRoot 'ThirdParty/imgui') + '"'
+$arguments += '/I"' + (Join-Path $repoRoot 'ThirdParty/glm/include') + '"'
 $arguments += $sources | ForEach-Object { '"' + (Join-Path $repoRoot $_) + '"' }
 $arguments += '/Fo"' + $outputDirectory + '\\"'
 $arguments += '/Fd"' + (Join-Path $outputDirectory 'compile.pdb') + '"'

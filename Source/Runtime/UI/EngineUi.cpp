@@ -3,6 +3,7 @@
 #include "EngineUi.hpp"
 #include "EditorLayout.hpp"
 #include "GameViewportCanvas.hpp"
+#include "EditorViewportRouting.hpp"
 #include "EditorTransform.hpp"
 #include "EditorTheme.hpp"
 #include "../Core/EditorPlayController.hpp"
@@ -1860,7 +1861,8 @@ namespace engine {
             for (int mode = 0; mode < view_mode::Count; ++mode) {
                 const bool available = mode != view_mode::Wireframe || capabilities.wireframeSupported;
                 ImGui::BeginDisabled(!available);
-                if (ImGui::Selectable(modes[mode], editor.renderMode == mode)) editor.renderMode = mode;
+                if (ImGui::Selectable(modes[mode], editor.renderMode == mode))
+                    editor_viewport::SelectSceneViewMode(editor, mode);
                 if (editor.renderMode == mode) ImGui::SetItemDefaultFocus();
                 ImGui::EndDisabled();
                 if (!available && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))

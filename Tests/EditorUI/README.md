@@ -39,7 +39,11 @@ Inspector, Assets and Scene as the default active tabs. Game is a peer of Scene
 on the same rendering surface. A saved workspace without a Game window gains
 the new tab without changing custom panels or split ratios; selecting either
 viewport remains stable across frames. The viewport dock cannot split or undock
-into two simultaneous render windows. Zero and tiny initial viewports
+into two simultaneous render windows. Selecting any of the 12 Scene view modes
+from the Game tab must activate Scene, cancel pending Game focus, and preserve
+the selected mode in the production rendering route. Returning to Game uses
+Default without clearing the Scene selection. A transient frame where both tabs
+report visible cannot let Game override Scene. Zero and tiny initial viewports
 must defer layout creation; restoring a usable size or reloading their ini must
 produce the normal defaults. Existing custom layouts survive these unusable
 sizes and ini saves, and a pending reset waits until the viewport is usable.

@@ -75,6 +75,7 @@ namespace lut = labut2;
 #include "../UI/EngineUi.hpp"
 #include "../UI/EditorTheme.hpp"
 #include "../UI/SceneViewport.hpp"
+#include "../UI/EditorViewportRouting.hpp"
 #include "../Project/EditorProjectActions.hpp"
 #include <imgui.h>
 #include <backends/imgui_impl_vulkan.h>
@@ -327,7 +328,7 @@ namespace engine {
                 ? mState->editor.sceneCamera.State() : mState->camera.State();
         }
         int ActiveRenderMode() const {
-            return mState->editor.showEngineUi && !mRenderingGameViewport ? mState->editor.renderMode : 0;
+            return editor_viewport::ActiveRenderMode(mState->editor, mRenderingGameViewport);
         }
         void SetActiveScene(SceneManager* scene, AnimationSystem* animation) {
             ResetPerformanceHistory();
@@ -1197,7 +1198,7 @@ namespace engine {
                 if (mState->editor.showEngineUi) {
                     EngineUi::DrawGameViewport(m_sceneViewportTexId, mState->editor, IsEditorPlaying(),
                         mEditorPlayController && mEditorPlayController->IsPaused());
-                    mRenderingGameViewport = mState->editor.isGameViewportVisible;
+                    mRenderingGameViewport = editor_viewport::RenderGameViewport(mState->editor);
                     SceneViewport::Set(EngineUi::GetGameViewportPos(), EngineUi::GetGameViewportSize(),
                         EngineUi::GetGameViewportDrawList());
                 } else {
@@ -1612,13 +1613,13 @@ namespace engine {
 
                 if (mEditorAvailable) {
                     // Debug Render Modes
-                    if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("Default")) mState->editor.renderMode = 0;
-                    if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugMipmap")) mState->editor.renderMode = 1;
-                    if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugDepth")) mState->editor.renderMode = 2;
-                    if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugDerivatives")) mState->editor.renderMode = 3;
+                    if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("Default")) editor_viewport::SelectSceneViewMode(mState->editor, view_mode::Default);
+                    if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugMipmap")) editor_viewport::SelectSceneViewMode(mState->editor, view_mode::Mipmaps);
+                    if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugDepth")) editor_viewport::SelectSceneViewMode(mState->editor, view_mode::Depth);
+                    if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugDerivatives")) editor_viewport::SelectSceneViewMode(mState->editor, view_mode::Derivatives);
                     if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugMosaic")) mState->render.mosaicEnabled = !mState->render.mosaicEnabled;
-                    if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugOverdraw")) mState->editor.renderMode = 4;
-                    if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugOvershading")) mState->editor.renderMode = 5;
+                    if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugOverdraw")) editor_viewport::SelectSceneViewMode(mState->editor, view_mode::Overdraw);
+                    if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("DebugOvershading")) editor_viewport::SelectSceneViewMode(mState->editor, view_mode::Overshading);
 
                     if (!editorCapturesKeyboard && mInputSystem && mInputSystem->IsActionPressed("PrintCameraPos")) {
                         auto const pos = mState->camera.State().camera2world[3];

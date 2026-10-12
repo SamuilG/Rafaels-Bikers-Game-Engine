@@ -1,5 +1,6 @@
 #include "Runtime/UI/EditorLayout.hpp"
 #include "Runtime/UI/GameViewportCanvas.hpp"
+#include "Runtime/UI/EditorViewportRouting.hpp"
 #include "Runtime/UI/SwitchLanguage.hpp"
 
 #include <cmath>
@@ -38,12 +39,14 @@ namespace {
 
     struct HeadlessContext {
         ImGuiContext* context;
+        engine::EditorState editor;
         bool gameCanvasHovered = false;
         bool gameCanvasFocused = false;
         ImVec2 gameCanvasPosition;
         ImVec2 gameCanvasSize;
 
         HeadlessContext(int width, int height, const std::string& ini = {}) {
+            editor.showEngineUi = true;
             context = ImGui::CreateContext();
             ImGuiIO& io = ImGui::GetIO();
             io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
@@ -72,8 +75,17 @@ namespace {
 
         void Windows(bool optional = true) {
             const auto draw = [this](const char* name) {
+                if (name == layout::kSceneViewport && editor.focusSceneViewport) {
+                    ImGui::SetNextWindowFocus();
+                    editor.focusSceneViewport = false;
+                }
+                if (name == layout::kGameViewport && editor.focusGameViewport) {
+                    ImGui::SetNextWindowFocus();
+                    editor.focusGameViewport = false;
+                }
                 const bool visible = ImGui::Begin(PanelTitle(name).c_str());
                 if (name == layout::kGameViewport) {
+                    editor.isGameViewportVisible = visible;
                     gameCanvasHovered = gameCanvasFocused = false;
                     if (visible) {
                         gameCanvasPosition = ImGui::GetCursorScreenPos();
@@ -83,6 +95,7 @@ namespace {
                         gameCanvasFocused = input.focused;
                     }
                 } else {
+                    if (name == layout::kSceneViewport) editor.isSceneViewportVisible = visible;
                     ImGui::TextUnformatted("Editor panel");
                 }
                 ImGui::End();
@@ -376,6 +389,39 @@ namespace {
         std::puts("PASS Game canvas retains input through repeated multi-frame mouse clicks and blocks pointers outside its content");
     }
 
+    void TestSceneViewModeRouting() {
+        HeadlessContext fixture(1280, 720);
+        fixture.Settle();
+        namespace routing = engine::editor_viewport;
+        namespace modes = engine::view_mode;
+        for (int mode = modes::Default; mode < modes::Count; ++mode) {
+            ImGui::FocusWindow(&Window(layout::kGameViewport));
+            fixture.Settle();
+            Require(routing::RenderGameViewport(fixture.editor), "Game tab selects the gameplay camera route");
+            Require(routing::ActiveRenderMode(fixture.editor, true) == modes::Default,
+                "Game rendering stays lit even when a Scene diagnostic was previously selected");
+            fixture.editor.focusGameViewport = true; // A stale Play focus request must not win.
+            routing::SelectSceneViewMode(fixture.editor, mode);
+            Require(fixture.editor.focusSceneViewport && !fixture.editor.focusGameViewport,
+                "selecting a Scene view mode requests its viewport and cancels pending Game focus");
+            fixture.Settle();
+            Require(Window(layout::kSceneViewport).DockNode->SelectedTabId == Window(layout::kSceneViewport).TabId,
+                "real ImGui docking activates Scene after selecting a diagnostic from Game");
+            const bool renderingGame = routing::RenderGameViewport(fixture.editor);
+            Require(!renderingGame && routing::ActiveRenderMode(fixture.editor, renderingGame) == mode,
+                "every selected mode reaches Scene rendering instead of being forced back to Default");
+            Require(!fixture.editor.focusSceneViewport, "Scene focus request is consumed once");
+        }
+        fixture.editor.isSceneViewportVisible = fixture.editor.isGameViewportVisible = true;
+        Require(!routing::RenderGameViewport(fixture.editor),
+            "transient visibility of both tabs cannot let Game replace the Scene route");
+        fixture.editor.showEngineUi = false;
+        Require(routing::RenderGameViewport(fixture.editor) &&
+            routing::ActiveRenderMode(fixture.editor, true) == modes::Default,
+            "standalone gameplay ignores editor diagnostics");
+        std::puts("PASS all 12 Scene view modes activate their real dock tab from Game and retain correct rendering routes");
+    }
+
     void TestDeferredInitialLayout() {
         for (const ImVec2 size : {ImVec2(0, 0), ImVec2(0, 720), ImVec2(1280, 0),
                 ImVec2(1, 1), ImVec2(64, 64), ImVec2(1280, 24)}) {
@@ -501,6 +547,7 @@ int main() {
     TestOldDockspaceMigration();
     TestExistingWorkspaceAddsGameTab();
     TestGameCanvasMousePressRelease();
+    TestSceneViewModeRouting();
     TestDeferredInitialLayout();
     TestUnavailableViewportPreservesCustomLayout();
     TestLanguageSwitch();
