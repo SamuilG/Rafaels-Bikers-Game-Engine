@@ -1,4 +1,5 @@
 #include "setup.hpp"
+#include "SkyboxAttachments.hpp"
 
 #include "../../Rhi/error.hpp"
 #include "../../Rhi/to_string.hpp"
@@ -74,7 +75,7 @@ lut::PipelineLayout create_composite_pipeline_layout(lut::VulkanContext const& a
 	VkPushConstantRange pushConstant{};
 	pushConstant.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 	pushConstant.offset = 0;
-	pushConstant.size = 16; // BloomPC
+	pushConstant.size = sizeof(glsl::CompositeParameters);
 
 	VkDescriptorSetLayout layouts[] = {
 		aDescriptorLayout // set 0
@@ -684,7 +685,7 @@ lut::Pipeline create_alpha_pipeline(lut::VulkanWindow const& aWindow, VkPipeline
 }
 lut::DescriptorSetLayout create_scene_descriptor_layout(lut::VulkanWindow const& aWindow)
 {
-	VkDescriptorSetLayoutBinding bindings[3]{};
+	VkDescriptorSetLayoutBinding bindings[5]{};
 
 	// Binding 0: 场景 UBO
 	bindings[0].binding = 0;
@@ -698,15 +699,19 @@ lut::DescriptorSetLayout create_scene_descriptor_layout(lut::VulkanWindow const&
 	bindings[1].descriptorCount = 1;
 	bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-	// 【核心新增】Binding 2: 天空盒立方体纹理 (用于 PBR 的 IBL 金属环境反射)
+	// Binding 2: GGX-prefiltered environment; 3: diffuse cube; 4: DFG LUT.
 	bindings[2].binding = 2;
 	bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	bindings[2].descriptorCount = 1;
 	bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
+	for (uint32_t i = 3; i < 5; ++i) {
+		bindings[i] = {i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
+	}
+
 	VkDescriptorSetLayoutCreateInfo layoutInfo{};
 	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	layoutInfo.bindingCount = 3; // <-- 提升为 3
+	layoutInfo.bindingCount = 5;
 	layoutInfo.pBindings = bindings;
 
 	VkDescriptorSetLayout layout = VK_NULL_HANDLE;
@@ -1614,7 +1619,9 @@ lut::Pipeline create_composite_pipeline(lut::VulkanWindow const& aWindow, VkPipe
 	VkPipelineRenderingCreateInfo renderingInfo{};
 	renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
 	renderingInfo.colorAttachmentCount = 1;
-	renderingInfo.pColorAttachmentFormats = &aWindow.swapchainFormat;
+	const VkFormat compositeFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+	renderingInfo.pColorAttachmentFormats = &compositeFormat;
+	renderingInfo.depthAttachmentFormat = cfg::kDepthFormat;
 
 	VkGraphicsPipelineCreateInfo pipeInfo{};
 	pipeInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -2477,6 +2484,9 @@ lut::Pipeline create_debug_line_pipeline(lut::VulkanWindow const& aWindow, VkPip
 
 lut::Pipeline create_alpha_pipeline_1_attachment(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, VkFormat aColorFormat)
 {
+	const VkBool32 ldrOutput = aColorFormat == VK_FORMAT_R8G8B8A8_UNORM ? VK_TRUE : VK_FALSE;
+	const VkSpecializationMapEntry ldrEntry{0, 0, sizeof(ldrOutput)};
+	const VkSpecializationInfo ldrSpecialization{1, &ldrEntry, sizeof(ldrOutput), &ldrOutput};
 	// Load shader code
 	auto const vertSpirV = lut::load_file_u32(cfg::kVertShaderPath); // 改成 kVertShaderPath
 	auto const fragSpirV = lut::load_file_u32(cfg::kFragShaderPath); // 改成 kFragShaderPath
@@ -2500,6 +2510,7 @@ lut::Pipeline create_alpha_pipeline_1_attachment(lut::VulkanWindow const& aWindo
 	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
 	stages[1].pName = "main";
 	stages[1].pNext = &code[1];
+	stages[1].pSpecializationInfo = &ldrSpecialization;
 
 	VkVertexInputBindingDescription vertexInputs[3]{};
 	vertexInputs[0].binding = 0;
@@ -2824,19 +2835,12 @@ lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPip
 // SkyBox 的管线
 // ==============================================================================
 lut::DescriptorSetLayout create_skybox_descriptor_layout(lut::VulkanWindow const& window) {
-	VkDescriptorSetLayoutBinding bindings[2]{};
-	bindings[0].binding = 0;
-	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	bindings[0].descriptorCount = 1;
-	bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-	bindings[1].binding = 1;
-	bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	bindings[1].descriptorCount = 1;
-	bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	// Camera matrices are read by the vertex shader; environment controls are
+	// read by the fragment shader from the same scene buffer.
+	const auto bindings = SkyboxDescriptorBindings();
 
 	VkDescriptorSetLayoutCreateInfo layoutInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
-	layoutInfo.bindingCount = 2; layoutInfo.pBindings = bindings;
+	layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size()); layoutInfo.pBindings = bindings.data();
 
 	VkDescriptorSetLayout layout = VK_NULL_HANDLE;
 	vkCreateDescriptorSetLayout(window.device, &layoutInfo, nullptr, &layout);
@@ -2935,34 +2939,16 @@ lut::Pipeline create_skybox_pipeline(lut::VulkanWindow const& aWindow, VkPipelin
 	samplingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
 	samplingInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
-	// ==========================================================
-	// 【关键修复 2】：防止天空盒产生诡异的 Bloom
-	// ==========================================================
-	VkPipelineColorBlendAttachmentState blendStates[2]{};
-	// Attachment 0: 主颜色照常输出天空
-	blendStates[0].blendEnable = VK_FALSE;
-	blendStates[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-
-	// Attachment 1: 亮度提取层直接屏蔽写入！(Mask = 0)
-	blendStates[1].blendEnable = VK_FALSE;
-	blendStates[1].colorWriteMask = 0;
-
+	const SkyboxAttachments attachments(colorFormat);
 	VkPipelineColorBlendStateCreateInfo blendInfo{};
 	blendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-	blendInfo.logicOpEnable = VK_FALSE;
-	blendInfo.attachmentCount = 2;
-	blendInfo.pAttachments = blendStates;
-
-	// 让管线自动适应引擎传进来的颜色格式
-	VkFormat colorFormats[] = {
-		colorFormat, // Location 0: 主颜色 (使用传入的格式)
-		colorFormat  // Location 1: Bloom 亮度 (通常与主颜色一致)
-	};
+	blendInfo.attachmentCount = static_cast<uint32_t>(attachments.blends.size());
+	blendInfo.pAttachments = attachments.blends.data();
 
 	VkPipelineRenderingCreateInfo renderingInfo{};
 	renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-	renderingInfo.colorAttachmentCount = 2;
-	renderingInfo.pColorAttachmentFormats = colorFormats;
+	renderingInfo.colorAttachmentCount = static_cast<uint32_t>(attachments.formats.size());
+	renderingInfo.pColorAttachmentFormats = attachments.formats.data();
 	renderingInfo.depthAttachmentFormat = cfg::kDepthFormat;
 
 	// 2. 深度测试状态 (Depth Stencil)

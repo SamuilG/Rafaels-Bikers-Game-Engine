@@ -2,6 +2,9 @@
 
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_GOOGLE_include_directive : require
+#include "pbr_common.glsl"
+#include "tonemap.glsl"
+#include "environment.glsl"
 
 // ==========================================
 // 1. 结构体定义 (必须与 C++ 严格对齐)
@@ -46,10 +49,10 @@ layout( scalar, set = 0, binding = 0 ) uniform UScene
     mat4 projection;  // Offset: 64
     mat4 projCam;     // Offset: 128
     vec4 cameraPos;   // Offset: 192
-    GpuLight lights[16]; // Offset: 208, Size: 16 * 48 = 768. End: 976
+    GpuLight lights[16]; // Offset: 208, Size: 16 * 64 = 1024. End: 1232
 
-    vec4 lightPos;    // Offset: 976
-    vec4 lightColor;  // Offset: 992
+    vec4 lightPos;    // Offset: 1232
+    vec4 lightColor;  // Offset: 1248
 
     uint lightCount;
     uint renderMode;
@@ -59,42 +62,25 @@ layout( scalar, set = 0, binding = 0 ) uniform UScene
     mat4 lightVP[4];
     vec4 cascadeSplits;
     vec4 portalClipPlane;
+    vec4 iblParams;       // global / diffuse / specular strength, rotation in radians
+    vec4 environmentTint; // RGB multiplier and saturation
 } uScene;
 
 layout( set = 0, binding = 1 ) uniform sampler2DArrayShadow uShadowMap;
 
 // ==========================================
-// 【关键新增】：绑定场景天空盒立方体纹理
+// Split-sum IBL resources, matching scene descriptor bindings 2–4.
 // ==========================================
-layout( set = 0, binding = 2 ) uniform samplerCube uSkyboxTexture;
+layout(set = 0, binding = 2) uniform samplerCube uPrefilteredEnvironment;
+layout(set = 0, binding = 3) uniform samplerCube uDiffuseEnvironment;
+layout(set = 0, binding = 4) uniform sampler2D uBrdfLut;
+layout(constant_id = 0) const bool kLdrOutput = false;
 
 const float PI = 3.14159265359;
 
 vec3 LIGHT_POS = uScene.lightPos.xyz;
 vec3 LIGHT_COLOR = uScene.lightColor.rgb;
 
-float D_Beckmann(float alpha, float NdotH)
-{
-	if( NdotH <= 0.0 ) return 0.0;
-	float alpha2 = alpha * alpha;
-	float NdotH2 = NdotH * NdotH;
-	float num = exp( (NdotH2 - 1.0) / (alpha2 * NdotH2) );
-	float den = PI * alpha2 * NdotH2 * NdotH2;
-	return num / den;
-}
-
-float G1(float NdotV, float NdotH, float VdotH)
-{
-	if( VdotH <= 0.0 ) return 0.0;
-	return (2.0 * NdotH * NdotV) / VdotH;
-}
-
-float G_CookTorrance(float NdotL, float NdotV, float NdotH, float VdotH)
-{
-	float g1 = G1(NdotV, NdotH, VdotH);
-	float g2 = G1(NdotL, NdotH, VdotH);
-	return min(1.0, min(g1, g2));
-}
 
 #include "shadow_sampling.glsl"
 
@@ -171,11 +157,10 @@ void main()
     vec4 pbrSample = texture(uTexRoughness, v2fTexCoord);
     vec4 aoSample  = texture(uTexAO, v2fTexCoord);
 
-    float roughness = pbrSample.g * pc.roughnessFactor;
-    float metalness = pbrSample.b * pc.metallicFactor;
+    float roughness = clamp(pbrSample.g * pc.roughnessFactor, 0.02, 1.0);
+    float metalness = clamp(pbrSample.b * pc.metallicFactor, 0.0, 1.0);
     float ao        = aoSample.r;
 
-    roughness = max(roughness, 0.02);
 
     // --- 2. 几何向量计算 ---
     vec3 N = getNormalFromMap();
@@ -194,20 +179,18 @@ void main()
     float geomRoughness = normalVariance * 0.05;
 
     // 最终粗糙度：取材质本身粗糙度和几何补偿粗糙度的最大值
-    roughness = max(roughness, geomRoughness);
+    roughness = clamp(max(roughness, geomRoughness), 0.02, 1.0);
 
-    // =================================================================
-    // 【第二道防线】：拉高保底阈值
-    // 在真实世界中，绝对完美的镜子是不存在的，把保底粗糙度从 0.02 提高到 0.04
-    // 也能极大地缓解闪烁，同时不影响金属的高级感。
-    // =================================================================
-    roughness = max(roughness, 0.01);
 
     // --- 3. 阴影计算 ---
     float shadow = calculate_shadow();
 
     // --- 4. 多光源光照累加 ---
     vec3 totalLo = vec3(0.0);
+    vec3 F0 = mix(vec3(0.04), baseColor, metalness);
+    float NoV = clamp(dot(N, V), 0.0001, 1.0);
+    vec2 dfg = textureLod(uBrdfLut, vec2(NoV, roughness), 0.0).rg;
+    vec3 energyCompensation = pbrEnergyCompensation(F0, dfg);
 
     for (uint i = 0; i < uScene.lightCount; ++i)
     {
@@ -269,7 +252,7 @@ void main()
         vec3 Li = light.color.rgb * light.color.a * attenuation * currentShadow;
 
         // --- 物理 BRDF ---
-        vec3 F0 = mix(vec3(0.04), baseColor, metalness);
+
         vec3 F = F0 + (1.0 - F0) * pow(1.0 - VdotH, 5.0);
         vec3 kS = F;
 
@@ -281,12 +264,10 @@ void main()
         float viewScatter  = 1.0 + (fd90 - 1.0) * pow(1.0 - NdotV, 5.0);
         vec3 disneyDiffuse = (baseColor / PI) * lightScatter * viewScatter;
 
-        float alphaBRDF = max(roughness * roughness, 0.001);
-        float D = D_Beckmann(alphaBRDF, NdotH);
-        float G = G_CookTorrance(NdotL, NdotV, NdotH, VdotH);
-
-      vec3 Lspecular = (D * G * F) / max(4.0 * NdotL * NdotV, 0.0001);
-
+        float alphaBRDF = pbrAlpha(roughness);
+        float D = D_GGX(alphaBRDF, NdotH);
+        float visibility = V_SmithGGXCorrelated(alphaBRDF, NdotV, NdotL);
+        vec3 Lspecular = D * visibility * F * energyCompensation;
         // =========================================================
         // 【核心修改】：应用从 C++ 传来的高光系数
         // =========================================================
@@ -300,57 +281,27 @@ void main()
         totalLo += (kD * disneyDiffuse + Lspecular) * Li * NdotL;
     }
 // =================================================================
-    // 5. 环境光与最终颜色合成 (物理 IBL 采样 + 熔断保护)
+    // 5. Split-sum environment lighting and final HDR radiance.
     // =================================================================
-    vec3 Lambient = vec3(0.0); // 默认环境光为 0 (死黑)
-
-    // 【新增】：只有在 iblEnabled == 1 时才计算天空盒反射
+    vec3 Lambient = vec3(0.0);
     if (uScene.iblEnabled == 1) {
-        vec3 F0_env = mix(vec3(0.04), baseColor, metalness);
-
-        // a. 环境漫反射
-        vec3 skyColorEnv = vec3(0.35, 0.45, 0.65) * 0.1;
-        vec3 groundColorEnv = vec3(0.05, 0.04, 0.03);
-        float hemiWeight = 0.5 * N.y + 0.5;
-        vec3 ambientIrradiance = mix(groundColorEnv, skyColorEnv, hemiWeight);
-
-        vec3 kS_env = F0_env + (max(vec3(1.0 - roughness), F0_env) - F0_env) * pow(1.0 - max(dot(N, V), 0.0001), 5.0);
+        // The cosine-convolved cubemap stores irradiance / pi.
+        vec3 ambientIrradiance = textureLod(uDiffuseEnvironment, environmentDirection(N, uScene.iblParams.w), 0.0).rgb;
+        ambientIrradiance = environmentColor(ambientIrradiance, uScene.environmentTint);
+        vec3 kS_env = F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(1.0 - NoV, 5.0);
         vec3 kD_env = (vec3(1.0) - kS_env) * (1.0 - metalness);
         vec3 LambientDiffuse = ambientIrradiance * baseColor * kD_env;
-
-        // b. IBL 镜面环境反射 (倒影)
         vec3 R = reflect(-V, N);
-        float lod = roughness * 8.0;
-
-        // 采样真实的天空盒 (如果没生成 Mipmap，这里会返回锐利的高清图)
-        vec3 iblSpecularColor = textureLod(uSkyboxTexture, R, lod).rgb;
-
-        // 【熔断保护】
-        if (dot(iblSpecularColor, iblSpecularColor) < 0.0001) {
-            iblSpecularColor = mix(groundColorEnv * 2.0, skyColorEnv * 6.5, R.y * 0.5 + 0.5);
-        }
-
-        // =================================================================
-        // 【核心修复】：解决“万物皆可抛光”的塑料感问题
-        // =================================================================
-        // 1. 粗糙度衰减：如果天空盒没有 Mipmap 无法变模糊，我们就在它变粗糙时直接将其变暗。
-        // smoothstep(0.3, 0.8) 表示粗糙度大于 0.3 开始变弱，大于 0.8 时完全失去镜面反射。
-        float roughnessFade = 1.0 - smoothstep(0.3, 0.8, roughness);
-
-        // 2. 金属度底色压制：真实的非金属（如砖块、木头）环境反射非常微弱。
-        // 我们强行把非金属（metalness = 0.0）的 IBL 反光压制到原来的 15%。
-        float metalFade = mix(0.15, 1.0, metalness);
-
-        // 叠加环境高光，并套用双重物理衰减！
-        vec3 LambientSpecular = iblSpecularColor * kS_env * roughnessFade * metalFade;
-
-        // c. 合并并应用 AO 遮蔽
-        Lambient = (LambientDiffuse + LambientSpecular) * ao;
-        //Lambient = ( LambientSpecular) * ao;
+        float lod = roughness * float(textureQueryLevels(uPrefilteredEnvironment) - 1);
+        vec3 prefiltered = textureLod(uPrefilteredEnvironment, environmentDirection(R, uScene.iblParams.w), lod).rgb;
+        prefiltered = environmentColor(prefiltered, uScene.environmentTint);
+        vec3 LambientSpecular = prefiltered * (F0 * dfg.x + vec3(dfg.y)) * energyCompensation;
+        Lambient = (LambientDiffuse * max(uScene.iblParams.y, 0.0) +
+            LambientSpecular * max(uScene.iblParams.z, 0.0)) * ao * max(uScene.iblParams.x, 0.0);
     }
-
     // 最终合并（如果 IBL 关闭，Lambient 就是 vec3(0.0)）
-    vec3 finalColor = Lambient + totalLo + emissive;
+    // Bound storage to finite RGBA16F radiance before Bloom extraction.
+    vec3 finalColor = clamp(Lambient + totalLo + emissive, vec3(0.0), vec3(65504.0));
     // --- 6. Bloom 亮度提取与防闪烁 (Firefly Filter) ---
     float threshold = 1.0;
     vec3 bloomContrib = max(finalColor - vec3(threshold), vec3(0.0));
@@ -367,14 +318,8 @@ void main()
     }
 
     oBrightColor = vec4(bloomContrib, 1.0);
-    // --- 7. Tonemapping ---
-    vec3 x = finalColor;
-    vec3 mappedColor = clamp((x * (2.51f * x + 0.03f)) / (x * (2.43f * x + 0.59f) + 0.14f), 0.0, 1.0);
-
-    finalAlpha = texColor.a * pc.baseColorFactor.a;
-    mappedColor *= finalAlpha; // PREMULTIPLY
-
-    oColor = vec4(mappedColor, finalAlpha);
-    //   oNormal = vec4(N, roughness);
+    // Scene and portal views remain linear HDR through the composite pass.
+    vec3 outputColor = kLdrOutput ? linearToSrgb(toneMapAces(finalColor)) : finalColor;
+    oColor = vec4(outputColor * finalAlpha, finalAlpha);
     oNormal = vec4(normalize(N), roughness);
 }

@@ -1346,18 +1346,58 @@ namespace engine {
             if (diagnosticsActive) ImGui::TextWrapped("%s", _SL("Diagnostic views display their rendering data directly. Return to Default to adjust scene effects."));
             ImGui::BeginDisabled(diagnosticsActive);
             ImGui::SeparatorText("Rendering");
-            ImGui::Checkbox("Image-based Lighting (IBL)", &render.iblEnabled);
-            if (overrides.iblEnabled.has_value())
-                ImGui::TextDisabled("Scene IBL override: %s", *overrides.iblEnabled ? "On" : "Off");
             ImGui::Checkbox("Screen-space Reflections (SSR)", &render.ssrEnabled);
             ImGui::Checkbox("Ambient Occlusion (SSAO)", &render.ssaoEnabled);
             ImGui::Checkbox(_SL("Particle System"), &render.particlesEnabled);
+            ImGui::SeparatorText(_SL("Environment / IBL"));
+            ImGui::Checkbox(_SL("Image-based Lighting (IBL)"), &render.iblEnabled);
+            if (overrides.iblEnabled.has_value()) {
+                ImGui::TextDisabled(_SL("Scene IBL override: %s"), *overrides.iblEnabled ? _SL("IBL On") : _SL("IBL Off"));
+                ImGui::Checkbox(_SL("Ignore scene override (debug)"), &render.environment.ignoreSceneOverride);
+            }
+            ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x * 0.5f);
+            ImGui::SliderFloat(_SL("Total intensity"), &render.environment.intensity, 0.0f, 4.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", _SL("Global intensity, tint, saturation and rotation affect both the sky and environment lighting."));
+            ImGui::ColorEdit3(_SL("Environment tint"), render.environment.tint.data(), ImGuiColorEditFlags_Float);
+            ImGui::SliderFloat(_SL("Saturation"), &render.environment.saturation, 0.0f, 2.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            ImGui::SliderFloat(_SL("Rotation (deg)"), &render.environment.rotationDegrees, -180.0f, 180.0f, "%.1f", ImGuiSliderFlags_AlwaysClamp);
+            ImGui::BeginDisabled(!overrides.IblEnabled(render));
+            ImGui::SliderFloat(_SL("Diffuse strength"), &render.environment.diffuseIntensity, 0.0f, 4.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            ImGui::SliderFloat(_SL("Specular strength"), &render.environment.specularIntensity, 0.0f, 4.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", _SL("Diffuse and specular strengths affect material IBL only; direct lights use their own settings."));
+            ImGui::EndDisabled();
+            ImGui::PopItemWidth();
+            if (ImGui::Button(_SL("Reset environment"))) {
+                render.environment = EnvironmentLightingSettings{};
+                render.iblEnabled = true;
+            }
             ImGui::SeparatorText("Post-processing");
             ImGui::Checkbox(_SL("Enable Bloom"), &render.bloomEnabled);
             ImGui::BeginDisabled(!render.bloomEnabled);
             ImGui::SliderFloat(_SL("Bloom Strength"), &render.bloomStrength, 0.0f, 5.0f, "%.2f");
             ImGui::EndDisabled();
-            ImGui::SliderFloat(_SL("Exposure"), &render.bloomExposure, 0.1f, 5.0f, "%.2f");
+            ImGui::SeparatorText(_SL("Tone Mapping / ACES"));
+            ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x * 0.5f);
+            ImGui::SliderFloat(_SL("Exposure"), &render.bloomExposure, 0.01f, 8.0f, "%.2f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
+            ImGui::Checkbox(_SL("Enable ACES"), &render.toneMapping.acesEnabled);
+            if (!render.toneMapping.acesEnabled)
+                ImGui::TextWrapped("%s", _SL("Without tone mapping, HDR values above display white are clipped."));
+            ImGui::BeginDisabled(!render.toneMapping.acesEnabled);
+            if (ImGui::CollapsingHeader(_SL("ACES curve coefficients"))) {
+                ImGui::TextWrapped("%s", _SL("Curve: x*(A*x+B)/(x*(C*x+D)+E)"));
+                auto& curve = render.toneMapping.acesCurve;
+                ImGui::SliderFloat("A", &curve[0], 0.0f, 5.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+                ImGui::SliderFloat("B", &curve[1], 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+                ImGui::SliderFloat("C", &curve[2], 0.0f, 5.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+                ImGui::SliderFloat("D", &curve[3], 0.0f, 2.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+                ImGui::SliderFloat("E", &curve[4], 0.001f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+            }
+            ImGui::EndDisabled();
+            ImGui::PopItemWidth();
+            if (ImGui::Button(_SL("Reset tone mapping"))) {
+                render.toneMapping = ToneMappingSettings{};
+                render.bloomExposure = 1.0f;
+            }
             ImGui::Checkbox(_SL("Enable Mosaic Post-Process"), &render.mosaicEnabled);
             ImGui::EndDisabled();
             ImGui::SeparatorText("Visibility & detail");

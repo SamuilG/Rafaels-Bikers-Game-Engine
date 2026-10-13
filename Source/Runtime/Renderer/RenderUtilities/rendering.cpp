@@ -89,6 +89,7 @@ void record_commands(
 	VkClearColorValue aClearColor,
 	float aBloomStrength,
 	float aExposure,
+	engine::ToneMappingSettings const& aToneMapping,
 	bool aEditorBackdrop,
 	VkPipeline aBufferViewPipe,
 	VkPipelineLayout aBufferViewLayout,
@@ -1507,10 +1508,9 @@ void record_commands(
 	// --- 1. 鐢诲叏灞忚儗鏅悎鎴?(SSAO + SSR + 鍦烘櫙搴曡壊) ---
 	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aCompositePipe);
 	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aCompositeLayout, 0, 1, &aCompositeDS, 0, nullptr);
-	struct BloomPC { float exposure; float strength; float editorBackdrop; float srgbOutput; }
-		bloomPC{ aExposure, aBloomStrength, aEditorBackdrop ? 1.0f : 0.0f, imguiRenderer.UsesSrgbOutput() ? 1.0f : 0.0f };
-	static_assert(sizeof(BloomPC) == 16);
-	vkCmdPushConstants(aCmdBuff, aCompositeLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(BloomPC), &bloomPC);
+	const auto compositeParams = engine::MakeCompositeParameters(aExposure, aBloomStrength,
+		aEditorBackdrop, imguiRenderer.UsesSrgbOutput(), aToneMapping);
+	vkCmdPushConstants(aCmdBuff, aCompositeLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(compositeParams), &compositeParams);
 	vkCmdSetViewport(aCmdBuff, 0, 1, &vp);
 	vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
 	vkCmdDraw(aCmdBuff, 3, 1, 0, 0);

@@ -1,8 +1,9 @@
 // Headless tests execute the production IBL baker and PBR/composite shaders.
 #include "Runtime/Renderer/RenderUtilities/Ibl.hpp"
+#include "Runtime/Renderer/RenderUtilities/SkyboxAttachments.hpp"
+#include "Runtime/Renderer/RenderUtilities/RenderParameters.hpp"
 #include "Runtime/Rhi/vkbuffer.hpp"
 #include "Runtime/Rhi/load.hpp"
-#include "Runtime/UserState/RenderSettings.hpp"
 #include <glm/glm.hpp>
 #include <stb_image.h>
 #include <algorithm>
@@ -85,6 +86,9 @@ public:
         VkDeviceQueueCreateInfo queue{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
         queue.queueFamilyIndex = context.graphicsFamilyIndex; queue.queueCount = 1; queue.pQueuePriorities = &priority;
         VkDeviceCreateInfo device{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO}; device.pNext = &features;
+        VkPhysicalDeviceFeatures supported{}; vkGetPhysicalDeviceFeatures(context.physicalDevice, &supported);
+        Require(supported.independentBlend, "Per-attachment skybox write masks are supported");
+        VkPhysicalDeviceFeatures enabled{}; enabled.independentBlend = VK_TRUE; device.pEnabledFeatures = &enabled;
         device.queueCreateInfoCount = 1; device.pQueueCreateInfos = &queue;
         VK_CHECK(vkCreateDevice(context.physicalDevice, &device, nullptr, &context.device)); volkLoadDevice(context.device);
         vkGetDeviceQueue(context.device, context.graphicsFamilyIndex, 0, &context.graphicsQueue);
@@ -132,6 +136,7 @@ public:
         i.samples = VK_SAMPLE_COUNT_1_BIT; i.tiling = VK_IMAGE_TILING_OPTIMAL;
         i.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
         if (format != VK_FORMAT_D32_SFLOAT) i.usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        else i.usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
         VmaAllocationCreateInfo a{}; a.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
         VkImage image{}; VmaAllocation allocation{}; VK_CHECK(vmaCreateImage(allocator.allocator, &i, &a, &image, &allocation, nullptr));
         VkImageViewCreateInfo v{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO}; v.image = image; v.format = format;
@@ -161,12 +166,12 @@ public:
             pixels[i][c] = unorm ? static_cast<uint8_t*>(mapped)[i * 4 + c] / 255.f : Half(halves[i * 4 + c]);
         vmaUnmapMemory(allocator.allocator, b.allocation); return pixels;
     }
-    labut2::Pipeline Pipeline(VkPipelineLayout layout, bool pbr, bool ldr = false, bool portal = false) {
+    labut2::Pipeline Pipeline(VkPipelineLayout layout, bool pbr, bool ldr = false, bool portal = false, bool skybox = false) {
         using Shader = labut2::UniqueHandle<VkShaderModule, VkDevice, vkDestroyShaderModule>;
         std::array<Shader, 2> modules;
         VkPipelineShaderStageCreateInfo stages[2]{};
-        const char* names[2] = {portal ? "portal.vert.spv" : pbr ? "default.vert.spv" : "fullscreen.vert.spv",
-            portal ? "portal.frag.spv" : pbr ? "default.frag.spv" : "composite.frag.spv"};
+        const char* names[2] = {skybox ? "skybox.vert.spv" : portal ? "portal.vert.spv" : pbr ? "default.vert.spv" : "fullscreen.vert.spv",
+            skybox ? "skybox.frag.spv" : portal ? "portal.frag.spv" : pbr ? "default.frag.spv" : "composite.frag.spv"};
         for (int i = 0; i < 2; ++i) {
             auto code = labut2::load_file_u32((shaders + "/" + names[i]).c_str());
             VkShaderModuleCreateInfo m{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO}; m.codeSize = code.size() * 4; m.pCode = code.data();
@@ -177,24 +182,30 @@ public:
         VkBool32 ldrValue = ldr;
         VkSpecializationMapEntry entry{0, 0, sizeof(ldrValue)};
         VkSpecializationInfo specialization{1, &entry, sizeof(ldrValue), &ldrValue};
-        if (pbr && !portal) stages[1].pSpecializationInfo = &specialization;
+        if (pbr && !portal && !skybox) stages[1].pSpecializationInfo = &specialization;
         VkVertexInputBindingDescription binding{0, 8 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX};
         VkVertexInputAttributeDescription attributes[] = {{0,0,VK_FORMAT_R32G32B32_SFLOAT,0}, {1,0,VK_FORMAT_R32G32_SFLOAT,12}, {2,0,VK_FORMAT_R32G32B32_SFLOAT,20}};
         VkPipelineVertexInputStateCreateInfo vertex{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
-        if (pbr) { vertex.vertexBindingDescriptionCount = 1; vertex.pVertexBindingDescriptions = &binding; vertex.vertexAttributeDescriptionCount = 3; vertex.pVertexAttributeDescriptions = attributes; }
+        if (pbr) { vertex.vertexBindingDescriptionCount = 1; vertex.pVertexBindingDescriptions = &binding; vertex.vertexAttributeDescriptionCount = skybox ? 1 : 3; vertex.pVertexAttributeDescriptions = attributes; }
         VkPipelineInputAssemblyStateCreateInfo assembly{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO}; assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         VkPipelineViewportStateCreateInfo viewport{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO}; viewport.viewportCount = viewport.scissorCount = 1;
         VkPipelineRasterizationStateCreateInfo raster{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO}; raster.polygonMode = VK_POLYGON_MODE_FILL; raster.lineWidth = 1;
         VkPipelineMultisampleStateCreateInfo samples{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO}; samples.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
         VkPipelineColorBlendAttachmentState attachments[3]{}; for (auto& a : attachments) a.colorWriteMask = 15;
+        const SkyboxAttachments skyboxAttachments(VK_FORMAT_R16G16B16A16_SFLOAT);
+        if (skybox) std::copy(skyboxAttachments.blends.begin(),skyboxAttachments.blends.end(),attachments);
         VkPipelineColorBlendStateCreateInfo blend{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO}; blend.attachmentCount = pbr && !ldr ? 3 : 1; blend.pAttachments = attachments;
         VkDynamicState states[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
         VkPipelineDynamicStateCreateInfo dynamic{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO}; dynamic.dynamicStateCount = 2; dynamic.pDynamicStates = states;
         VkFormat formats[3] = {ldr ? VK_FORMAT_R8G8B8A8_UNORM : VK_FORMAT_R16G16B16A16_SFLOAT, VK_FORMAT_R16G16B16A16_SFLOAT, VK_FORMAT_R16G16B16A16_SFLOAT};
+        if (skybox) std::copy(skyboxAttachments.formats.begin(),skyboxAttachments.formats.end(),formats);
         VkPipelineRenderingCreateInfo rendering{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO}; rendering.colorAttachmentCount = blend.attachmentCount; rendering.pColorAttachmentFormats = formats;
+        VkPipelineDepthStencilStateCreateInfo depth{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+        if (skybox) { rendering.depthAttachmentFormat = VK_FORMAT_D32_SFLOAT; depth.depthTestEnable = VK_TRUE; depth.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL; }
         VkGraphicsPipelineCreateInfo info{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO}; info.pNext = &rendering; info.layout = layout; info.stageCount = 2; info.pStages = stages;
         info.pVertexInputState = &vertex; info.pInputAssemblyState = &assembly; info.pViewportState = &viewport; info.pRasterizationState = &raster;
         info.pMultisampleState = &samples; info.pColorBlendState = &blend; info.pDynamicState = &dynamic;
+        if (skybox) info.pDepthStencilState = &depth;
         VkPipeline pipeline{}; VK_CHECK(vkCreateGraphicsPipelines(context.device, {}, 1, &info, nullptr, &pipeline)); return labut2::Pipeline(context.device, pipeline);
     }
 };
@@ -203,7 +214,7 @@ void Near(float value, float expected, float tolerance, const char* message) {
         std::cerr << "Actual " << value << ", expected " << expected << '\n'; throw std::runtime_error(message);
     }
 }
-void TestShading(Gpu& gpu, const IblResources& ibl, bool whiteEnvironment = true) {
+void TestShading(Gpu& gpu, const IblResources& ibl, bool whiteEnvironment = true, bool patternEnvironment = false) {
     const VkDevice device = gpu.context.device;
     auto makeLayout = [&](std::vector<VkDescriptorSetLayoutBinding> bindings) {
         VkDescriptorSetLayoutCreateInfo info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO}; info.bindingCount = uint32_t(bindings.size()); info.pBindings = bindings.data();
@@ -217,18 +228,24 @@ void TestShading(Gpu& gpu, const IblResources& ibl, bool whiteEnvironment = true
     }
     for (uint32_t i = 0; i < 6; ++i) materialBindings.push_back({i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr});
     auto sceneLayout = makeLayout(sceneBindings), materialLayout = makeLayout(materialBindings), compositeLayout = makeLayout(compositeBindings);
+    const auto skyboxBindings = SkyboxDescriptorBindings();
+    Require((skyboxBindings[0].stageFlags & VK_SHADER_STAGE_FRAGMENT_BIT) != 0,
+        "Skybox environment UBO is visible to the fragment shader");
+    auto skyboxSetLayout = makeLayout({skyboxBindings.begin(),skyboxBindings.end()});
     auto makePipelineLayout = [&](std::vector<VkDescriptorSetLayout> sets, uint32_t size, VkShaderStageFlags stages) {
         VkPushConstantRange push{stages,0,size}; VkPipelineLayoutCreateInfo info{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-        info.setLayoutCount = uint32_t(sets.size()); info.pSetLayouts = sets.data(); info.pushConstantRangeCount = 1; info.pPushConstantRanges = &push;
+        info.setLayoutCount = uint32_t(sets.size()); info.pSetLayouts = sets.data(); info.pushConstantRangeCount = size ? 1 : 0; info.pPushConstantRanges = size ? &push : nullptr;
         VkPipelineLayout raw{}; VK_CHECK(vkCreatePipelineLayout(device, &info, nullptr, &raw)); return labut2::PipelineLayout(device, raw);
     };
     auto pbrLayout = makePipelineLayout({sceneLayout.handle, materialLayout.handle}, 128, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
-    auto compLayout = makePipelineLayout({compositeLayout.handle}, 16, VK_SHADER_STAGE_FRAGMENT_BIT);
-    VkDescriptorPoolSize sizes[] = {{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,2},{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,16}};
-    VkDescriptorPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO}; poolInfo.maxSets = 3; poolInfo.poolSizeCount = 2; poolInfo.pPoolSizes = sizes;
+    auto compLayout = makePipelineLayout({compositeLayout.handle}, sizeof(glsl::CompositeParameters), VK_SHADER_STAGE_FRAGMENT_BIT);
+    auto skyboxLayout = makePipelineLayout({skyboxSetLayout.handle},0,0);
+    VkDescriptorPoolSize sizes[] = {{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,3},{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,16}};
+    VkDescriptorPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO}; poolInfo.maxSets = 4; poolInfo.poolSizeCount = 2; poolInfo.pPoolSizes = sizes;
     VkDescriptorPool rawPool{}; VK_CHECK(vkCreateDescriptorPool(device, &poolInfo, nullptr, &rawPool)); labut2::DescriptorPool pool(device,rawPool);
     auto allocate = [&](VkDescriptorSetLayout layout) { VkDescriptorSetAllocateInfo info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO}; info.descriptorPool = rawPool; info.descriptorSetCount = 1; info.pSetLayouts = &layout; VkDescriptorSet set{}; VK_CHECK(vkAllocateDescriptorSets(device, &info, &set)); return set; };
     VkDescriptorSet sceneSet = allocate(sceneLayout.handle), materialSet = allocate(materialLayout.handle), compositeSet = allocate(compositeLayout.handle);
+    VkDescriptorSet skyboxSet = allocate(skyboxSetLayout.handle);
     VkSamplerCreateInfo samplerInfo{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO}; samplerInfo.magFilter = samplerInfo.minFilter = VK_FILTER_LINEAR;
     samplerInfo.addressModeU = samplerInfo.addressModeV = samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     VkSampler rawSampler{}; VK_CHECK(vkCreateSampler(device, &samplerInfo, nullptr, &rawSampler)); labut2::Sampler sampler(device, rawSampler);
@@ -250,45 +267,98 @@ void TestShading(Gpu& gpu, const IblResources& ibl, bool whiteEnvironment = true
     struct Scene {
         glm::mat4 camera{1}, projection{1}, projCam{1}; glm::vec4 cameraPos{0,0,10000,1}, lights[64]{}, lightPos{}, lightColor{};
         uint32_t lightCount{}, renderMode{}, iblEnabled{}, pad{}; glm::mat4 lightVP[4]{}; glm::vec4 cascadeSplits{}, clip{};
+        glsl::EnvironmentParameters environment;
     } scene;
     struct Object {
         glm::mat4 transform{1}; glm::vec4 base{1}, emissive{0,0,0,1}; float metallic = 1, roughness = 1, cutoff = 0, pad = 0; glm::vec4 clip{};
     } object;
-    static_assert(sizeof(Scene) == 1568 && sizeof(Object) == 128);
+    static_assert(sizeof(Scene) == 1600 && offsetof(Scene,environment) == 1568 && sizeof(Object) == 128);
     const VkBuffer ubo = gpu.Buffer(sizeof(scene),VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,&scene).buffer;
     // All draws finish before their uniform storage is reused.
     auto updateScene = [&]() { auto it = std::find_if(gpu.buffers.begin(),gpu.buffers.end(),[&](auto& b) { return b.buffer == ubo; }); void* p{}; VK_CHECK(vmaMapMemory(gpu.allocator.allocator,it->allocation,&p)); std::memcpy(p,&scene,sizeof(scene)); vmaFlushAllocation(gpu.allocator.allocator,it->allocation,0,sizeof(scene)); vmaUnmapMemory(gpu.allocator.allocator,it->allocation); };
     bindBuffer(sceneSet,0,ubo,sizeof(scene)); bindImage(sceneSet,1,shadowView,rawShadow);
+    bindBuffer(skyboxSet,0,ubo,sizeof(scene));
     bindImage(sceneSet,2,ibl.prefilteredEnvMap.view,ibl.sampler.handle); bindImage(sceneSet,3,ibl.irradianceMap.view,ibl.sampler.handle); bindImage(sceneSet,4,ibl.brdfLut.view,ibl.sampler.handle);
     for (uint32_t i = 0; i < 6; ++i) bindImage(materialSet,i,i == 4 ? normal : white,rawSampler);
     struct Vertex { float x,y,z,u,v,nx,ny,nz; } vertices[] = {{-1,-1,.5f,0,0,0,0,1},{-1,3,.5f,0,2,0,0,1},{3,-1,.5f,2,0,0,0,1}};
     const VkBuffer vertexBuffer = gpu.Buffer(sizeof(vertices),VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,vertices).buffer;
     auto hdrPipeline = gpu.Pipeline(pbrLayout.handle,true), ldrPipeline = gpu.Pipeline(pbrLayout.handle,true,true), compositePipeline = gpu.Pipeline(compLayout.handle,false);
-    auto draw = [&](VkPipeline pipeline, VkPipelineLayout layout, const void* push, uint32_t pushBytes, bool pbr, bool ldr = false) {
+    auto draw = [&](VkPipeline pipeline, VkPipelineLayout layout, const void* push, uint32_t pushBytes, bool pbr, bool ldr = false, bool skybox = false, float depthClear = 1.f) {
         constexpr uint32_t extent = 8; const uint32_t count = pbr && !ldr ? 3 : 1;
         std::array<VkImage,3> targets{}; std::array<VkRenderingAttachmentInfo,3> attachments{};
         for (uint32_t i = 0; i < count; ++i) {
             auto& image = gpu.Image(extent, ldr ? VK_FORMAT_R8G8B8A8_UNORM : VK_FORMAT_R16G16B16A16_SFLOAT); targets[i] = image.image;
             attachments[i] = {VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO}; attachments[i].imageView = image.view; attachments[i].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             attachments[i].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; attachments[i].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            if (skybox) attachments[i].clearValue.color = { .0625f, .125f, .25f, 1.f };
+        }
+        VkImage depthImage{}; VkRenderingAttachmentInfo depthAttachment{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+        if (skybox) {
+            auto& image = gpu.Image(extent,VK_FORMAT_D32_SFLOAT); depthImage = image.image;
+            depthAttachment.imageView = image.view; depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+            depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            depthAttachment.clearValue.depthStencil = {depthClear,0};
         }
         gpu.Begin(); for (uint32_t i = 0; i < count; ++i) gpu.Barrier(targets[i],VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        if (skybox) gpu.Barrier(depthImage,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,1,1,VK_IMAGE_ASPECT_DEPTH_BIT);
         VkRenderingInfo info{VK_STRUCTURE_TYPE_RENDERING_INFO}; info.renderArea.extent = {extent,extent}; info.layerCount = 1; info.colorAttachmentCount = count; info.pColorAttachments = attachments.data();
+        if (skybox) info.pDepthAttachment = &depthAttachment;
         vkCmdBeginRendering(gpu.command,&info); vkCmdBindPipeline(gpu.command,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline);
         VkViewport viewport{0,0,float(extent),float(extent),0,1}; VkRect2D scissor{{0,0},{extent,extent}};
         vkCmdSetViewport(gpu.command,0,1,&viewport); vkCmdSetScissor(gpu.command,0,1,&scissor);
-        VkDescriptorSet sets[] = {pbr ? sceneSet : compositeSet, materialSet};
-        vkCmdBindDescriptorSets(gpu.command,VK_PIPELINE_BIND_POINT_GRAPHICS,layout,0,pbr ? 2 : 1,sets,0,nullptr);
+        VkDescriptorSet sets[] = {skybox ? skyboxSet : pbr ? sceneSet : compositeSet, materialSet};
+        vkCmdBindDescriptorSets(gpu.command,VK_PIPELINE_BIND_POINT_GRAPHICS,layout,0,skybox ? 1 : pbr ? 2 : 1,sets,0,nullptr);
         if (pbr) { VkDeviceSize offset = 0; vkCmdBindVertexBuffers(gpu.command,0,1,&vertexBuffer,&offset); }
-        vkCmdPushConstants(gpu.command,layout,pbr ? VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT : VK_SHADER_STAGE_FRAGMENT_BIT,0,pushBytes,push);
+        if (!skybox) vkCmdPushConstants(gpu.command,layout,pbr ? VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT : VK_SHADER_STAGE_FRAGMENT_BIT,0,pushBytes,push);
         vkCmdDraw(gpu.command,3,1,0,0); vkCmdEndRendering(gpu.command); gpu.Submit();
         auto frame = gpu.Read(targets[0],extent,0,1,1,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,ldr);
         for (auto& pixel : frame) for (float c : pixel) Require(std::isfinite(c),"Every production shader output pixel remains finite");
         if (count == 3) for (uint32_t i = 1; i < count; ++i)
             for (auto& pixel : gpu.Read(targets[i],extent,0,1,1,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL))
-                for (float c : pixel) Require(std::isfinite(c),"Bloom/normal attachments remain finite including sharp GGX peaks");
+                for (uint32_t c = 0; c < 4; ++c) {
+                    Require(std::isfinite(pixel[c]),"Bloom/normal attachments remain finite including sharp GGX peaks");
+                    if (skybox) Near(pixel[c],attachments[i].clearValue.color.float32[c],.0001f,"Skybox preserves Bloom and normal buffers");
+                }
         return frame[extent / 2 * extent + extent / 2];
     };
+    if (whiteEnvironment) {
+        const Pixel cubePixels[6] = {{4,2,.5f,1},{.25f,3,1,1},{4,2,.5f,1},{4,2,.5f,1},{4,2,.5f,1},{4,2,.5f,1}};
+        auto& cube = gpu.Image(1,VK_FORMAT_R32G32B32A32_SFLOAT,6,true);
+        const VkImageView cubeView = cube.view; gpu.Upload(cube.image,1,6,cubePixels,sizeof(cubePixels));
+        bindImage(skyboxSet,1,cubeView,rawSampler);
+        auto skyboxPipeline = gpu.Pipeline(skyboxLayout.handle,true,false,false,true);
+        const auto sky = draw(skyboxPipeline.handle,skyboxLayout.handle,nullptr,0,true,false,true);
+        Near(sky[0],4,.005f,"Skybox color remains linear HDR in the scene MRT");
+        Near(sky[1],2,.005f,"Skybox retains source channel ratios");
+        Near(sky[2],.5f,.002f,"Skybox uses the float attachment without sRGB encoding");
+        const auto occluded = draw(skyboxPipeline.handle,skyboxLayout.handle,nullptr,0,true,false,true,.5f);
+        Near(occluded[0],.0625f,.0001f,"Foreground depth prevents skybox overwrite");
+        Near(occluded[1],.125f,.0001f,"Foreground depth preserves scene color");
+        engine::EnvironmentLightingSettings settings;
+        settings.rotationDegrees = 90;
+        scene.environment = engine::MakeEnvironmentParameters(settings); updateScene();
+        const auto rotated = draw(skyboxPipeline.handle,skyboxLayout.handle,nullptr,0,true,false,true);
+        Near(rotated[0],.25f,.005f,"Skybox rotation selects the inverse-rotated cube face");
+        Near(rotated[1],3,.005f,"Skybox rotation is updated without rebaking");
+        settings.rotationDegrees = 0; settings.intensity = 2; settings.saturation = 0; settings.tint = {.5f,1,1};
+        scene.environment = engine::MakeEnvironmentParameters(settings); updateScene();
+        const auto tinted = draw(skyboxPipeline.handle,skyboxLayout.handle,nullptr,0,true,false,true);
+        Near(tinted[0],2.3169f,.01f,"Skybox applies saturation and RGB tint in linear space");
+        Near(tinted[1],4.6338f,.01f,"Skybox applies global environment intensity");
+        scene.environment = {}; updateScene();
+        std::cout << "[PASS] Skybox: dedicated production descriptors, fragment UBO controls, three HDR attachments and foreground occlusion.\n";
+    }
+    if (patternEnvironment) {
+        object.metallic = 1; object.roughness = .02f; scene.iblEnabled = 1; updateScene();
+        const auto initial = draw(hdrPipeline.handle,pbrLayout.handle,&object,sizeof(object),true);
+        Require(initial[0] > .9f && initial[1] < .05f && initial[2] > .9f,"IBL initially reflects the +Z magenta face");
+        engine::EnvironmentLightingSettings settings; settings.rotationDegrees = 90;
+        scene.environment = engine::MakeEnvironmentParameters(settings); updateScene();
+        const auto rotated = draw(hdrPipeline.handle,pbrLayout.handle,&object,sizeof(object),true);
+        Require(rotated[0] < .05f && rotated[1] > .9f && rotated[2] < .05f,"IBL rotation selects the same -X green face as the skybox");
+        std::cout << "[PASS] Live IBL rotation matches the skybox coordinate convention.\n";
+        return;
+    }
     // An emissive-only surface must keep radiance above one through the scene pass.
     object.emissive = {.8f,.8f,.8f,1};
     Near(draw(hdrPipeline.handle,pbrLayout.handle,&object,sizeof(object),true)[0],4,.005f,"PBR scene preserves linear HDR radiance");
@@ -307,8 +377,37 @@ void TestShading(Gpu& gpu, const IblResources& ibl, bool whiteEnvironment = true
             std::cout << "[PASS] Actual skybox IBL toggle, metallic=" << metallic << ": RGB "
                 << enabled[0] << ", " << enabled[1] << ", " << enabled[2] << " -> 0.\n";
         }
+        object.metallic = 1; scene.iblEnabled = 1;
+        engine::EnvironmentLightingSettings settings; settings.saturation = 0;
+        scene.environment = engine::MakeEnvironmentParameters(settings); updateScene();
+        const auto grayscale = draw(hdrPipeline.handle,pbrLayout.handle,&object,sizeof(object),true);
+        Require(grayscale[0] > .01f,"Desaturated project IBL retains illumination");
+        Near(grayscale[0],grayscale[1],.002f,"Environment saturation removes project sky color cast");
+        Near(grayscale[1],grayscale[2],.002f,"Environment saturation keeps neutral metal neutral");
+        std::cout << "[PASS] Live environment saturation on the actual project skybox.\n";
         return;
     }
+    engine::EnvironmentLightingSettings environment;
+    environment.intensity = 0;
+    scene.environment = engine::MakeEnvironmentParameters(environment); updateScene();
+    Near(draw(hdrPipeline.handle,pbrLayout.handle,&object,sizeof(object),true)[0],0,.0001f,"Zero environment intensity removes IBL");
+    environment.intensity = 2; environment.specularIntensity = .5f;
+    scene.environment = engine::MakeEnvironmentParameters(environment); updateScene();
+    Near(draw(hdrPipeline.handle,pbrLayout.handle,&object,sizeof(object),true)[0],1,.015f,"Global and specular IBL strengths multiply consistently");
+    environment.specularIntensity = 0;
+    scene.environment = engine::MakeEnvironmentParameters(environment); updateScene();
+    Near(draw(hdrPipeline.handle,pbrLayout.handle,&object,sizeof(object),true)[0],0,.0001f,"Specular IBL can be independently disabled on metal");
+    object.metallic = 0; environment.diffuseIntensity = .5f;
+    scene.environment = engine::MakeEnvironmentParameters(environment); updateScene();
+    Near(draw(hdrPipeline.handle,pbrLayout.handle,&object,sizeof(object),true)[0],.96f,.015f,"Diffuse IBL has an independent strength control");
+    environment = {}; environment.tint = {.5f,1,.25f}; object.metallic = 1;
+    scene.environment = engine::MakeEnvironmentParameters(environment); updateScene();
+    const auto tint = draw(hdrPipeline.handle,pbrLayout.handle,&object,sizeof(object),true);
+    Near(tint[0],.5f,.015f,"IBL applies the environment red multiplier");
+    Near(tint[1],1,.015f,"IBL preserves the unchanged green multiplier");
+    Near(tint[2],.25f,.015f,"IBL applies the environment blue multiplier");
+    scene.environment = {}; updateScene();
+    std::cout << "[PASS] Live IBL controls: global/diffuse/specular intensity and tint.\n";
     for (float roughness : {.02f,.25f,.5f,.75f,1.f}) {
         object.roughness = roughness;
         const auto p = draw(hdrPipeline.handle,pbrLayout.handle,&object,sizeof(object),true);
@@ -347,11 +446,24 @@ void TestShading(Gpu& gpu, const IblResources& ibl, bool whiteEnvironment = true
     struct Mosaic { int enabled = 0; float size = 1; } mosaic;
     bindBuffer(compositeSet,2,gpu.Buffer(sizeof(mosaic),VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,&mosaic).buffer,sizeof(mosaic));
     bindImage(compositeSet,0,hdr,rawSampler); bindImage(compositeSet,1,black,rawSampler); bindImage(compositeSet,3,black,rawSampler); bindImage(compositeSet,4,white,rawSampler);
-    struct Composite { float exposure = .5f, bloom = 0, backdrop = 0, srgbOutput = 1; } comp;
+    auto comp = engine::MakeCompositeParameters(.5f,0,false,true,engine::ToneMappingSettings{});
     Near(draw(compositePipeline.handle,compLayout.handle,&comp,sizeof(comp),false)[0],.91485f,.002f,"Composite applies exposure before exactly one ACES curve");
+    engine::ToneMappingSettings toneMapping; toneMapping.acesEnabled = false;
+    comp = engine::MakeCompositeParameters(.125f,0,false,true,toneMapping);
+    Near(draw(compositePipeline.handle,compLayout.handle,&comp,sizeof(comp),false)[0],.5f,.002f,"ACES bypass retains exposure in linear output");
+    comp.exposure = .5f;
+    Near(draw(compositePipeline.handle,compLayout.handle,&comp,sizeof(comp),false)[0],1,.002f,"ACES bypass safely clips HDR at display white");
+    toneMapping.acesEnabled = true; toneMapping.acesCurve = {.8f,.2f,1.4f,.7f,.3f};
+    comp = engine::MakeCompositeParameters(.5f,0,false,true,toneMapping);
+    Near(draw(compositePipeline.handle,compLayout.handle,&comp,sizeof(comp),false)[0],3.6f/7.3f,.002f,"All five editable ACES coefficients reach the shader");
+    toneMapping.acesCurve = {1,0,0,0,0};
+    comp = engine::MakeCompositeParameters(.5f,0,false,true,toneMapping);
+    Near(draw(compositePipeline.handle,compLayout.handle,&comp,sizeof(comp),false)[0],1,.002f,"ACES denominator guard prevents nonfinite curve output");
+    comp = engine::MakeCompositeParameters(.5f,0,false,true,engine::ToneMappingSettings{});
+    std::cout << "[PASS] Live ACES controls: bypass, exposure, five curve coefficients and finite denominator.\n";
     comp.exposure = 1;
     const float originalBrightness = draw(compositePipeline.handle,compLayout.handle,&comp,sizeof(comp),false)[0];
-    comp.exposure = engine::RenderSettings{}.bloomExposure;
+    comp.exposure = .35f;
     const float reducedBrightness = draw(compositePipeline.handle,compLayout.handle,&comp,sizeof(comp),false)[0];
     Require(reducedBrightness < originalBrightness,"Lower exposure darkens HDR scene and portal radiance");
     // Midtones reveal excessive exposure more clearly than an HDR highlight
@@ -360,9 +472,9 @@ void TestShading(Gpu& gpu, const IblResources& ibl, bool whiteEnvironment = true
     for (float srgbOutput : {0.f,1.f}) {
         comp.srgbOutput = srgbOutput; comp.exposure = .7f;
         const auto previousGray = draw(compositePipeline.handle,compLayout.handle,&comp,sizeof(comp),false);
-        comp.exposure = engine::RenderSettings{}.bloomExposure;
+        comp.exposure = .35f;
         const auto currentGray = draw(compositePipeline.handle,compLayout.handle,&comp,sizeof(comp),false);
-        Require(currentGray[0] < previousGray[0] * .85f,"Default exposure visibly darkens midtones in both presentation paths");
+        Require(currentGray[0] < previousGray[0] * .85f,"Lower exposure visibly darkens midtones in both presentation paths");
         for (uint32_t c = 1; c < 3; ++c) Near(currentGray[c],currentGray[0],.001f,"Exposure keeps neutral materials neutral");
         std::cout << "[PASS] Midtone exposure, sRGB target=" << srgbOutput << ": "
             << previousGray[0] << " -> " << currentGray[0] << ".\n";
@@ -371,7 +483,7 @@ void TestShading(Gpu& gpu, const IblResources& ibl, bool whiteEnvironment = true
     comp.exposure = .5f;
     comp.srgbOutput = 0;
     Near(draw(compositePipeline.handle,compLayout.handle,&comp,sizeof(comp),false)[0],.9616f,.002f,"UNORM presentation receives sRGB encoding");
-    bindImage(compositeSet,0,black,rawSampler); comp.backdrop = 1;
+    bindImage(compositeSet,0,black,rawSampler); comp.editorBackdrop = 1;
     auto backdrop = draw(compositePipeline.handle,compLayout.handle,&comp,sizeof(comp),false);
     Require(backdrop[0] > .89f && backdrop[0] < .95f,"Editor backdrop remains in its authored display space");
     std::cout << "[PASS] Production composite: HDR exposure, single tone map, display encoding and editor backdrop.\n";
@@ -404,6 +516,7 @@ void TestBake(Gpu& gpu) {
     const VkImageView patternView = pattern.view;
     gpu.Upload(pattern.image, size, 6, pixels.data(), pixels.size() * sizeof(Pixel));
     auto blurred = create_ibl_resources(gpu.context, gpu.allocator, gpu.pool, patternView, gpu.shaders.c_str(), settings);
+    TestShading(gpu,blurred,false,true);
     const auto smooth = gpu.Read(blurred.prefilteredEnvMap.image, size, 0, 6, 6);
     const auto rough = gpu.Read(blurred.prefilteredEnvMap.image, 1, 5, 6, 6);
     for (uint32_t face = 0; face < 6; ++face) {

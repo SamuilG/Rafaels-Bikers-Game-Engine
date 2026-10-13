@@ -4,7 +4,7 @@ $outputDirectory = Join-Path $repoRoot 'Intermediate/Diagnostics/pbr-gpu'
 $shaderDirectory = Join-Path $outputDirectory 'shaders'
 New-Item -ItemType Directory -Force -Path $shaderDirectory | Out-Null
 $compiler = Join-Path $repoRoot 'glslc.exe'
-foreach ($shader in @('fullscreen.vert', 'ibl_bake.frag', 'default.vert', 'default.frag', 'portal.vert', 'portal.frag', 'composite.frag')) {
+foreach ($shader in @('fullscreen.vert', 'ibl_bake.frag', 'default.vert', 'default.frag', 'portal.vert', 'portal.frag', 'skybox.vert', 'skybox.frag', 'composite.frag')) {
     & $compiler --target-env=vulkan1.3 ('-I' + (Join-Path $repoRoot 'Assets/Shaders')) (Join-Path $repoRoot "Assets/Shaders/$shader") -o (Join-Path $shaderDirectory "$shader.spv")
     if ($LASTEXITCODE -ne 0) { throw "Production shader compilation failed: $shader" }
 }

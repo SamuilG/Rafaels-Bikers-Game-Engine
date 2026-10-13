@@ -23,7 +23,7 @@ namespace engine {
         constexpr uint32_t kThumbnailSize = 512;
         constexpr VkFormat kThumbnailFormat = VK_FORMAT_R8G8B8A8_UNORM;
         // 缓存版本号参与哈希命名，用来强制旧缓存失效
-        constexpr std::string_view kThumbnailCacheVersion = "thumb_v2_512";
+        constexpr std::string_view kThumbnailCacheVersion = "thumb_v3_512_ggx";
 
         // 用于判断磁盘缓存是否仍然对应当前源模型文件
         struct ThumbnailSourceStamp {
@@ -551,8 +551,11 @@ namespace engine {
         thumbUbo.lightPos = glm::vec4(center.x + radius * 1.8f, center.y + radius * 2.6f, center.z + radius * 1.8f, 1.0f);
         thumbUbo.lightColor = glm::vec4(6.0f, 6.0f, 6.0f, 1.0f);
         thumbUbo.lightCount = 1;
+        thumbUbo.iblEnabled = 1;
         thumbUbo.lights[0].position = glm::vec4(center.x + radius * 1.8f, center.y + radius * 2.6f, center.z + radius * 1.8f, 1.0f);
-        thumbUbo.lights[0].color = glm::vec4(6.0f, 6.0f, 6.0f, 100.f);
+        thumbUbo.lights[0].color = glm::vec4(1.0f, 1.0f, 1.0f, 6.0f);
+        thumbUbo.lights[0].direction.w = radius * 10.0f;
+        thumbUbo.lights[0].params.z = 1.0f;
 
         for (int i = 0; i < 4; ++i) {
             thumbUbo.lightVP[i] = glm::mat4(1.0f);

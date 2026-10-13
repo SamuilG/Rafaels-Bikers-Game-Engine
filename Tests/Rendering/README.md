@@ -1,4 +1,19 @@
-# View mode GPU regression tests
+# Rendering GPU regression tests
+
+Run `Tests/Rendering/run-pbr-gpu-tests.ps1` for the production PBR, IBL, portal,
+skybox and composite shaders. Skybox checks use the shared production attachment
+configuration with three HDR targets and D32 depth: source radiance remains HDR,
+and a dedicated two-binding skybox descriptor layout exposes the scene UBO to
+both vertex and fragment stages. Tests share that production binding definition.
+Bloom/normals retain their contents, and foreground depth blocks skybox drawing.
+Live controls are tested with global/diffuse/specular IBL gains, tint, saturation
+on the actual skybox, coordinated IBL/sky rotation, ACES bypass and all five curve
+coefficients. Tests use the production CPU parameter packing helpers; the PBR
+scene UBO is 1600 bytes and the composite push constants are 48 bytes.
+The harness builds its own pipeline and does not instantiate `RenderSystem`.
+See [PBR documentation](../../Docs/PBR.md) for the full suite and limitations.
+
+## View mode GPU regression tests
 
 Run from the repository root:
 
@@ -49,8 +64,9 @@ attachment, no culling, `LESS_OR_EQUAL` depth test/write for normal diagnostics
 and Overshading, no depth test/write for Overdraw, and `ONE + ONE` RGB blending
 with `ONE + ZERO` alpha for accumulation. Wireframe enables the physical device's
 `fillModeNonSolid` feature and uses line rasterization. The CSM sampler uses the
-production `LESS` comparison and clamp-to-white-border policy. Scene uniforms use the 1568-byte CPU
-layout and object push constants use the shared 128-byte layout. The harness
+production `LESS` comparison and clamp-to-white-border policy. These diagnostic
+shaders use the unchanged 1568-byte camera/light/clip prefix of the 1600-byte CPU
+scene layout; object push constants use the shared 128-byte layout. The harness
 constructs its own pipelines; it does **not** instantiate `RenderSystem`, verify
 the full engine's mode routing or post-processing bypass, or call its pipeline
 factory. Those integration checks require the engine build and code review or

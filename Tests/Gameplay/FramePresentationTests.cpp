@@ -176,6 +176,15 @@ namespace {
         Fixture fixture;
         fixture.state.render.bloomEnabled = false;
         fixture.state.render.bloomExposure = 1.75f;
+        fixture.state.render.environment.intensity = .4f;
+        fixture.state.render.environment.diffuseIntensity = .25f;
+        fixture.state.render.environment.specularIntensity = .8f;
+        fixture.state.render.environment.tint = {.7f,.8f,1.f};
+        fixture.state.render.environment.saturation = .3f;
+        fixture.state.render.environment.rotationDegrees = 60.f;
+        fixture.state.render.environment.ignoreSceneOverride = true;
+        fixture.state.render.toneMapping.acesEnabled = false;
+        fixture.state.render.toneMapping.acesCurve = {1,.1f,1,.3f,.2f};
         fixture.state.editor.showEngineUi = true;
         fixture.state.editor.showEntityInspector = false;
         fixture.state.editor.activeParticleIndex = 4;
@@ -204,6 +213,19 @@ namespace {
             !fixture.state.editor.showEntityInspector && fixture.state.capabilities.wireframeSupported,
             "render preferences, editor workspace and capabilities survive reset");
         Near(fixture.state.render.bloomExposure, 1.75f, "exposure preference survives reset");
+        Near(rendererView.render.environment.intensity,.4f,"environment intensity survives reset");
+        Near(rendererView.render.environment.diffuseIntensity,.25f,"diffuse IBL preference survives reset");
+        Near(rendererView.render.environment.specularIntensity,.8f,"specular IBL preference survives reset");
+        Near(rendererView.render.environment.saturation,.3f,"environment saturation survives reset");
+        Near(rendererView.render.environment.rotationDegrees,60.f,"environment rotation survives reset");
+        Require(rendererView.render.environment.tint == std::array<float,3>{.7f,.8f,1.f} &&
+            rendererView.render.environment.ignoreSceneOverride && !rendererView.render.toneMapping.acesEnabled &&
+            rendererView.render.toneMapping.acesCurve == std::array<float,5>{1,.1f,1,.3f,.2f},
+            "environment tint/debug override and ACES preferences survive reset");
+        fixture.state.renderOverrides.iblEnabled = false;
+        Require(fixture.state.renderOverrides.IblEnabled(fixture.state.render),"debug preference can override forced-off scene IBL");
+        fixture.state.render.environment.ignoreSceneOverride = false;
+        Require(!fixture.state.renderOverrides.IblEnabled(fixture.state.render),"scene IBL override resumes when debugging override is off");
         Require(fixture.state.editor.activeParticleIndex == -1, "stale scene selection is reset");
         fixture.NextFrame();
         fixture.Execute();

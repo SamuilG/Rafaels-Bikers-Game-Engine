@@ -1,4 +1,6 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+#include "tonemap.glsl"
 
 layout(location = 0) in vec2 v2fTexCoord;
 
@@ -24,10 +26,13 @@ layout(push_constant) uniform BloomParams {
     float bloomStrength;
     float editorBackdrop;
     float srgbOutput;
+    vec4 acesCurve;
+    vec4 acesOptions; // E, enabled, padding
 } params;
 
-vec3 srgbToLinear(vec3 color) {
-    return mix(color / 12.92, pow((color + 0.055) / 1.055, vec3(2.4)), greaterThan(color, vec3(0.04045)));
+vec3 displayToneMap(vec3 hdr) {
+    return params.acesOptions.y > 0.5 ? toneMapAces(hdr, params.acesCurve, params.acesOptions.x)
+        : clamp(hdr, 0.0, 1.0);
 }
 
 void main() {
@@ -51,7 +56,9 @@ void main() {
         if (params.srgbOutput > 0.5) backdrop = srgbToLinear(backdrop);
         vec3 glow = max(texture(uBloomBlur, uv).rgb * params.bloomStrength * params.exposure, vec3(0.0));
         // Retain bloom spilling past object silhouettes without exposing the backdrop.
-        oColor = vec4(backdrop + (vec3(1.0) - backdrop) * (glow / (glow + vec3(1.0))), 1.0);
+        vec3 mappedGlow = displayToneMap(glow);
+        if (params.srgbOutput < 0.5) mappedGlow = linearToSrgb(mappedGlow);
+        oColor = vec4(backdrop + (vec3(1.0) - backdrop) * mappedGlow, 1.0);
         return;
     }
     vec3 sceneColor = sceneSample.rgb;
@@ -77,8 +84,9 @@ void main() {
     // ==========================================
     vec3 hdrColor = (sceneColor + bloomColor * params.bloomStrength) * params.exposure;
 
-    // Reinhard 色调映射
-    vec3 mapped = hdrColor / (hdrColor + vec3(1.0));
+    vec3 mapped = displayToneMap(hdrColor);
+    // The sRGB final target handles encoding; UNORM needs explicit encoding.
+    if (params.srgbOutput < 0.5) mapped = linearToSrgb(mapped);
 
     oColor = vec4(mapped, 1.0);
 }

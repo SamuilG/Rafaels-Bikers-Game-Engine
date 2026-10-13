@@ -6,20 +6,29 @@ layout( location = 0 ) in vec3 iPosition;
 layout( location = 1 ) in vec2 iTexCoord;
 layout( location = 2 ) in vec3 iNormal;
 
+struct GpuLight {
+    vec4 position;
+    vec4 color;
+    vec4 direction;
+    vec4 params;
+};
+
 layout( scalar, set = 0, binding = 0 ) uniform UScene
 {
 	mat4 camera;
 	mat4 projection;
 	mat4 projCam;
 	vec4 cameraPos;
+	GpuLight lights[16];
 	vec4 lightPos;
 	vec4 lightColor;
+	uint lightCount;
 	uint renderMode;
-	uint _pad0;
+	uint iblEnabled;
 	uint _pad1;
-	uint _pad2;
 	mat4 lightVP[4];      // CSM cascade light-view-proj matrices
 	vec4 cascadeSplits;   // view-space split depths
+	vec4 portalClipPlane;
 } uScene;
 
 layout( location = 0 ) out vec2 v2fTexCoord;

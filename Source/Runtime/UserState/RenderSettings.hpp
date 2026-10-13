@@ -1,12 +1,28 @@
 #pragma once
 #include <cstdint>
 #include <optional>
+#include <array>
 #include "FramePerformance.hpp"
 
 namespace engine {
+struct EnvironmentLightingSettings {
+    float intensity = 1.0f;
+    float diffuseIntensity = 1.0f;
+    float specularIntensity = 1.0f;
+    std::array<float, 3> tint{1.0f, 1.0f, 1.0f};
+    float saturation = 1.0f;
+    float rotationDegrees = 0.0f;
+    bool ignoreSceneOverride = false;
+};
+struct ToneMappingSettings {
+    bool acesEnabled = true;
+    std::array<float, 5> acesCurve{2.51f, 0.03f, 2.43f, 0.59f, 0.14f};
+};
 struct RenderSettings {
     bool vsyncEnabled = true; // Requests display synchronization; actual mode is a capability.
     bool iblEnabled = true;
+    EnvironmentLightingSettings environment;
+    ToneMappingSettings toneMapping;
     bool bloomEnabled = true;
     bool ssrEnabled = true;
     bool ssaoEnabled = true;
@@ -15,8 +31,8 @@ struct RenderSettings {
     float frustumCullingPadding = 0.5f; // new frustum culling
     bool  lodEnabled = true;    // distance-based LOD selection
     bool mosaicEnabled = false; // key 5 toggle
-    float bloomExposure = 1.0f;      // 合成阶段曝光（传给 composite shader）
-    float bloomStrength = 2.2f;      // Preserve the renderer's original composite strength.
+    float bloomExposure = 1.0f;      // 合成阶段曝光（传给 composite shader）。
+    float bloomStrength = 1.2f;      // Keep GGX highlights from washing out nearby detail.
 };
 struct RenderCapabilities {
     bool gpuTimestampsSupported = false;
@@ -34,6 +50,8 @@ struct RenderStatistics {
 // A level may override its environment without changing the user preference.
 struct RenderOverrides {
     std::optional<bool> iblEnabled;
-    bool IblEnabled(const RenderSettings& settings) const { return iblEnabled.value_or(settings.iblEnabled); }
+    bool IblEnabled(const RenderSettings& settings) const {
+        return settings.environment.ignoreSceneOverride ? settings.iblEnabled : iblEnabled.value_or(settings.iblEnabled);
+    }
 };
 }

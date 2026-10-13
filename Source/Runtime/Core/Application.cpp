@@ -397,10 +397,10 @@ namespace engine {
         // Keep current dock/panel state; scene entities and their systems are the
         // original instances, so unsaved additions/deletions never need serialization.
         const auto workspace = mState.editor;
-        const bool vsyncEnabled = mState.render.vsyncEnabled;
+        const auto renderPreferences = mState.render;
         mState = session->savedState;
         mState.editor = workspace;
-        mState.render.vsyncEnabled = vsyncEnabled;
+        mState.render = renderPreferences;
         mState.editor.focusSceneViewport = true;
         physicsSystem = session->editorPhysics;
         sceneManager = session->editorScene;

@@ -78,8 +78,41 @@ offscreen render attachments, independently of the swapchain's color format.
 Existing SSAO multiplication and SSR mixing are retained; this change does not
 make SSR a full BRDF-weighted reflection solution.
 
-Default exposure is 0.35 (about 1.5 stops below 1.0), and Bloom strength is 1.2.
+Default exposure is 1.0, and Bloom strength is 1.2.
 The editor Exposure and Bloom Strength controls still adjust these values.
+Render Settings also exposes an Environment / IBL section with overall intensity
+(0–4), separate diffuse/specular IBL strengths (0–4), RGB tint, saturation (0–2)
+and rotation around world up (−180° to 180°). Overall intensity, tint, saturation
+and rotation affect both the visible sky and material environment lighting;
+diffuse/specular strengths affect surfaces only. These are runtime parameters:
+editing them updates the next frame without rebaking the environment maps.
+A scene IBL override is shown explicitly, with an opt-in debugging checkbox to
+use the user's IBL switch instead. Reset environment restores the original defaults.
+
+The Tone Mapping / ACES section provides an ACES switch, exposure (0.01–8), and
+an expandable five-coefficient curve editor. Its curve is
+`x*(A*x+B)/(x*(C*x+D)+E)` with defaults `(2.51, 0.03, 2.43, 0.59, 0.14)`.
+Disabling ACES preserves exposure and display encoding, with HDR values clipped
+to the SDR display range. A denominator guard keeps extreme edits finite.
+Reset tone mapping restores the default curve, enables ACES and sets exposure to 1.
+Diagnostic view modes bypass these effects and disable their controls. The neutral
+Scene backdrop retains its authored color; the Game sky receives the environment
+controls. Portal and recursive views inherit the main scene's environment settings
+and receive tone mapping at final composite only. Thumbnail caches keep their
+independent default lighting/display settings. Settings are session preferences
+and are not written into scene assets. They survive scene reload and Play/Stop;
+restarting the application restores defaults.
+
+Scene uniforms append 32 bytes of environment parameters after the unchanged
+1568-byte camera/light/clip prefix (1600 bytes total); composite push constants are
+48 bytes. Both application configurations must match these shader interfaces.
+The skybox pipeline matches the scene's three RGBA16F color attachments and D32
+depth attachment. Only scene color is writable; Bloom and normal buffers retain
+their contents when the skybox fills background pixels.
+The skybox's dedicated descriptor layout exposes scene UBO binding 0 to both
+vertex and fragment stages: camera matrices and environment parameters share
+that buffer. The GPU suite uses this production binding definition and its
+separate two-binding skybox set/pipeline layout, rather than the material layout.
 Portal surfaces keep HDR radiance until this same composite pass. A new Play
 scene creates its own portal mesh on first use; portal texture descriptors use
 the renderer's persistent pool so scene material-pool exchanges cannot invalidate
@@ -116,7 +149,9 @@ constant-radiance preservation at every mip/face, diffuse normalization, bounded
 DFG values, face identity, rough reflection broadening, the white-furnace test,
 direct GGX tails, finite sharp highlights and Bloom output, per-light specular
 controls, HDR output, thumbnail display conversion, portal HDR copying and
-near-plane coverage, neutral midtone brightness in both presentation paths,
+near-plane coverage, skybox HDR output / auxiliary-buffer preservation / depth
+occlusion with the production attachment configuration, neutral midtone brightness in both presentation paths,
+live IBL gains/tint/saturation/rotation, editable ACES coefficients and bypass,
 exposure order and editor
 backdrop output. These are controlled GPU readbacks, not full-scene screenshots
 or an interactive engine acceptance test.

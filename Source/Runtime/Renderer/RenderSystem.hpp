@@ -733,23 +733,22 @@ namespace engine {
 
             // 【关键】：这里调用 InitSkybox，依赖了刚才创建的 mAllocator, mCmdPool 和 mDefaultSampler
             InitSkybox();
+            ReportInitProgress(0.46f, "Precomputing GGX environment lighting...");
+            mIbl = create_ibl_resources(mWindow, mAllocator, mCmdPool.handle, mSkyboxView.handle);
             ReportInitProgress(0.48f, "Setting up scene buffers...");
             // ==========================================
-            // 6. 主场景描述符集绑定 (UBO + Shadow + Skybox)
+            // 6. Scene descriptors: UBO, shadow map and split-sum IBL.
             // ==========================================
             mSceneDescriptors = lut::alloc_desc_set(mWindow, mDescPool.handle, mSceneLayout.handle);
             {
                 VkDescriptorBufferInfo bi{ mSceneUBO.buffer, 0, VK_WHOLE_SIZE };
-                VkDescriptorImageInfo  si{ mShadowSampler.handle, mShadowMap.view, VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL };
-                VkDescriptorImageInfo  ki{ mDefaultSampler.handle, mSkyboxView.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-
-                VkWriteDescriptorSet w[3]{};
+                VkDescriptorImageInfo si{ mShadowSampler.handle, mShadowMap.view, VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL };
+                VkWriteDescriptorSet w[2]{};
                 w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[0].dstSet = mSceneDescriptors; w[0].dstBinding = 0; w[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; w[0].descriptorCount = 1; w[0].pBufferInfo = &bi;
                 w[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[1].dstSet = mSceneDescriptors; w[1].dstBinding = 1; w[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; w[1].descriptorCount = 1; w[1].pImageInfo = &si;
-                w[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[2].dstSet = mSceneDescriptors; w[2].dstBinding = 2; w[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; w[2].descriptorCount = 1; w[2].pImageInfo = &ki;
-
-                vkUpdateDescriptorSets(mWindow.device, 3, w, 0, nullptr);
+                vkUpdateDescriptorSets(mWindow.device, 2, w, 0, nullptr);
             }
+            UpdateSceneDescriptorSkybox();
             ReportInitProgress(0.56f, "Binding scene descriptors...");
             // ==========================================
             // 7. 同步对象与管线初始化
@@ -1730,6 +1729,7 @@ namespace engine {
 
             // 【新增】：将 IBL 状态同步给 Shader
             sceneUniforms.iblEnabled = mState->renderOverrides.IblEnabled(mState->render) ? 1 : 0;
+            sceneUniforms.environment = MakeEnvironmentParameters(mState->render.environment);
             //frustum culling: keep separate smoothed FPS samples for culling ON vs OFF.
             if (dt > 0.0001f) {
                 float currentFps = 1.0f / dt;
@@ -2128,6 +2128,7 @@ namespace engine {
                 clearColor,                    // VkClearColorValue aClearColor
                 currentBloomStrength,
                 mState->render.bloomExposure,
+                mState->render.toneMapping,
                 editorBackdrop,
                 mBufferViewPipe.handle,
                 mSpeedPostPipeLayout.handle,
@@ -2437,6 +2438,9 @@ namespace engine {
             const glm::vec3& cameraUp = glm::vec3(0.0f, 1.0f, 0.0f),
             float fovDegrees = 75.0f)
         {
+            // Play moves the previous scene's mesh buffers out of the renderer.
+            // Ensure the active scene has a surface before enabling its portal.
+            CreatePortalSurfaceMesh();
             mPortalEnabled = true;
             mPortal2Enabled = false;
             mPortalPreviewPairLinked = false;
@@ -2562,21 +2566,22 @@ namespace engine {
         // 在 RenderSystem.hpp 内部添加该辅助函数
         void UpdateSceneDescriptorSkybox()
         {
-            if (mSceneDescriptors == VK_NULL_HANDLE || mSkyboxView.handle == VK_NULL_HANDLE) return;
-
-            VkDescriptorImageInfo skyboxInfo{};
-            skyboxInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            skyboxInfo.imageView = mSkyboxView.handle;
-            skyboxInfo.sampler = mDefaultSampler.handle;
-
-            VkWriteDescriptorSet write{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-            write.dstSet = mSceneDescriptors;
-            write.dstBinding = 2; // 重新覆盖 Binding 2
-            write.descriptorCount = 1;
-            write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            write.pImageInfo = &skyboxInfo;
-
-            vkUpdateDescriptorSets(mWindow.device, 1, &write, 0, nullptr);
+            if (mSceneDescriptors == VK_NULL_HANDLE || mIbl.sampler.handle == VK_NULL_HANDLE) return;
+            VkDescriptorImageInfo images[3] = {
+                {mIbl.sampler.handle, mIbl.prefilteredEnvMap.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+                {mIbl.sampler.handle, mIbl.irradianceMap.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+                {mIbl.sampler.handle, mIbl.brdfLut.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}
+            };
+            VkWriteDescriptorSet writes[3]{};
+            for (uint32_t i = 0; i < 3; ++i) {
+                writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                writes[i].dstSet = mSceneDescriptors;
+                writes[i].dstBinding = 2 + i;
+                writes[i].descriptorCount = 1;
+                writes[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                writes[i].pImageInfo = &images[i];
+            }
+            vkUpdateDescriptorSets(mWindow.device, 3, writes, 0, nullptr);
         }
     private:
         void CreateDebugViewPipelines() {
@@ -2671,7 +2676,9 @@ namespace engine {
 
         VkDescriptorSet BuildPortalSurfaceDesc(VkImageView portalView)
         {
-            VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mModelDescPool.handle, mObjectLayout.handle);
+            // Portal targets belong to the renderer and survive scene swaps.
+            // Their descriptors must outlive the scene's material pool as well.
+            VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mDescPool.handle, mObjectLayout.handle);
             WritePortalSurfaceDesc(ds, portalView);
             return ds;
         }
@@ -3180,7 +3187,7 @@ void InitSkybox()
     // 7. 在 setup.cpp 中获取并调用 Layout 和 Pipeline (见下一步)
     mSkyboxDescLayout = create_skybox_descriptor_layout(mWindow);
     mSkyboxPipeLayout = create_skybox_pipeline_layout(mWindow, mSkyboxDescLayout.handle);
-    mSkyboxPipe = create_skybox_pipeline(mWindow, mSkyboxPipeLayout.handle, mWindow.swapchainFormat);
+    mSkyboxPipe = create_skybox_pipeline(mWindow, mSkyboxPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
 
     // 8. 填充描述符
     mSkyboxDescSet = lut::alloc_desc_set(mWindow, mDescPool.handle, mSkyboxDescLayout.handle);
@@ -3439,6 +3446,7 @@ void InitSkybox()
         // =========================================================
         lut::Image               mSkyboxTex;
         lut::ImageView           mSkyboxView;
+        IblResources            mIbl;
         lut::Buffer              mSkyboxVBO;
         lut::DescriptorSetLayout mSkyboxDescLayout;
         lut::PipelineLayout      mSkyboxPipeLayout;

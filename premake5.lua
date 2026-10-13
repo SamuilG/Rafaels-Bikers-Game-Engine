@@ -337,4 +337,10 @@ workspace "EngineWorkspace"
             buildinputs { "Assets/Shaders/debug_common.glsl" }
         filter "files:Assets/Shaders/default.frag or files:Assets/Shaders/debug_shadow.frag"
             buildinputs { "Assets/Shaders/shadow_sampling.glsl" }
+        filter "files:Assets/Shaders/default.frag or files:Assets/Shaders/ibl_bake.frag"
+            buildinputs { "Assets/Shaders/pbr_common.glsl" }
+        filter "files:Assets/Shaders/default.frag or files:Assets/Shaders/composite.frag"
+            buildinputs { "Assets/Shaders/tonemap.glsl" }
+        filter "files:Assets/Shaders/default.frag or files:Assets/Shaders/skybox.frag"
+            buildinputs { "Assets/Shaders/environment.glsl" }
         filter "*"

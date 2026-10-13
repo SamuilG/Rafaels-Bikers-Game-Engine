@@ -5,6 +5,9 @@
 #include "../../Rhi/vkobject.hpp"
 #include "../../Rhi/vkimage.hpp"
 #include "camera.hpp"
+#include "Ibl.hpp"
+#include "RenderParameters.hpp"
+#include <cstddef>
 #include "light.hpp"
 #include <string>
 
@@ -44,7 +47,9 @@ namespace glsl {
 		glm::mat4 lightVP[4];
 		glm::vec4 cascadeSplits;
 		glm::vec4 portalClipPlane;
+		EnvironmentParameters environment;
 	};
+    static_assert(offsetof(SceneUniform, environment) == 1568 && sizeof(SceneUniform) == 1600);
 }
 
 namespace cfg
@@ -140,11 +145,7 @@ lut::DescriptorSetLayout create_scene_descriptor_layout(lut::VulkanWindow const&
 // =====================================================================
 // 2. 【核心新增】用于 IBL 预过滤环境贴图（可选：如果你使用高级烘焙天空盒，建议留出接口）
 // =====================================================================
-struct IblResources {
-	lut::ImageWithView prefilteredEnvMap; // 包含 Mipmaps 的高光预过滤环境贴图
-	lut::ImageWithView irradianceMap;     // 漫反射辐照度贴图
-	lut::ImageWithView brdfLut;           // 预积分 BRDF 查找表
-};
+
 
 // 如果你要从外部加载单独的 HDR/Cube 纹理作为 PBR 采样，可以在此处添加辅助创建声明：
 lut::ImageWithView create_skybox_cubemap(lut::VulkanWindow const& aWindow, lut::Allocator const& aAllocator, std::string const& aPath);

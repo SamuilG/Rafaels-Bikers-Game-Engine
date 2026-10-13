@@ -68,6 +68,7 @@ void record_commands(
 	VkClearColorValue aClearColor,
 	float aBloomStrength,
 	float aExposure,
+	engine::ToneMappingSettings const& aToneMapping,
 	bool aEditorBackdrop,
 	VkPipeline aBufferViewPipe,
 	VkPipelineLayout aBufferViewLayout,
