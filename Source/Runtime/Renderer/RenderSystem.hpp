@@ -318,10 +318,37 @@ namespace engine {
                 mState->editor.isGameViewportVisible;
         }
         bool GameViewportAcceptsInput() const {
+            if (mInputSystem && !mInputSystem->IsWindowFocused()) return false;
             if (!mState || !mState->editor.showEngineUi) return true;
+            const ImVec2 position = EngineUi::GetGameViewportPos();
+            const ImVec2 size = EngineUi::GetGameViewportSize();
+            const ImVec2 origin = ImGui::GetMainViewport()->Pos;
+            const bool pointerInside = mInputSystem
+                ? mInputSystem->IsCursorInside({position.x - origin.x, position.y - origin.y, size.x, size.y})
+                : mState->editor.isGameViewportHovered;
             return IsEmbeddedGameVisible() && mState->editor.isGameViewportFocused &&
                 !mState->editor.inputCapturesKeyboard &&
-                (mState->editor.isGameViewportHovered || (mInputSystem && mInputSystem->IsMouseCaptured()));
+                (pointerInside || (mInputSystem && mInputSystem->IsMouseCaptured()));
+        }
+        bool GameViewportAcceptsGameplayInput() const {
+            return GameViewportAcceptsInput() && mState && (!mState->editor.showEngineUi ||
+                (mInputSystem && mInputSystem->IsMouseCaptured()));
+        }
+        void UpdateMouseCaptureContext() {
+            if (!mInputSystem || !mState) return;
+            if (!mState->editor.showEngineUi) {
+                mInputSystem->ConfigureMouseCapture(mState->frame.runGameplay);
+                return;
+            }
+            const bool game = IsEmbeddedGameVisible() && mState->editor.isGameViewportFocused &&
+                mState->frame.runGameplay;
+            const bool scene = mState->editor.isSceneViewportVisible && mState->editor.isSceneViewportFocused;
+            const ImVec2 position = game ? EngineUi::GetGameViewportPos() : EngineUi::GetSceneViewportPos();
+            const ImVec2 size = game ? EngineUi::GetGameViewportSize() : EngineUi::GetSceneViewportSize();
+            const ImVec2 origin = ImGui::GetMainViewport()->Pos;
+            mInputSystem->ConfigureMouseCapture((game || scene) && !mState->editor.inputCapturesKeyboard,
+                InputSystem::MouseCaptureRegion{position.x - origin.x, position.y - origin.y, size.x, size.y},
+                game ? InputSystem::MouseCaptureOwner::GameViewport : InputSystem::MouseCaptureOwner::SceneViewport);
         }
         const CameraState& RenderCameraState() const {
             return mState->editor.showEngineUi && !mRenderingGameViewport
@@ -1097,7 +1124,8 @@ namespace engine {
             if (!mEditorAvailable) mState->editor.showEngineUi = false;
             if (mRuntimeUiEnabled && mRuntimeUiController) mRuntimeUiController->SyncGameFlowUi();
 
-            imguiRenderer.BeginFrame(mState->editor.showEngineUi);
+            UpdateMouseCaptureContext();
+            imguiRenderer.BeginFrame(mState->editor.showEngineUi, mInputSystem && mInputSystem->IsMouseCaptured());
             mState->editor.inputCapturesKeyboard =
                 ImGui::GetIO().WantTextInput || ImGui::GetIO().KeyCtrl ||
                 ImGui::GetIO().KeyAlt || ImGui::GetIO().KeySuper ||
@@ -1209,6 +1237,10 @@ namespace engine {
                         EngineUi::GetSceneViewportDrawList());
                 }
                 vpSize = EngineUi::GetSceneViewportSize();
+                UpdateMouseCaptureContext();
+                if (mInputSystem && mState->frame.runGameplay && GameViewportAcceptsInput() &&
+                    ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                    mInputSystem->SetMouseCaptured(true);
                 ImVec2 mousePosAbs = ImGui::GetMousePos();
                 ImVec2 vpPos = EngineUi::GetSceneViewportPos();
                 //ImVec2 vpSize = EngineUi::GetSceneViewportSize();
@@ -1593,7 +1625,7 @@ namespace engine {
                     mState->render.particlesEnabled = !mState->render.particlesEnabled;
                     std::printf("Particles: %s\n", mState->render.particlesEnabled ? "ON" : "OFF");
                 }
-                if (mState->frame.runSimulationSystems && GameViewportAcceptsInput() && !editorCapturesKeyboard && mInputSystem->IsActionPressed("CameraThirdPersonToggle")) {
+                if (mState->frame.runSimulationSystems && GameViewportAcceptsGameplayInput() && !editorCapturesKeyboard && mInputSystem->IsActionPressed("CameraThirdPersonToggle")) {
                     // T
                     if (mState->camera.State().thirdPersonMode) mState->camera.RequestFree();
                     else mState->camera.RequestFollow();
@@ -1601,7 +1633,8 @@ namespace engine {
 
                 }
               
-                if (mEditorAvailable && !mEditorProjectActions.openProject && mInputSystem->IsActionPressed("ToggleEngineUi")) {
+                if (mEditorAvailable && !mEditorProjectActions.openProject && mInputSystem->IsActionPressed("ToggleEngineUi") &&
+                    !mInputSystem->IsActionHeld("ReleaseMouseModifier")) {
                     mState->editor.showEngineUi = !mState->editor.showEngineUi;
                     EngineUi::ShowToast(mState->editor.showEngineUi ? "[ Engine UI Visible ]" : "[ Engine UI Hidden ]");
                 }
@@ -1644,7 +1677,7 @@ namespace engine {
                 EditorState gameRoute;
                 update_camera(mState->camera, mState->player.State(), gameRoute,
                     mState->frame.runSimulationSystems ? dt : 0.0f,
-                    GameViewportAcceptsInput() && !editorCapturesKeyboard ? mInputSystem : nullptr);
+                    GameViewportAcceptsGameplayInput() && !editorCapturesKeyboard ? mInputSystem : nullptr);
             }
 
             //// Prepare data for this frame
@@ -1662,12 +1695,19 @@ namespace engine {
                 ? EngineUi::GetGameViewportSize() : EngineUi::GetSceneViewportSize();
             float finalWidth = std::max(1.0f, std::abs(finalVpSize.x));
             float finalHeight = std::max(1.0f, std::abs(finalVpSize.y));
+            const int frameRenderMode = ActiveRenderMode();
+            if (mLastFrameRenderMode != frameRenderMode || mLastFrameRenderedGame != mRenderingGameViewport) {
+                // Do not average the diagnostic camera/pass and Game rendering together.
+                ResetPerformanceHistory();
+                mLastFrameRenderMode = frameRenderMode;
+                mLastFrameRenderedGame = mRenderingGameViewport;
+            }
             // 【关键修复】：调用函数！
             update_scene_uniforms(
                 sceneUniforms,
                 static_cast<uint32_t>(finalWidth),
                 static_cast<uint32_t>(finalHeight),
-                RenderCameraState(), ActiveRenderMode()
+                RenderCameraState(), frameRenderMode
             );
 
             if (mState->editor.showEngineUi && !mRenderingGameViewport &&
@@ -1849,8 +1889,8 @@ namespace engine {
             applyPortalTransitionVisual(finalBatches);
             SceneRenderer::ApplySkinnedPortalTransition(skinnedBatches, portalTransition);
 
-            const bool portalEnabledForFrame = mPortalEnabled && mState->editor.renderMode == 0;
-            const bool portal2EnabledForFrame = mPortal2Enabled && mState->editor.renderMode == 0;
+            const bool portalEnabledForFrame = editor_viewport::PortalsEnabled(mState->editor, mRenderingGameViewport, mPortalEnabled);
+            const bool portal2EnabledForFrame = editor_viewport::PortalsEnabled(mState->editor, mRenderingGameViewport, mPortal2Enabled);
             Frustum portalVisibilityFrustum{};
             if (portalEnabledForFrame || portal2EnabledForFrame) {
                 portalVisibilityFrustum = BuildFrustum(sceneUniforms.projCam);
@@ -2190,6 +2230,7 @@ namespace engine {
 
         void Shutdown() override
         {
+            if (mInputSystem) mInputSystem->ConfigureMouseCapture(false);
             // 1. 确保 GPU 已经完全停下，再开始拆除资源
             vkDeviceWaitIdle(mWindow.device);
             mGpuTimer.Shutdown();
@@ -3351,6 +3392,8 @@ void InitSkybox()
 
         CpuFrameTimings mFrameTimings;
         bool mPresentedFrame = false;
+        int mLastFrameRenderMode = -1;
+        bool mLastFrameRenderedGame = false;
         lut::GpuFrameTimer mGpuTimer;
         bool       mRecreateSwapchain = false;
         std::size_t mFrameIndex = 0;

@@ -28,7 +28,7 @@ public:
     void Init(const InitInfo& info);
     void Shutdown();
 
-    void BeginFrame(bool editorUi = false);
+    void BeginFrame(bool editorUi = false, bool mouseCaptured = false);
     void BuildDemoUI();
     void Render(VkCommandBuffer cmd);
     VkClearColorValue BackgroundClearColor() const;

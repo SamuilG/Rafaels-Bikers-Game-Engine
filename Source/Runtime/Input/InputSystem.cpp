@@ -116,6 +116,9 @@ namespace engine {
         MapGamepadButtonAction("CameraThirdPersonToggle", GLFW_GAMEPAD_BUTTON_Y);
 
         MapMouseButtonAction("CaptureMouse", GLFW_MOUSE_BUTTON_MIDDLE);
+        MapKeyboardAction("ReleaseMouse", GLFW_KEY_F1);
+        MapKeyboardAction("ReleaseMouseModifier", GLFW_KEY_LEFT_SHIFT);
+        MapKeyboardAction("ReleaseMouseModifier", GLFW_KEY_RIGHT_SHIFT);
         
         MapMouseButtonAction("pedal0" , GLFW_MOUSE_BUTTON_LEFT);
         MapMouseButtonAction("pedal1" , GLFW_MOUSE_BUTTON_RIGHT);
@@ -162,6 +165,19 @@ namespace engine {
         // Poll once at the start of the application input phase. Gameplay
         // then consumes this frame's state instead of the previous frame's.
         glfwPollEvents();
+        if (!IsWindowFocused()) {
+            SetMouseCaptured(false);
+            for (auto& [name, binding] : mActionBindings) {
+                binding.isHeld = binding.wasHeld = false;
+                binding.value = 0.0f;
+            }
+            ResetForNewSession();
+            mGameplayInputEnabled = false;
+            mWindowWasFocused = false;
+            return;
+        }
+        const bool focusRegained = !mWindowWasFocused;
+        mWindowWasFocused = true;
         // ==========================================
         // 提取这一帧的滚轮数据，并清零累加器
         mScrollDeltaY = mScrollAccumulatorY;
@@ -179,9 +195,16 @@ namespace engine {
         UpdateKeyboardStates();
         UpdateGamepadStates();
         UpdateMouseStates();
-        // Handle the edge once per input frame, independently of camera routing,
-        // editor focus and pause state. Holding the button must not toggle again.
-        if (IsActionPressed("CaptureMouse")) {
+        if (focusRegained) {
+            // Held buttons on return from Alt+Tab are not fresh capture/pedal presses.
+            ResetForNewSession();
+            return;
+        }
+        const bool releaseMouse = IsActionPressed("MenuBack") ||
+            (IsActionPressed("ReleaseMouse") && IsActionHeld("ReleaseMouseModifier"));
+        if (releaseMouse && IsMouseCaptured()) {
+            SetMouseCaptured(false);
+        } else if (IsActionPressed("CaptureMouse")) {
             SetMouseCaptured(!IsMouseCaptured());
         }
     }
@@ -200,6 +223,8 @@ namespace engine {
     }
 
     void InputSystem::Shutdown() {
+        SetMouseCaptured(false);
+        if (g_InputSystem == this) g_InputSystem = nullptr;
         mActionBindings.clear();
     }
 
@@ -352,6 +377,8 @@ namespace engine {
 
     void InputSystem::SetMouseCaptured(bool captured) {
         if (!mWindow) return;
+        if (captured && (!mMouseCaptureAllowed || !IsWindowFocused() ||
+            (mMouseCaptureRegion && !IsCursorInside(*mMouseCaptureRegion)))) return;
         if (captured == IsMouseCaptured()) return;
         glfwSetInputMode(mWindow, GLFW_CURSOR, captured ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
         // Cursor mode changes can reposition the cursor. Do not turn that warp
@@ -359,6 +386,26 @@ namespace engine {
         mFirstMouseUpdate = true;
         mMouseDeltaX = 0.0;
         mMouseDeltaY = 0.0;
+    }
+
+    void InputSystem::ConfigureMouseCapture(bool allowed, std::optional<MouseCaptureRegion> region,
+        MouseCaptureOwner owner) {
+        if (!allowed || owner != mMouseCaptureOwner) SetMouseCaptured(false);
+        mMouseCaptureAllowed = allowed;
+        mMouseCaptureRegion = region;
+        mMouseCaptureOwner = owner;
+    }
+
+    bool InputSystem::IsWindowFocused() const {
+        return mWindow && glfwGetWindowAttrib(mWindow, GLFW_FOCUSED) == GLFW_TRUE;
+    }
+
+    bool InputSystem::IsCursorInside(const MouseCaptureRegion& region) const {
+        if (!mWindow || !(region.width > 0.0f) || !(region.height > 0.0f)) return false;
+        double x, y;
+        glfwGetCursorPos(mWindow, &x, &y);
+        return x >= region.x && x < region.x + region.width &&
+            y >= region.y && y < region.y + region.height;
     }
 
     bool InputSystem::IsMouseCaptured() const {

@@ -203,11 +203,11 @@ namespace engine {
             if (auto* ui = renderSystem->GetRuntimeUiController()) ui->SyncGameFlowUi();
 
             const bool gameplayViewportActive = mOptions.editingProject
-                ? renderSystem->GameViewportAcceptsInput()
+                ? renderSystem->GameViewportAcceptsGameplayInput()
                 : mState.editor.isSceneViewportHovered;
             const bool editorOwnsKeyboard = mState.editor.showEngineUi &&
                 (mState.editor.inputCapturesKeyboard || !gameplayViewportActive);
-            inputSystem->SetGameplayInputEnabled(mState.frame.runGameplay && !editorOwnsKeyboard);
+            inputSystem->SetGameplayInputEnabled(mState.frame.runGameplay && !editorOwnsKeyboard && inputSystem->IsWindowFocused());
 
             // Every consumer sees this same snapshot until the next boundary.
             // UI/gameplay requests made by these steps cannot change its gates.

@@ -1,6 +1,7 @@
 #include "Runtime/UI/EditorLayout.hpp"
 #include "Runtime/UI/GameViewportCanvas.hpp"
 #include "Runtime/UI/EditorViewportRouting.hpp"
+#include "Runtime/UI/CapturedInput.hpp"
 #include "Runtime/UI/SwitchLanguage.hpp"
 
 #include <cmath>
@@ -40,6 +41,9 @@ namespace {
     struct HeadlessContext {
         ImGuiContext* context;
         engine::EditorState editor;
+        bool capturedInput = false;
+        int inputGuardClicks = 0;
+        ImVec2 inputGuardCenter;
         bool gameCanvasHovered = false;
         bool gameCanvasFocused = false;
         ImVec2 gameCanvasPosition;
@@ -66,6 +70,7 @@ namespace {
         ~HeadlessContext() { ImGui::DestroyContext(context); }
 
         void Begin() {
+            engine::editor_viewport::SetCapturedInput(capturedInput);
             ImGui::NewFrame();
             if (ImGui::BeginMainMenuBar()) {
                 ImGui::TextUnformatted("File   View   Tools");
@@ -97,6 +102,11 @@ namespace {
                 } else {
                     if (name == layout::kSceneViewport) editor.isSceneViewportVisible = visible;
                     ImGui::TextUnformatted("Editor panel");
+                    if (name == layout::kEntityInspector && visible) {
+                        if (ImGui::Button("Input ownership guard")) ++inputGuardClicks;
+                        const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
+                        inputGuardCenter = ImVec2((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f);
+                    }
                 }
                 ImGui::End();
             };
@@ -389,6 +399,45 @@ namespace {
         std::puts("PASS Game canvas retains input through repeated multi-frame mouse clicks and blocks pointers outside its content");
     }
 
+    void TestCapturedInputCannotClickEditor() {
+        HeadlessContext fixture(1280, 720);
+        fixture.Settle();
+        ImGui::FocusWindow(&Window(layout::kGameViewport));
+        fixture.Settle();
+        const ImVec2 editorButton = fixture.inputGuardCenter;
+        auto& io = ImGui::GetIO();
+        fixture.capturedInput = true;
+        for (int repeat = 0; repeat < 3; ++repeat) {
+            io.AddMousePosEvent(editorButton.x, editorButton.y);
+            io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+            io.AddKeyEvent(ImGuiKey_Space, true);
+            fixture.Frame();
+            fixture.Frame();
+            io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+            io.AddKeyEvent(ImGuiKey_Space, false);
+            fixture.Frame();
+            Require(fixture.inputGuardClicks == 0 && fixture.gameCanvasFocused,
+                "captured virtual mouse/keyboard events cannot click editor controls or steal Game focus");
+        }
+        io.AddMousePosEvent(100000, 100000);
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+        fixture.Frame();
+        fixture.capturedInput = false;
+        fixture.Frame();
+        Require(fixture.inputGuardClicks == 0,
+            "releasing capture does not replay queued gameplay clicks into the editor");
+        Require((io.ConfigFlags & (ImGuiConfigFlags_NoMouse | ImGuiConfigFlags_NoKeyboard)) == 0 &&
+            (io.ConfigFlags & ImGuiConfigFlags_DockingEnable) != 0,
+            "capture release restores interaction without disabling docking");
+        io.AddMousePosEvent(editorButton.x, editorButton.y);
+        fixture.Frame(); fixture.Frame();
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, true); fixture.Frame();
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, false); fixture.Frame();
+        Require(fixture.inputGuardClicks == 1,
+            "released cursor can click editor controls exactly once with no stale held state");
+        std::puts("PASS captured virtual input cannot click editor buttons, steal focus or replay after release");
+    }
+
     void TestSceneViewModeRouting() {
         HeadlessContext fixture(1280, 720);
         fixture.Settle();
@@ -400,6 +449,10 @@ namespace {
             Require(routing::RenderGameViewport(fixture.editor), "Game tab selects the gameplay camera route");
             Require(routing::ActiveRenderMode(fixture.editor, true) == modes::Default,
                 "Game rendering stays lit even when a Scene diagnostic was previously selected");
+            Require(routing::PortalsEnabled(fixture.editor, true, true),
+                "Scene diagnostics cannot disable either Game portal and change its depth/SSR workload");
+            Require(!routing::PortalsEnabled(fixture.editor, true, false),
+                "Game still respects disabled or unconfigured portals");
             fixture.editor.focusGameViewport = true; // A stale Play focus request must not win.
             routing::SelectSceneViewMode(fixture.editor, mode);
             Require(fixture.editor.focusSceneViewport && !fixture.editor.focusGameViewport,
@@ -410,6 +463,8 @@ namespace {
             const bool renderingGame = routing::RenderGameViewport(fixture.editor);
             Require(!renderingGame && routing::ActiveRenderMode(fixture.editor, renderingGame) == mode,
                 "every selected mode reaches Scene rendering instead of being forced back to Default");
+            Require(routing::PortalsEnabled(fixture.editor, renderingGame, true) == (mode == modes::Default),
+                "only the active Scene diagnostic disables portals in its own view");
             Require(!fixture.editor.focusSceneViewport, "Scene focus request is consumed once");
         }
         fixture.editor.isSceneViewportVisible = fixture.editor.isGameViewportVisible = true;
@@ -547,6 +602,7 @@ int main() {
     TestOldDockspaceMigration();
     TestExistingWorkspaceAddsGameTab();
     TestGameCanvasMousePressRelease();
+    TestCapturedInputCannotClickEditor();
     TestSceneViewModeRouting();
     TestDeferredInitialLayout();
     TestUnavailableViewportPreservesCustomLayout();

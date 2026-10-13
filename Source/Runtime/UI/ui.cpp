@@ -1,5 +1,6 @@
 #include "ui.hpp"
 #include "EditorTheme.hpp"
+#include "CapturedInput.hpp"
 
 #include <stdexcept>
 #include <array>
@@ -175,7 +176,7 @@ void ImGuiRenderer::Shutdown()
 }
 
 //================Frame Lifecycle帧生命周期==========================
-void ImGuiRenderer::BeginFrame(bool editorUi)
+void ImGuiRenderer::BeginFrame(bool editorUi, bool mouseCaptured)
 {
     if (!m_inited) return;
     if (editorUi != m_editorThemeActive)
@@ -203,6 +204,7 @@ void ImGuiRenderer::BeginFrame(bool editorUi)
         }
         m_editorThemeActive = editorUi;
     }
+    engine::editor_viewport::SetCapturedInput(mouseCaptured);
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();

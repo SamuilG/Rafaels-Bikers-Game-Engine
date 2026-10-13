@@ -43,10 +43,17 @@ into two simultaneous render windows. Selecting any of the 12 Scene view modes
 from the Game tab must activate Scene, cancel pending Game focus, and preserve
 the selected mode in the production rendering route. Returning to Game uses
 Default without clearing the Scene selection. A transient frame where both tabs
-report visible cannot let Game override Scene. Zero and tiny initial viewports
+report visible cannot let Game override Scene. Hidden Scene diagnostics cannot
+disable Game's configured portal passes/surfaces or change their depth/SSR inputs;
+the active Scene diagnostic still suppresses its own portals. Zero and tiny initial viewports
 must defer layout creation; restoring a usable size or reloading their ini must
 produce the normal defaults. Existing custom layouts survive these unusable
 sizes and ini saves, and a pending reset waits until the viewport is usable.
+
+Captured gameplay input is tested against real ImGui buttons outside Game.
+Unbounded virtual cursor coordinates, clicks and keyboard events cannot activate
+editor widgets or steal viewport focus. Releasing capture discards queued input
+and restores a fresh editor click without changing docking or replaying pedals.
 
 User tab changes in the same context are preserved. Across restarts the saved
 dock nodes and split sizes are restored, but tool visibility uses application

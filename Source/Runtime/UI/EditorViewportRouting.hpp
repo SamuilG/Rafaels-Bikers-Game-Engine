@@ -25,4 +25,9 @@ inline int ActiveRenderMode(const EditorState& editor, bool renderingGame) {
         : view_mode::Default;
 }
 
+inline bool PortalsEnabled(const EditorState& editor, bool renderingGame, bool configured) {
+    // A hidden Scene diagnostic cannot remove portal surfaces/passes from Game.
+    return configured && ActiveRenderMode(editor, renderingGame) == view_mode::Default;
+}
+
 } // namespace engine::editor_viewport

@@ -114,7 +114,7 @@ inline void RenderSystem::ForwardRuntimeUiMouseInput() {
         return;
     }
 
-    if (!ShouldRenderRuntimeUi() || !GameViewportAcceptsInput()) {
+    if (!ShouldRenderRuntimeUi() || !GameViewportAcceptsInput() || (mInputSystem && mInputSystem->IsMouseCaptured())) {
         mRuntimeUiManager->ClearInputState();
         return;
     }

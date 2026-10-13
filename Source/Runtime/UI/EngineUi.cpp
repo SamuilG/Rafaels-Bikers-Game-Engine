@@ -747,12 +747,14 @@ namespace engine {
                     s_GameViewportDrawList->AddText(ImVec2(s_GameViewportPos.x + (size.x - textSize.x) * 0.5f,
                         s_GameViewportPos.y + (size.y - textSize.y) * 0.5f), IM_COL32(220, 220, 220, 255), message);
                 }
-                else if (paused) {
+                else if (paused || (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_NoMouse) != 0) {
+                    const char* message = paused ? "Simulation paused"
+                        : "Mouse captured - Shift+F1 / middle mouse to release";
                     const ImVec2 labelPos(s_GameViewportPos.x + 10.0f, s_GameViewportPos.y + 10.0f);
-                    const ImVec2 textSize = ImGui::CalcTextSize("Simulation paused");
+                    const ImVec2 textSize = ImGui::CalcTextSize(message);
                     s_GameViewportDrawList->AddRectFilled(ImVec2(labelPos.x - 4, labelPos.y - 4),
                         ImVec2(labelPos.x + textSize.x + 4, labelPos.y + textSize.y + 4), IM_COL32(0, 0, 0, 180));
-                    s_GameViewportDrawList->AddText(labelPos, IM_COL32(255, 255, 255, 255), "Simulation paused");
+                    s_GameViewportDrawList->AddText(labelPos, IM_COL32(255, 255, 255, 255), message);
                 }
             }
         }
@@ -1331,6 +1333,8 @@ namespace engine {
 
     void EngineUi::DrawRenderSettings(RenderSettings& render, const RenderOverrides& overrides, EditorState& editor) {
         if (!editor.showRenderSettings) return;
+        const bool diagnosticsActive = editor_viewport::ActiveRenderMode(editor,
+            editor_viewport::RenderGameViewport(editor)) != view_mode::Default;
         if (ImGui::Begin(PanelTitle("Render Settings", "RenderSettings").c_str(), &editor.showRenderSettings)) {
             ImGui::TextDisabled("Changes apply to the current session.");
             ImGui::SeparatorText("Presentation");
@@ -1339,8 +1343,8 @@ namespace engine {
                 ImGui::SetTooltip("On: synchronize with the display. Off: request unlimited presentation.\nThe driver may still limit the frame rate.");
             if (!render.vsyncEnabled)
                 ImGui::TextWrapped("Unlimited requested. Tearing may occur. See Diagnostics for the actual mode.");
-            if (editor.renderMode != 0) ImGui::TextWrapped("%s", _SL("Diagnostic views display their rendering data directly. Return to Default to adjust scene effects."));
-            ImGui::BeginDisabled(editor.renderMode != 0);
+            if (diagnosticsActive) ImGui::TextWrapped("%s", _SL("Diagnostic views display their rendering data directly. Return to Default to adjust scene effects."));
+            ImGui::BeginDisabled(diagnosticsActive);
             ImGui::SeparatorText("Rendering");
             ImGui::Checkbox("Image-based Lighting (IBL)", &render.iblEnabled);
             if (overrides.iblEnabled.has_value())
@@ -2330,6 +2334,7 @@ namespace engine {
             if (!project || !project->openProject) ImGui::TextUnformatted("F1: switch editor / game view");
             else ImGui::TextUnformatted("Play: run in Game Viewport. Pause: freeze simulation. Stop: return to editing.");
             ImGui::TextUnformatted("W / E / R: translate / rotate / scale in viewport");
+            ImGui::TextUnformatted("Click Game to capture mouse. Shift+F1 or middle mouse: release.");
             ImGui::TextUnformatted("Drag models from Assets into the scene.");
             ImGui::TextUnformatted("Window: open panels. View: reset docking layout.");
             ImGui::EndMenu();

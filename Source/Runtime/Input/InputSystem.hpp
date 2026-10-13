@@ -8,12 +8,15 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <optional>
 #include <glm/glm.hpp>
 
 namespace engine {
 
     class InputSystem final : public System {
     public:
+        enum class MouseCaptureOwner { Application, SceneViewport, GameViewport };
+        struct MouseCaptureRegion { float x, y, width, height; };
         InputSystem() = default;
 
         
@@ -46,6 +49,11 @@ namespace engine {
         glm::vec2 GetMouseDelta() const { return glm::vec2(static_cast<float>(mMouseDeltaX), static_cast<float>(mMouseDeltaY)); }
         glm::vec2 GetMousePosition() const { return glm::vec2(static_cast<float>(mMouseX), static_cast<float>(mMouseY)); }
         bool IsMouseCaptured() const;
+        bool IsWindowFocused() const;
+        bool IsCursorInside(const MouseCaptureRegion& region) const;
+        void ConfigureMouseCapture(bool allowed, std::optional<MouseCaptureRegion> region = {},
+            MouseCaptureOwner owner = MouseCaptureOwner::Application);
+        void SetMouseCaptured(bool captured);
 
         // Gamepad specific
         glm::vec2 GetGamepadRightStick() const { return glm::vec2(static_cast<float>(mGamepadRightX), static_cast<float>(mGamepadRightY)); }
@@ -72,9 +80,11 @@ namespace engine {
        // void SetWindow(GLFWwindow* window);
 
     private:
-        // Only Update's middle-button edge may change capture mode.
-        void SetMouseCaptured(bool captured);
         GLFWwindow* mWindow = nullptr;
+        bool mMouseCaptureAllowed = true;
+        bool mWindowWasFocused = true;
+        std::optional<MouseCaptureRegion> mMouseCaptureRegion;
+        MouseCaptureOwner mMouseCaptureOwner = MouseCaptureOwner::Application;
 
         // store bindings for various devices
         struct ActionBinding {
