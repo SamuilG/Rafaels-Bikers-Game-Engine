@@ -2,13 +2,14 @@
 #include "CameraGizmoGeometry.hpp"
 #include "EditorTheme.hpp"
 #include "../UserState/EditorState.hpp"
+#include "../../ThirdParty/imgui/ImGuizmo/ImGuizmo.h"
 #include <cstdio>
 
 namespace engine {
 
 void EngineUi::DrawPlayerCameraGizmo(VkDescriptorSet icon,
     const editor_camera_gizmo::CameraView& camera, const glm::mat4& sceneViewProjection,
-    const EditorState& editor)
+    EditorState& editor, flecs::entity_t cameraEntityId, flecs::entity_t* selectedId, bool allowSelection)
 {
     if (!editor.showEngineUi || !editor.isSceneViewportVisible ||
         (!editor.showPlayerCameraIcon && !editor.showPlayerCameraFrustum)) return;
@@ -77,8 +78,17 @@ void EngineUi::DrawPlayerCameraGizmo(VkDescriptorSet icon,
                 editor_theme::ColorU32(editor_theme::kAccent), "C");
         }
         if (editor.isSceneViewportHovered && ImGui::IsMouseHoveringRect(minimum, maximum, false)) {
+            if (allowSelection && selectedId && cameraEntityId != 0 &&
+                !ImGui::IsAnyItemActive() && !ImGuizmo::IsUsing() && !ImGuizmo::IsOver() &&
+                !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel) &&
+                ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                *selectedId = cameraEntityId;
+                editor.activeParticleIndex = -1;
+                editor.showEntityInspector = true;
+            }
             ImGui::BeginTooltip();
             ImGui::TextUnformatted("Player Camera");
+            ImGui::TextUnformatted("Click to edit camera settings");
             ImGui::Text("Position: %.2f, %.2f, %.2f", position.x, position.y, position.z);
             ImGui::Text("FOV: %.1f deg | Aspect: %.3f", camera.verticalFovDegrees, camera.aspectRatio);
             ImGui::Text("Clip planes: %.2f - %.1f", camera.nearPlane, camera.farPlane);

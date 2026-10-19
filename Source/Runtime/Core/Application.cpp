@@ -7,8 +7,11 @@
 #include "../Animation/AnimationSystem.hpp"
 #include "../AudioSystem/AudioSystem.hpp"
 #include "../UI/VisualUIEditor/RuntimeUiController.hpp"
+#include "../Project/SceneDocument.hpp"
+#include "../Project/SceneDocumentValidation.hpp"
 #include "FrameScheduler.hpp"
 #include <filesystem>
+#include <fstream>
 #include <stdexcept>
 #include <unordered_set>
 #include <Jolt/Physics/Body/MotionProperties.h>
@@ -30,6 +33,9 @@ namespace engine {
         std::unique_ptr<PhysicsSystem> playPhysics;
         std::unique_ptr<SceneManager> playScene;
         std::unique_ptr<AnimationSystem> playAnimation;
+        // Frozen at the Play boundary, including edits that have not been saved.
+        // A runtime restart uses this document, never the mutated simulation.
+        nlohmann::json authoringDocument;
     };
 
     Application::Application(ApplicationOptions options, ProgressCallback progress)
@@ -74,10 +80,14 @@ namespace engine {
             sys->Init();
         }
 
+        // Once every subsystem is initialized, a bad project document/model
+        // can still fail the constructor. Its destructor would not run in
+        // that case, so release the scene and initialized services explicitly.
+        try {
         renderSystem->SetInitProgressCallback({});
         glfwSetWindowTitle(renderSystem->GetGLFWWindow(), mOptions.windowTitle.c_str());
         if (!mOptions.imguiIniPath.empty()) {
-            const auto parent = std::filesystem::path(mOptions.imguiIniPath).parent_path();
+            const auto parent = std::filesystem::u8path(mOptions.imguiIniPath).parent_path();
             if (!parent.empty()) std::filesystem::create_directories(parent);
             ImGui::GetIO().IniFilename = mOptions.imguiIniPath.c_str();
         }
@@ -112,13 +122,26 @@ namespace engine {
         // ==============================================================
         // 【核心】：加载当前关卡 (未来切换关卡，只需要 new 不同的 Scene 即可)
         // ==============================================================
+        InitializeCameraDefaults();
         m_currentScene->Init(renderSystem, sceneManager, physicsSystem, inputSystem, eventSystem, &mGameplayState, animationSystem, audioSystem);
         ApplySceneWorkspace();
         sceneManager->Update(0.0f);
         if (mOptions.editingProject) m_currentScene->RefreshEditorCameraPreview();
+        RefreshGameCameraEntity();
         animationSystem->Update(0.0f);
         if (runtimeUiController) runtimeUiController->SyncGameFlowUi();
         ReportProgress(1.0f, "Ready");
+        } catch (...) {
+            if (m_currentScene) {
+                try { m_currentScene->Shutdown(); } catch (...) {}
+                m_currentScene.reset();
+            }
+            for (auto it = Systems.rbegin(); it != Systems.rend(); ++it) {
+                try { (*it)->Shutdown(); } catch (...) {}
+            }
+            Systems.clear();
+            throw;
+        }
     }
 
     Application::~Application() {
@@ -152,6 +175,7 @@ namespace engine {
                 // Only the authoring world follows edits without simulation.
                 if (mOptions.editingProject && !mEditorPlay.IsPlaying() && m_currentScene)
                     m_currentScene->RefreshEditorCameraPreview();
+                RefreshGameCameraEntity();
             },
             .animation = [this](float dt) { animationSystem->Update(dt); },
             .gameEffects = [this](float dt) { if (m_currentScene) m_currentScene->UpdatePresentation(dt); },
@@ -232,21 +256,35 @@ namespace engine {
     }
 
     void Application::ApplySceneWorkspace() {
+        EnsureGameCameraEntity(sceneManager->get_world(), mState.camera);
         if (mEditorPlaySession) {
             ApplyEditorSceneToPlay();
             return;
         }
-        if (!mOptions.sceneSnapshotPath.empty() && std::filesystem::exists(mOptions.sceneSnapshotPath)) {
-            if (!EngineUi::LoadProject(sceneManager, renderSystem, mOptions.sceneSnapshotPath))
-                throw std::runtime_error("Cannot load project scene snapshot: " + mOptions.sceneSnapshotPath);
+        // Save As binds a project to the existing authoring world without
+        // replacing this Application or its immutable launch options.
+        const auto& project = renderSystem->ProjectActions();
+        const std::string documentPath = mOptions.genericScene && mOptions.editingProject &&
+            !project.snapshotFile.empty() ? project.snapshotFile : mOptions.sceneSnapshotPath;
+        if (mOptions.genericScene && !documentPath.empty()) {
+            std::ifstream input(std::filesystem::u8path(documentPath));
+            if (!input) throw std::runtime_error("Cannot open scene document: " + documentPath);
+            nlohmann::json document;
+            input >> document;
+            ValidateSceneDocument(document);
+            InstantiateSceneDocument(document, *sceneManager, *renderSystem);
+        } else if (!documentPath.empty() && std::filesystem::exists(std::filesystem::u8path(documentPath))) {
+            if (!EngineUi::LoadProject(sceneManager, renderSystem, documentPath))
+                throw std::runtime_error("Cannot load project scene snapshot: " + documentPath);
         }
         if (mOptions.editingProject) {
-            mState.editor.sceneCamera.RequestFree();
-            mState.editor.sceneCamera.SetFreeTransform(glm::inverse(glm::lookAt(mOptions.editorCameraPosition,
-                mOptions.editorCameraTarget, glm::vec3(0.0f, 1.0f, 0.0f))));
-            mState.editor.sceneCamera.SetFov(75.0f);
+            InitializeDefaultGameCamera(mState.editor.sceneCamera, mState.player.State(),
+                mOptions.editorCameraPosition, mOptions.editorCameraTarget);
             mState.editor.showEngineUi = true;
         }
+        if (mOptions.genericScene && documentPath.empty() && !sceneManager->GetDirectionalLight().entityId)
+            sceneManager->create_light_entity("MainSun", LightType::Directional, {1.2f, 0.95f, 0.8f},
+                2.5f, glm::mat4(1), 0, NormalizeLightDirection({0.5f, -1.0f, 0.3f}));
     }
 
     void Application::ResetRuntimeUi() {
@@ -254,6 +292,16 @@ namespace engine {
             ui->ResetForSession();
             if (mOptions.preloadRuntimeUi) mOptions.preloadRuntimeUi(*ui);
         }
+    }
+
+    void Application::InitializeCameraDefaults() {
+        InitializeDefaultGameCamera(mState.camera, mState.player.State(),
+            mOptions.editorCameraPosition, mOptions.editorCameraTarget);
+    }
+
+    void Application::RefreshGameCameraEntity() {
+        ApplyGameCameraEdits(sceneManager->get_world(), mState.camera, mState.player.State());
+        PublishGameCameraPose(sceneManager->get_world(), mState.camera);
     }
 
     std::string Application::StartEditorPlay() {
@@ -266,6 +314,18 @@ namespace engine {
         session->editorAnimation = animationSystem;
         session->editorAudio = audioSystem;
         session->editorMasterVolume = audioSystem->GetMasterVolume();
+        if (mOptions.genericScene) {
+            try {
+                // Particle configurations and source model references still
+                // belong to the authoring renderer here. Capture before its
+                // resources are moved out and before any state is reset.
+                session->authoringDocument = CaptureSceneDocument(*sceneManager, *renderSystem);
+                ValidateSceneDocument(session->authoringDocument);
+            } catch (const std::exception& error) {
+                EngineUi::LogPrintf("[Editor] Cannot prepare Play scene: %s\n", error.what());
+                return error.what();
+            }
+        }
         // Complete the potentially throwing GPU wait before moving authoring state.
         renderSystem->WaitForGpuIdle();
         session->editorResources = renderSystem->TakeSceneTransientResources();
@@ -300,11 +360,13 @@ namespace engine {
             ResetRuntimeUi();
             if (mOptions.initializeAudio) mOptions.initializeAudio(*audioSystem);
             m_currentScene = CreateScene();
+            InitializeCameraDefaults();
             m_currentScene->Init(renderSystem, sceneManager, physicsSystem, inputSystem,
                 eventSystem, &mGameplayState, animationSystem, audioSystem);
             ApplyEditorSceneToPlay();
             sceneManager->Update(0.0f);
             if (mOptions.editingProject) m_currentScene->RefreshEditorCameraPreview();
+            RefreshGameCameraEntity();
             animationSystem->Update(0.0f);
             mState.gameFlow.Request(GameFlowCommand::Start);
             mState.editor.focusGameViewport = true;
@@ -320,7 +382,15 @@ namespace engine {
 
     void Application::ApplyEditorSceneToPlay() {
         if (!mEditorPlaySession) return;
+        EnsureGameCameraEntity(sceneManager->get_world(), mState.camera);
         auto& saved = *mEditorPlaySession;
+        if (mOptions.genericScene) {
+            // Instantiate all authored entities and their asset dependencies;
+            // the native-scene name matching path below is only for compiled
+            // game content whose factory already constructs its entities.
+            InstantiateSceneDocument(saved.authoringDocument, *sceneManager, *renderSystem);
+            return;
+        }
         EditorSceneAdapter runtimeScene(sceneManager);
         std::unordered_set<uint32_t> copiedBodies;
         std::size_t unmatched = 0;
@@ -329,6 +399,10 @@ namespace engine {
             auto target = sceneManager->get_world().lookup(source.path().c_str());
             if (!IsEntityAlive(target) || !target.has<LocalTransform>()) {
                 ++unmatched;
+                return;
+            }
+            if (source.has<GameCameraComponent>()) {
+                CopyGameCameraAuthoring(source, target);
                 return;
             }
             runtimeScene.SetTransform(target.id(), transform.matrix, false);
@@ -450,6 +524,12 @@ namespace engine {
 
         if (renderSystem) {
             renderSystem->ClearSceneTransientResources();
+            if (mOptions.genericScene) {
+                // Model indices in a reconstructed document start in a fresh
+                // resource set. Dispose the old runtime GPU assets after idle;
+                // the retained editor world's assets remain in its session.
+                auto discardedResources = renderSystem->TakeSceneTransientResources();
+            }
         }
 
         if (inputSystem) {
@@ -500,10 +580,12 @@ namespace engine {
         // subsystem above must finish before another frame is allowed to render.
         try {
             m_currentScene = CreateScene();
+            InitializeCameraDefaults();
             m_currentScene->Init(renderSystem, sceneManager, physicsSystem, inputSystem, eventSystem, &mGameplayState, animationSystem, audioSystem);
             ApplySceneWorkspace();
             sceneManager->Update(0.0f);
             if (mOptions.editingProject) m_currentScene->RefreshEditorCameraPreview();
+            RefreshGameCameraEntity();
             animationSystem->Update(0.0f);
             return true;
         }

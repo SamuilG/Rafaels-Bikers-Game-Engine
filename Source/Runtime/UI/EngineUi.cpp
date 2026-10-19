@@ -6,8 +6,14 @@
 #include "EditorViewportRouting.hpp"
 #include "EditorTransform.hpp"
 #include "EditorTheme.hpp"
+#include "GameCameraInspector.hpp"
+#include "LightInspector.hpp"
+#include "../Scene/CameraSerialization.hpp"
+#include "../Scene/LightSerialization.hpp"
 #include "../Core/EditorPlayController.hpp"
 #include "../Project/SceneSnapshotValidation.hpp"
+#include "../Project/SceneDocument.hpp"
+#include "../Project/ProjectDescriptor.hpp"
 #include "../UserState/CameraController.hpp"
 #include "../UserState/EditorState.hpp"
 #include "../UserState/RenderSettings.hpp"
@@ -67,13 +73,16 @@ namespace engine {
         std::string s_CurrentDirectory = "Assets";
         char s_NewFolderName[128] = "NewFolder";
         std::string s_CreateFolderError;
+        std::string s_PendingProjectPath;
+        bool s_PendingNewProject = false;
+        bool s_ConfirmProjectChange = false;
 
         std::string ChooseProjectFile(const std::string& currentProject) {
 #if defined(_WIN32)
             wchar_t filename[32768] = {};
             std::wstring initialDirectory;
             if (!currentProject.empty())
-                initialDirectory = fs::absolute(fs::path(currentProject)).parent_path().wstring();
+                initialDirectory = fs::absolute(fs::u8path(currentProject)).parent_path().wstring();
             OPENFILENAMEW dialog{};
             dialog.lStructSize = sizeof(dialog);
             dialog.hwndOwner = GetActiveWindow();
@@ -83,13 +92,40 @@ namespace engine {
             dialog.nMaxFile = static_cast<DWORD>(sizeof(filename) / sizeof(filename[0]));
             dialog.lpstrInitialDir = initialDirectory.empty() ? nullptr : initialDirectory.c_str();
             dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_EXPLORER;
-            if (GetOpenFileNameW(&dialog)) return fs::path(filename).string();
+            if (GetOpenFileNameW(&dialog)) return ProjectPathText(fs::path(filename));
             const DWORD error = CommDlgExtendedError();
             if (error != 0)
                 throw std::runtime_error("The project file dialog failed (code " + std::to_string(error) + ").");
             return {}; // User cancellation does not queue any host action.
 #else
             throw std::runtime_error("The native project picker is available on Windows. Use Open Example Project on this platform.");
+#endif
+        }
+
+        std::string ChooseSaveProjectFile(const std::string& currentProject) {
+#if defined(_WIN32)
+            wchar_t filename[32768] = {};
+            const auto suggested = currentProject.empty() ? fs::path(L"Untitled.steerproj") : fs::u8path(currentProject);
+            const auto initial = suggested.wstring();
+            if (initial.size() >= std::size(filename))
+                throw std::runtime_error("The project filename is too long for the file picker.");
+            std::copy(initial.begin(), initial.end(), filename);
+            OPENFILENAMEW dialog{};
+            dialog.lStructSize = sizeof(dialog);
+            dialog.hwndOwner = GetActiveWindow();
+            dialog.lpstrTitle = L"Save Steer Engine Project As";
+            dialog.lpstrFilter = L"Steer Engine Project (*.steerproj)\0*.steerproj\0\0";
+            dialog.lpstrDefExt = L"steerproj";
+            dialog.lpstrFile = filename;
+            dialog.nMaxFile = static_cast<DWORD>(std::size(filename));
+            dialog.Flags = OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_EXPLORER | OFN_OVERWRITEPROMPT;
+            if (GetSaveFileNameW(&dialog)) return ProjectPathText(fs::path(filename));
+            const auto error = CommDlgExtendedError();
+            if (error != 0)
+                throw std::runtime_error("The project save dialog failed (code " + std::to_string(error) + ").");
+            return {};
+#else
+            throw std::runtime_error("The native Save Project As dialog is available on Windows.");
 #endif
         }
 
@@ -512,7 +548,7 @@ namespace engine {
 
 				if (!name.empty() && name != "Preview_Object") {
 					json entityJson;
-					entityJson["Name"] = name;
+                    entityJson["Name"] = e.has<LightComponent>() ? e.path().c_str() : name;
 
 					//用于接收拆解结果的变量
 					glm::vec3 scale;
@@ -522,7 +558,17 @@ namespace engine {
 					glm::vec4 perspective;
 
 					//拆解矩阵// Decompose the matrix into TRS components
-					glm::decompose(lt.matrix, scale, rotation, translation, skew, perspective);
+                    const bool isCamera = e.has<GameCameraComponent>();
+                    const glm::mat4& savedTransform = isCamera ? e.get<GameCameraComponent>().freeTransform : lt.matrix;
+					glm::decompose(savedTransform, scale, rotation, translation, skew, perspective);
+                    if (isCamera) {
+                        scale = glm::vec3(1.0f);
+                        entityJson["Camera"] = SerializeCameraSettings(e.get<GameCameraComponent>().settings);
+                    }
+                    if (e.has<LightComponent>()) {
+                        entityJson["Light"] = SerializeLight(e.get<LightComponent>());
+                        entityJson["Visible"] = e.get<EntityStatus>().should_render;
+                    }
 
 					// To度数// Convert quaternion to Euler angles in degrees for better readability
 					glm::vec3 eulerRotation = glm::degrees(glm::eulerAngles(rotation));
@@ -619,6 +665,11 @@ namespace engine {
 			for (const auto& entityJson : root["Entities"]) {
 				std::string name = entityJson["Name"].get<std::string>();
 				flecs::entity e = world.lookup(name.c_str());
+                if (!IsEntityAlive(e) && entityJson.contains("Light")) {
+                    const auto light = DeserializeLight(entityJson["Light"]);
+                    e = sceneManager->create_light_entity(name.c_str(), light.type, light.color, light.intensity,
+                        glm::mat4(1), light.range, light.direction, light.innerCutOff, light.outerCutOff);
+                }
 
 				if (IsEntityAlive(e) && e.has<LocalTransform>()) {
 					//读取TRS// Read TRS components
@@ -631,6 +682,19 @@ namespace engine {
 
 					reconstructedMat *= glm::mat4_cast(glm::quat(glm::radians(eulerRot)));
 					reconstructedMat = glm::scale(reconstructedMat, scale);
+
+                    if (entityJson.contains("Light")) {
+                        e.set<LightComponent>(DeserializeLight(entityJson["Light"]));
+                        if (entityJson.contains("Visible")) e.set<EntityStatus>({entityJson["Visible"].get<bool>(), false});
+                    }
+                    if (e.has<GameCameraComponent>()) {
+                        if (!entityJson.contains("Camera")) continue;
+                        auto& camera = e.get_mut<GameCameraComponent>();
+                        camera.settings = DeserializeCameraSettings(entityJson["Camera"]);
+                        camera.freeTransform = reconstructedMat;
+                        camera.settingsDirty = true;
+                        e.modified<GameCameraComponent>();
+                    }
 
 					//更新Update
 					auto* lt = &e.get_mut<LocalTransform>();
@@ -718,7 +782,7 @@ namespace engine {
     ImDrawList* EngineUi::GetGameViewportDrawList() { return s_GameViewportDrawList; }
     bool EngineUi::IsGameViewportVisible() { return s_GameViewportVisible; }
 
-    void EngineUi::DrawGameViewport(VkDescriptorSet gameTexId, EditorState& editor, bool playing, bool paused) {
+    void EngineUi::DrawGameViewport(VkDescriptorSet gameTexId, EditorState& editor, bool playing, bool paused, bool freeCameraPreview) {
         editor.isGameViewportHovered = false;
         editor.isGameViewportFocused = false;
         editor.isGameViewportVisible = false;
@@ -741,7 +805,7 @@ namespace engine {
                 const auto input = editor_viewport::DrawGameCanvas((ImTextureID)gameTexId, size);
                 editor.isGameViewportHovered = input.hovered;
                 editor.isGameViewportFocused = input.focused;
-                if (!playing) {
+                if (!playing && !freeCameraPreview) {
                     const char* message = "Press Play to run the project in this viewport";
                     const ImVec2 textSize = ImGui::CalcTextSize(message);
                     s_GameViewportDrawList->AddText(ImVec2(s_GameViewportPos.x + (size.x - textSize.x) * 0.5f,
@@ -962,6 +1026,8 @@ namespace engine {
 
 		//  5. ImGuizmo 坐标轴
 		bool drawGizmo = false;
+        bool cameraGizmo = false;
+        bool lightGizmo = false;
 		glm::mat4 gizmoMatrix = glm::mat4(1.0f);
 		if (editor.showEngineUi && renderSys && render.particlesEnabled && editor.activeParticleIndex >= 0 && editor.activeParticleIndex < renderSys->GetParticles().size()) {
 			auto& particle = *renderSys->GetParticles()[editor.activeParticleIndex];
@@ -974,8 +1040,17 @@ namespace engine {
 			if (selectedEntity.alive && selectedEntity.hasTransform) {
 				drawGizmo = true;
 				gizmoMatrix = selectedEntity.transform;
+                auto entity = editorScene.SelectedEntity();
+                cameraGizmo = entity.has<GameCameraComponent>();
+                lightGizmo = entity.has<LightComponent>();
+                if (cameraGizmo) {
+                    const auto& camera = entity.get<GameCameraComponent>();
+                    drawGizmo = camera.settings.mode == CameraMode::Free && renderSys &&
+                        !IsGameCameraTakenOver(renderSys->GetGameCameraState());
+                    gizmoMatrix = camera.freeTransform;
+                }
                 if (m_current_inspected_id != selectedEntity.id || (!ImGuizmo::IsUsing() && !ImGui::IsAnyItemActive()))
-                    drawGizmo = SyncTransformCache(selectedEntity.id, gizmoMatrix);
+                    drawGizmo = drawGizmo && SyncTransformCache(selectedEntity.id, gizmoMatrix);
 			}
 		}
 
@@ -994,6 +1069,8 @@ namespace engine {
                 if (ImGui::IsKeyPressed(ImGuiKey_R)) currentOp = ImGuizmo::SCALE;
             }
             if (editor.activeParticleIndex >= 0) currentOp = ImGuizmo::TRANSLATE;
+            if (cameraGizmo && currentOp == ImGuizmo::SCALE) currentOp = ImGuizmo::TRANSLATE;
+            if (lightGizmo && currentOp == ImGuizmo::SCALE) currentOp = ImGuizmo::ROTATE;
 
 			ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(proj), currentOp, ImGuizmo::LOCAL, glm::value_ptr(gizmoMatrix));
 
@@ -1593,142 +1670,56 @@ namespace engine {
         ImGui::End();
     }
 
-	void EngineUi::DrawLightPanel(SceneManager* sceneManager, EditorState& editor)
-	{
-		if (!editor.showLightPanel) return;
+    static flecs::entity CreateEditorDirectionalLight(SceneManager& scene) {
+        auto& world = scene.get_world();
+        std::string name = "MainSun";
+        unsigned suffix = 1;
+        while (IsEntityAlive(world.lookup(name.c_str()))) name = "DirectionalLight_" + std::to_string(suffix++);
+        return scene.create_light_entity(name.c_str(), LightType::Directional, {1.2f, 0.95f, 0.8f},
+            2.5f, glm::mat4(1), 0, NormalizeLightDirection({0.5f, -1.0f, 0.3f}));
+    }
 
+    static void DrawEntityLightControls(SceneManager& scene, flecs::entity entity) {
+        auto light = entity.get<LightComponent>();
+        bool makePrimary = false;
+        const bool activePrimary = scene.GetDirectionalLight().entityId == entity.id();
+        if (DrawLightInspector(light, activePrimary, makePrimary)) {
+            if (makePrimary) scene.get_world().each([&](flecs::entity other, LightComponent& component) {
+                if (other.id() != entity.id() && component.primaryDirectional) {
+                    component.primaryDirectional = false;
+                    other.modified<LightComponent>();
+                }
+            });
+            entity.set<LightComponent>(light);
+        }
+    }
 
-
-		if (!ImGui::Begin(PanelTitle("Lighting", "Lighting").c_str(), &editor.showLightPanel)) {
-			ImGui::End();
-			return;
-		}
-
-		if (!sceneManager) {
-			ImGui::TextDisabled("SceneManager unavailable.");
-			ImGui::End();
-			return;
-		}
-
-		auto& world = sceneManager->get_world();
-		std::vector<flecs::entity_t> lightIds;
-
-		world.each([&](flecs::entity entity, LightComponent&) {
-			lightIds.push_back(entity.id());
-			});
-
-		if (lightIds.empty()) {
-			ImGui::TextDisabled("No light entities found.");
-			m_selected_light_id = 0;
-			ImGui::End();
-			return;
-		}
-
-		flecs::entity selectedLight = world.entity(m_selected_light_id);
-		if (m_selected_light_id == 0 || !IsEntityAlive(selectedLight) || !selectedLight.has<LightComponent>()) {
-			m_selected_light_id = lightIds.front();
-			selectedLight = world.entity(m_selected_light_id);
-		}
-
-		const char* currentLightName = selectedLight.name();
-		if (!currentLightName || currentLightName[0] == '\0') currentLightName = "Unnamed Light";
-
-		if (ImGui::BeginCombo("Light Entity", currentLightName)) {
-			for (flecs::entity_t id : lightIds) {
-				flecs::entity lightEntity = world.entity(id);
-				const char* lightName = lightEntity.name();
-				if (!lightName || lightName[0] == '\0') lightName = "Unnamed Light";
-
-				bool isSelected = (m_selected_light_id == id);
-				if (ImGui::Selectable(lightName, isSelected)) {
-					m_selected_light_id = id;
-					selectedLight = lightEntity;
-				}
-				if (isSelected) ImGui::SetItemDefaultFocus();
-			}
-			ImGui::EndCombo();
-		}
-
-		if (!IsEntityAlive(selectedLight) || !selectedLight.has<LightComponent>()) {
-			ImGui::TextDisabled("Selected light is no longer valid.");
-			ImGui::End();
-			return;
-		}
-
-		LightComponent* lightComponent = &selectedLight.get_mut<LightComponent>();
-		EntityStatus* entityStatus = selectedLight.has<EntityStatus>() ? &selectedLight.get_mut<EntityStatus>() : nullptr;
-		LocalTransform* localTransform = selectedLight.has<LocalTransform>() ? &selectedLight.get_mut<LocalTransform>() : nullptr;
-
-		ImGui::Separator();
-		ImGui::TextColored(editor_theme::Color(editor_theme::kText), "[ %s ]", selectedLight.name().c_str());
-
-		if (entityStatus) {
-			ImGui::Checkbox("Visible", &entityStatus->should_render);
-		}
-
-		const char* lightTypeNames[] = { "Directional", "Point", "Spot" };
-		int lightTypeIndex = static_cast<int>(lightComponent->type);
-		if (ImGui::Combo("Type", &lightTypeIndex, lightTypeNames, IM_ARRAYSIZE(lightTypeNames))) {
-			lightComponent->type = static_cast<LightType>(lightTypeIndex);
-			selectedLight.modified<LightComponent>();
-		}
-
-		bool lightChanged = false;
-		lightChanged |= ImGui::ColorEdit3("Color", &lightComponent->color.x);
-		lightChanged |= ImGui::DragFloat("Intensity", &lightComponent->intensity, 0.1f, 0.0f, 100.0f, "%.2f");
-
-		if (lightComponent->type != LightType::Directional) {
-			lightChanged |= ImGui::DragFloat("Range", &lightComponent->range, 0.1f, 0.0f, 500.0f, "%.2f");
-		}
-
-		if (localTransform && lightComponent->type == LightType::Directional) {
-			//light UI（备注）方向光把方向存放在 transform 的第 4 列
-			ImGui::TextWrapped("Direction changes direct lighting. Cascade shadows currently use a fixed sun direction.");
-            glm::vec3 dir = NormalizeOrFallback(glm::vec3(localTransform->matrix[3]), glm::vec3(0.0f, 1.0f, 0.0f));
-			if (ImGui::DragFloat3("Direction", &dir.x, 0.01f, -1.0f, 1.0f, "%.3f")) {
-				dir = NormalizeOrFallback(dir, glm::vec3(0.0f, 1.0f, 0.0f));
-				localTransform->matrix[3] = glm::vec4(dir, 0.0f);
-				selectedLight.modified<LocalTransform>();
-			}
-		}
-		else if (localTransform) {
-			//light UI（备注）点光和聚光灯直接调位置
-			glm::vec3 position = glm::vec3(localTransform->matrix[3]);
-			if (ImGui::DragFloat3("Position", &position.x, 0.1f)) {
-				localTransform->matrix[3] = glm::vec4(position, 1.0f);
-				selectedLight.modified<LocalTransform>();
-			}
-		}
-
-		if (lightComponent->type == LightType::Spot) {
-			//light UI（备注）聚光灯额外暴露方向和锥角参数
-			glm::vec3 direction = lightComponent->direction;
-			if (ImGui::DragFloat3("Spot Direction", &direction.x, 0.01f, -1.0f, 1.0f, "%.3f")) {
-				lightComponent->direction = NormalizeOrFallback(direction, glm::vec3(0.0f, 0.0f, -1.0f));
-				lightChanged = true;
-			}
-
-			float innerCutOff = lightComponent->innerCutOff;
-			float outerCutOff = lightComponent->outerCutOff;
-			if (ImGui::SliderFloat("Inner Cutoff", &innerCutOff, 0.0f, 89.0f, "%.1f deg")) {
-				lightComponent->innerCutOff = std::min(innerCutOff, lightComponent->outerCutOff);
-				lightChanged = true;
-			}
-			if (ImGui::SliderFloat("Outer Cutoff", &outerCutOff, 0.0f, 89.0f, "%.1f deg")) {
-				lightComponent->outerCutOff = std::max(outerCutOff, lightComponent->innerCutOff);
-				lightChanged = true;
-			}
-		}
-
-		if (lightChanged) {
-			selectedLight.modified<LightComponent>();
-		}
-
-		ImGui::Separator();
-
-		ImGui::End();
-	}
-
+    void EngineUi::DrawLightPanel(SceneManager* sceneManager, EditorState& editor) {
+        if (!editor.showLightPanel) return;
+        if (!ImGui::Begin(PanelTitle("Lighting", "Lighting").c_str(), &editor.showLightPanel)) { ImGui::End(); return; }
+        if (!sceneManager) { ImGui::TextDisabled("SceneManager unavailable."); ImGui::End(); return; }
+        auto& world = sceneManager->get_world();
+        if (ImGui::Button(_SL("Add Directional Light"))) m_selected_light_id = CreateEditorDirectionalLight(*sceneManager).id();
+        std::vector<flecs::entity_t> ids;
+        world.each([&](flecs::entity entity, LightComponent&) { ids.push_back(entity.id()); });
+        if (ids.empty()) { ImGui::TextDisabled("No light entities found."); ImGui::End(); return; }
+        auto selected = world.entity(m_selected_light_id);
+        if (!IsEntityAlive(selected) || !selected.has<LightComponent>()) { m_selected_light_id = ids.front(); selected = world.entity(m_selected_light_id); }
+        if (ImGui::BeginCombo("Light Entity", selected.name().c_str())) {
+            for (auto id : ids) {
+                auto entity = world.entity(id);
+                if (ImGui::Selectable(entity.name().c_str(), id == m_selected_light_id)) { m_selected_light_id = id; selected = entity; }
+            }
+            ImGui::EndCombo();
+        }
+        if (selected.has<EntityStatus>()) {
+            bool visible = selected.get<EntityStatus>().should_render;
+            if (ImGui::Checkbox(_SL("Visible"), &visible)) { selected.get_mut<EntityStatus>().should_render = visible; selected.modified<EntityStatus>(); }
+        }
+        DrawEntityLightControls(*sceneManager, selected);
+        ImGui::TextWrapped("%s", _SL("Select this light in Scene Hierarchy to edit its transform."));
+        ImGui::End();
+    }
 	//camera UI相机调节面板
     void EngineUi::DrawCameraPanel(CameraController& controller, const PlayerState& player, EditorState& editor)
     {
@@ -1957,6 +1948,11 @@ namespace engine {
 			{
 				if (editorScene.Scene()) {
 					// 显示实体总数// Display total entity count
+                    if (ImGui::Button(_SL("Add Directional Light"))) {
+                        selected_id = CreateEditorDirectionalLight(*editorScene.Scene()).id();
+                        editor.activeParticleIndex = -1;
+                        editor.showEntityInspector = true;
+                    }
 					ImGui::Text(_SL("Total Entities: %d"), editorScene.EntityCount());
 					ImGui::Separator();
 
@@ -2055,14 +2051,41 @@ namespace engine {
 					ImGui::Separator();
 
 					// 可见性切换组件// Visibility Toggle Component
-					if (selectedEntity.alive) {
+                    const auto entity = editorScene.SelectedEntity();
+                    const bool isCamera = entity.has<GameCameraComponent>();
+                    if (entity.has<LightComponent>()) DrawEntityLightControls(*editorScene.Scene(), entity);
+                    if (isCamera && renderSys) {
+                        DrawGameCameraInspector(entity, renderSys->GetGameCameraState());
+                        auto& camera = entity.get_mut<GameCameraComponent>();
+                        if (camera.settings.mode == CameraMode::Free) {
+                            ImGui::SeparatorText(_SL("Camera Transform"));
+                            float position[3], rotation[3], scale[3];
+                            if (editor_transform::Decompose(camera.freeTransform, position, rotation, scale)) {
+                                ImGui::BeginDisabled(IsGameCameraTakenOver(renderSys->GetGameCameraState()));
+                                bool changed = ImGui::DragFloat3(_SL("Position (XYZ)"), position, 0.1f);
+                                changed |= ImGui::DragFloat3(_SL("Rotation (Pitch Yaw Roll)"), rotation, 0.5f);
+                                ImGui::EndDisabled();
+                                if (changed) {
+                                    const float unitScale[3] = {1, 1, 1};
+                                    glm::mat4 transform;
+                                    ImGuizmo::RecomposeMatrixFromComponents(position, rotation, unitScale, glm::value_ptr(transform));
+                                    editorScene.SetTransform(selected_id, transform);
+                                }
+                            }
+                        } else {
+                            const glm::vec3 position(selectedEntity.transform[3]);
+                            ImGui::Text("Position: %.2f, %.2f, %.2f", position.x, position.y, position.z);
+                            ImGui::TextWrapped("%s", _SL("Follow mode computes the transform from the player. Switch to Free Camera to edit position and rotation."));
+                        }
+                    }
+					if (!isCamera && selectedEntity.alive) {
 						bool visible = selectedEntity.visible;
 						if (ImGui::Checkbox(_SL("Visible"), &visible))
 							editorScene.SetVisible(selected_id, visible);
 					}
 
 					// 变换组件 (LocalTransform)
- 					if (selectedEntity.hasTransform) {
+                    if (!isCamera && selectedEntity.hasTransform) {
                             glm::mat4 localTransform = selectedEntity.transform;
                             bool canEditTransform = m_current_inspected_id == selectedEntity.id;
                             if (!canEditTransform || !ImGui::IsAnyItemActive())
@@ -2108,17 +2131,19 @@ namespace engine {
 					ImGui::Separator();
 
 					// 删除按钮// Delete Button
+                    ImGui::BeginDisabled(isCamera);
 					if (ImGui::Button(_SL("Delete Entity"), ImVec2(-1, 0))) {
 						editorScene.Destroy(selected_id);
 					}
 					// 键盘快捷键删除 (Delete 键)
-					if (selectedEntity.alive &&
+					if (!isCamera && selectedEntity.alive &&
 						ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
 						!(editor.showGameUiEditor && UIEditorWindow::WantsKeyboardCapture()) &&
 						ImGui::IsKeyPressed(ImGuiKey_Delete) &&
 						!ImGui::GetIO().WantTextInput) {
 						editorScene.Destroy(selected_id);
 					}
+                    ImGui::EndDisabled();
 				}
 				ImGui::End();
 			}
@@ -2207,7 +2232,7 @@ namespace engine {
             ShowToast(error);
             editor.showConsole = true;
         };
-        const auto openProject = [&](const std::string& path) {
+        const auto openProject = [&](const std::string& path, bool discardConfirmed = false) {
             if (path.empty()) return;
             if (play && play->IsPlaying()) {
                 ShowToast("Stop Play mode before opening another project");
@@ -2215,6 +2240,12 @@ namespace engine {
             }
             if (!project || !project->openProject) {
                 reportError("This host does not support opening projects.");
+                return;
+            }
+            if (project->genericScene && !discardConfirmed) {
+                s_PendingProjectPath = path;
+                s_PendingNewProject = false;
+                s_ConfirmProjectChange = true;
                 return;
             }
             try {
@@ -2244,11 +2275,50 @@ namespace engine {
             }
             catch (const std::exception& error) { reportError(error.what()); }
         };
+        const auto saveProject = [&](bool saveAs) -> bool {
+            if (play && play->IsPlaying()) {
+                ShowToast("Stop Play mode before saving the editable project");
+                return false;
+            }
+            if (!project || !project->genericScene || !project->saveProject) return false;
+            try {
+                const auto path = saveAs || project->projectFile.empty()
+                    ? ChooseSaveProjectFile(project->projectFile) : project->projectFile;
+                if (path.empty()) return false;
+                const auto document = CaptureSceneDocument(*sceneManager, *renderSys);
+                const auto error = project->saveProject(path, document);
+                if (!error.empty()) reportError(error);
+                else {
+                    LogPrintf("[Project] Saved project: %s\n", project->projectFile.c_str());
+                    ShowToast("Project and scene saved");
+                    return true;
+                }
+            }
+            catch (const std::exception& error) { reportError(error.what()); }
+            return false;
+        };
+        const auto newProject = [&]() {
+            if (!project || !project->closeProject) return;
+            if (project->genericScene) {
+                s_PendingProjectPath.clear();
+                s_PendingNewProject = true;
+                s_ConfirmProjectChange = true;
+            }
+            else {
+                project->closeProject();
+                appRunning = false;
+            }
+        };
         // UI authoring owns its own save shortcut. Do not handle project keys while typing.
         if (!ImGui::GetIO().WantTextInput && !(editor.showGameUiEditor && UIEditorWindow::WantsKeyboardCapture()) && ImGui::GetIO().KeyCtrl) {
-            if (ImGui::IsKeyPressed(ImGuiKey_S, false)) snapshot(true);
+            if (ImGui::IsKeyPressed(ImGuiKey_S, false)) {
+                if (project && project->genericScene) saveProject(ImGui::GetIO().KeyShift);
+                else if (!ImGui::GetIO().KeyShift) snapshot(true);
+            }
             if (ImGui::IsKeyPressed(ImGuiKey_O, false)) {
-                if (ImGui::GetIO().KeyShift) snapshot(false);
+                if (ImGui::GetIO().KeyShift) {
+                    if (!project || !project->genericScene) snapshot(false);
+                }
                 else if (project && project->openProject) browseProject();
             }
         }
@@ -2263,6 +2333,10 @@ namespace engine {
             return;
         }
         if (ImGui::BeginMenu(_SL("File"))) {
+            if (ImGui::MenuItem("New Project", nullptr, false,
+                project && static_cast<bool>(project->closeProject) && (!play || !play->IsPlaying()))) {
+                newProject();
+            }
             if (ImGui::MenuItem(_SL("Open Project..."), "Ctrl+O", false, project && static_cast<bool>(project->openProject) && (!play || !play->IsPlaying()))) browseProject();
             if (project && !project->exampleProjectFile.empty()) {
                 if (ImGui::MenuItem(_SL("Open Example Project"), nullptr, false, static_cast<bool>(project->openProject) && (!play || !play->IsPlaying())))
@@ -2271,23 +2345,30 @@ namespace engine {
             if (ImGui::MenuItem(_SL("Close Project"), nullptr, false,
                 project && !project->projectFile.empty() && static_cast<bool>(project->closeProject) && (!play || !play->IsPlaying()))) {
                 try {
-                    project->closeProject();
-                    appRunning = false;
+                    newProject();
                 }
                 catch (const std::exception& error) { reportError(error.what()); }
             }
             ImGui::Separator();
-            if (ImGui::MenuItem(_SL("Save Scene Snapshot"), "Ctrl+S", false, !play || !play->IsPlaying())) snapshot(true);
-            if (ImGui::MenuItem(_SL("Load Scene Snapshot"), "Ctrl+Shift+O", false, !play || !play->IsPlaying())) snapshot(false);
-            ImGui::TextDisabled("%s", snapshotPath.c_str());
-            ImGui::Separator();
-            ImGui::TextWrapped("Snapshots store named entity transforms and particle settings. They do not save a complete project.");
+            if (project && project->genericScene) {
+                const bool canSave = static_cast<bool>(project->saveProject) && (!play || !play->IsPlaying());
+                if (ImGui::MenuItem("Save Project", "Ctrl+S", false, canSave)) saveProject(false);
+                if (ImGui::MenuItem("Save Project As...", "Ctrl+Shift+S", false, canSave)) saveProject(true);
+                ImGui::TextDisabled("%s", project->projectFile.empty() ? "Unsaved project" : project->projectFile.c_str());
+                ImGui::TextWrapped("Saves the scene and its Assets in a companion .steer folder beside the project file.");
+            }
+            else {
+                if (ImGui::MenuItem(_SL("Save Scene Snapshot"), "Ctrl+S", false, !play || !play->IsPlaying())) snapshot(true);
+                if (ImGui::MenuItem(_SL("Load Scene Snapshot"), "Ctrl+Shift+O", false, !play || !play->IsPlaying())) snapshot(false);
+                ImGui::TextDisabled("%s", snapshotPath.c_str());
+                ImGui::TextWrapped("This native project uses its compiled game module. Snapshots preserve supported overrides, not a complete scene.");
+            }
             ImGui::Separator();
             if (ImGui::MenuItem(_SL("Exit Engine"), "F4")) appRunning = false;
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu(_SL("Project"))) {
-            ImGui::TextUnformatted(project && !project->projectName.empty() ? project->projectName.c_str() : "No project open");
+            ImGui::TextUnformatted(project && !project->projectName.empty() ? project->projectName.c_str() : "Unsaved scene project");
             if (project && !project->projectFile.empty()) ImGui::TextWrapped("%s", project->projectFile.c_str());
             ImGui::Separator();
             if (play) {
@@ -2306,7 +2387,7 @@ namespace engine {
                 catch (const std::exception& error) { reportError(error.what()); }
             }
             ImGui::TextWrapped("Play runs inside Game Viewport. Stop restores the editable scene, including unsaved changes.");
-            ImGui::TextWrapped("The separate window command uses the saved snapshot. Save before launching it to include edits.");
+            ImGui::TextWrapped("The separate window command loads the saved project. Save before launching it to include edits.");
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu(_SL("Window"))) {
@@ -2438,6 +2519,36 @@ namespace engine {
         ImGui::EndMainMenuBar();
         if (play) ImGui::PopStyleVar();
 
+        if (s_ConfirmProjectChange) {
+            ImGui::OpenPopup("Save current project?###SaveBeforeProjectChange");
+            s_ConfirmProjectChange = false;
+        }
+        if (ImGui::BeginPopupModal("Save current project?###SaveBeforeProjectChange", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::TextUnformatted("Save your current scene before changing projects?");
+            ImGui::TextUnformatted("Discard continues without saving changes since the last save.");
+            bool proceed = false;
+            if (ImGui::Button("Save", ImVec2(100.0f, 0.0f))) proceed = saveProject(false);
+            ImGui::SameLine();
+            if (ImGui::Button("Discard", ImVec2(100.0f, 0.0f))) proceed = true;
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(100.0f, 0.0f))) {
+                s_PendingProjectPath.clear();
+                s_PendingNewProject = false;
+                ImGui::CloseCurrentPopup();
+            }
+            if (proceed) {
+                ImGui::CloseCurrentPopup();
+                if (s_PendingNewProject && project && project->closeProject) {
+                    project->closeProject();
+                    appRunning = false;
+                }
+                else openProject(s_PendingProjectPath, true);
+                s_PendingProjectPath.clear();
+                s_PendingNewProject = false;
+            }
+            ImGui::EndPopup();
+        }
+
         if (project && !project->error.empty() && !ImGui::IsPopupOpen("Project Error###EditorProjectError"))
             ImGui::OpenPopup("Project Error###EditorProjectError");
         if (ImGui::BeginPopupModal("Project Error###EditorProjectError", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
@@ -2453,6 +2564,9 @@ namespace engine {
     }
 
     void EngineUi::ResetForNewProject() {
+        s_PendingProjectPath.clear();
+        s_PendingNewProject = false;
+        s_ConfirmProjectChange = false;
         s_ResetEditorLayout = false;
         s_CurrentDirectory = "Assets";
         std::snprintf(s_NewFolderName, sizeof(s_NewFolderName), "%s", "NewFolder");

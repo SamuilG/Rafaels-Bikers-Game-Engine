@@ -5,7 +5,7 @@
 ```mermaid
 flowchart TD
     Editor[Editor.exe / 工程工作区] --> Engine[Engine.lib / 共享运行时]
-    Demo[Demo.exe / Bikers 游戏] --> Engine
+    Demo[Demo.exe / 工程运行宿主] --> Engine
     Editor --> Bikers[BikersProject.lib / 单车内容]
     Demo --> Bikers
     Editor --> Deps[GLFW / JoltPhysics / ImGui / Shaders]
@@ -14,10 +14,10 @@ flowchart TD
 
 | 目标 | 编译归属 | 初始化行为 |
 | --- | --- | --- |
-| Engine | 通用 Runtime 和共用第三方实现；排除两个入口、具体关卡、车辆控制器、Demo HUD、启动画面及 blank 实现 | 不选择具体场景，不指定游戏启动 UI/音效资源 |
+| Engine | 通用 Runtime、blank 通用场景入口、场景文档加载和共用第三方实现；排除两个入口、具体关卡、车辆控制器、Demo HUD 和启动画面 | 提供通用场景能力，由宿主选择入口；不指定游戏启动 UI/音效资源 |
 | BikersProject | level1、TestScene、bikeController、GameUi 和 `Source/Projects/Bikers` 工厂 | 为两个宿主提供同一场景、HUD、UI 和音频配置 |
-| Editor | `Source/Applications/Editor/Main.cpp` 和 `Scene/blank.cpp` | 默认空工作区；打开工程后加载完整内容，停止世界模拟并使用自由编辑相机 |
-| Demo | `Source/Applications/Demo/Main.cpp` 和 StartupSplash | 运行工程所指定的完整关卡及游戏 UI；不提供 F1 编辑器入口 |
+| Editor | `Source/Applications/Editor/Main.cpp` | 默认未保存通用工作区，可保存为 `.steerproj` 并 Play；打开工程后使用通用场景或原生内容模块 |
+| Demo | `Source/Applications/Demo/Main.cpp` 和 StartupSplash | 运行通用场景工程或原生关卡；原生模块提供自己的游戏 UI；不提供 F1 编辑器入口 |
 
 现有内容源文件仍可位于 Runtime 目录，构建归属由明确的文件清单决定。例如 `Runtime/Scene/level1.cpp` 只由 BikersProject 编译，两个宿主均链接这份内容实现。
 
@@ -29,7 +29,7 @@ flowchart TD
 
 Renderer 通过 `SetGameHudCallbacks` 接收内容模块的绘制/重置函数；共享的 `SceneViewport` 只存放画布位置、尺寸和 draw list。GameUi 的具体实现由 BikersProject 持有。编辑器可用性使用运行时能力开关，避免共享库与入口使用不同 `GAME_ONLY` 宏而产生不一致的 inline 定义。
 
-打开项目后，布局分别保存到项目的 `.steer/Editor.ini`、`.steer/Demo.ini`；空工作区仍使用 `Intermediate/Layouts/Editor.ini`。两个入口均可通过 `--project` 指定 `.steerproj`，按该文件解析资源根。详见 [工程工作流](Projects.md)。
+原生 Bikers 工程布局保存到 `.steer/Editor.ini`、`.steer/Demo.ini`；通用工程布局位于配套 `<工程名>.steer/Editor.ini`、`Runtime.ini`；空工作区仍使用 `Intermediate/Layouts/Editor.ini`。两个入口均可通过 `--project` 指定 `.steerproj`，按该文件解析资源根。详见 [工程工作流](Projects.md)。
 
 Editor 默认显示空工作区时，Inspector 和拾取路径会遇到实体 ID 0。统一的 `IsEntityAlive` 检查会先排除空句柄，再查询 Flecs，避免 Debug 首帧因空选择触发断言。
 

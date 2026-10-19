@@ -18,6 +18,8 @@ struct CameraState {
         glm::vec4(0,0,1,0), glm::vec4(0,2,10,1));
     float cameraFov = 85.0f;
     float targetFov = 85.0f;
+    float nearPlane = 0.1f;
+    float farPlane = 1000.0f;
     float Yaw = 0.0f, Pitch = 0.0f, Distance = 5.0f;
     float targetYaw = 0.0f, targetPitch = 0.0f, targetDistance = 5.0f;
     float cameraIdleTimer = 0.0f;

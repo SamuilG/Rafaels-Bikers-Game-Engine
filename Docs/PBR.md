@@ -6,6 +6,16 @@ meshes, portal views and model thumbnails share `default.frag`.
 
 ## 1. Direct lighting
 
+Directional entities use an affine transform and a local ray-travel direction.
+The same normalized world direction supplies both their direct lighting vector
+and the primary light's cascade matrices. Primary selection is explicit, with
+MainSun/stable-entity fallback, and is retained in the 16-light GPU budget.
+Only that directional light samples the cascade shadows; other directional
+lights remain independent illumination sources. Scene and portal cameras share
+the light/settings and fit their own cascades. Shadow distance/splits, receiver
+bias, filtering, blending, strength, raster bias and depth padding are editable
+entity data and are persisted in both scene documents and native snapshots.
+
 `Assets/Shaders/pbr_common.glsl` supplies GGX and Smith functions shared by
 runtime shading and IBL baking. Material roughness is perceptual roughness:
 `alpha = max(roughness * roughness, 0.001)`. The GGX distribution squares alpha
@@ -103,8 +113,9 @@ independent default lighting/display settings. Settings are session preferences
 and are not written into scene assets. They survive scene reload and Play/Stop;
 restarting the application restores defaults.
 
-Scene uniforms append 32 bytes of environment parameters after the unchanged
-1568-byte camera/light/clip prefix (1600 bytes total); composite push constants are
+Scene uniforms append 32 bytes of environment parameters and 32 bytes of
+directional shadow parameters after the unchanged 1568-byte camera/light/clip
+prefix (1632 bytes total); composite push constants are
 48 bytes. Both application configurations must match these shader interfaces.
 The skybox pipeline matches the scene's three RGBA16F color attachments and D32
 depth attachment. Only scene color is writable; Bloom and normal buffers retain

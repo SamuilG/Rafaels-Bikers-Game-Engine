@@ -4,6 +4,10 @@
 #include <print>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
+#include <functional>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "../Physics/PhysicsSystem.hpp"
 #include "../Animation/AnimationSystem.hpp" // for RiderIKComponent + IKChainConfig
@@ -56,6 +60,18 @@ EngineMesh generate_uv_sphere(float radius, uint32_t rings, uint32_t sectors)
 
 namespace engine {
 
+    namespace {
+        glm::mat4 AuthoredWorldTransform(flecs::entity entity) {
+            if (!entity.is_valid() || !entity.is_alive() || !entity.has<LocalTransform>()) return glm::mat4(1.0f);
+            auto parent = entity.parent();
+            return AuthoredWorldTransform(parent) * entity.get<LocalTransform>().matrix;
+        }
+        std::string Utf8Path(const std::filesystem::path& path) {
+            const auto value = path.generic_u8string();
+            return {reinterpret_cast<const char*>(value.data()), value.size()};
+        }
+    }
+
     SceneManager::SceneManager(PhysicsSystem* physics_system)
         : m_physics_system(physics_system) {
     }
@@ -66,6 +82,9 @@ namespace engine {
 
     void SceneManager::Init() 
     {
+        mModel = {};
+        mModelImports.clear();
+        mLoadingImport = nullptr;
         mStaticEntityCounter = mDynamicEntityCounter = mCompoundEntityCounter = 0;
         mCustomEntityCounter = mAnimatedEntityCounter = 0;
         m_world = new flecs::world();
@@ -76,15 +95,9 @@ namespace engine {
         mTransformSystem = m_world->system<WorldTransform, const LocalTransform>("UpdateWorldTransform")
             .kind(flecs::OnUpdate)
             .each([](flecs::entity e, WorldTransform& wt, const LocalTransform& lt) {
-            auto parent = e.parent();
-
-            if (parent.is_valid() && parent.has<WorldTransform>()) {
-                const WorldTransform* pwt = &parent.get<WorldTransform>();
-                wt.matrix = pwt->matrix * lt.matrix;
-            }
-            else {
-                wt.matrix = lt.matrix;
-            }
+            // Resolve from authored local transforms, independent of Flecs table
+            // iteration order when a parent and child occupy different archetypes.
+            wt.matrix = AuthoredWorldTransform(e);
                 });
         speed = 0.0f;
     }
@@ -95,6 +108,9 @@ namespace engine {
             delete m_world;
             m_world = nullptr;
         }
+        mModel = {};
+        mModelImports.clear();
+        mLoadingImport = nullptr;
     }
 
     void SceneManager::cache_model_for_culling(const EngineModel& model, uint32_t baseMeshIdx, uint32_t baseMatIdx) {
@@ -126,7 +142,12 @@ namespace engine {
 
     flecs::entity SceneManager::LoadModel(engine::RenderSystem* renderSystem, const char* path, ModelPhysicsType physicsType, float mass, const glm::mat4& initialTransform, RenderLayer layer)
     {
-        EngineModel newModel = load_engine_model_glb(path);
+        return LoadModelData(renderSystem, path, load_engine_model_glb(path), physicsType, mass, initialTransform, layer);
+    }
+
+    flecs::entity SceneManager::LoadModelData(engine::RenderSystem* renderSystem, const char* path,
+        EngineModel newModel, ModelPhysicsType physicsType, float mass, const glm::mat4& initialTransform, RenderLayer layer)
+    {
 
         for (auto& instance : newModel.scenes) {
             instance.transform = initialTransform * instance.transform;
@@ -134,17 +155,65 @@ namespace engine {
 
         auto offsets = renderSystem->RegisterModelAssets(newModel);
 
-        switch (physicsType) {
-        case ModelPhysicsType::Compound:
-            return load_compound_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer);
-        case ModelPhysicsType::CustomC:
-            return load_C_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer);
-        case ModelPhysicsType::Static:
-            return load_static_model(newModel, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer);
-        case ModelPhysicsType::Dynamic:
-            return load_dynamic_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer);
+        mModelImports.push_back({ NewSceneIdentity(),
+            Utf8Path(std::filesystem::absolute(std::filesystem::u8path(path)).lexically_normal()),
+            static_cast<int>(physicsType), mass, initialTransform });
+        mLoadingImport = &mModelImports.back();
+        mLoadingPart = 0;
+        flecs::entity result = flecs::entity::null();
+        try {
+            switch (physicsType) {
+            case ModelPhysicsType::Compound:
+                result = load_compound_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer); break;
+            case ModelPhysicsType::CustomC:
+                result = load_C_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer); break;
+            case ModelPhysicsType::Static:
+                result = load_static_model(newModel, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer); break;
+            case ModelPhysicsType::Dynamic:
+                result = load_dynamic_model(newModel, mass, offsets.baseMeshIdx, offsets.baseMaterialIdx, layer); break;
+            }
         }
-        return flecs::entity::null();
+        catch (...) {
+            mLoadingImport = nullptr;
+            throw;
+        }
+        mLoadingImport = nullptr;
+        return result;
+    }
+
+    void SceneManager::RecordModelPart(flecs::entity entity) {
+        if (!mLoadingImport) return; // Native procedural import paths are not scene assets.
+        entity.set<SceneEntityIdentity>({ NewSceneIdentity() });
+        entity.set<ModelPartSource>({ mLoadingImport->id, mLoadingPart++,
+            entity.get<MeshComponent>().meshIndex, entity.get<MaterialComponent>().materialIndex });
+    }
+
+    void SceneManager::SetModelImportIdentity(std::string previous, const std::string& restored) {
+        for (auto& source : mModelImports) if (source.id == previous) source.id = restored;
+        m_world->each([&](flecs::entity entity, ModelPartSource& source) {
+            if (source.instance == previous) { source.instance = restored; entity.modified<ModelPartSource>(); }
+        });
+    }
+
+    void SceneManager::DestroyEntity(flecs::entity entity) {
+        if (!entity.is_valid() || !entity.is_alive()) return;
+        // Flecs recursively destroys children; release their independent bodies first.
+        std::vector<flecs::entity> children;
+        entity.children([&](flecs::entity child) { children.push_back(child); });
+        for (auto child : children) DestroyEntity(child);
+        if (m_physics_system && m_physics_system->get_system() && entity.has<PhysicsBody>()) {
+            auto& bodies = m_physics_system->get_body_interface();
+            const JPH::BodyID id(entity.get<PhysicsBody>().bodyID);
+            JPH::BodyLockRead lock(m_physics_system->get_system()->GetBodyLockInterface(), id);
+            const bool exists = lock.Succeeded();
+            lock.ReleaseLock();
+            if (exists) {
+                if (bodies.IsAdded(id)) bodies.RemoveBody(id);
+                bodies.DestroyBody(id);
+            }
+            entity.remove<PhysicsBody>();
+        }
+        entity.destruct();
     }
 
     flecs::entity SceneManager::load_static_model(const EngineModel& model, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer) {
@@ -155,6 +224,8 @@ namespace engine {
         for (const auto& instance : model.scenes) {
             std::string name = instance.name.empty() ? "StaticObject" : instance.name;
             name += "_" + std::to_string(mStaticEntityCounter++);
+            while (m_world->lookup(name.c_str()).is_alive())
+                name = (instance.name.empty() ? "StaticObject" : instance.name) + "_" + std::to_string(mStaticEntityCounter++);
 
             auto e = m_world->entity(name.c_str())
                 .add<StaticObject>()
@@ -166,6 +237,8 @@ namespace engine {
 
             uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
             e.set<MaterialComponent>({ matIdx });
+
+            RecordModelPart(e);
 
             if (m_physics_system) {
                 JPH::BodyID bodyID = m_physics_system->create_static_mesh_body(model.meshes[instance.meshIndex], instance.transform);
@@ -188,6 +261,8 @@ namespace engine {
         for (const auto& instance : model.scenes) {
             std::string name = instance.name.empty() ? "DynamicObject" : instance.name;
             name += "_" + std::to_string(mDynamicEntityCounter++);
+            while (m_world->lookup(name.c_str()).is_alive())
+                name = (instance.name.empty() ? "DynamicObject" : instance.name) + "_" + std::to_string(mDynamicEntityCounter++);
 
             auto e = m_world->entity(name.c_str())
                 .add<DynamicObject>()
@@ -200,6 +275,8 @@ namespace engine {
 
             uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
             e.set<MaterialComponent>({ matIdx });
+
+            RecordModelPart(e);
 
             // 【核心修改 2】：只有 mass >= 0 时，才生成物理刚体！
             if (m_physics_system && mass >= 0.0f) {
@@ -241,6 +318,8 @@ namespace engine {
         for (const auto& instance : model.scenes) {
             std::string name = instance.name.empty() ? "CompoundPart" : instance.name;
             name += "_" + std::to_string(mCompoundEntityCounter++);
+            while (m_world->lookup(name.c_str()).is_alive())
+                name = (instance.name.empty() ? "CompoundPart" : instance.name) + "_" + std::to_string(mCompoundEntityCounter++);
 
             glm::mat4 localOffset = invBody * instance.transform;
 
@@ -255,6 +334,8 @@ namespace engine {
 
             uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
             e.set<MaterialComponent>({ matIdx });
+
+            RecordModelPart(e);
 
             if (!firstEntity.is_valid()) {
                 firstEntity = e;
@@ -298,6 +379,8 @@ namespace engine {
         for (const auto& instance : model.scenes) {
             std::string name = instance.name.empty() ? "CPart" : instance.name;
             name += "_" + std::to_string(mCustomEntityCounter++);
+            while (m_world->lookup(name.c_str()).is_alive())
+                name = (instance.name.empty() ? "CPart" : instance.name) + "_" + std::to_string(mCustomEntityCounter++);
 
             glm::mat4 localOffset = invBody * instance.transform;
 
@@ -312,6 +395,8 @@ namespace engine {
 
             uint32_t matIdx = model.meshes[instance.meshIndex].materialIndex + baseMatIdx;
             e.set<MaterialComponent>({ matIdx });
+
+            RecordModelPart(e);
 
             if (!firstEntity.is_valid()) {
                 firstEntity = e;
@@ -514,10 +599,21 @@ namespace engine {
         lc.innerCutOff = innerCutOff;
         lc.outerCutOff = outerCutOff;
 
+        glm::mat4 authoredTransform = transform;
+        if (type == LightType::Directional && std::abs(transform[3][3]) < 0.0001f) {
+            // Migrate native callers that formerly stored a toward-light vector
+            // in the translation column of a non-affine transform.
+            lc.direction = -NormalizeLightDirection(glm::vec3(transform[3]));
+            authoredTransform[3] = glm::vec4(0, 0, 0, 1);
+        }
+        lc.direction = NormalizeLightDirection(lc.direction);
+        lc.primaryDirectional = type == LightType::Directional && std::string(name) == "MainSun";
+        if (type != LightType::Directional) lc.range = std::max(range, 0.001f);
+
         auto e = m_world->entity(name)
             .set<EntityStatus>({ true, false })
-            .set<LocalTransform>({ transform })
-            .set<WorldTransform>({ transform })
+            .set<LocalTransform>({ authoredTransform })
+            .set<WorldTransform>({ authoredTransform })
             .set<LightComponent>(lc); // 传入打包好的组件
 
         if (parent.is_valid()) {
@@ -527,31 +623,15 @@ namespace engine {
         return e;
     }
     void SceneManager::get_light_data(std::vector<GpuLight>& outLights) {
-        outLights.clear();
-
+        outLights = GetLightingData().lights;
+    }
+    SceneLightingData SceneManager::GetLightingData() {
+        std::vector<SceneLightCandidate> candidates;
         m_world->query<const WorldTransform, const LightComponent, const EntityStatus>()
-            .each([&](const WorldTransform& wt, const LightComponent& lc, const EntityStatus& status) {
-            if (!status.should_render) return;
-
-            if (outLights.size() >= 64) return;
-
-            GpuLight gpuLight{};
-            gpuLight.position = glm::vec4(glm::vec3(wt.matrix[3]), static_cast<float>(lc.type));
-            gpuLight.color = glm::vec4(lc.color, lc.intensity);
-
-            glm::vec3 worldDir = glm::normalize(glm::vec3(wt.matrix * glm::vec4(lc.direction, 0.0f)));
-            gpuLight.direction = glm::vec4(worldDir, lc.range);
-
-            float cosInner = glm::cos(glm::radians(lc.innerCutOff));
-            float cosOuter = glm::cos(glm::radians(lc.outerCutOff));
-
-            // =======================================================
-            // 【核心修改】：将高光系数 (specularMultiplier) 塞入 Z 通道！
-            // =======================================================
-            gpuLight.params = glm::vec4(cosInner, cosOuter, lc.specularMultiplier, 0.0f);
-
-            outLights.push_back(gpuLight);
-                });
+            .each([&](flecs::entity entity, const WorldTransform& wt, const LightComponent& light, const EntityStatus& status) {
+                candidates.push_back({entity.id(), entity.name().c_str() ? entity.name().c_str() : "", wt.matrix, light, status.should_render});
+            });
+        return BuildSceneLighting(std::move(candidates));
     }
 
     std::vector<RenderBatch> SceneManager::get_render_batches(const Frustum* frustum, float frustumPadding, glm::vec3 cameraPos) {
@@ -663,6 +743,7 @@ namespace engine {
             JPH::BodyInterface& bodyInterface = m_physics_system->get_body_interface();
 
             // 1. 同步普通刚体位置
+            std::unordered_map<flecs::entity_t, glm::mat4> simulatedWorld;
             m_world->query<LocalTransform, const PhysicsBody, const EntityStatus>()
                 .each([&](flecs::entity e, LocalTransform& lt, const PhysicsBody& pb, const EntityStatus& status) {
                 if (!status.has_physics) return;
@@ -675,15 +756,24 @@ namespace engine {
                     glm::mat4 translation = glm::translate(glm::mat4(1.0f), toGlm(pos));
                     glm::mat4 rotation = glm::mat4_cast(toGlm(rot));
 
-                    glm::vec3 scale(
-                        glm::length(glm::vec3(lt.matrix[0])),
-                        glm::length(glm::vec3(lt.matrix[1])),
-                        glm::length(glm::vec3(lt.matrix[2]))
-                    );
-
-                    lt.matrix = translation * rotation * glm::scale(glm::mat4(1.0f), scale);
+                    glm::vec3 scale, unusedPosition, skew;
+                    glm::quat unusedRotation;
+                    glm::vec4 perspective;
+                    glm::decompose(AuthoredWorldTransform(e), scale, unusedRotation, unusedPosition, skew, perspective);
+                    simulatedWorld.emplace(e.id(), translation * rotation * glm::scale(glm::mat4(1.0f), scale));
                 }
                     });
+            // Jolt supplies world poses. Convert them back to parent-local poses
+            // only after all simulated parents have been sampled this frame.
+            std::function<glm::mat4(flecs::entity)> resolvedPhysicsWorld = [&](flecs::entity entity) {
+                if (!entity.is_valid() || !entity.is_alive() || !entity.has<LocalTransform>()) return glm::mat4(1.0f);
+                if (auto found = simulatedWorld.find(entity.id()); found != simulatedWorld.end()) return found->second;
+                return resolvedPhysicsWorld(entity.parent()) * entity.get<LocalTransform>().matrix;
+            };
+            for (const auto& [id, transform] : simulatedWorld) {
+                auto entity = m_world->entity(id);
+                entity.set<LocalTransform>({glm::inverse(resolvedPhysicsWorld(entity.parent())) * transform});
+            }
 
             // 2. 同步复杂车辆动画逻辑
             m_world->query<LocalTransform, const CompoundParent>()

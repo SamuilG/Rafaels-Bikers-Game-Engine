@@ -21,6 +21,9 @@
 #include "../Renderer/RenderUtilities/frustum.hpp"
 #include "SceneRenderSource.hpp"
 #include "RenderBatch.hpp"
+#include "GameCameraEntity.hpp"
+#include "SceneLighting.hpp"
+#include "SceneAssetIdentity.hpp"
 
 // Forward declare EngineModel to avoid including engine_model.hpp here
 // 1. Avoid circular dependency
@@ -57,8 +60,6 @@ namespace engine {
 }
 
 // Basic components definition (kept in header as they might be queried by other systems)
-struct LocalTransform { glm::mat4 matrix; };
-struct WorldTransform { glm::mat4 matrix; };
 struct MeshComponent { uint32_t meshIndex; };
 struct MaterialComponent { uint32_t materialIndex; };
 
@@ -151,6 +152,13 @@ namespace engine {
     public:
         // Core Model Loading API (returning flecs::entity handle and supporting RenderLayer)
         flecs::entity LoadModel(engine::RenderSystem* renderSystem, const char* path, ModelPhysicsType physicsType, float mass = 1.0f, const glm::mat4& initialTransform = glm::mat4(1.0f), RenderLayer layer = RenderLayer::Default);
+        flecs::entity LoadModelData(engine::RenderSystem* renderSystem, const char* path, EngineModel model,
+            ModelPhysicsType physicsType, float mass, const glm::mat4& initialTransform, RenderLayer layer);
+
+        const std::vector<ModelImportSource>& ModelImports() const { return mModelImports; }
+        // Used only when restoring a document to retain its persisted import ID.
+        void SetModelImportIdentity(std::string previous, const std::string& restored);
+        void DestroyEntity(flecs::entity entity);
 
         flecs::entity load_static_model(const EngineModel& model, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer);
         flecs::entity load_dynamic_model(const EngineModel& model, float mass, uint32_t baseMeshIdx, uint32_t baseMatIdx, RenderLayer layer);
@@ -206,7 +214,7 @@ namespace engine {
         // ��ȡ��ǰ������ʵ������������ڵ��Ժ�UI��ʾ��
         int get_entity_count() {
             if (!m_world) return 0;
-            return m_world->count<MeshComponent>();
+            return m_world->count<MeshComponent>() + m_world->count<GameCameraComponent>() + m_world->count<LightComponent>();
         }
 
         // Raycast from origin in direction, return first hit entity ���߼�⣬���ص�һ�������е�ʵ��
@@ -234,6 +242,8 @@ namespace engine {
         );
 
         void get_light_data(std::vector<GpuLight>& outLights);
+        SceneLightingData GetLightingData();
+        DirectionalLightState GetDirectionalLight() override { return GetLightingData().directional; }
         void CollectLights(std::vector<GpuLight>& outLights) override { get_light_data(outLights); }
 
     private:
@@ -246,6 +256,10 @@ namespace engine {
         uint32_t mCompoundEntityCounter = 0;
         uint32_t mCustomEntityCounter = 0;
         uint32_t mAnimatedEntityCounter = 0;
+        std::vector<ModelImportSource> mModelImports;
+        const ModelImportSource* mLoadingImport = nullptr;
+        uint32_t mLoadingPart = 0;
+        void RecordModelPart(flecs::entity entity);
         PhysicsSystem* m_physics_system; // Optional dependency
 
         void cache_model_for_culling(const EngineModel& model, uint32_t baseMeshIdx, uint32_t baseMatIdx);

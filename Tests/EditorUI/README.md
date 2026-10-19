@@ -8,7 +8,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Tests/EditorUI/run-editor-tr
 powershell -NoProfile -ExecutionPolicy Bypass -File Tests/EditorUI/run-trigger-binding-tests.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File Tests/EditorUI/run-editor-theme-tests.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File Tests/EditorUI/run-camera-gizmo-tests.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File Tests/EditorUI/run-light-inspector-tests.ps1
 ```
+
+The light inspector suite submits production controls to real ImGui. Mouse and
+keyboard events edit intensity, cascade distances, receiver bias, strength and
+filtering, choose the primary light and verify disabled shadow controls. English
+and Chinese labels retain their IDs and fit the 300-pixel inspector.
 
 Requires Visual Studio C++ tools. The script builds the vendored Dear ImGui core
 and `EditorLayoutTests.cpp` into a separate console executable. It does not build

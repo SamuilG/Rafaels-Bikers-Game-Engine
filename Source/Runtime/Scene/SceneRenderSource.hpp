@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <vector>
 #include <glm/glm.hpp>
+#include "../Renderer/RenderUtilities/light.hpp"
 
 struct RenderBatch;
 
@@ -28,6 +29,7 @@ public:
     virtual std::vector<::RenderBatch> BuildSkinnedBatches(glm::mat4* boneBuffer,
         std::size_t maxBones, std::size_t& outBoneCount) = 0;
     virtual void CollectLights(std::vector<GpuLight>& outLights) = 0;
+    virtual DirectionalLightState GetDirectionalLight() { return {}; }
     virtual std::uint32_t LastFrustumCandidates() const = 0;
     virtual std::uint32_t LastFrustumVisible() const = 0;
 };

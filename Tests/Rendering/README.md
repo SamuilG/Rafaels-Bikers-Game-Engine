@@ -1,5 +1,14 @@
 # Rendering GPU regression tests
 
+`run-directional-lighting-tests.ps1` exercises production light preparation and
+CSM math without a GPU: transformed direction agreement, stable primary
+selection, explicit directional/spot shadow assignment, 16-light retention,
+authored parameters, narrow clip ranges, serialization and malformed-data rejection.
+The PBR GPU suite also checks independent colored directional lights against a
+controlled shadow map; only the assigned primary is shadowed, and live strength
+and enable settings modify its actual radiance. The view-mode GPU suite checks
+strength, receiver bias and disabled-shadow sampling in the production CSM shader.
+
 Run `Tests/Rendering/run-pbr-gpu-tests.ps1` for the production PBR, IBL, portal,
 skybox and composite shaders. Skybox checks use the shared production attachment
 configuration with three HDR targets and D32 depth: source radiance remains HDR,
@@ -9,7 +18,7 @@ Bloom/normals retain their contents, and foreground depth blocks skybox drawing.
 Live controls are tested with global/diffuse/specular IBL gains, tint, saturation
 on the actual skybox, coordinated IBL/sky rotation, ACES bypass and all five curve
 coefficients. Tests use the production CPU parameter packing helpers; the PBR
-scene UBO is 1600 bytes and the composite push constants are 48 bytes.
+scene UBO is 1632 bytes and the composite push constants are 48 bytes.
 The harness builds its own pipeline and does not instantiate `RenderSystem`.
 See [PBR documentation](../../Docs/PBR.md) for the full suite and limitations.
 
@@ -65,7 +74,7 @@ and Overshading, no depth test/write for Overdraw, and `ONE + ONE` RGB blending
 with `ONE + ZERO` alpha for accumulation. Wireframe enables the physical device's
 `fillModeNonSolid` feature and uses line rasterization. The CSM sampler uses the
 production `LESS` comparison and clamp-to-white-border policy. These diagnostic
-shaders use the unchanged 1568-byte camera/light/clip prefix of the 1600-byte CPU
+shaders use the unchanged 1568-byte camera/light/clip prefix of the 1632-byte CPU
 scene layout; object push constants use the shared 128-byte layout. The harness
 constructs its own pipelines; it does **not** instantiate `RenderSystem`, verify
 the full engine's mode routing or post-processing bypass, or call its pipeline

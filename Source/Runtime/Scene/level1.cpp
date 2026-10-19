@@ -703,8 +703,8 @@ namespace engine {
 
 		// ̫���������ƹ�
 		glm::vec3 sunDir = glm::normalize(glm::vec3(-0.5f, 1.0f, -0.3f));
-		glm::mat4 sunTransform = glm::mat4(1.0f); sunTransform[3] = glm::vec4(sunDir, 0.0f);
-		m_scene->create_light_entity("MainSun", engine::LightType::Directional, glm::vec3(1.2f, 0.95f, 0.8f), 2.5f, sunTransform, 0);
+		m_scene->create_light_entity("MainSun", engine::LightType::Directional, glm::vec3(1.2f, 0.95f, 0.8f),
+            2.5f, glm::mat4(1), 0, -sunDir);
 
 		// 5. ���ô����� (Trigger)
 		m_render->AddParticleGroup();

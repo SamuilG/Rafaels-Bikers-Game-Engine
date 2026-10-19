@@ -131,7 +131,7 @@ foreach ($name in $targetNames) {
 }
 Write-Host '[PASS] Target kinds, source existence, configurations, and distinct final/intermediate outputs.'
 
-foreach ($file in ($bikersFiles + $demoFiles + $blankFile)) {
+foreach ($file in ($bikersFiles + $demoFiles)) {
     Assert-Target ($sources.Engine -notcontains $file) "Engine must not compile application source $file."
 }
 Assert-Target (@($sources.Engine | Where-Object { $_ -match '/loadenginesplash/' -or $_ -match '(?:^|/)main\.(?:c|cc|cpp|cxx)$' -or $_ -match '^source/(applications|projects)/' }).Count -eq 0) 'Engine must not compile splash implementations, project content, or application entry points.'
@@ -146,8 +146,9 @@ foreach ($file in $demoFiles) {
     Assert-Target ($sources.Demo -contains $file) "Demo must compile $file."
     Assert-Target ($sources.Editor -notcontains $file) "Editor must not compile Demo source $file."
 }
-Assert-Target ($sources.Editor -contains $blankFile) 'Editor must compile its blank scene.'
-Assert-Target ($sources.Demo -notcontains $blankFile) 'Demo must not compile the Editor blank scene.'
+Assert-Target ($sources.Engine -contains $blankFile) 'Engine must compile the shared generic scene once.'
+Assert-Target ($sources.Editor -notcontains $blankFile) 'Editor must link the shared generic scene.'
+Assert-Target ($sources.Demo -notcontains $blankFile) 'Demo must link the shared generic scene.'
 Assert-Target ($sources.BikersProject -notcontains $blankFile) 'BikersProject must not compile the Editor blank scene.'
 foreach ($name in @('Editor', 'Demo')) {
     $entry = "source/applications/$($name.ToLowerInvariant())/main.cpp"

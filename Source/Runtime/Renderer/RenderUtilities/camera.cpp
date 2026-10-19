@@ -41,33 +41,32 @@ void update_scene_uniforms(glsl::SceneUniform& aSceneUniforms, std::uint32_t aFr
 	float const aspect = float(aFramebufferWidth) / float(aFramebufferHeight);
 	float const fov = glm::radians(camera.cameraFov);
 
-	aSceneUniforms.projection = glm::perspectiveRH_ZO(fov, aspect, cfg::kCameraNear, cfg::kCameraFar);
+	aSceneUniforms.projection = glm::perspectiveRH_ZO(fov, aspect, camera.nearPlane, camera.farPlane);
 	aSceneUniforms.projection[1][1] *= -1.f;
 	aSceneUniforms.camera = glm::inverse(camera.camera2world);
 	aSceneUniforms.projCam = aSceneUniforms.projection * aSceneUniforms.camera;
 	aSceneUniforms.cameraPos = glm::vec4(camera.camera2world[3]);
 
-	aSceneUniforms.lightPos = glm::vec4(50.0f, 100.0f, -30.0f, 0.0f);
-	aSceneUniforms.lightColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+	aSceneUniforms.lightPos = glm::vec4(0.0f);
+	aSceneUniforms.lightColor = glm::vec4(0.0f);
 	aSceneUniforms.renderMode = std::uint32_t(renderMode);
-	// ==============================================================
-		// 3. 调用灯光系统计算阴影 (CSM 级联计算)
-		// ==============================================================
-
-		// 【核心修复】：不要把 `cfg::kCameraFar` 传给阴影系统！
-		// 哪怕相机能看 1000 米远，我们的阴影也只包围相机前方 60 米的范围。
-		// 这样无论 FOV 怎么变大，阴影盒子的最大体积都被死死限制住了，分辨率永远集中在车身附近！
-	float shadowFarDistance = 850.0f; 
-
-	engine::ShadowData shadow = engine::compute_csm_matrices(
-		glm::vec3(aSceneUniforms.lightPos),
-		aSceneUniforms.camera,
-		fov, aspect,
-		cfg::kCameraNear,
-		shadowFarDistance //  cfg::kCameraFar
-	);
+    // Lighting is populated from the selected scene light after camera setup.
+	engine::ShadowData shadow{};
 
 	aSceneUniforms.cascadeSplits = shadow.cascadeSplits;
 	for (int i = 0; i < 4; ++i) aSceneUniforms.lightVP[i] = shadow.lightVP[i];
 	aSceneUniforms.portalClipPlane = glm::vec4(0.0f);
+	aSceneUniforms.directionalShadow.raster.z = 0.0f;
+}
+
+void update_directional_shadows(glsl::SceneUniform& uniforms, const engine::DirectionalLightState& light,
+    float nearPlane, float farPlane) {
+    const float fov = 2.0f * std::atan(1.0f / std::abs(uniforms.projection[1][1]));
+    const float aspect = std::abs(uniforms.projection[1][1] / uniforms.projection[0][0]);
+    const auto frame = engine::BuildDirectionalShadowFrame(light, uniforms.camera, fov, aspect, nearPlane, farPlane);
+    uniforms.lightPos = frame.source.position;
+    uniforms.lightColor = frame.source.color;
+    uniforms.directionalShadow = frame.parameters;
+    uniforms.cascadeSplits = frame.cascades.cascadeSplits;
+    for (int i = 0; i < 3; ++i) uniforms.lightVP[i] = frame.cascades.lightVP[i];
 }

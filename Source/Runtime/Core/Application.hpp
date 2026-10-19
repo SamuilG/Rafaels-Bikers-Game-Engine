@@ -41,6 +41,8 @@ namespace engine {
         bool ReloadCurrentScene();
         std::unique_ptr<GameScene> CreateScene() const;
         void ApplySceneWorkspace();
+        void InitializeCameraDefaults();
+        void RefreshGameCameraEntity();
         std::string StartEditorPlay();
         void StopEditorPlay();
         void ApplyEditorSceneToPlay();

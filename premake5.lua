@@ -217,10 +217,6 @@ workspace "EngineWorkspace"
         "Source/Runtime/LoadEngineSplash/**",
     }
 
-    local editorFiles = {
-        "Source/Runtime/Scene/blank.cpp", "Source/Runtime/Scene/blank.hpp",
-    }
-
     -- ==========================================
     -- Project 4: Shared Engine Static Library
     -- Existing editor facilities still belong to this shared library; moving
@@ -248,7 +244,6 @@ workspace "EngineWorkspace"
         }
         removefiles(bikersFiles)
         removefiles(demoFiles)
-        removefiles(editorFiles)
 
         filter "files:ThirdParty/flecs-4.1.4/distr/flecs.c"
             flags { "NoPCH" }
@@ -276,7 +271,7 @@ workspace "EngineWorkspace"
         dependson { "Shaders" }
 
         filter "system:windows"
-            links { "opengl32", "comdlg32" }
+            links { "opengl32", "comdlg32", "shell32" }
 
         filter "system:linux"
             links { "vulkan", "X11", "Xrandr", "Xi", "Xcursor", "Xinerama", "pthread", "GL" }
@@ -289,7 +284,6 @@ workspace "EngineWorkspace"
     project "Editor"
         applicationSettings()
         files { "Source/Applications/Editor/**.cpp", "Source/Applications/Editor/**.hpp" }
-        files(editorFiles)
 
     project "Demo"
         applicationSettings()

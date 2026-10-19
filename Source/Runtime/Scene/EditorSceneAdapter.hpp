@@ -62,6 +62,15 @@ public:
             EditorEntitySnapshot snapshot = Inspect(entity.id());
             if (snapshot.alive) entities.push_back(std::move(snapshot));
         });
+        mScene->get_world().each([&](flecs::entity entity, GameCameraComponent&) {
+            EditorEntitySnapshot snapshot = Inspect(entity.id());
+            if (snapshot.alive) entities.insert(entities.begin(), std::move(snapshot));
+        });
+        mScene->get_world().each([&](flecs::entity entity, LightComponent&) {
+            if (entity.has<MeshComponent>() || entity.has<GameCameraComponent>()) return;
+            auto snapshot = Inspect(entity.id());
+            if (snapshot.alive) entities.push_back(std::move(snapshot));
+        });
         return entities;
     }
 
@@ -97,6 +106,13 @@ public:
         if (!mScene || id == 0) return false;
         flecs::entity entity = mScene->get_world().entity(id);
         if (!IsEntityAlive(entity) || !entity.has<LocalTransform>()) return false;
+        if (entity.has<GameCameraComponent>()) {
+            auto& camera = entity.get_mut<GameCameraComponent>();
+            if (camera.settings.mode != CameraMode::Free) return false;
+            camera.freeTransform = transform;
+            camera.settingsDirty = true;
+            entity.modified<GameCameraComponent>();
+        }
         entity.get_mut<LocalTransform>().matrix = transform;
         entity.modified<LocalTransform>();
         if (syncPhysics && entity.has<PhysicsBody>()) {
@@ -130,8 +146,8 @@ public:
     bool Destroy(flecs::entity_t id) {
         if (!mScene || id == 0) return false;
         flecs::entity entity = mScene->get_world().entity(id);
-        if (!IsEntityAlive(entity)) return false;
-        entity.destruct();
+        if (!IsEntityAlive(entity) || entity.has<GameCameraComponent>()) return false;
+        mScene->DestroyEntity(entity);
         if (mSelectedEntityId == id) ClearSelection();
         return true;
     }

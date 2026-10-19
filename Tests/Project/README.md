@@ -1,5 +1,17 @@
 # Project descriptor regressions
 
+## Generic scene projects
+
+`Tests/Project/run-generic-project-tests.ps1` compiles the production scene validator and transactional project storage service. It covers stable IDs, parent cycles/missing parents, finite transforms, rigid camera poses, resource traversal, Unicode Save As, changed/new asset synchronization, saving an opened package, project relocation, protected unrelated destinations, and rollback after a read-only scene blocks the commit. Fixtures are created under `Intermediate/Diagnostics/generic-project` and cleaned up without touching repository assets.
+
+After building Release Editor/Engine, `Tests/Project/run-generic-play-integration-tests.ps1` runs a hidden real Vulkan Application. It imports repeated multi-mesh GLBs and static/dynamic instances, deletes a mesh, authors a hierarchy/light/camera/particle group, and checks reconstruction before physics, simulation, pause/resume, restart, Stop restoring original entity/body handles, another Play, and scene reopening. This suite needs a working Vulkan device and the repository Assets.
+
+The integration suite also rejects a malformed document after subsystem initialization, then reopens a valid document with a Unicode filename to verify cleanup. Its native Bikers smoke check links `BikersProject`, loads the shipped C++ scene factory, advances the vehicle simulation, pauses, and verifies Stop retains the original compound body. Test windows remain hidden, native game audio is muted, and existing project snapshots/layouts are not modified.
+
+On Windows, restricted process sandboxes may deny `std::filesystem::weakly_canonical` metadata access even where file writes are allowed, or block MSVC PDB service communication. Run these local test scripts in the normal developer terminal when those environment restrictions occur.
+
+## Native descriptor and snapshot compatibility
+
 From the repository root, run:
 
 ```powershell

@@ -6,10 +6,16 @@
 #include <string>
 #include "ThirdParty/json/json.hpp"
 #include "SceneSnapshotValidation.hpp"
+#include "SceneDocumentValidation.hpp"
 
 namespace engine {
 
-// A project selects a registered native content module and locates its data.
+inline std::string ProjectPathText(const std::filesystem::path& path) {
+    const auto utf8 = path.generic_u8string();
+    return std::string(utf8.begin(), utf8.end());
+}
+
+// A project selects a generic scene or a registered native module and its data.
 // Loading this document performs no scene mutation or working-directory change.
 struct ProjectDescriptor {
     std::string name;
@@ -24,12 +30,12 @@ struct ProjectDescriptor {
         ProjectDescriptor project;
         project.filePath = fs::weakly_canonical(fs::absolute(path));
         std::ifstream stream(project.filePath);
-        if (!stream) throw std::runtime_error("Cannot open project: " + project.filePath.string());
+        if (!stream) throw std::runtime_error("Cannot open project: " + ProjectPathText(project.filePath));
         nlohmann::json document;
         try {
             document = nlohmann::json::parse(stream);
         } catch (const nlohmann::json::exception& error) {
-            throw std::runtime_error("Invalid project JSON in " + project.filePath.string() + ": " + error.what());
+            throw std::runtime_error("Invalid project JSON in " + ProjectPathText(project.filePath) + ": " + error.what());
         }
         if (!document.is_object() || !document.contains("schemaVersion") ||
             !document["schemaVersion"].is_number_integer() || document["schemaVersion"] != 1)
@@ -65,10 +71,21 @@ struct ProjectDescriptor {
                 std::ifstream snapshotStream(project.snapshotPath);
                 if (!snapshotStream) throw std::runtime_error("Cannot read the snapshot file.");
                 const auto snapshotDocument = nlohmann::json::parse(snapshotStream);
-                ValidateSceneSnapshot(snapshotDocument);
+                if (project.contentModule == "scene") ValidateSceneDocumentAssets(snapshotDocument, project.assetRoot);
+                else ValidateSceneSnapshot(snapshotDocument);
             } catch (const std::exception& error) {
-                throw std::runtime_error("Invalid scene snapshot " + project.snapshotPath.string() + ": " + error.what());
+                throw std::runtime_error("Invalid scene snapshot " + ProjectPathText(project.snapshotPath) + ": " + error.what());
             }
+        }
+        else if (project.contentModule == "scene") {
+            throw std::runtime_error("The generic project's scene document does not exist: " + ProjectPathText(project.snapshotPath));
+        }
+        if (project.contentModule == "scene") {
+            if (project.startupScene != "main")
+                throw std::runtime_error("Generic projects require startupScene main.");
+            const auto relativeAssets = project.assetRoot.lexically_relative(directory);
+            if (relativeAssets.empty() || *relativeAssets.begin() == "..")
+                throw std::runtime_error("Generic project Assets must be inside its project directory.");
         }
         return project;
     }

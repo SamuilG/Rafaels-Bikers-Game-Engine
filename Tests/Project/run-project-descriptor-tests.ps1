@@ -8,7 +8,7 @@ if (-not $visualStudio) { throw 'Visual Studio with x64 C++ build tools was not 
 $vcvars = Join-Path $visualStudio 'VC/Auxiliary/Build/vcvars64.bat'
 New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
 $arguments = @('/nologo', '/std:c++20', '/EHsc', '/MDd', '/Od', '/Zi', '/utf-8', '/W4')
-foreach ($include in @('.', 'Source')) { $arguments += '/I"' + (Join-Path $repoRoot $include) + '"' }
+foreach ($include in @('.', 'Source', 'ThirdParty/glm/include')) { $arguments += '/I"' + (Join-Path $repoRoot $include) + '"' }
 $arguments += '"' + (Join-Path $repoRoot 'Tests/Project/ProjectDescriptorTests.cpp') + '"'
 $arguments += '/Fo"' + $outputDirectory + '\\"'
 $arguments += '/Fd"' + (Join-Path $outputDirectory 'compile.pdb') + '"'

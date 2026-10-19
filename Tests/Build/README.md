@@ -12,7 +12,7 @@ The script reads the actual generated `Intermediate/Projects/{Engine,BikersProje
 It verifies:
 
 - Engine and BikersProject are static libraries; Editor and Demo are executable targets in both Debug and Release.
-- BikersProject owns the game scenes, bike controller, game HUD implementation, and project options factory. Demo owns its splash and entry point. Editor owns its blank scene and entry point. Engine compiles none of these content or application sources.
+- BikersProject owns the game scenes, bike controller, game HUD implementation, and project options factory. Demo owns its splash and entry point. Editor owns its entry point. Engine owns the shared generic blank scene used by both hosts, and compiles none of the Bikers content or application entry points.
 - All source files exist and no source is compiled by more than one target. Both applications reference BikersProject and Engine. Engine has no reverse content or application dependency; BikersProject has no application dependency.
 - Shared include directories and Flecs/Jolt/GLM definitions agree across targets. The case-sensitive `flecs_STATIC` definition is required; `FLECS_STATIC` is rejected because Flecs does not recognize it and would apply DLL import/export declarations. No target uses the old `GAME_ONLY` build variant.
 - Each target/configuration has a unique final artifact path and intermediate directory. Editor and Demo may share an output directory because their executable names differ.

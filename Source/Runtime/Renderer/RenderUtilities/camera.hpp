@@ -9,6 +9,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include "../../Rhi/angle.hpp"
 #include "../../UserState/CameraController.hpp"
+#include "light.hpp"
 
 namespace lut = labut2;
 namespace glsl {
@@ -42,6 +43,8 @@ void update_camera(engine::CameraController& controller, const engine::PlayerSta
     const engine::EditorState& editor, float dt, engine::InputSystem* inputSys);
 
 void update_scene_uniforms(glsl::SceneUniform& aSceneUniforms, std::uint32_t aFramebufferWidth, std::uint32_t aFramebufferHeight, const engine::CameraState& camera, int renderMode);
+void update_directional_shadows(glsl::SceneUniform& uniforms, const engine::DirectionalLightState& light,
+    float nearPlane, float farPlane);
 
 
 

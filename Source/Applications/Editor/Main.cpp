@@ -2,6 +2,9 @@
 #include "Runtime/Core/Application.hpp"
 #include "Runtime/Project/ProjectDescriptor.hpp"
 #include "Runtime/Project/EditorProjectActions.hpp"
+#include "Runtime/Project/GenericProject.hpp"
+#include "Runtime/Project/ProjectStorage.hpp"
+#include "Runtime/Project/SceneDocument.hpp"
 #include "Runtime/Renderer/RenderSystem.hpp"
 #include "Runtime/Scene/blank.hpp"
 #include "Projects/Bikers/BikersProject.hpp"
@@ -17,6 +20,7 @@ namespace fs = std::filesystem;
 engine::ApplicationOptions ProjectOptions(const engine::ProjectDescriptor& project) {
     // Executable-owned registry: Engine has no dependency on native game modules.
     if (project.contentModule == "bikers") return engine::bikers::CreateOptions(project, true);
+    if (project.contentModule == "scene") return engine::GenericProjectOptions(project, true);
     throw std::runtime_error("This editor has no registered content module: " + project.contentModule);
 }
 
@@ -43,12 +47,13 @@ std::string RunProject(const fs::path& executable, const engine::ProjectDescript
 }
 
 int main(int argc, char** argv) try {
-    const auto executable = fs::absolute(argv[0]);
+    const auto arguments = engine::apps::CommandLinePaths(argc, argv);
+    const auto executable = fs::absolute(arguments.front());
     std::optional<fs::path> initialProject;
-    if (argc == 2) initialProject = fs::absolute(argv[1]);
-    else if (argc == 3 && std::string(argv[1]) == "--project") initialProject = fs::absolute(argv[2]);
-    else if (argc != 1) throw std::runtime_error("Usage: Editor [--project] <file.steerproj>");
-    engine::apps::UseRepositoryAssets(argv[0]);
+    if (arguments.size() == 2) initialProject = fs::absolute(arguments[1]);
+    else if (arguments.size() == 3 && arguments[1] == "--project") initialProject = fs::absolute(arguments[2]);
+    else if (arguments.size() != 1) throw std::runtime_error("Usage: Editor [--project] <file.steerproj>");
+    engine::apps::UseRepositoryAssets(arguments.front());
     const auto engineDirectory = fs::current_path();
     const auto exampleProject = engineDirectory / "Projects/Bikers/Bikers.steerproj";
 #ifdef _WIN32
@@ -77,29 +82,56 @@ int main(int argc, char** argv) try {
             options.editorAvailable = true;
             options.showEditorInitially = true;
             options.editingProject = true;
+            options.genericScene = true;
+            options.playInEditorAvailable = true;
         }
         auto configureContent = std::move(options.configureRenderer);
         options.configureRenderer = [&, configureContent = std::move(configureContent)](engine::RenderSystem& renderer) {
             if (configureContent) configureContent(renderer);
             engine::EditorProjectActions actions;
-            if (fs::is_regular_file(exampleProject)) actions.exampleProjectFile = exampleProject.string();
+            actions.genericScene = !currentProject || currentProject->contentModule == "scene";
+            if (fs::is_regular_file(exampleProject)) actions.exampleProjectFile = engine::ProjectPathText(exampleProject);
             if (currentProject) {
                 actions.projectName = currentProject->name;
-                actions.projectFile = currentProject->filePath.string();
-                actions.snapshotFile = currentProject->snapshotPath.string();
-                actions.runProject = [&] { return RunProject(demoExecutable, *currentProject); };
-                actions.closeProject = [&] { closeProject = true; };
+                actions.projectFile = engine::ProjectPathText(currentProject->filePath);
+                actions.snapshotFile = engine::ProjectPathText(currentProject->snapshotPath);
             }
             actions.openProject = [&](const std::string& path) -> std::string {
                 try {
-                    auto candidate = engine::ProjectDescriptor::Load(fs::path(path));
+                    auto candidate = engine::ProjectDescriptor::Load(fs::u8path(path));
                     ProjectOptions(candidate);
+                    if (candidate.contentModule == "scene") {
+                        std::ifstream stream(candidate.snapshotPath);
+                        if (!stream) throw std::runtime_error("Cannot read the project's startup scene.");
+                        const auto document = nlohmann::json::parse(stream);
+                        engine::PreflightSceneDocumentResources(document, candidate.assetRoot);
+                    }
                     nextProject = std::move(candidate);
                     return {};
                 } catch (const std::exception& error) {
                     return error.what();
                 }
             };
+            actions.closeProject = [&] { closeProject = true; };
+            actions.runProject = [&] {
+                return currentProject ? RunProject(demoExecutable, *currentProject) : "Save this project before running it in a separate window.";
+            };
+            if (actions.genericScene) {
+                actions.saveProject = [&](const std::string& path, const nlohmann::json& scene) -> std::string {
+                    try {
+                        const auto candidate = engine::project_storage::Save(fs::u8path(path), fs::current_path() / "Assets", scene);
+                        currentProject = candidate;
+                        auto& current = renderer.ProjectActions();
+                        current.projectName = candidate.name;
+                        current.projectFile = engine::ProjectPathText(candidate.filePath);
+                        current.snapshotFile = engine::ProjectPathText(candidate.snapshotPath);
+                        current.error.clear();
+                        glfwSetWindowTitle(renderer.GetGLFWWindow(), ("Steer Engine - " + candidate.name).c_str());
+                        return {};
+                    }
+                    catch (const std::exception& error) { return error.what(); }
+                };
+            }
             renderer.SetEditorProjectActions(std::move(actions));
         };
         {

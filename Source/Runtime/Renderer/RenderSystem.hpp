@@ -340,8 +340,8 @@ namespace engine {
                 mInputSystem->ConfigureMouseCapture(mState->frame.runGameplay);
                 return;
             }
-            const bool game = IsEmbeddedGameVisible() && mState->editor.isGameViewportFocused &&
-                mState->frame.runGameplay;
+            const bool game = mState->editor.isGameViewportVisible && mState->editor.isGameViewportFocused &&
+                ((IsEditorPlaying() && mState->frame.runGameplay) || IsFreeCameraPreview());
             const bool scene = mState->editor.isSceneViewportVisible && mState->editor.isSceneViewportFocused;
             const ImVec2 position = game ? EngineUi::GetGameViewportPos() : EngineUi::GetSceneViewportPos();
             const ImVec2 size = game ? EngineUi::GetGameViewportSize() : EngineUi::GetSceneViewportSize();
@@ -353,6 +353,21 @@ namespace engine {
         const CameraState& RenderCameraState() const {
             return mState->editor.showEngineUi && !mRenderingGameViewport
                 ? mState->editor.sceneCamera.State() : mState->camera.State();
+        }
+        const CameraState& GetGameCameraState() const { return mState->camera.State(); }
+        bool IsFreeCameraPreview() const {
+            return mState && editor_viewport::FreeCameraPreview(mState->editor, IsEditorPlaying(), mState->camera.State().mode);
+        }
+        bool GameViewportAcceptsPreviewInput() const {
+            if (!mState || (mInputSystem && !mInputSystem->IsWindowFocused())) return false;
+            const ImVec2 position = EngineUi::GetGameViewportPos();
+            const ImVec2 size = EngineUi::GetGameViewportSize();
+            const ImVec2 origin = ImGui::GetMainViewport()->Pos;
+            const bool pointerInside = mInputSystem
+                ? mInputSystem->IsCursorInside({position.x - origin.x, position.y - origin.y, size.x, size.y})
+                : mState->editor.isGameViewportHovered;
+            return editor_viewport::FreeCameraPreviewAcceptsInput(mState->editor, IsEditorPlaying(),
+                mState->camera.State().mode, pointerInside, mInputSystem && mInputSystem->IsMouseCaptured());
         }
         int ActiveRenderMode() const {
             return editor_viewport::ActiveRenderMode(mState->editor, mRenderingGameViewport);
@@ -1179,8 +1194,8 @@ namespace engine {
                 glm::mat4 gizmoProj = glm::perspective(
                     fovRadians,
                     aspect, // 用算好的 aspect 替换原来的计算
-                    cfg::kCameraNear,
-                    cfg::kCameraFar
+                    sceneCamera.nearPlane,
+                    sceneCamera.farPlane
                 );
                 //3D 场景拖放接收器绘制视口上的拖放目标
                 //EngineUi::DrawViewportDropTarget(this, mSceneManager, view, gizmoProj);
@@ -1220,11 +1235,11 @@ namespace engine {
                 // 获取全局鼠标位置和 Viewport 数据
                 EngineUi::DrawSceneViewport(m_sceneViewportTexId, this, mSceneManager, mEditorScene, view, gizmoProj, mEditorScene.Selection(), mState->editor, mState->render);
                 if (mState->editor.showEngineUi && mState->editor.isSceneViewportVisible &&
-                    mState->editor.showPlayerCameraIcon && !mEditorProjectActions.projectFile.empty())
+                    mState->editor.showPlayerCameraIcon && mSceneManager)
                     playerCameraIcon = GetContentBrowserThumbnail("Assets/Textures/CameraIcon.png");
                 if (mState->editor.showEngineUi) {
                     EngineUi::DrawGameViewport(m_sceneViewportTexId, mState->editor, IsEditorPlaying(),
-                        mEditorPlayController && mEditorPlayController->IsPaused());
+                        mEditorPlayController && mEditorPlayController->IsPaused(), IsFreeCameraPreview());
                     mRenderingGameViewport = editor_viewport::RenderGameViewport(mState->editor);
                     SceneViewport::Set(EngineUi::GetGameViewportPos(), EngineUi::GetGameViewportSize(),
                         EngineUi::GetGameViewportDrawList());
@@ -1663,20 +1678,28 @@ namespace engine {
 
             // Update state
             // Editor and gameplay cameras have independent ownership.
+            if (mSceneManager) ApplyGameCameraEdits(mSceneManager->get_world(), mState->camera, mState->player.State());
             if (mState->editor.showEngineUi) {
                 const bool sceneInput = mState->editor.isSceneViewportVisible &&
                     mState->editor.isSceneViewportFocused &&
-                    !GameViewportAcceptsInput() &&
+                    !GameViewportAcceptsInput() && !GameViewportAcceptsPreviewInput() &&
                     !mState->editor.inputCapturesKeyboard &&
                     (mState->editor.isSceneViewportHovered || (mInputSystem && mInputSystem->IsMouseCaptured()));
                 if (sceneInput)
                     update_camera(mState->editor.sceneCamera, mState->player.State(), mState->editor, dt, mInputSystem);
             }
-            if (mState->frame.runSimulationSystems || (!IsEditorPlaying() && mRenderingGameViewport)) {
+            const bool previewCameraInput = GameViewportAcceptsPreviewInput();
+            if (mState->frame.runSimulationSystems || previewCameraInput || (!IsEditorPlaying() && mRenderingGameViewport)) {
                 EditorState gameRoute;
+                gameRoute.showEngineUi = previewCameraInput;
+                gameRoute.isSceneViewportHovered = previewCameraInput;
                 update_camera(mState->camera, mState->player.State(), gameRoute,
-                    mState->frame.runSimulationSystems ? dt : 0.0f,
-                    GameViewportAcceptsGameplayInput() && !editorCapturesKeyboard ? mInputSystem : nullptr);
+                    mState->frame.runSimulationSystems || previewCameraInput ? dt : 0.0f,
+                    (GameViewportAcceptsGameplayInput() || previewCameraInput) && !editorCapturesKeyboard ? mInputSystem : nullptr);
+            }
+            if (mSceneManager) {
+                if (previewCameraInput) RecordGameCameraPreview(mSceneManager->get_world(), mState->camera);
+                PublishGameCameraPose(mSceneManager->get_world(), mState->camera);
             }
 
             //// Prepare data for this frame
@@ -1709,22 +1732,23 @@ namespace engine {
                 RenderCameraState(), frameRenderMode
             );
 
-            if (mState->editor.showEngineUi && !mRenderingGameViewport &&
-                !mEditorProjectActions.projectFile.empty()) {
+            if (mState->editor.showEngineUi && !mRenderingGameViewport && mSceneManager) {
                 const auto& playerCamera = mState->camera.State();
                 const ImVec2 gameSize = EngineUi::GetGameViewportSize();
                 const auto gameWidth = static_cast<uint32_t>(std::max(1.0f, std::abs(gameSize.x)));
                 const auto gameHeight = static_cast<uint32_t>(std::max(1.0f, std::abs(gameSize.y)));
                 const editor_camera_gizmo::CameraView cameraView{
                     playerCamera.camera2world, playerCamera.cameraFov,
-                    float(gameWidth) / float(gameHeight), cfg::kCameraNear, cfg::kCameraFar
+                    float(gameWidth) / float(gameHeight), playerCamera.nearPlane, playerCamera.farPlane
                 };
                 // ImGui has top-down pixels; the overlay projects with an unflipped
                 // RH_ZO lens and converts NDC Y to screen Y exactly once.
                 glm::mat4 overlayProjection = sceneUniforms.projection;
                 overlayProjection[1][1] *= -1.0f;
                 EngineUi::DrawPlayerCameraGizmo(playerCameraIcon, cameraView,
-                    overlayProjection * sceneUniforms.camera, mState->editor);
+                    overlayProjection * sceneUniforms.camera, mState->editor,
+                    FindGameCameraEntity(mSceneManager->get_world()).id(), &mEditorScene.Selection(),
+                    !mInputSystem || !mInputSystem->IsMouseCaptured());
             }
 
             // 【新增】：将 IBL 状态同步给 Shader
@@ -1827,7 +1851,7 @@ namespace engine {
             }
             // --- 【新增】：为车头灯计算独有的 Shadow 矩阵，并塞进第 4 个槽位 (索引 3) ---
             for (size_t i = 0; i < sceneUniforms.lightCount; ++i) {
-                if (sceneUniforms.lights[i].position.w == 2.0f) { // 2.0 代表聚光灯
+                if (sceneUniforms.lights[i].params.w == 2.0f) {
                     // 我们之前把 outerCutOff 的 cos 值存在了 params.y，现在反算回角度
                     float outerCutOff = glm::degrees(glm::acos(sceneUniforms.lights[i].params.y));
 
@@ -1841,6 +1865,8 @@ namespace engine {
                 }
             }
             // Draw scene-provided debug geometry without evaluating gameplay.
+            update_directional_shadows(sceneUniforms, mSceneRenderer.GetDirectionalLight(),
+                RenderCameraState().nearPlane, RenderCameraState().farPlane);
             if (mState->editor.showEngineUi && !mRenderingGameViewport && mSceneDebugDraw) mSceneDebugDraw(mDebugRenderer);
             const bool editorBackdrop = mState->editor.showEngineUi && !mRenderingGameViewport &&
                 mState->editor.editorViewportBackdrop &&
@@ -2775,7 +2801,8 @@ namespace engine {
             }
 
             portalUniform.camera = glm::lookAt(cameraPosition, target, cameraUp);
-            portalUniform.projection = glm::perspectiveRH_ZO(fov, aspect, cfg::kCameraNear, cfg::kCameraFar);
+            portalUniform.projection = glm::perspectiveRH_ZO(fov, aspect,
+                RenderCameraState().nearPlane, RenderCameraState().farPlane);
             portalUniform.projection[1][1] *= -1.0f;
             portalUniform.projCam = portalUniform.projection * portalUniform.camera;
             portalUniform.cameraPos = glm::vec4(cameraPosition, 1.0f);
@@ -2783,19 +2810,8 @@ namespace engine {
             portalUniform.portalClipPlane = glm::vec4(0.0f);
 
             const glm::mat4 spotlightLightVP = portalUniform.lightVP[3];
-            constexpr float kPortalShadowFarDistance = 850.0f;
-            engine::ShadowData portalShadow = engine::compute_csm_matrices(
-                glm::vec3(portalUniform.lightPos),
-                portalUniform.camera,
-                fov,
-                aspect,
-                cfg::kCameraNear,
-                kPortalShadowFarDistance);
-
-            portalUniform.cascadeSplits = portalShadow.cascadeSplits;
-            for (int i = 0; i < 3; ++i) {
-                portalUniform.lightVP[i] = portalShadow.lightVP[i];
-            }
+            update_directional_shadows(portalUniform, mSceneRenderer.GetDirectionalLight(),
+                RenderCameraState().nearPlane, RenderCameraState().farPlane);
             portalUniform.lightVP[3] = spotlightLightVP;
 
             return portalUniform;

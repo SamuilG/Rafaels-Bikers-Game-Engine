@@ -4,8 +4,8 @@
 
 namespace engine {
 
-// Empty engine entry scene. It owns no game assets or gameplay entities; it
-// only establishes a usable first-person editor/runtime camera.
+// Generic engine entry scene for new and document-based projects. It owns no
+// hard-coded game assets; the host instantiates the authored scene document.
 class blank final : public GameScene {
 public:
     blank() = default;

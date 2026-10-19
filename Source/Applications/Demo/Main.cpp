@@ -2,6 +2,7 @@
 #include "Projects/Bikers/BikersProject.hpp"
 #include "Runtime/Core/Application.hpp"
 #include "Runtime/Project/ProjectDescriptor.hpp"
+#include "Runtime/Project/GenericProject.hpp"
 #include "Runtime/LoadEngineSplash/StartupSplash.hpp"
 #include <filesystem>
 #include <print>
@@ -10,27 +11,30 @@
 
 int main(int argc, char** argv) try {
     namespace fs = std::filesystem;
+    const auto arguments = engine::apps::CommandLinePaths(argc, argv);
     fs::path projectPath;
     // Resolve arguments before discovery or the project asset mount changes cwd.
-    for (int index = 1; index < argc; ++index) {
-        std::string_view argument(argv[index]);
+    for (std::size_t index = 1; index < arguments.size(); ++index) {
+        auto argument = arguments[index];
         if (argument == "--project") {
-            if (++index >= argc) throw std::runtime_error("--project requires a project file.");
-            argument = argv[index];
+            if (++index >= arguments.size()) throw std::runtime_error("--project requires a project file.");
+            argument = arguments[index];
         }
-        else if (argument.starts_with('-')) {
-            throw std::runtime_error("Unknown Demo argument: " + std::string(argument));
+        else if (!argument.empty() && argument.native().front() == '-') {
+            throw std::runtime_error("Unknown Demo argument: " + engine::ProjectPathText(argument));
         }
         if (argument.empty() || !projectPath.empty())
             throw std::runtime_error("Specify one project file: Demo.exe [--project] <file.steerproj>.");
-        projectPath = fs::absolute(fs::path(argument));
+        projectPath = fs::absolute(argument);
     }
 
-    engine::apps::UseRepositoryAssets(argv[0]);
+    engine::apps::UseRepositoryAssets(arguments.front());
     if (projectPath.empty())
         projectPath = fs::current_path() / "Projects/Bikers/Bikers.steerproj";
     const auto project = engine::ProjectDescriptor::Load(projectPath);
-    auto options = engine::bikers::CreateOptions(project, false);
+    auto options = project.contentModule == "scene"
+        ? engine::GenericProjectOptions(project, false)
+        : engine::bikers::CreateOptions(project, false);
     fs::current_path(project.assetRoot.parent_path());
 
     engine::StartupSplash splash;

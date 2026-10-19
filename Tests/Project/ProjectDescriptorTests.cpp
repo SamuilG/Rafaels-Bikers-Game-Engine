@@ -239,8 +239,12 @@ namespace {
         rejectSnapshot(R"({"Entities":[{"Name":"Bike_0","Position":[0,"bad",0],"Rotation":[0,0,0],"Scale":[1,1,1]}]})");
         rejectSnapshot(R"({"Entities":[{"Name":"Bike_0","Position":[0,0,0],"Rotation":"0,0,0","Scale":[1,1,1]}]})");
         rejectSnapshot(R"({"Particles":[{"MaxParticles":4294967296}]})");
+        rejectSnapshot(R"({"Entities":[{"Name":"PlayerCamera","Position":[0,2,5],"Rotation":[0,0,0],"Scale":[1,1,1],"Camera":{"Mode":"Portal"}}]})");
+        rejectSnapshot(R"({"Entities":[{"Name":"PlayerCamera","Position":[0,2,5],"Rotation":[0,0,0],"Scale":[1,1,1],"Camera":{"Mode":"Free","NearPlane":5,"FarPlane":1}}]})");
+        rejectSnapshot(R"({"Entities":[{"Name":"PlayerCamera","Position":[0,2,5],"Rotation":[0,0,0],"Scale":[2,1,1],"Camera":{"Mode":"Free"}}]})");
         for (const auto* contents : {
             "{}",
+            R"({"Entities":[{"Name":"PlayerCamera","Position":[0,2,5],"Rotation":[0,0,0],"Scale":[1,1,1],"Camera":{"Mode":"Free","AutomaticFov":false,"Fov":75}}]})",
             R"({"Entities":[{"Name":"Bike_0","Position":[0,1,2],"Rotation":[0,0,0],"Scale":[1,1,1]}]})",
             R"({"Particles":[{}, {"Name":"Legacy emitter"}]})"}) {
             std::ofstream(snapshot) << contents;

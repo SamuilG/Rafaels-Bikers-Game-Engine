@@ -29,19 +29,13 @@ void blank::Init(RenderSystem* render, SceneManager* scene, PhysicsSystem* physi
 
     if (m_state) {
         m_state->player.SetControlEnabled(true);
-        m_state->camera.ResetForNewRun();
-        m_state->camera.RequestFree();
-        m_state->camera.SetFov(75.0f);
-        m_state->camera.SetFreeTransform(glm::inverse(glm::lookAt(
-            glm::vec3(0.0f, 1.8f, 5.0f),
-            glm::vec3(0.0f, 1.8f, 0.0f),
-            glm::vec3(0.0f, 1.0f, 0.0f))));
     }
 }
 
 void blank::Update(float /*dt*/) {
-    // The blank scene deliberately has no game entities or simulation. Input
-    // and camera presentation remain owned by the engine renderer.
+    // Generic scene entities are instantiated from a scene document by the
+    // application. Engine physics, animation and particles run in their usual
+    // frame phases; no demo-specific gameplay is attached to this entry scene.
 }
 
 void blank::RefreshPlayerMotion(float /*dt*/) {

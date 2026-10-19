@@ -1,4 +1,5 @@
 #include "Runtime/Scene/GameCameraEntity.hpp"
+#include "Runtime/UI/EditorViewportRouting.hpp"
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
@@ -16,6 +17,46 @@ static void SameMatrix(const glm::mat4& a, const glm::mat4& b, const char* messa
 }
 
 int main() {
+    {
+        flecs::world blankWorld;
+        CameraController defaultCamera, sceneCamera;
+        PlayerState noPlayer;
+        InitializeDefaultGameCamera(defaultCamera, noPlayer);
+        InitializeDefaultGameCamera(sceneCamera, noPlayer);
+        const auto defaultEntity = EnsureGameCameraEntity(blankWorld, defaultCamera);
+        Require(defaultEntity.get<GameCameraComponent>().settings.mode == CameraMode::Free,
+            "an empty project always has a free camera entity");
+        SameMatrix(defaultCamera.State().camera2world, sceneCamera.State().camera2world,
+            "default Game and Scene cameras start with the same pose");
+        Require(defaultCamera.State().cameraFov == 75.0f, "default lens immediately matches Scene view");
+        CameraInput navigation;
+        navigation.lookDelta = {0.1f, -0.03f};
+        navigation.localMove = {2, 1, -4};
+        defaultCamera.Update(0.05f, navigation, noPlayer);
+        sceneCamera.Update(0.05f, navigation, noPlayer);
+        SameMatrix(defaultCamera.State().camera2world, sceneCamera.State().camera2world,
+            "default camera has identical Scene free-navigation behavior without a player");
+        RecordGameCameraPreview(blankWorld, defaultCamera);
+        SameMatrix(defaultEntity.get<GameCameraComponent>().freeTransform, defaultCamera.State().camera2world,
+            "editing navigation is retained as the camera's authored pose");
+        EditorState viewport;
+        viewport.showEngineUi = viewport.isGameViewportVisible = viewport.isGameViewportFocused = true;
+        Require(editor_viewport::FreeCameraPreviewAcceptsInput(viewport, false, CameraMode::Free, true, false),
+            "empty project Game preview accepts navigation before Play");
+        Require(editor_viewport::FreeCameraPreviewAcceptsInput(viewport, false, CameraMode::Free, false, true),
+            "captured Game preview retains navigation outside pointer bounds");
+        viewport.inputCapturesKeyboard = true;
+        Require(!editor_viewport::FreeCameraPreviewAcceptsInput(viewport, false, CameraMode::Free, true, false),
+            "Inspector typing blocks preview navigation");
+        viewport.inputCapturesKeyboard = false;
+        Require(!editor_viewport::FreeCameraPreviewAcceptsInput(viewport, true, CameraMode::Free, true, false) &&
+            !editor_viewport::FreeCameraPreviewAcceptsInput(viewport, false, CameraMode::Follow, true, false),
+            "preview route does not unpause Play or take over Follow cameras");
+        viewport.isGameViewportVisible = false;
+        Require(!editor_viewport::FreeCameraPreviewAcceptsInput(viewport, false, CameraMode::Free, true, true),
+            "switching back to Scene stops Game preview input");
+        std::puts("PASS empty-project defaults, identical Scene navigation and isolated preview input routing");
+    }
     flecs::world authoringWorld;
     CameraController camera;
     PlayerState player;

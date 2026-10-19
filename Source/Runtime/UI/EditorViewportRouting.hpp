@@ -19,6 +19,16 @@ inline bool RenderGameViewport(const EditorState& editor) {
         (editor.isGameViewportVisible && !editor.isSceneViewportVisible);
 }
 
+inline bool FreeCameraPreview(const EditorState& editor, bool playing, CameraMode mode) {
+    return editor.showEngineUi && !playing && mode == CameraMode::Free;
+}
+
+inline bool FreeCameraPreviewAcceptsInput(const EditorState& editor, bool playing,
+    CameraMode mode, bool pointerInside, bool mouseCaptured) {
+    return FreeCameraPreview(editor, playing, mode) && editor.isGameViewportVisible &&
+        editor.isGameViewportFocused && !editor.inputCapturesKeyboard && (pointerInside || mouseCaptured);
+}
+
 inline int ActiveRenderMode(const EditorState& editor, bool renderingGame) {
     return editor.showEngineUi && !renderingGame
         ? std::clamp(editor.renderMode, int(view_mode::Default), int(view_mode::Count) - 1)

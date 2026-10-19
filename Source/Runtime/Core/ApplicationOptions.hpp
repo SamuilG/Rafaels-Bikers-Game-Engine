@@ -25,6 +25,7 @@ struct ApplicationOptions {
     bool startPlaying = false;
     bool editingProject = false;
     bool playInEditorAvailable = false;
+    bool genericScene = false;
     std::string sceneSnapshotPath;
     glm::vec3 editorCameraPosition{0.0f, 2.0f, 5.0f};
     glm::vec3 editorCameraTarget{0.0f, 2.0f, 0.0f};

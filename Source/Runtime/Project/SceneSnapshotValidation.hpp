@@ -6,6 +6,8 @@
 #include <stdexcept>
 #include <string>
 #include "ThirdParty/json/json.hpp"
+#include "Runtime/Scene/CameraSerialization.hpp"
+#include "Runtime/Scene/LightSerialization.hpp"
 
 namespace engine {
 
@@ -51,8 +53,17 @@ inline void ValidateSceneSnapshot(const nlohmann::json& document) {
                     throw std::runtime_error("Scene snapshot " + path + " is missing " + field + ".");
             }
             text(entity["Name"], path + ".Name");
+            if (entity.contains("Light")) (void)DeserializeLight(entity["Light"]);
+            if (entity.contains("Visible") && !entity["Visible"].is_boolean()) fail(path + ".Visible", "a boolean");
             for (const auto* field : {"Position", "Rotation", "Scale"})
                 vector(entity[field], 3, path + "." + field);
+            if (entity.contains("Camera")) {
+                try { (void)DeserializeCameraSettings(entity["Camera"]); }
+                catch (const std::exception& error) { throw std::runtime_error(path + "." + error.what()); }
+                for (const auto& scale : entity["Scale"])
+                    if (std::abs(scale.get<float>() - 1.0f) > 0.0001f)
+                        throw std::runtime_error(path + ".Scale must be unit scale for a camera.");
+            }
         }
     }
     if (document.contains("Particles")) {

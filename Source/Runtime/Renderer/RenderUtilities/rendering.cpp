@@ -410,6 +410,7 @@ void record_commands(
 
 		for (uint32_t i = 0; i < kCascadeCount; ++i)
 		{
+			if (i < 3 && shadowSceneUniform.directionalShadow.raster.z < 0.5f) continue;
 			VkImageView currentLayerView = aShadowCascadeViews[i];
 
 			VkRenderingAttachmentInfo shadowDepthInfo{};
@@ -436,7 +437,8 @@ void record_commands(
 			vkCmdSetScissor(aCmdBuff, 0, 1, &shadowScissor);
 
 			// 娣卞害鍋忕Щ锛堝彲璋冿級
-			vkCmdSetDepthBias(aCmdBuff, 1.5f, 0.f, 1.85f);
+			vkCmdSetDepthBias(aCmdBuff, i < 3 ? shadowSceneUniform.directionalShadow.raster.x : 1.5f,
+                0.f, i < 3 ? shadowSceneUniform.directionalShadow.raster.y : 1.85f);
 
 			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
 

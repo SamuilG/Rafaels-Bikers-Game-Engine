@@ -268,11 +268,13 @@ void TestShading(Gpu& gpu, const IblResources& ibl, bool whiteEnvironment = true
         glm::mat4 camera{1}, projection{1}, projCam{1}; glm::vec4 cameraPos{0,0,10000,1}, lights[64]{}, lightPos{}, lightColor{};
         uint32_t lightCount{}, renderMode{}, iblEnabled{}, pad{}; glm::mat4 lightVP[4]{}; glm::vec4 cascadeSplits{}, clip{};
         glsl::EnvironmentParameters environment;
+        glm::vec4 directionalShadowSampling{0.00005f, 2.5f, 0.12f, 1};
+        glm::vec4 directionalShadowRaster{1.5f, 1.85f, 1, 0};
     } scene;
     struct Object {
         glm::mat4 transform{1}; glm::vec4 base{1}, emissive{0,0,0,1}; float metallic = 1, roughness = 1, cutoff = 0, pad = 0; glm::vec4 clip{};
     } object;
-    static_assert(sizeof(Scene) == 1600 && offsetof(Scene,environment) == 1568 && sizeof(Object) == 128);
+    static_assert(sizeof(Scene) == 1632 && offsetof(Scene,environment) == 1568 && sizeof(Object) == 128);
     const VkBuffer ubo = gpu.Buffer(sizeof(scene),VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,&scene).buffer;
     // All draws finish before their uniform storage is reused.
     auto updateScene = [&]() { auto it = std::find_if(gpu.buffers.begin(),gpu.buffers.end(),[&](auto& b) { return b.buffer == ubo; }); void* p{}; VK_CHECK(vmaMapMemory(gpu.allocator.allocator,it->allocation,&p)); std::memcpy(p,&scene,sizeof(scene)); vmaFlushAllocation(gpu.allocator.allocator,it->allocation,0,sizeof(scene)); vmaUnmapMemory(gpu.allocator.allocator,it->allocation); };
@@ -430,6 +432,29 @@ void TestShading(Gpu& gpu, const IblResources& ibl, bool whiteEnvironment = true
     scene.lights[3].z = 0; updateScene();
     Near(draw(hdrPipeline.handle,pbrLayout.handle,&object,sizeof(object),true)[0],0,.0001f,"Per-light specular multiplier remains effective");
     std::cout << "[PASS] Production PBR HDR, PNG specialization, white furnace and direct GGX/specular controls.\n";
+
+    const auto beforeDirectional = scene;
+    const auto beforeDirectionalObject = object;
+    auto& primaryShadow = gpu.Image(1, VK_FORMAT_D32_SFLOAT, 4);
+    const float primaryDepth[] = {0.25f, 1, 1, 1};
+    gpu.Upload(primaryShadow.image, 1, 4, primaryDepth, sizeof(primaryDepth), VK_IMAGE_ASPECT_DEPTH_BIT);
+    bindImage(sceneSet, 1, primaryShadow.view, rawShadow);
+    scene.iblEnabled = 0; scene.lightCount = 2; scene.cascadeSplits = {5,20,80,0};
+    scene.lights[0] = {0,0,1,0}; scene.lights[1] = {1,0,0,1}; scene.lights[3] = {0,0,1,1};
+    scene.lights[4] = {0,0,1,0}; scene.lights[5] = {0,0,1,1}; scene.lights[7] = {0,0,1,0};
+    for (auto& matrix : scene.lightVP) { matrix = glm::mat4(0); matrix[3] = {0,0,0.5f,1}; }
+    object.metallic = 0; object.roughness = 1; object.base = {1,1,1,1}; updateScene();
+    const auto primaryOnly = draw(hdrPipeline.handle,pbrLayout.handle,&object,sizeof(object),true);
+    Require(primaryOnly[0] < .001f && primaryOnly[2] > .1f, "only assigned primary directional light samples cascade shadow");
+    scene.directionalShadowSampling.w = .5f; updateScene();
+    const auto halfPrimary = draw(hdrPipeline.handle,pbrLayout.handle,&object,sizeof(object),true);
+    Require(halfPrimary[0] > .05f && halfPrimary[0] < halfPrimary[2] * .6f, "shadow strength modifies direct illumination without affecting secondary light");
+    scene.directionalShadowRaster.z = 0; updateScene();
+    const auto noPrimaryShadow = draw(hdrPipeline.handle,pbrLayout.handle,&object,sizeof(object),true);
+    Near(noPrimaryShadow[0], noPrimaryShadow[2], .002f, "disabled primary shadows preserve both direct lights");
+    scene = beforeDirectional; object = beforeDirectionalObject; updateScene();
+    bindImage(sceneSet, 1, shadowView, rawShadow);
+    std::cout << "[PASS] Primary sun shadow ownership and live shadow strength/enable controls in production PBR.\n";
     // The portal shaders share the scene UBO / material layout, but copy HDR
     // radiance instead of shading it. Verify their surface survives near clipping.
     auto portalPipeline = gpu.Pipeline(pbrLayout.handle,true,false,true);

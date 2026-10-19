@@ -64,6 +64,8 @@ layout( scalar, set = 0, binding = 0 ) uniform UScene
     vec4 portalClipPlane;
     vec4 iblParams;       // global / diffuse / specular strength, rotation in radians
     vec4 environmentTint; // RGB multiplier and saturation
+    vec4 directionalShadowSampling;
+    vec4 directionalShadowRaster;
 } uScene;
 
 layout( set = 0, binding = 1 ) uniform sampler2DArrayShadow uShadowMap;
@@ -221,14 +223,14 @@ void main()
 
             float theta = dot(L_spot, -SpotDir);
             float epsilon = light.params.x - light.params.y;
-            float spotAtten = clamp((theta - light.params.y) / epsilon, 0.0, 1.0);
+            float spotAtten = clamp((theta - light.params.y) / max(epsilon, 0.00001), 0.0, 1.0);
 
             float spotShadow = 1.0;
             vec4 lightSpacePos = uScene.lightVP[3] * vec4(v2fPos, 1.0);
             vec3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
             projCoords.xy = projCoords.xy * 0.5 + 0.5;
 
-            if (lightSpacePos.w > 0.0 &&
+            if (light.params.w == 2.0 && lightSpacePos.w > 0.0 &&
                 projCoords.z >= 0.0 && projCoords.z <= 1.0 &&
                 projCoords.x >= 0.0 && projCoords.x <= 1.0 &&
                 projCoords.y >= 0.0 && projCoords.y <= 1.0)
@@ -248,7 +250,7 @@ void main()
         float NdotH = max(dot(N, H), 0.0);
         float VdotH = max(dot(V, H), 0.0);
 
-        float currentShadow = (light.position.w == 0.0) ? shadow : 1.0;
+        float currentShadow = (light.params.w == 1.0) ? shadow : 1.0;
         vec3 Li = light.color.rgb * light.color.a * attenuation * currentShadow;
 
         // --- 物理 BRDF ---

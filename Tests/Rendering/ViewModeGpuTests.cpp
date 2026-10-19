@@ -40,6 +40,9 @@ namespace {
         uint32_t lightCount{}, renderMode{}, iblEnabled{}, pad{};
         glm::mat4 lightVP[4]{};
         glm::vec4 cascadeSplits{}, portalClipPlane{};
+        glm::vec4 environment[2]{};
+        glm::vec4 directionalShadowSampling{0.00005f, 2.5f, 0.12f, 1};
+        glm::vec4 directionalShadowRaster{1.5f, 1.85f, 1, 0};
     };
     struct ObjectPC {
         glm::mat4 transform{1};
@@ -53,7 +56,7 @@ namespace {
     static_assert(sizeof(Vertex) == 32);
     static_assert(sizeof(SkinnedVertex) == 64);
     static_assert(sizeof(ObjectPC) == 128 && offsetof(ObjectPC, clipPlane) == 112);
-    static_assert(sizeof(SceneUniform) == 1568 && offsetof(SceneUniform, portalClipPlane) == 1552);
+    static_assert(sizeof(SceneUniform) == 1632 && offsetof(SceneUniform, portalClipPlane) == 1552);
     struct Draw { std::array<Vertex, 6> vertices; ObjectPC pc{}; bool cutoutTexture = false; bool coloredTexture = false; };
     using Pixel = std::array<float, 4>;
     using Frame = std::vector<Pixel>;
@@ -603,6 +606,22 @@ int main(int argc, char** argv) {
         const Frame thirdCascade = gpu.Render(shadow, {Quad(40)}, {}, nullptr, &shadowScene);
         Near(Sample(secondCascade, 16)[0], 1, 0.001f, "camera depth selects the lit second shadow-array layer");
         Near(Sample(thirdCascade, 48)[0], 0, 0.001f, "camera depth selects the shadowed third shadow-array layer");
+        shadowScene.directionalShadowSampling.w = 0.25f;
+        const Frame weakShadow = gpu.Render(shadow, {Quad(2)}, {}, nullptr, &shadowScene);
+        Near(Sample(weakShadow, 16)[0], 0.75f, 0.001f, "authored shadow strength controls GPU visibility");
+        shadowScene.directionalShadowSampling.z = 0;
+        shadowScene.directionalShadowRaster.z = 0;
+        const Frame disabledShadow = gpu.Render(shadow, {Quad(2)}, {}, nullptr, &shadowScene);
+        Near(Sample(disabledShadow, 16)[0], 1, 0.001f, "disabled primary shadows bypass GPU sampling");
+        shadowScene.directionalShadowRaster.z = 1;
+        shadowScene.directionalShadowSampling.w = 1;
+        for (auto& matrix : shadowScene.lightVP) matrix[3][2] = 0.26f;
+        shadowScene.directionalShadowSampling.x = 0;
+        const Frame unBiased = gpu.Render(shadow, {Quad(2)}, {}, nullptr, &shadowScene);
+        Near(Sample(unBiased, 16)[0], 0, 0.001f, "controlled receiver sits behind the shadow depth");
+        shadowScene.directionalShadowSampling.x = 0.02f;
+        const Frame biased = gpu.Render(shadow, {Quad(2)}, {}, nullptr, &shadowScene);
+        Near(Sample(biased, 16)[0], 1, 0.001f, "authored receiver bias changes the actual comparison sample");
         Save(output, "shadow-csm-visibility.png", splitShadow);
         std::puts("PASS Shadow displays comparison-sampled directional CSM visibility and selects the correct cascade");
 

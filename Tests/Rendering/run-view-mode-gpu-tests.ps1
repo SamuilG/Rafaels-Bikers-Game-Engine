@@ -16,7 +16,7 @@ $visualStudio = & $vswhere -latest -products '*' -requires Microsoft.VisualStudi
 if (-not $visualStudio) { throw 'Visual Studio with x64 C++ build tools was not found.' }
 $vcvars = Join-Path $visualStudio 'VC/Auxiliary/Build/vcvars64.bat'
 $sources = @('Tests/Rendering/ViewModeGpuTests.cpp', 'ThirdParty/volk/src/volk.c')
-$arguments = @('/nologo', '/std:c++latest', '/EHsc', '/MDd', '/Od', '/Zi', '/utf-8', '/MP2', '/D_DEBUG=1')
+$arguments = @('/nologo', '/std:c++latest', '/EHsc', '/MDd', '/Od', '/Z7', '/utf-8', '/MP2', '/D_DEBUG=1')
 foreach ($include in @('ThirdParty/volk/include', 'ThirdParty/volk/include/volk', 'ThirdParty/vulkan/include', 'ThirdParty/glm/include', 'ThirdParty/stb/include')) {
     $arguments += '/I"' + (Join-Path $repoRoot $include) + '"'
 }

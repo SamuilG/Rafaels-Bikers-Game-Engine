@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <string>
+#include "ThirdParty/json/json.hpp"
 
 namespace engine {
 
@@ -13,7 +14,11 @@ struct EditorProjectActions {
     std::string snapshotFile;
     std::string exampleProjectFile;
     std::string error;
+    bool genericScene = false;
     std::function<std::string(const std::string&)> openProject;
+    // A successful save binds this session to the chosen descriptor without
+    // destroying its authoring world or changing the active asset directory.
+    std::function<std::string(const std::string&, const nlohmann::json&)> saveProject;
     std::function<void()> closeProject;
     std::function<std::string()> runProject;
 };

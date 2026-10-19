@@ -1,5 +1,6 @@
 #pragma once
 #include "CameraState.hpp"
+#include "CameraSettings.hpp"
 #include "PlayerState.hpp"
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/constants.hpp>
@@ -11,6 +12,45 @@ class CameraController {
 public:
     const CameraState& State() const { return mState; }
     void ResetForNewRun() { *this = CameraController{}; }
+    bool ApplySettings(const CameraSettings& settings, const glm::mat4& freeTransform,
+        const PlayerState& player) {
+        if (IsTakenOver() || !settings.IsValid()) return false;
+        if (settings.mode == CameraMode::Follow) {
+            if (!std::isfinite(player.position.x) || !std::isfinite(player.position.y) ||
+                !std::isfinite(player.position.z)) return false;
+        } else {
+            for (int column = 0; column < 4; ++column)
+                for (int row = 0; row < 4; ++row)
+                    if (!std::isfinite(freeTransform[column][row])) return false;
+            for (int axis = 0; axis < 3; ++axis) {
+                if (std::abs(freeTransform[axis][3]) > 0.0001f ||
+                    std::abs(glm::dot(glm::vec3(freeTransform[axis]), glm::vec3(freeTransform[axis])) - 1.0f) > 0.001f)
+                    return false;
+                for (int other = axis + 1; other < 3; ++other)
+                    if (std::abs(glm::dot(glm::vec3(freeTransform[axis]), glm::vec3(freeTransform[other]))) > 0.001f)
+                        return false;
+            }
+            if (std::abs(freeTransform[3][3] - 1.0f) > 0.0001f ||
+                std::abs(glm::determinant(glm::mat3(freeTransform)) - 1.0f) > 0.001f) return false;
+        }
+        RequestMode(settings.mode);
+        mState.automaticFov = settings.automaticFov;
+        mState.nearPlane = settings.nearPlane;
+        mState.farPlane = settings.farPlane;
+        mState.Yaw = mState.targetYaw = settings.yaw;
+        mState.Pitch = mState.targetPitch = settings.pitch;
+        mState.Distance = mState.targetDistance = settings.distance;
+        mState.cameraRoll = mState.targetCameraRoll = 0.0f;
+        mState.occlusionFadeEnabled = settings.occlusionFadeEnabled;
+        mState.occlusionFadeCoverage = settings.occlusionFadeCoverage;
+        mState.occlusionFadeSpeed = settings.occlusionFadeSpeed;
+        mState.occlusionTargetHeight = settings.occlusionTargetHeight;
+        mState.cameraFov = mState.targetFov = settings.automaticFov && settings.mode == CameraMode::Follow
+            ? 100.0f - (settings.distance - 2.0f) / 68.0f * 80.0f : settings.fov;
+        if (settings.mode == CameraMode::Free) mState.camera2world = freeTransform;
+        else RefreshFollowPreview(player);
+        return true;
+    }
     // Rebuild an authoring preview from the current orbit without simulating
     // camera input, smoothing, timers, speed effects or portal transitions.
     bool RefreshFollowPreview(const PlayerState& player) {
@@ -113,6 +153,7 @@ public:
         }
     }
     void ResetFollow() {
+        const CameraState previous = mState;
         const glm::vec3 target = mState.followTargetPos;
         const bool automaticFov = mState.automaticFov;
         const float fov = mState.targetFov;
@@ -120,6 +161,12 @@ public:
         mState.followTargetPos = target;
         mState.automaticFov = automaticFov;
         mState.cameraFov = mState.targetFov = fov;
+        mState.nearPlane = previous.nearPlane;
+        mState.farPlane = previous.farPlane;
+        mState.occlusionFadeEnabled = previous.occlusionFadeEnabled;
+        mState.occlusionFadeCoverage = previous.occlusionFadeCoverage;
+        mState.occlusionFadeSpeed = previous.occlusionFadeSpeed;
+        mState.occlusionTargetHeight = previous.occlusionTargetHeight;
         mState.camera2world = glm::inverse(glm::lookAt(target + glm::vec3(0.0f,1.6f,5.0f),
             target + glm::vec3(0.0f,1.6f,0.0f), glm::vec3(0.0f,1.0f,0.0f)));
         mBaseMode = CameraMode::Follow;

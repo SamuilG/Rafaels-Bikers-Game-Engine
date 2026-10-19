@@ -34,6 +34,9 @@ public:
         if (mSource) mSource->CollectLights(lights);
         return lights;
     }
+    DirectionalLightState GetDirectionalLight() const {
+        return mSource ? mSource->GetDirectionalLight() : DirectionalLightState{};
+    }
 
     std::uint32_t LastFrustumCandidates() const {
         return mSource ? mSource->LastFrustumCandidates() : 0;

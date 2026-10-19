@@ -26,12 +26,12 @@ float SampleShadowCascade(int cascadeIdx)
 	if (projCoords.z > 1.0 || projCoords.x < 0.0 || projCoords.x > 1.0 || projCoords.y < 0.0 || projCoords.y > 1.0)
 		return 1.0;
 
-	float bias = 0.00005;
+	float bias = uScene.directionalShadowSampling.x;
 	float currentDepth = projCoords.z - bias;
 
 	vec2 texelSize = 1.0 / vec2(textureSize(uShadowMap, 0).xy);
 	float shadow = 0.0;
-	float filterSize = 2.5;
+	float filterSize = uScene.directionalShadowSampling.y;
 
 	for(int i = 0; i < 16; ++i)
 	{
@@ -47,6 +47,7 @@ float SampleShadowCascade(int cascadeIdx)
 // =================================================================
 float calculate_shadow()
 {
+	if (uScene.directionalShadowRaster.z < 0.5) return 1.0;
 	vec4 viewPos = uScene.camera * vec4(v2fPos, 1.0);
 	float fragDepth = abs(viewPos.z);
 
@@ -75,11 +76,11 @@ float calculate_shadow()
 	// 3. 缝隙平滑混合逻辑
 	if (cascadeIdx < 2) {
 		// 设置过渡带宽度：使用距离当前 Cascade 边界最后 12% 的区域进行平滑过渡
-		float blendBand = nextSplit * 0.12;
+		float blendBand = nextSplit * uScene.directionalShadowSampling.z;
 		float blendStart = nextSplit - blendBand;
 
 		// 如果像素刚好由于相机移动落在了级联的交界区域内
-		if (fragDepth > blendStart) {
+		if (blendBand > 0.0 && fragDepth > blendStart) {
 			// 计算插值因子 (0.0 表示刚进入过渡带，1.0 表示彻底贴紧边界线)
 			float blendFactor = clamp((fragDepth - blendStart) / blendBand, 0.0, 1.0);
 
@@ -91,7 +92,7 @@ float calculate_shadow()
 		}
 	}
 
-	return shadow;
+	return mix(1.0, shadow, uScene.directionalShadowSampling.w);
 }
 
 #endif

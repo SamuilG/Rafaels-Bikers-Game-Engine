@@ -14,6 +14,8 @@ layout(scalar, set = 0, binding = 0) uniform DebugScene
     layout(offset = 1280) mat4 lightVP[4];
     layout(offset = 1536) vec4 cascadeSplits;
     layout(offset = 1552) vec4 portalClipPlane;
+    layout(offset = 1600) vec4 directionalShadowSampling;
+    layout(offset = 1616) vec4 directionalShadowRaster;
 } uScene;
 
 // Compatible with both ObjectPC and SkinnedPC (128 bytes).

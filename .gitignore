@@ -12,3 +12,6 @@ Cache/
 *.sln
 *.slnx
 *.vcxproj
+
+# Local model exceeds the GitHub LFS per-file limit.
+/Assets/Sponza.glb

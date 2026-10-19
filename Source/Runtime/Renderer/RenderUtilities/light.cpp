@@ -1,11 +1,12 @@
 #include "light.hpp"
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/constants.hpp>
 #include <algorithm>
 #include <cmath>
 
 namespace engine {
 
-    ShadowData compute_csm_matrices(const glm::vec3& lightDir, const glm::mat4& cameraView, float fov, float aspect, float nearP, float farP)
+    ShadowData compute_csm_matrices(const glm::vec3& lightDir, const glm::mat4& cameraView, float fov, float aspect, float nearP, float farP, const DirectionalShadowSettings& settings)
     {
         ShadowData data;
         uint32_t count = 3;
@@ -13,15 +14,23 @@ namespace engine {
 
         const float SHADOW_MAP_RESOLUTION = 4096.0f;
 
-        // ¡¾¼áÊØÌğµã¾àÀë¡¿£º²»ÒªÇáÒ×¸Ä¶¯£¬ÕâÊÇ±£Ö¤°üÎ§ÇòÇåÎú¶ÈµÄºËĞÄ£¡
-        cascadeSplits[0] = 15.0f;
-        cascadeSplits[1] = 70.0f;
-        cascadeSplits[2] = 800.0f;
+        // ã€åšå®ˆç”œç‚¹è·ç¦»ã€‘ï¼šä¸è¦è½»æ˜“æ”¹åŠ¨ï¼Œè¿™æ˜¯ä¿è¯åŒ…å›´çƒæ¸…æ™°åº¦çš„æ ¸å¿ƒï¼
+        if (!settings.IsValid() || !std::isfinite(nearP) || !std::isfinite(farP) ||
+            !std::isfinite(fov) || !std::isfinite(aspect) || aspect <= 0 || nearP <= 0 ||
+            fov <= 0 || fov >= glm::pi<float>()) return data;
+        const float lastDistance = std::min(farP, settings.distance);
+        if (lastDistance <= nearP) return data;
+        const float span = lastDistance - nearP;
+        const float gap = std::max(span * 0.001f, 2.0f * (std::nextafter(nearP, lastDistance) - nearP));
+        if (gap * 3 >= span) return data;
+        cascadeSplits[0] = std::clamp(settings.firstSplit, nearP + gap, lastDistance - gap * 2);
+        cascadeSplits[1] = std::clamp(settings.secondSplit, cascadeSplits[0] + gap, lastDistance - gap);
+        cascadeSplits[2] = lastDistance;
 
         data.cascadeSplits = glm::vec4(cascadeSplits[0], cascadeSplits[1], cascadeSplits[2], 0);
 
         float lastSplit = nearP;
-        glm::vec3 normalizedLightDir = glm::normalize(lightDir);
+        glm::vec3 normalizedLightDir = NormalizeLightDirection(lightDir);
 
         glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
         if (std::abs(glm::dot(normalizedLightDir, up)) > 0.999f) {
@@ -39,7 +48,7 @@ namespace engine {
                 {-1, -1, 1, 1}, {1, -1, 1, 1}, {1, 1, 1, 1}, {-1, 1, 1, 1}
             };
 
-            // 1. Çó³öÊÓ×¶ÌåµÄ¾ø¶ÔÖĞĞÄµã
+            // 1. æ±‚å‡ºè§†é”¥ä½“çš„ç»å¯¹ä¸­å¿ƒç‚¹
             glm::vec3 center(0.0f);
             for (int j = 0; j < 8; j++) {
                 frustumCorners[j] = invVP * frustumCorners[j];
@@ -49,22 +58,22 @@ namespace engine {
             center /= 8.0f;
 
             // =========================================================
-            // ¡¾ÖÕ¼«ĞŞ¸´ 1¡¿£ºËø¶¨ºã¶¨°ë¾¶ (Constant Bounding Sphere)
-            // ³¹µ×É±ËÀ¡°ÒõÓ°ºôÎüĞ§Ó¦¡±£¡ÎŞÂÛÏà»úÔõÃ´×ª£¬Õı½»¾ØÕó´óĞ¡ËÀËÀËø×¡£¡
+            // ã€ç»ˆæä¿®å¤ 1ã€‘ï¼šé”å®šæ’å®šåŠå¾„ (Constant Bounding Sphere)
+            // å½»åº•æ€æ­»â€œé˜´å½±å‘¼å¸æ•ˆåº”â€ï¼æ— è®ºç›¸æœºæ€ä¹ˆè½¬ï¼Œæ­£äº¤çŸ©é˜µå¤§å°æ­»æ­»é”ä½ï¼
             // =========================================================
             float radius = 0.0f;
             for (int j = 0; j < 8; j++) {
                 radius = glm::max(radius, glm::length(glm::vec3(frustumCorners[j]) - center));
             }
-            // ÏòÉÏÈ¡Õû£¬Ä¨Æ½¸¡µãÊıÎ¢Ğ¡²¨¶¯
+            // å‘ä¸Šå–æ•´ï¼ŒæŠ¹å¹³æµ®ç‚¹æ•°å¾®å°æ³¢åŠ¨
             radius = std::ceil(radius);
 
-            // 2. ³õÊ¼µÆ¹âÊÓÍ¼
+            // 2. åˆå§‹ç¯å…‰è§†å›¾
             glm::mat4 lightView = glm::lookAt(glm::vec3(0.0f), -normalizedLightDir, up);
 
             // =========================================================
-            // ¡¾ÖÕ¼«ĞŞ¸´ 2¡¿£ºTexel Snapping (ÏñËØÍø¸ñ¶ÔÆë)
-            // Ëø¶¨°ë¾¶ºó£¬»¹Òª·ÀÖ¹Ïà»úÎ»ÒÆµ¼ÖÂµÄ¡°ÒõÓ°±ßÔµÎ¢Ğ¡Èä¶¯¡±
+            // ã€ç»ˆæä¿®å¤ 2ã€‘ï¼šTexel Snapping (åƒç´ ç½‘æ ¼å¯¹é½)
+            // é”å®šåŠå¾„åï¼Œè¿˜è¦é˜²æ­¢ç›¸æœºä½ç§»å¯¼è‡´çš„â€œé˜´å½±è¾¹ç¼˜å¾®å°è •åŠ¨â€
             // =========================================================
             glm::vec3 centerLightSpace = glm::vec3(lightView * glm::vec4(center, 1.0f));
             float unitsPerTexel = (radius * 2.0f) / SHADOW_MAP_RESOLUTION;
@@ -72,49 +81,49 @@ namespace engine {
             centerLightSpace.x = std::floor(centerLightSpace.x / unitsPerTexel) * unitsPerTexel;
             centerLightSpace.y = std::floor(centerLightSpace.y / unitsPerTexel) * unitsPerTexel;
 
-            // ÄæÍÆ»ØÊÀ½ç×ø±êµÄÖĞĞÄ
+            // é€†æ¨å›ä¸–ç•Œåæ ‡çš„ä¸­å¿ƒ
             center = glm::vec3(glm::inverse(lightView) * glm::vec4(centerLightSpace, 1.0f));
 
-            // 3. ¸ù¾İ¶ÔÆëºóµÄÖĞĞÄÉú³É×îÖÕµÄ Light View
+            // 3. æ ¹æ®å¯¹é½åçš„ä¸­å¿ƒç”Ÿæˆæœ€ç»ˆçš„ Light View
             lightView = glm::lookAt(center, center - normalizedLightDir, up);
 
             // =========================================================
-            // ¡¾ÖÕ¼«ĞŞ¸´ 3¡¿£º±©Á¦ÏòºóÍÆÔ¶ Near Plane
-            // ÍêÈ«±£Áô·ÀÖ¹´óÂ¥Â©¹â¡¢½Ø¶ÏÒõÓ°µÄ¹¦ÄÜ
+            // ã€ç»ˆæä¿®å¤ 3ã€‘ï¼šæš´åŠ›å‘åæ¨è¿œ Near Plane
+            // å®Œå…¨ä¿ç•™é˜²æ­¢å¤§æ¥¼æ¼å…‰ã€æˆªæ–­é˜´å½±çš„åŠŸèƒ½
             // =========================================================
-            float zNear = -3000.0f;
-            float zFar = radius + 500.0f;
+            float zNear = -settings.casterPadding;
+            float zFar = radius + settings.depthPadding;
 
-            // ×¢ÒâÕâÀïµÄ x, y ±ß½çÈ«²¿»»³ÉÁËËøËÀµÄ radius£¬²»ÔÙÓÃ¶¯Ì¬µÄ minX/maxX
+            // æ³¨æ„è¿™é‡Œçš„ x, y è¾¹ç•Œå…¨éƒ¨æ¢æˆäº†é”æ­»çš„ radiusï¼Œä¸å†ç”¨åŠ¨æ€çš„ minX/maxX
             glm::mat4 lightOrtho = glm::orthoRH_ZO(-radius, radius, -radius, radius, zNear, zFar);
 
-            // Vulkan YÖáÊÊÅä
+            // Vulkan Yè½´é€‚é…
             lightOrtho[1][1] *= -1.f;
 
             data.lightVP[i] = lightOrtho * lightView;
             lastSplit = currentSplit;
         }
 
-        data.lightVP[3] = glm::mat4(1.0f); // Ô¤Áô¸ø³µÍ·µÆ
+        data.lightVP[3] = glm::mat4(1.0f); // é¢„ç•™ç»™è½¦å¤´ç¯
         return data;
     }
-    // --- ¡¾ĞÂÔö¡¿¼ÆËã³µµÆÍ¸ÊÓÍ¶Ó°¾ØÕóµÄÊµÏÖ ---
+    // --- ã€æ–°å¢ã€‘è®¡ç®—è½¦ç¯é€è§†æŠ•å½±çŸ©é˜µçš„å®ç° ---
     glm::mat4 compute_spotlight_matrix(const glm::vec3& pos, const glm::vec3& dir, float outerCutOff, float range)
     {
-        // 1. Í¶Ó°¾ØÕó (Í¸ÊÓÍ¶Ó°)¡£ÊÓ½Ç¾ÍÊÇÍâ×¶½ÇµÄ 2 ±¶¡£
+        // 1. æŠ•å½±çŸ©é˜µ (é€è§†æŠ•å½±)ã€‚è§†è§’å°±æ˜¯å¤–é”¥è§’çš„ 2 å€ã€‚
         float fovY = glm::radians(outerCutOff * 2.0f);
         glm::mat4 proj = glm::perspectiveRH_ZO(fovY, 1.0f, 0.1f, range);
-        proj[1][1] *= -1.0f; // Vulkan µÄ Y Öá·­×ª
+        proj[1][1] *= -1.0f; // Vulkan çš„ Y è½´ç¿»è½¬
 
-        // 2. ÊÓÍ¼¾ØÕó (³µµÆÔÚ pos£¬¿´Ïò pos + dir)
+        // 2. è§†å›¾çŸ©é˜µ (è½¦ç¯åœ¨ posï¼Œçœ‹å‘ pos + dir)
         glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
-        // ·ÀÖ¹³µµÆ¸ÕºÃ´¹Ö±³¯ÉÏ»ò³¯ÏÂµ¼ÖÂ lookAt ±ÀÀ£µÄ¾­µä±£»¤
+        // é˜²æ­¢è½¦ç¯åˆšå¥½å‚ç›´æœä¸Šæˆ–æœä¸‹å¯¼è‡´ lookAt å´©æºƒçš„ç»å…¸ä¿æŠ¤
         if (std::abs(glm::dot(dir, up)) > 0.999f) {
             up = glm::vec3(0.0f, 0.0f, 1.0f);
         }
         glm::mat4 view = glm::lookAt(pos, pos + dir, up);
 
-        // ·µ»Ø×îÖÕµÄ VP ¾ØÕó
+        // è¿”å›æœ€ç»ˆçš„ VP çŸ©é˜µ
         return proj * view;
     }
 

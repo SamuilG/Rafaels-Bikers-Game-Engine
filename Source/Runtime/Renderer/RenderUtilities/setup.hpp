@@ -48,8 +48,9 @@ namespace glsl {
 		glm::vec4 cascadeSplits;
 		glm::vec4 portalClipPlane;
 		EnvironmentParameters environment;
+		engine::DirectionalShadowGpu directionalShadow;
 	};
-    static_assert(offsetof(SceneUniform, environment) == 1568 && sizeof(SceneUniform) == 1600);
+    static_assert(offsetof(SceneUniform, environment) == 1568 && offsetof(SceneUniform, directionalShadow) == 1600 && sizeof(SceneUniform) == 1632);
 }
 
 namespace cfg

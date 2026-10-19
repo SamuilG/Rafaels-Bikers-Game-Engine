@@ -77,12 +77,13 @@ namespace engine {
         static ImDrawList* GetSceneViewportDrawList();
         // Draw after camera updates, using the same scene pose as this frame's render.
         static void DrawPlayerCameraGizmo(VkDescriptorSet icon, const editor_camera_gizmo::CameraView& camera,
-            const glm::mat4& sceneViewProjection, const EditorState& editor);
+            const glm::mat4& sceneViewProjection, EditorState& editor,
+            flecs::entity_t cameraEntityId = 0, flecs::entity_t* selectedId = nullptr, bool allowSelection = true);
         static ImVec2 GetGameViewportSize();
         static ImVec2 GetGameViewportPos();
         static ImDrawList* GetGameViewportDrawList();
         static bool IsGameViewportVisible();
-        static void DrawGameViewport(VkDescriptorSet gameTexId, EditorState& editor, bool playing, bool paused);
+        static void DrawGameViewport(VkDescriptorSet gameTexId, EditorState& editor, bool playing, bool paused, bool freeCameraPreview = false);
         static void DrawSceneViewport(VkDescriptorSet sceneTexId, RenderSystem* renderSys, SceneManager* sceneManager, EditorSceneAdapter& editorScene, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, EditorState& editor, const RenderSettings& render);
 
 
