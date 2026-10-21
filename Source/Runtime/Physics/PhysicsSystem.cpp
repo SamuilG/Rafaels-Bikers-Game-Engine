@@ -1,4 +1,5 @@
 #include "PhysicsSystem.hpp"
+#include "PhysicsTransform.hpp"
 #include <Jolt/RegisterTypes.h>
 #include <Jolt/Core/Factory.h>
 #include <Jolt/Physics/PhysicsSettings.h>
@@ -341,18 +342,21 @@ JPH::BodyID PhysicsSystem::create_static_mesh_body(const EngineMesh& mesh, const
 	JPH::ShapeRefC shape = shapeResult.Get();
 
 	// 4. Extract position and rotation from transform
-	glm::vec3 scale;
-	glm::quat rotation;
-	glm::vec3 translation;
-	glm::vec3 skew;
-	glm::vec4 perspective;
-	glm::decompose(transform, scale, rotation, translation, skew, perspective);
-	rotation = glm::normalize(rotation);
+    const auto pose = DecomposePhysicsTransform(transform);
+    if (!pose) return JPH::BodyID();
+    const auto scale = pose->scale;
+    const auto rotation = pose->rotation;
+    const auto translation = pose->position;
 
 	//fix
 	if (scale != glm::vec3(1.0f)) {
 		JPH::ScaledShapeSettings scaledSettings(shape, JPH::Vec3(scale.x, scale.y, scale.z));
-		shape = scaledSettings.Create().Get();
+        const auto scaled = scaledSettings.Create();
+        if (scaled.HasError()) {
+            std::cout << "Error scaling static mesh body: " << scaled.GetError() << std::endl;
+            return JPH::BodyID();
+        }
+		shape = scaled.Get();
 	}
 
 
@@ -379,13 +383,11 @@ JPH::BodyID PhysicsSystem::create_dynamic_convex_body(const EngineMesh& mesh, co
 	JPH::BodyInterface& bodyInterface = m_physicsSystem->GetBodyInterface();
 
 	// Extract position, rotation, scale from transform
-	glm::vec3 scale;
-	glm::quat rotation;
-	glm::vec3 translation;
-	glm::vec3 skew;
-	glm::vec4 perspective;
-	glm::decompose(transform, scale, rotation, translation, skew, perspective);
-	rotation = glm::normalize(rotation);
+    const auto pose = DecomposePhysicsTransform(transform);
+    if (!pose) return JPH::BodyID();
+    const auto scale = pose->scale;
+    const auto rotation = pose->rotation;
+    const auto translation = pose->position;
 	// 1. Build Vertex List (applying scale directly)
 	JPH::Array<JPH::Vec3> points;
 	points.resize(mesh.positions.size());
@@ -676,11 +678,10 @@ void PhysicsSystem::set_body_transform(uint32_t bodyID, const glm::mat4& transfo
 	JPH::BodyInterface& bodyInterface = m_physicsSystem->GetBodyInterface();
 	JPH::BodyID joltBodyID(bodyID);
 
-	glm::vec3 scale, translation, skew;
-	glm::quat rotation;
-	glm::vec4 perspective;
-	glm::decompose(transform, scale, rotation, translation, skew, perspective);
-	rotation = glm::normalize(rotation);
+    const auto pose = DecomposePhysicsTransform(transform);
+    if (!pose) return;
+    const auto translation = pose->position;
+    const auto rotation = pose->rotation;
 
 	// 判断物体状态
 	//Determine object state. Static objects must use DontActivate

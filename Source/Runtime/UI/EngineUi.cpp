@@ -5,6 +5,9 @@
 #include "GameViewportCanvas.hpp"
 #include "EditorViewportRouting.hpp"
 #include "EditorTransform.hpp"
+#include "EditorGizmoToolbar.hpp"
+#include "EditorGizmoGeometry.hpp"
+#include "EditorHierarchyPanel.hpp"
 #include "EditorTheme.hpp"
 #include "GameCameraInspector.hpp"
 #include "LightInspector.hpp"
@@ -244,12 +247,16 @@ namespace engine {
 				return flecs::entity::null();
 			}
 
-			return sceneManager->LoadModel(
+            const auto first = sceneManager->LoadModel(
 				renderSys,
 				assetPath,
 				ModelPhysicsType::Static,
 				0.0f,
 				transform);
+            if (!IsEntityAlive(first)) return first;
+            EditorSceneAdapter importer(sceneManager);
+            const auto root = importer.GroupImportedModel(first.id(), &transform);
+            return IsEntityAlive(root) ? root : first;
 		}
 
 		bool IsFontAssetPath(const fs::path& path) { //Detect font assets so Assets/Fonts is represented clearly.
@@ -548,7 +555,7 @@ namespace engine {
 
 				if (!name.empty() && name != "Preview_Object") {
 					json entityJson;
-                    entityJson["Name"] = e.has<LightComponent>() ? e.path().c_str() : name;
+                    entityJson["Name"] = e.path().c_str();
 
 					//用于接收拆解结果的变量
 					glm::vec3 scale;
@@ -878,10 +885,43 @@ namespace engine {
 		editor.isSceneViewportFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 		s_SceneViewportDrawList = ImGui::GetWindowDrawList();
 
+        bool toolbarHovered = false;
+        bool frameSelection = false;
+        const bool mouseCaptured = (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_NoMouse) != 0;
+        if (editor.showEngineUi) {
+            auto entity = editorScene.SelectedEntity();
+            const bool hasEntity = editorScene.IsAlive(selected_id) && entity.has<LocalTransform>();
+            const bool camera = hasEntity && entity.has<GameCameraComponent>();
+            const bool light = hasEntity && entity.has<LightComponent>();
+            const bool particle = renderSys && render.particlesEnabled && editor.activeParticleIndex >= 0 &&
+                editor.activeParticleIndex < renderSys->GetParticles().size();
+            const bool editableParticle = particle && !renderSys->IsParticleGroupSceneControlled(editor.activeParticleIndex) &&
+                !renderSys->GetParticles()[editor.activeParticleIndex]->config.scenePositionControlled;
+            const bool editableCamera = !camera || (entity.get<GameCameraComponent>().settings.mode == CameraMode::Free &&
+                renderSys && !IsGameCameraTakenOver(renderSys->GetGameCameraState()));
+            const bool canTransform = particle ? editableParticle : hasEntity && editableCamera;
+            if ((particle && editor.gizmos.tool != EditorTransformTool::Select) ||
+                ((camera || light) && editor.gizmos.tool == EditorTransformTool::Scale))
+                editor.gizmos.tool = EditorTransformTool::Move;
+            const auto toolbar = editor_gizmo::DrawToolbar(editor.gizmos, particle || hasEntity,
+                canTransform, particle, camera || light, editor.showPlayerCameraIcon, editor.showPlayerCameraFrustum,
+                editor.playerCameraFrustumUseFarClip, editor.playerCameraFrustumPreviewDistance);
+            toolbarHovered = toolbar.hovered;
+            frameSelection = toolbar.focus;
+            if (editor.isSceneViewportFocused && !mouseCaptured && !ImGui::GetIO().WantTextInput &&
+                !ImGui::GetIO().KeyCtrl && !ImGui::GetIO().KeyAlt && !ImGui::IsAnyItemActive() && !ImGuizmo::IsUsing() &&
+                !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel) &&
+                !(editor.showGameUiEditor && UIEditorWindow::WantsKeyboardCapture())) {
+                if (ImGui::IsKeyPressed(ImGuiKey_Q)) editor.gizmos.tool = EditorTransformTool::Select;
+                if (ImGui::IsKeyPressed(ImGuiKey_W) && canTransform) editor.gizmos.tool = EditorTransformTool::Move;
+                if (ImGui::IsKeyPressed(ImGuiKey_E) && canTransform && !particle) editor.gizmos.tool = EditorTransformTool::Rotate;
+                if (ImGui::IsKeyPressed(ImGuiKey_R) && canTransform && !particle && !camera && !light) editor.gizmos.tool = EditorTransformTool::Scale;
+                frameSelection |= ImGui::IsKeyPressed(ImGuiKey_F);
+            }
+        }
+
 		// 1. 获取视口绝大坐标和尺寸// Get the absolute position and size of the viewport
-		ImVec2 vMin = ImGui::GetWindowContentRegionMin();
-		ImVec2 vPos = ImGui::GetWindowPos();
-		s_SceneViewportPos = ImVec2(vMin.x + vPos.x, vMin.y + vPos.y);
+		s_SceneViewportPos = ImGui::GetCursorScreenPos();
 
 		ImVec2 viewportSize = ImGui::GetContentRegionAvail();
 		if (viewportSize.x > 10.0f && viewportSize.y > 10.0f) {
@@ -897,6 +937,8 @@ namespace engine {
 		else {
 			ImGui::Dummy(viewportSize);
 		}
+        const bool imageHovered = ImGui::IsItemHovered();
+        editor.isSceneViewportHovered = imageHovered && !toolbarHovered;
 
 		//  3. 拖放目标 (Drag & Drop)
 
@@ -936,7 +978,8 @@ namespace engine {
 
 
 		//  4. 粒子 Billboard 图标和点击// Particle billboard icons and select
-		if (editor.showEngineUi && renderSys && render.particlesEnabled && editor.renderMode == 0) {
+		if (editor.showEngineUi && editor.gizmos.visible && editor.gizmos.particleIcons &&
+            renderSys && render.particlesEnabled) {
 			glm::mat4 viewProj = proj * view;
 			glm::vec3 cameraPos = glm::vec3(glm::inverse(view)[3]);
 			ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -946,8 +989,8 @@ namespace engine {
 			ImVec2 clipMax = ImVec2(s_SceneViewportPos.x + s_SceneViewportSize.x, s_SceneViewportPos.y + s_SceneViewportSize.y);
 			drawList->PushClipRect(clipMin, clipMax, true);
 
-			const ImVec2 iconSize = ImVec2(24.0f, 24.0f);
-			const float  hitRadius = 16.0f;
+			const ImVec2 iconSize(editor.gizmos.iconSize, editor.gizmos.iconSize);
+			const float hitRadius = editor.gizmos.iconSize * 0.5f;
 
 			auto& particles = renderSys->GetParticles();
 			for (int i = 0; i < particles.size(); ++i) {
@@ -957,7 +1000,8 @@ namespace engine {
 				glm::vec3 pointToCam = emitterPos - cameraPos;
 				if (glm::dot(pointToCam, pointToCam) < 0.01f) continue;
 				glm::vec4 ndc = viewProj * glm::vec4(emitterPos, 1.0f);
-				if (ndc.w <= 0.0f) continue;
+				if (ndc.w <= 0.0f || ndc.z < 0.0f || ndc.z > ndc.w ||
+                    std::abs(ndc.x) > ndc.w || std::abs(ndc.y) > ndc.w) continue;
 				ndc /= ndc.w;
 
 				// 算出图标在屏幕上的绝对位置// Calculate the absolute screen position of the icon
@@ -1001,7 +1045,8 @@ namespace engine {
 				ImGui::PushID(i);
 
 				//InvisibleButton
-				if (ImGui::InvisibleButton("ParticleIcon", ImVec2(hitRadius * 2, hitRadius * 2))) {
+				if (ImGui::InvisibleButton("ParticleIcon", ImVec2(hitRadius * 2, hitRadius * 2)) &&
+                    !mouseCaptured && !toolbarHovered && !ImGuizmo::IsUsing()) {
 					editor.activeParticleIndex = i;
                     editor.showParticlePanel = true;
 					selected_id = 0; // clear
@@ -1010,6 +1055,7 @@ namespace engine {
 
 				// 悬停状态//hover tooltip
 				if (ImGui::IsItemHovered()) {
+                    editor.isSceneViewportHovered = false;
 					ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
 					ImGui::BeginTooltip();
 					ImGui::Text("[ Particle Group %d ]", i + 1);
@@ -1022,6 +1068,9 @@ namespace engine {
 			//结束裁剪// End clipping
 			drawList->PopClipRect();
 		}
+
+        if (editor.showEngineUi && DrawLightGizmos(editorScene, proj * view, editor))
+            editor.isSceneViewportHovered = false;
 
 
 		//  5. ImGuizmo 坐标轴
@@ -1039,7 +1088,7 @@ namespace engine {
 			const EditorEntitySnapshot selectedEntity = editorScene.Inspect(selected_id);
 			if (selectedEntity.alive && selectedEntity.hasTransform) {
 				drawGizmo = true;
-				gizmoMatrix = selectedEntity.transform;
+				gizmoMatrix = selectedEntity.worldTransform;
                 auto entity = editorScene.SelectedEntity();
                 cameraGizmo = entity.has<GameCameraComponent>();
                 lightGizmo = entity.has<LightComponent>();
@@ -1050,42 +1099,65 @@ namespace engine {
                     gizmoMatrix = camera.freeTransform;
                 }
                 if (m_current_inspected_id != selectedEntity.id || (!ImGuizmo::IsUsing() && !ImGui::IsAnyItemActive()))
-                    drawGizmo = drawGizmo && SyncTransformCache(selectedEntity.id, gizmoMatrix);
+                    SyncTransformCache(selectedEntity.id, selectedEntity.transform);
 			}
 		}
 
-		if (drawGizmo) {
-			ImGuizmo::BeginFrame();
+        ImGuizmo::BeginFrame();
+        EditorTransformTool tool = editor.gizmos.tool;
+        if (editor.activeParticleIndex >= 0 && tool != EditorTransformTool::Select) tool = EditorTransformTool::Move;
+        if ((cameraGizmo || lightGizmo) && tool == EditorTransformTool::Scale) tool = EditorTransformTool::Move;
+        const bool drawHandles = drawGizmo && tool != EditorTransformTool::Select && !mouseCaptured;
+        const bool handlesEnabled = drawHandles && (!toolbarHovered || ImGuizmo::IsUsing());
+        ImGuizmo::Enable(handlesEnabled);
+		if (drawHandles) {
 
 			ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
 			ImGuizmo::SetOrthographic(false);
 			ImGuizmo::SetRect(s_SceneViewportPos.x, s_SceneViewportPos.y, s_SceneViewportSize.x, s_SceneViewportSize.y);
 
-			static ImGuizmo::OPERATION currentOp = ImGuizmo::TRANSLATE;
-			if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && !ImGui::GetIO().WantTextInput &&
-                !ImGui::GetIO().KeyCtrl && !ImGui::IsAnyItemActive() && !(editor.showGameUiEditor && UIEditorWindow::WantsKeyboardCapture())) {
-                if (ImGui::IsKeyPressed(ImGuiKey_W)) currentOp = ImGuizmo::TRANSLATE;
-                if (ImGui::IsKeyPressed(ImGuiKey_E)) currentOp = ImGuizmo::ROTATE;
-                if (ImGui::IsKeyPressed(ImGuiKey_R)) currentOp = ImGuizmo::SCALE;
-            }
-            if (editor.activeParticleIndex >= 0) currentOp = ImGuizmo::TRANSLATE;
-            if (cameraGizmo && currentOp == ImGuizmo::SCALE) currentOp = ImGuizmo::TRANSLATE;
-            if (lightGizmo && currentOp == ImGuizmo::SCALE) currentOp = ImGuizmo::ROTATE;
-
-			ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(proj), currentOp, ImGuizmo::LOCAL, glm::value_ptr(gizmoMatrix));
+            ImGuizmo::SetGizmoSizeClipSpace(editor.gizmos.handleSize);
+            const auto snap = editor_gizmo::SnapValues(editor.gizmos, tool);
+            s_SceneViewportDrawList->PushClipRect(s_SceneViewportPos,
+                ImVec2(s_SceneViewportPos.x + s_SceneViewportSize.x, s_SceneViewportPos.y + s_SceneViewportSize.y), true);
+			ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(proj), editor_gizmo::Operation(tool),
+                editor_gizmo::Space(editor.gizmos, tool), glm::value_ptr(gizmoMatrix), nullptr,
+                editor.gizmos.snap || ImGui::GetIO().KeyCtrl ? snap.data() : nullptr);
+            s_SceneViewportDrawList->PopClipRect();
+            if (handlesEnabled && (ImGuizmo::IsUsing() || ImGuizmo::IsOver())) editor.isSceneViewportHovered = false;
 
 			if (ImGuizmo::IsUsing()) {
 				if (editor.activeParticleIndex >= 0) {
 					renderSys->GetParticles()[editor.activeParticleIndex]->config.emitterPos = glm::vec3(gizmoMatrix[3]);
 				}
 				else if (selected_id != 0 && sceneManager) {
-                    editorScene.SetTransform(selected_id, gizmoMatrix);
-                    SyncTransformCache(selected_id, gizmoMatrix);
+                    editorScene.SetWorldTransform(selected_id, gizmoMatrix);
+                    SyncTransformCache(selected_id, editorScene.Inspect(selected_id).transform);
 				}
 			}
 		}
 
-		editor.isSceneViewportHovered = ImGui::IsWindowHovered();
+        if (frameSelection && !mouseCaptured && !ImGuizmo::IsUsing()) {
+            glm::mat4 target = gizmoMatrix;
+            glm::vec3 minimum(-0.5f), maximum(0.5f);
+            bool valid = drawGizmo || (renderSys && render.particlesEnabled && editor.activeParticleIndex >= 0 &&
+                editor.activeParticleIndex < renderSys->GetParticles().size());
+            if (editorScene.IsAlive(selected_id)) {
+                auto entity = editorScene.SelectedEntity();
+                if (entity.has<LocalTransform>()) {
+                    valid = true;
+                    target = glm::mat4(1);
+                    editorScene.WorldBounds(selected_id, minimum, maximum);
+                }
+            }
+            const auto& camera = editor.sceneCamera.State();
+            if (valid) {
+                const auto framed = editor_gizmo::FrameBounds(camera.camera2world, target, minimum, maximum,
+                    camera.cameraFov, s_SceneViewportSize.x / std::max(1.0f, s_SceneViewportSize.y), camera.nearPlane, camera.farPlane);
+                if (framed) { editor.sceneCamera.RequestFree(); editor.sceneCamera.SetFreeTransform(*framed); }
+                else ShowToast("Selection exceeds the scene camera clip range");
+            }
+        }
 
 		ImGui::End(); //  Viewport 闭合
 		ImGui::PopStyleColor();
@@ -1888,6 +1960,12 @@ namespace engine {
 
         ImGui::SeparatorText("Visibility");
         ImGui::Text("Visible static batches: %u / %u", statistics.frustumCullingVisibleCandidates, statistics.frustumCullingTotalCandidates);
+        const auto& resources = statistics.modelResources;
+        ImGui::SeparatorText("Model resources");
+        ImGui::Text("Assets: %u / meshes: %u / textures: %u", resources.assets, resources.meshes, resources.textures);
+        ImGui::Text("GPU allocations: %.1f MiB", double(resources.residentBytes) / (1024.0 * 1024.0));
+        ImGui::Text("Pending release: %u / %.1f MiB", resources.pendingAssets, double(resources.pendingBytes) / (1024.0 * 1024.0));
+        ImGui::Text("Model uploads: %llu", static_cast<unsigned long long>(resources.uploads));
         const char* modes[] = { _SL("Default"), _SL("Mipmaps"), _SL("Depth"), _SL("Derivatives"), _SL("Overdraw"), _SL("Overshading"),
             "SSAO", "SSR", _SL("Normals"), _SL("Wireframe"), "Albedo", _SL("Shadow") };
         static_assert(IM_ARRAYSIZE(modes) == view_mode::Count);
@@ -1956,23 +2034,10 @@ namespace engine {
 					ImGui::Text(_SL("Total Entities: %d"), editorScene.EntityCount());
 					ImGui::Separator();
 
-					const auto entities = editorScene.ListEntities();
-
-					// 滚动子窗口来容纳实体列表// Use a child window to contain the entity list and allow scrolling
-					if (ImGui::BeginChild("EntityList", ImVec2(0, 0), true)) {
-						// 遍历所有带有 MeshComponent 的实体 (Iterate all entities with MeshComponent)
-						for (const auto& entity : entities) {
-							const std::string& name = entity.name;
-
-							// 渲染可选项Selectable
-							bool is_selected = (selected_id == entity.id);
-							if (ImGui::Selectable(name.c_str(), is_selected)) {
-								selected_id = entity.id; // 更新当前选中的实体 ID
-								editor.activeParticleIndex = -1;
-							}
-						}
-					}
-					ImGui::EndChild();
+                    const auto oldSelection = selected_id;
+                    const auto error = editor_hierarchy::Draw(editorScene);
+                    if (!error.empty()) ShowToast(error);
+                    if (selected_id != oldSelection) editor.activeParticleIndex = -1;
 
 
 					// 拖放目标接收区 (Drag & Drop Target)
@@ -1999,6 +2064,8 @@ namespace engine {
 								//renderSys->load_additional_model(droppedPath, false, 100.0f, spawnTransform);
 								flecs::entity spawnedEntity = SpawnDroppedModel(renderSys, sceneManager, droppedPath, spawnTransform);
 								if (spawnedEntity.is_valid()) {
+                                    editorScene.Select(spawnedEntity.id());
+                                    editor.activeParticleIndex = -1;
 									EngineUi::ShowToast("Model Imported Successfully!");
 								}
 								else {
@@ -2053,6 +2120,24 @@ namespace engine {
 					// 可见性切换组件// Visibility Toggle Component
                     const auto entity = editorScene.SelectedEntity();
                     const bool isCamera = entity.has<GameCameraComponent>();
+                    if (!isCamera) {
+                        static flecs::entity_t renameId = 0;
+                        static char name[1024] = {};
+                        static std::string lastName;
+                        if (renameId != selected_id || lastName != selectedEntity.name) {
+                            renameId = selected_id;
+                            lastName = selectedEntity.name;
+                            std::snprintf(name, sizeof(name), "%s", lastName.c_str());
+                        }
+                        ImGui::InputText("Name", name, sizeof(name));
+                        if (ImGui::IsItemDeactivatedAfterEdit()) {
+                            if (!editorScene.Rename(selected_id, name)) ShowToast(editorScene.Error());
+                            lastName = editorScene.Inspect(selected_id).name;
+                            std::snprintf(name, sizeof(name), "%s", lastName.c_str());
+                        }
+                        if (selectedEntity.parent != 0) ImGui::TextDisabled("Transform is relative to parent.");
+                        if (selectedEntity.group) ImGui::TextDisabled("Group: transforms and visibility affect children.");
+                    }
                     if (entity.has<LightComponent>()) DrawEntityLightControls(*editorScene.Scene(), entity);
                     if (isCamera && renderSys) {
                         DrawGameCameraInspector(entity, renderSys->GetGameCameraState());
@@ -2421,16 +2506,10 @@ namespace engine {
             ImGui::MenuItem(_SL("Viewport Grid"), nullptr, &editor.editorViewportGrid, editor.renderMode == 0);
             if (editor.renderMode != 0) ImGui::TextDisabled("%s", _SL("Available in default render mode"));
             ImGui::Separator();
-            ImGui::MenuItem(_SL("Player Camera Icon"), nullptr, &editor.showPlayerCameraIcon);
-            ImGui::MenuItem(_SL("Player Camera Frustum"), nullptr, &editor.showPlayerCameraFrustum);
-            if (ImGui::BeginMenu(_SL("Camera Frustum Display"), editor.showPlayerCameraFrustum)) {
-                ImGui::MenuItem(_SL("Use Camera Far Clip"), nullptr, &editor.playerCameraFrustumUseFarClip);
-                ImGui::BeginDisabled(editor.playerCameraFrustumUseFarClip);
-                ImGui::SetNextItemWidth(180.0f);
-                ImGui::SliderFloat(_SL("Preview Distance"), &editor.playerCameraFrustumPreviewDistance,
-                    0.5f, 30.0f, "%.1f m", ImGuiSliderFlags_AlwaysClamp);
-                ImGui::EndDisabled();
-                ImGui::TextDisabled("%s", _SL("Display only; game clipping is unchanged."));
+            if (ImGui::BeginMenu("Scene Gizmos")) {
+                editor_gizmo::DrawVisibilityOptions(editor.gizmos, editor.showPlayerCameraIcon,
+                    editor.showPlayerCameraFrustum, editor.playerCameraFrustumUseFarClip,
+                    editor.playerCameraFrustumPreviewDistance);
                 ImGui::EndMenu();
             }
             ImGui::Separator();
@@ -2455,6 +2534,8 @@ namespace engine {
             if (!project || !project->openProject) ImGui::TextUnformatted("F1: switch editor / game view");
             else ImGui::TextUnformatted("Play: run in Game Viewport. Pause: freeze simulation. Stop: return to editing.");
             ImGui::TextUnformatted("W / E / R: translate / rotate / scale in viewport");
+            ImGui::TextUnformatted("Q: select. F: frame selection. Ctrl+drag: snap.");
+            ImGui::TextUnformatted("Scene toolbar: World/Local, snap steps, component Gizmos.");
             ImGui::TextUnformatted("Click Game to capture mouse. Shift+F1 or middle mouse: release.");
             ImGui::TextUnformatted("Drag models from Assets into the scene.");
             ImGui::TextUnformatted("Window: open panels. View: reset docking layout.");

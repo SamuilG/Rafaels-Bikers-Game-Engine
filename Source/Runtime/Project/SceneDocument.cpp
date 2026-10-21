@@ -117,23 +117,32 @@ void RemoveBody(flecs::entity entity, PhysicsSystem* physics) {
     entity.remove<PhysicsBody>();
 }
 
-std::unordered_map<std::string, EngineModel> DecodeModels(const Json& document, const fs::path& assetRoot) {
+std::unordered_map<std::string, std::shared_ptr<const EngineModel>> DecodeModels(
+    const Json& document, const fs::path& assetRoot, RenderSystem* renderer = nullptr) {
     ValidateSceneDocumentAssets(document, assetRoot);
-    std::unordered_map<std::string, EngineModel> decoded;
+    std::unordered_map<std::string, std::shared_ptr<const EngineModel>> decoded;
+    std::unordered_map<std::string, std::shared_ptr<const EngineModel>> sources;
     for (const auto& value : document["models"]) {
         const auto source = fs::u8path(value["asset"].get<std::string>()).lexically_relative("Assets");
         const auto filename = (assetRoot / source).generic_u8string();
         const std::string utf8(reinterpret_cast<const char*>(filename.data()), filename.size());
-        auto model = load_engine_model_glb(utf8.c_str());
+        auto& shared = sources[utf8];
+        if (!shared) {
+            if (renderer) {
+                auto asset = renderer->AcquireModelAsset(utf8);
+                shared = std::shared_ptr<const EngineModel>(asset, &asset->model);
+            } else shared = std::make_shared<EngineModel>(load_engine_model_glb(utf8.c_str()));
+        }
+        const auto& model = *shared;
         if (model.scenes.empty()) throw std::runtime_error("Model contains no renderable nodes: " + value["asset"].get<std::string>());
         for (const auto& part : model.scenes)
             if (part.meshIndex >= model.meshes.size() || model.meshes[part.meshIndex].materialIndex >= model.materials.size())
                 throw std::runtime_error("Model contains an invalid mesh/material reference: " + value["asset"].get<std::string>());
-        decoded.emplace(value["id"].get<std::string>(), std::move(model));
+        decoded.emplace(value["id"].get<std::string>(), shared);
     }
     for (const auto& value : document["entities"]) if (value.contains("model")) {
         const auto& model = value["model"];
-        if (model["part"].get<std::uint32_t>() >= decoded.at(model["instance"].get<std::string>()).scenes.size())
+        if (model["part"].get<std::uint32_t>() >= decoded.at(model["instance"].get<std::string>())->scenes.size())
             throw std::runtime_error("Saved model node no longer exists: " + value["name"].get<std::string>());
     }
     return decoded;
@@ -224,7 +233,7 @@ void InstantiateSceneDocument(const Json& document, SceneManager& scene, RenderS
 
     // Decode every source and verify saved part references before changing the
     // world. GPU allocation failures are handled by the caller's session rollback.
-    auto decoded = DecodeModels(document, fs::path("Assets"));
+    auto decoded = DecodeModels(document, fs::path("Assets"), &renderer);
     std::unordered_map<std::string, const Json*> modelRecords;
     for (const auto& value : document["models"]) {
         const auto id = value["id"].get<std::string>();
@@ -242,7 +251,7 @@ void InstantiateSceneDocument(const Json& document, SceneManager& scene, RenderS
     for (const auto& value : document["models"]) {
         const auto id = value["id"].get<std::string>();
         const auto path = value["asset"].get<std::string>();
-        scene.LoadModelData(&renderer, path.c_str(), std::move(decoded.at(id)),
+        scene.LoadModel(&renderer, path.c_str(),
             static_cast<ModelPhysicsType>(value["physicsType"].get<int>()), value["mass"].get<float>(),
             ReadMatrix(value["transform"]), RenderLayer::Default);
         scene.SetModelImportIdentity(scene.ModelImports().back().id, id);

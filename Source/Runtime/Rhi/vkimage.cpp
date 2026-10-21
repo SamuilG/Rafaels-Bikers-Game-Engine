@@ -321,6 +321,7 @@ namespace labut2
 			);
 		}
 
+		vkFreeCommandBuffers(aContext.device, aCmdPool, 1, &cmdBuff);
 		return image;
 	}
 
@@ -470,6 +471,7 @@ namespace labut2
 		vkWaitForFences(aContext.device, 1, &uploadComplete.handle, VK_TRUE,
 			std::numeric_limits<std::uint64_t>::max());
 
+		vkFreeCommandBuffers(aContext.device, aCmdPool, 1, &cmdBuff);
 		return image;
 	}
 	std::uint32_t compute_mip_level_count( std::uint32_t aWidth, std::uint32_t aHeight )

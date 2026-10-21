@@ -53,3 +53,28 @@ fallback. `run-gpu-frame-timer-tests.ps1` checks the production query lifecycle
 with controlled Vulkan responses; `run-gpu-frame-timer-device-tests.ps1` exercises
 real device timestamps without opening a window. GPU results are consumed only
 after the renderer's existing per-frame fence has completed, without a query WAIT flag.
+
+## Model asset lifetime
+
+Imported models are cached by normalized source path, file size and modification
+time. Each mesh entity holds a shared asset lease. Drag previews use the same
+asset as committed instances; cancelling a preview drops its lease. Editor and
+Play retain independent entities, physics and animation state while sharing
+immutable model GPU allocations. Runtime-generated meshes retain a world lease.
+
+After the last lease disappears, the renderer retires the asset before recording
+the next frame. Images, views, buffers and the asset's descriptor pool remain alive
+until the graphics-queue submission serial is known complete through an existing
+frame fence. Vacant index ranges can be reused without renumbering live objects.
+Cold imports drain unused retired assets before allocating a replacement.
+
+Diagnostics shows live model assets, meshes, textures, VMA allocation bytes,
+pending releases and cumulative uploads. These figures cover model assets only;
+they exclude render targets, particles, UI, driver allocations and other apps.
+Pending bytes are separate from live bytes. Driver/VMA heap-block capacity may
+remain reserved even after individual allocations are freed.
+
+For regression coverage, run `Tests/Project/run-generic-play-integration-tests.ps1`
+after building Release Editor/Engine. It checks real allocation recovery and
+shared ownership with hidden Vulkan windows; it does not guarantee a particular
+FPS or measure input latency.

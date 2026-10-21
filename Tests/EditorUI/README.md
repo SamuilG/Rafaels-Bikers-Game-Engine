@@ -9,6 +9,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Tests/EditorUI/run-trigger-b
 powershell -NoProfile -ExecutionPolicy Bypass -File Tests/EditorUI/run-editor-theme-tests.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File Tests/EditorUI/run-camera-gizmo-tests.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File Tests/EditorUI/run-light-inspector-tests.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File Tests/EditorUI/run-entity-grouping-tests.ps1
 ```
 
 The light inspector suite submits production controls to real ImGui. Mouse and

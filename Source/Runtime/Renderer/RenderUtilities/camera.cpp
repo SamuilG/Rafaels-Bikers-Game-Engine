@@ -26,7 +26,9 @@ void update_camera(engine::CameraController& controller, const engine::PlayerSta
             const float speed = cfg::kCameraBaseSpeed *
                 (inputSys->IsActionHeld("Fast") ? cfg::kCameraFastMult : 1.0f) *
                 (inputSys->IsActionHeld("Slow") ? cfg::kCameraSlowMult : 1.0f);
-            input.localMove = glm::vec3(
+            // Uncaptured Scene keys belong to the editor tools (Q/W/E/R/F).
+            // Fly navigation starts only after explicitly capturing the mouse.
+            input.localMove = editor.showEngineUi && !mouseCaptured ? glm::vec3(0.0f) : glm::vec3(
                 (inputSys->IsActionHeld("StrafeRight") ? 1.0f : 0.0f) - (inputSys->IsActionHeld("StrafeLeft") ? 1.0f : 0.0f),
                 (inputSys->IsActionHeld("Upward") ? 1.0f : 0.0f) - (inputSys->IsActionHeld("Downward") ? 1.0f : 0.0f),
                 (inputSys->IsActionHeld("MoveBackward") ? 1.0f : 0.0f) - (inputSys->IsActionHeld("MoveForward") ? 1.0f : 0.0f)) * speed;

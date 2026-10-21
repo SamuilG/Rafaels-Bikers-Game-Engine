@@ -3,6 +3,7 @@
 #include <optional>
 #include <array>
 #include "FramePerformance.hpp"
+#include "ModelResourceStatistics.hpp"
 
 namespace engine {
 struct EnvironmentLightingSettings {
@@ -42,6 +43,7 @@ struct RenderCapabilities {
 };
 struct RenderStatistics {
     FramePerformanceStatistics performance;
+    ModelResourceStatistics modelResources;
     float frustumCullingOffFps = 0.0f; //off frustum culling fps
     float frustumCullingOnFps = 0.0f; // On frustum culling fps
     uint32_t frustumCullingTotalCandidates = 0; // new frustum culling

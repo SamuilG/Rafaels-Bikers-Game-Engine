@@ -58,7 +58,7 @@ void EqualDocument(const Json& expected, const Json& actual, const std::string& 
 }
 
 enum class Phase {
-    Start, AwaitPlay, Simulating, AwaitPause, Paused, AwaitResume,
+    Start, ResourceSubmitted, ResourceRetired, AwaitPlay, Simulating, AwaitPause, Paused, AwaitResume,
     AwaitRestart, AwaitRestartUpdate, AwaitStop, AwaitSecondPlay, AwaitFinalStop, Done
 };
 
@@ -74,12 +74,16 @@ struct Context {
     int sceneInitializations = 0;
     int firstSimulationUpdates = 0;
     int countBeforeRestart = 0;
+    int playCycles = 0;
     flecs::entity_t authoredMesh = 0;
     flecs::entity_t authoredCamera = 0;
     uint32_t authoredBody = JPH::BodyID::cInvalidBodyID;
     std::string dynamicIdentity;
     float initialDynamicY = 0.0f;
     glm::mat4 pausedCamera{1.0f};
+    uint64_t assetUploads = 0;
+    uint32_t assetCount = 0;
+    std::vector<flecs::entity> temporaryParts;
     std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
 };
 
@@ -130,6 +134,84 @@ flecs::entity EntityByIdentity(SceneManager& scene, const std::string& id) {
     return found;
 }
 
+std::vector<flecs::entity> ImportParts(SceneManager& scene, const flecs::entity& first) {
+    const auto import = first.get<ModelPartSource>().instance;
+    std::vector<flecs::entity> result;
+    scene.get_world().each([&](flecs::entity entity, const ModelPartSource& source) {
+        if (source.instance == import) result.push_back(entity);
+    });
+    return result;
+}
+
+void TestModelResourceOwnership(Context& context) {
+    auto& scene = *context.authoring;
+    auto& renderer = *context.renderer;
+    const auto initial = renderer.GetModelResourceStatistics();
+    const auto initialBytes = renderer.AllocatedGpuResourceBytes();
+    std::size_t slots = 0;
+    for (int cycle = 0; cycle < 10; ++cycle) {
+        renderer.SetModelPreview("Assets/Models/newspapaer.glb", glm::mat4(1));
+        const auto preview = renderer.GetModelResourceStatistics();
+        Require(preview.assets == initial.assets + 1 && preview.textures > initial.textures && preview.residentBytes > initial.residentBytes,
+            "Preview did not acquire an actual GPU asset");
+        const auto first = scene.LoadModel(&renderer, "Assets/Models/./newspapaer.glb", ModelPhysicsType::Static);
+        const auto repeated = scene.LoadModel(&renderer, "Assets/Models/newspapaer.glb", ModelPhysicsType::Dynamic, -1);
+        Require(first.get<MeshComponent>().meshIndex == repeated.get<MeshComponent>().meshIndex,
+            "Repeated imports did not share stable mesh slots");
+        Require(renderer.GetModelResourceStatistics().uploads == preview.uploads,
+            "Preview and repeated import uploaded duplicate GPU assets");
+        renderer.ClearModelPreview();
+        renderer.CollectModelResources(true);
+        Require(renderer.GetModelResourceStatistics().assets == preview.assets,
+            "Cancelling preview released an asset still used by entities");
+        const auto firstParts = ImportParts(scene, first);
+        const auto repeatedParts = ImportParts(scene, repeated);
+        Require(firstParts.size() > 1, "Resource regression needs a multi-part fixture");
+        for (auto part : firstParts) scene.DestroyEntity(part);
+        renderer.CollectModelResources(true);
+        Require(renderer.GetModelResourceStatistics().assets == preview.assets,
+            "Deleting one instance released another instance's resource");
+        for (auto part : repeatedParts) scene.DestroyEntity(part);
+        renderer.CollectModelResources(true);
+        const auto after = renderer.GetModelResourceStatistics();
+        Require(after.assets == initial.assets && after.pendingAssets == 0 && after.residentBytes == initial.residentBytes,
+            "Last instance deletion retained a GPU model asset");
+        Require(renderer.AllocatedGpuResourceBytes() == initialBytes,
+            "VMA allocations did not return to baseline after model deletion");
+        Require(scene.ModelImports().empty(), "Deleted import metadata remained live");
+        if (cycle == 0) slots = renderer.ModelMeshSlotCount();
+        else Require(renderer.ModelMeshSlotCount() == slots, "Repeated imports grew the mesh slot table");
+    }
+    renderer.SetModelPreview("Assets/Models/newspapaer.glb", glm::mat4(1));
+    renderer.ClearModelPreview();
+    renderer.CollectModelResources(true);
+    Require(renderer.AllocatedGpuResourceBytes() == initialBytes, "Cancelled preview retained Vulkan allocations");
+
+    const auto sponza = scene.LoadModel(&renderer, "Assets/Models/sponza.glb", ModelPhysicsType::Dynamic, -1);
+    Require(renderer.GetModelResourceStatistics().textures == initial.textures + 69,
+        "Sponza fixture did not allocate all expected textures");
+    for (auto part : ImportParts(scene, sponza)) scene.DestroyEntity(part);
+    renderer.CollectModelResources(true);
+    Require(renderer.AllocatedGpuResourceBytes() == initialBytes,
+        "Sponza's texture and mesh allocations did not return to baseline");
+    std::puts("PASS actual small Sponza deletion releases all 69 textures and mesh allocations");
+
+    // Keep a different asset alive while a vacant range is reclaimed/reused.
+    const auto survivor = scene.LoadModel(&renderer, "Assets/Models/spring.glb", ModelPhysicsType::Dynamic, -1);
+    const auto survivorParts = ImportParts(scene, survivor);
+    const auto index = survivor.get<MeshComponent>().meshIndex;
+    const auto temporary = scene.LoadModel(&renderer, "Assets/Models/newspapaer.glb", ModelPhysicsType::Dynamic, -1);
+    for (auto part : ImportParts(scene, temporary)) scene.DestroyEntity(part);
+    renderer.CollectModelResources(true);
+    renderer.SetModelPreview("Assets/Models/newspapaer.glb", glm::mat4(1));
+    Require(survivor.get<MeshComponent>().meshIndex == index, "Recycling a range changed a live entity's mesh index");
+    renderer.ClearModelPreview();
+    for (auto part : survivorParts) part.destruct(); // Flecs destruction must release leases too.
+    renderer.CollectModelResources(true);
+    Require(renderer.AllocatedGpuResourceBytes() == initialBytes, "Direct ECS destruction retained a GPU asset");
+    std::puts("PASS 10 import/delete cycles return real VMA allocations to baseline; shared previews, instances and stable slots");
+}
+
 void SeedAuthoring(Context& context) {
     auto& scene = *context.authoring;
     auto& renderer = *context.renderer;
@@ -157,6 +239,7 @@ void SeedAuthoring(Context& context) {
     std::puts("PASS default directional entity, actual hierarchy listing and native source/shadow snapshot round trip");
     // The same source imported as Static and Dynamic must not reuse a Flecs
     // entity just because their independent generated-name counters coincide.
+    scene.LoadModel(&renderer, "Assets/Models/newspapaer.glb", ModelPhysicsType::Static);
     const auto staticBeacon = scene.LoadModel(&renderer, "Assets/Models/Beacon.glb", ModelPhysicsType::Static,
         1.0f, glm::translate(glm::mat4(1.0f), {10.0f, 0.0f, 0.0f}));
     const auto first = scene.LoadModel(&renderer, "Assets/Models/tbike.glb", ModelPhysicsType::Static,
@@ -211,6 +294,8 @@ void SeedAuthoring(Context& context) {
     particles.setEmitterShape(EmitterShape::Box);
     context.authored = CaptureSceneDocument(scene, renderer);
     ValidateSceneDocument(context.authored);
+    context.assetUploads = renderer.GetModelResourceStatistics().uploads;
+    context.assetCount = renderer.GetModelResourceStatistics().assets;
 }
 
 void CheckAuthoringRestored(Context& context) {
@@ -234,10 +319,40 @@ void DriveTransport(Context& context) {
     case Phase::Start:
         Require(play.Available() && !play.IsPlaying(), "A new generic workspace is not runnable");
         EqualDocument(context.authored, CaptureSceneDocument(*context.authoring, *context.renderer));
+        context.temporaryParts = ImportParts(*context.authoring, context.authoring->LoadModel(
+            context.renderer, "Assets/Models/spring.glb", ModelPhysicsType::Dynamic, -1));
+        context.phase = Phase::ResourceSubmitted;
+        break;
+    case Phase::ResourceSubmitted: {
+        // This asset has now been included in a submitted production frame.
+        const auto before = context.renderer->AllocatedGpuResourceBytes();
+        for (auto part : context.temporaryParts) context.authoring->DestroyEntity(part);
+        context.temporaryParts.clear();
+        context.renderer->CollectModelResources();
+        const auto resources = context.renderer->GetModelResourceStatistics();
+        Require(resources.pendingAssets > 0 && resources.pendingBytes > 0,
+            "Submitted model was not retained until frame completion");
+        Require(context.renderer->AllocatedGpuResourceBytes() == before,
+            "Pending GPU resources were destroyed before completion was observed");
+        context.phase = Phase::ResourceRetired;
+        context.phaseFrames = 0;
+        break;
+    }
+    case Phase::ResourceRetired:
+        if (context.renderer->GetModelResourceStatistics().pendingAssets != 0) {
+            Require(++context.phaseFrames < 10, "GPU retirement did not complete after frame fences");
+            break;
+        }
+        Require(context.renderer->GetModelResourceStatistics().assets == context.assetCount,
+            "Rendered/deleted model remained in the live asset cache");
+        context.assetUploads = context.renderer->GetModelResourceStatistics().uploads;
+        std::puts("PASS submitted model deletion retires allocations after production frame fences");
         Require(play.RequestPlay(), "Play request rejected");
         context.phase = Phase::AwaitPlay;
         break;
     case Phase::AwaitPlay:
+        Require(context.renderer->GetModelResourceStatistics().uploads == context.assetUploads,
+            "Play duplicated authoring-world GPU assets");
         Require(play.IsSimulating() && context.firstSimulationUpdates == 1,
             "Play did not instantiate the authored scene before simulation");
         context.phaseFrames = 0;
@@ -297,7 +412,9 @@ void DriveTransport(Context& context) {
         context.phase = Phase::AwaitSecondPlay;
         break;
     case Phase::AwaitSecondPlay:
-        Require(play.IsSimulating() && context.firstSimulationUpdates == 3,
+        Require(context.renderer->GetModelResourceStatistics().uploads == context.assetUploads,
+            "Restart or repeated Play uploaded shared assets again");
+        Require(play.IsSimulating() && context.firstSimulationUpdates == context.playCycles + 3,
             "A second Play did not reconstruct the original authored scene");
         Require(play.RequestStop(), "Second Stop request rejected");
         context.phase = Phase::AwaitFinalStop;
@@ -305,6 +422,14 @@ void DriveTransport(Context& context) {
     case Phase::AwaitFinalStop:
         Require(!play.IsPlaying(), "Second Stop did not commit");
         CheckAuthoringRestored(context);
+        Require(context.renderer->GetModelResourceStatistics().assets == context.assetCount,
+            "Repeated Play/Stop retained runtime-only GPU assets");
+        if (++context.playCycles < 10) {
+            Require(play.RequestPlay(), "Repeated Play request rejected");
+            context.phase = Phase::AwaitSecondPlay;
+            break;
+        }
+        std::puts("PASS 10 Play/Stop cycles share immutable GPU assets without additional uploads");
         context.phase = Phase::Done;
         glfwSetWindowShouldClose(context.renderer->GetGLFWWindow(), GLFW_TRUE);
         break;
@@ -338,7 +463,9 @@ void TestPlayAndDocumentReopen(const fs::path& outputDirectory) {
         };
         Application application(std::move(options));
         // Application creates a hidden GLFW window; do not call ShowMainWindow.
+        TestModelResourceOwnership(context);
         SeedAuthoring(context);
+        context.started = std::chrono::steady_clock::now();
         authored = context.authored;
         std::ofstream saved(savedFile);
         saved << authored.dump(2);
@@ -380,6 +507,7 @@ struct NativeContext {
     RenderSystem* renderer = nullptr;
     SceneManager* authoring = nullptr;
     SceneManager* runtime = nullptr;
+    GameplayState* gameplay = nullptr;
     int initialized = 0;
     int updates = 0;
     int phase = 0;
@@ -401,6 +529,7 @@ public:
         mScene->Init(renderer, scene, physics, input, events, state, animation, audio);
         if (!mContext.authoring) mContext.authoring = scene;
         else mContext.runtime = scene;
+        mContext.gameplay = state;
         ++mContext.initialized;
     }
     void Update(float dt) override { ++mContext.updates; mScene->Update(dt); }
@@ -451,6 +580,11 @@ void TestNativeBikersCompatibility(const fs::path& outputDirectory) {
             Require(context.runtime->get_entity_count() >= context.originalEntities,
                 "Native Play lost authored native entities");
             if (context.updates < 3) return;
+            Require(context.gameplay->gameFlow.Request(GameFlowCommand::Restart), "Native Restart request rejected");
+            context.phase = 10;
+        } else if (context.phase == 10) {
+            Require(context.initialized == 3 && play.IsSimulating(), "Native Restart did not reconstruct its world");
+            Require(context.runtime->get_entity_count() >= context.originalEntities, "Native Restart lost model entities");
             Require(play.RequestPause(), "Native Pause request rejected");
             context.phase = 2;
             context.updatesAtPause = context.updates;
@@ -478,7 +612,7 @@ void TestNativeBikersCompatibility(const fs::path& outputDirectory) {
     Require(context.originalCompound != 0, "Native Bikers factory has no compound vehicle body");
     application.Run();
     Require(context.phase == 4, "Native Bikers smoke test exited before Stop");
-    std::cout << "[PASS] native Bikers factory, compound vehicle, simulation, Pause and original-world Stop remain compatible\n";
+    std::cout << "[PASS] native Bikers factory, compound vehicle, simulation, Restart, Pause and original-world Stop remain compatible\n";
 }
 } // namespace
 

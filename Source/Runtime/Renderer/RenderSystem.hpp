@@ -98,6 +98,8 @@ namespace lut = labut2;
 #include "../Debug/PhysicsDebugDraw.hpp"
 #include "../Animation/AnimationSystem.hpp"
 #include <unordered_map>
+#include "ModelAssetSlots.hpp"
+#include "../Scene/ModelAsset.hpp"
 #include "RenderUtilities/frustum.hpp"
 #include "../UI/CameraGizmoGeometry.hpp"
 #include "RenderUtilities/SSAO.hpp"
@@ -260,21 +262,10 @@ namespace engine {
         }
         EditorProjectActions& ProjectActions() { return mEditorProjectActions; }
 
-        // Resources belong to a world; the editor keeps its complete set while
-        // the disposable play world is active. The device and pipelines stay shared.
+        // Mutable state belongs to a world. Immutable GPU model assets stay
+        // device-owned and are shared through entity/world leases during Play.
         struct SceneTransientResources {
-            EngineModel model = {};
-            std::vector<lut::Image> textures = {};
-            std::vector<lut::ImageView> textureViews = {};
-            std::vector<lut::Buffer> positions = {};
-            std::vector<lut::Buffer> texCoords = {};
-            std::vector<lut::Buffer> normals = {};
-            std::vector<lut::Buffer> indices = {};
-            std::unordered_map<uint32_t, lut::Buffer> jointIndices = {};
-            std::unordered_map<uint32_t, lut::Buffer> jointWeights = {};
-            std::vector<VkDescriptorSet> materials = {};
-            std::vector<VkDescriptorSet> debugMaterials = {};
-            std::unordered_map<std::string, std::vector<RenderBatch>> previewCache = {};
+            std::vector<std::shared_ptr<const ModelAsset>> worldAssets;
             std::vector<std::unique_ptr<ParticleSystem>> particles = {};
             std::function<void(DebugRenderer&)> debugDraw = {};
             std::function<bool(size_t)> triggerQuery = {};
@@ -296,7 +287,7 @@ namespace engine {
             glm::vec3 portal2Up = glm::vec3(0.0f, 1.0f, 0.0f);
             float portal2Fov = 75.0f;
             flecs::entity_t selection = 0;
-            lut::DescriptorPool materialPool;
+
         };
 
         const CpuFrameTimings& LastFrameTimings() const { return mFrameTimings; }
@@ -384,20 +375,9 @@ namespace engine {
 
         SceneTransientResources TakeSceneTransientResources() {
             WaitForGpuIdle();
-            auto nextPool = lut::create_descriptor_pool(mWindow);
+            ClearModelPreview();
             SceneTransientResources saved;
-            saved.model = std::exchange(mModel, EngineModel{});
-            saved.textures = std::exchange(mModelTextures, std::vector<lut::Image>{});
-            saved.textureViews = std::exchange(mModelTextureViews, std::vector<lut::ImageView>{});
-            saved.positions = std::exchange(mMeshPositions, std::vector<lut::Buffer>{});
-            saved.texCoords = std::exchange(mMeshTexCoords, std::vector<lut::Buffer>{});
-            saved.normals = std::exchange(mMeshNormals, std::vector<lut::Buffer>{});
-            saved.indices = std::exchange(mMeshIndices, std::vector<lut::Buffer>{});
-            saved.jointIndices = std::exchange(mMeshJointIndices, std::unordered_map<uint32_t, lut::Buffer>{});
-            saved.jointWeights = std::exchange(mMeshJointWeights, std::unordered_map<uint32_t, lut::Buffer>{});
-            saved.materials = std::exchange(mMaterialDescriptors, std::vector<VkDescriptorSet>{});
-            saved.debugMaterials = std::exchange(mDebugMaterialDescriptors, std::vector<VkDescriptorSet>{});
-            saved.previewCache = std::exchange(m_previewPrefabCache, std::unordered_map<std::string, std::vector<RenderBatch>>{});
+            saved.worldAssets = std::move(mWorldModelAssets);
             saved.particles = std::exchange(allParticles, std::vector<std::unique_ptr<ParticleSystem>>{});
             saved.debugDraw = std::exchange(mSceneDebugDraw, std::function<void(DebugRenderer&)>{});
             saved.triggerQuery = std::exchange(mParticleGroupTriggerQuery, std::function<bool(size_t)>{});
@@ -418,7 +398,7 @@ namespace engine {
             saved.portal2Target = std::exchange(mPortal2CameraTarget, glm::vec3(glm::vec3(0.0f)));
             saved.portal2Up = std::exchange(mPortal2CameraUp, glm::vec3(glm::vec3(0.0f, 1.0f, 0.0f)));
             saved.portal2Fov = std::exchange(mPortal2CameraFovDegrees, float(75.0f));
-            saved.materialPool = std::exchange(mModelDescPool, std::move(nextPool));
+
             saved.selection = mEditorScene.Selection();
             mEditorScene.ClearSelection();
             ClearModelPreview();
@@ -428,19 +408,7 @@ namespace engine {
 
         void RestoreSceneTransientResources(SceneTransientResources&& saved) {
             WaitForGpuIdle();
-            mModelTextureViews.clear();
-            mModel = std::move(saved.model);
-            mModelTextures = std::move(saved.textures);
-            mModelTextureViews = std::move(saved.textureViews);
-            mMeshPositions = std::move(saved.positions);
-            mMeshTexCoords = std::move(saved.texCoords);
-            mMeshNormals = std::move(saved.normals);
-            mMeshIndices = std::move(saved.indices);
-            mMeshJointIndices = std::move(saved.jointIndices);
-            mMeshJointWeights = std::move(saved.jointWeights);
-            mMaterialDescriptors = std::move(saved.materials);
-            mDebugMaterialDescriptors = std::move(saved.debugMaterials);
-            m_previewPrefabCache = std::move(saved.previewCache);
+            mWorldModelAssets = std::move(saved.worldAssets);
             allParticles = std::move(saved.particles);
             mSceneDebugDraw = std::move(saved.debugDraw);
             mParticleGroupTriggerQuery = std::move(saved.triggerQuery);
@@ -461,7 +429,7 @@ namespace engine {
             mPortal2CameraTarget = std::move(saved.portal2Target);
             mPortal2CameraUp = std::move(saved.portal2Up);
             mPortal2CameraFovDegrees = std::move(saved.portal2Fov);
-            mModelDescPool = std::move(saved.materialPool);
+
             mEditorScene.Selection() = saved.selection;
             ClearModelPreview();
             mDebugRenderer.Clear();
@@ -483,6 +451,10 @@ namespace engine {
         void ClearSceneTransientResources() {
             WaitForGpuIdle();
             ResetPerformanceHistory();
+            ClearModelPreview();
+            mWorldModelAssets.clear();
+            mPortalMeshIndex = UINT32_MAX;
+            mRuntimeMatIndex = 0;
             allParticles.clear();
             mEditorScene.ClearSelection();
             mPortalEnabled = false;
@@ -1344,8 +1316,7 @@ namespace engine {
                     !(mState->editor.showGameUiEditor && render_system_ui_editor::WantsMouseCapture()) &&
                     !runtimeUiDebugSelectionConsumed &&
                     ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
-                    viewportCanPick &&
-                    !ImGuizmo::IsOver())
+                    viewportCanPick)
                 {
                     flecs::entity hitEntity = mEditorScene.Pick(
                         localMouseX, localMouseY,  // 传局部鼠标坐标
@@ -1387,10 +1358,6 @@ namespace engine {
                         }
                     }
 
-                    if (IsEntityAlive(selectedEntity) && ImGuizmo::IsUsing() && hasDebugBody) {
-                        const auto& lt = selectedEntity.get<LocalTransform>();
-                        mEditorScene.ApplyTransform(mEditorScene.Selection(), lt.matrix);
-                    }
                 }
 
                 // //官方 Demo
@@ -1603,6 +1570,10 @@ namespace engine {
 
             mFrameTimings.fenceWaitMs = std::chrono::duration<double, std::milli>(
                 std::chrono::steady_clock::now() - fenceStart).count();
+            if (mModelFrameSubmissions.size() != mCmdBuffers.size())
+                mModelFrameSubmissions.resize(mCmdBuffers.size(), 0);
+            mCompletedModelSubmission = std::max(mCompletedModelSubmission, mModelFrameSubmissions[mFrameIndex]);
+            CollectModelResources();
             if (const auto gpuMs = mGpuTimer.ConsumeCompleted(static_cast<uint32_t>(mFrameIndex)))
                 mState->renderStats.performance.AddGpuSample(*gpuMs);
 
@@ -2245,6 +2216,7 @@ namespace engine {
                 mImageAvailable[mFrameIndex].handle,
                 mRenderFinished[imageIndex].handle);
 
+            mModelFrameSubmissions[mFrameIndex] = ++mLastModelSubmission;
             mGpuTimer.Submitted(static_cast<uint32_t>(mFrameIndex));
             const auto presentStart = std::chrono::steady_clock::now();
             present_results(mWindow.presentQueue, mWindow.swapchain,
@@ -2292,162 +2264,18 @@ namespace engine {
         // returns the mesh index to pass to SceneManager::create_dynamic_entity()
         uint32_t add_runtime_mesh(const EngineMesh& mesh)
         {
-            // Push mesh data into the model (for index lookups in rendering)
-            mModel.meshes.emplace_back(mesh);
-            uint32_t meshIdx = static_cast<uint32_t>(mModel.meshes.size() - 1);
-
-            // Upload the new mesh to GPU
-            UploadSingleMesh(mesh);
-
-            // add ONE gray descriptor set for this new mesh
-            AddOneGrayDescriptor(mDefaultSampler.handle, mMaterialDescriptors);
-            AddOneGrayDescriptor(mDebugSampler.handle, mDebugMaterialDescriptors);
-
-
-            // Track the material index for the caller
-            mRuntimeMatIndex = static_cast<uint32_t>(mMaterialDescriptors.size() - 1);
-            return meshIdx;
+            EngineModel model;
+            model.meshes.push_back(mesh);
+            model.meshes.back().materialIndex = 0;
+            model.materials.emplace_back();
+            auto asset = UploadModelAsset("@runtime/" + std::to_string(++mProceduralAssetId), std::move(model));
+            mRuntimeMatIndex = asset->firstMaterial;
+            const auto index = asset->firstMesh;
+            mWorldModelAssets.push_back(std::move(asset));
+            return index;
         }
 
-        // 定义一个结构体用于返回偏移量
-        struct ModelAssetOffsets {
-            uint32_t baseMeshIdx;
-            uint32_t baseMaterialIdx;
-        };
-
-        // 【新增】：专注 GPU 上传的纯粹渲染接口
-        ModelAssetOffsets RegisterModelAssets(EngineModel& newModel)
-        {
-            uint32_t baseTextureIdx = static_cast<uint32_t>(mModelTextures.size());
-            uint32_t baseMaterialIdx = static_cast<uint32_t>(mModel.materials.size());
-            uint32_t baseMeshIdx = static_cast<uint32_t>(mModel.meshes.size());
-
-            // 1. 上传贴图 (不变)
-            for (auto const& tex : newModel.textures) {
-                glfwPollEvents();
-                VkFormat fmt = (tex.space == ETextureSpace::srgb) ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
-                mModelTextures.emplace_back(lut::load_image_texture2d_from_memory(tex.pixels.data(), tex.width, tex.height, mWindow, mCmdPool.handle, mAllocator, fmt));
-                mModelTextureViews.emplace_back(lut::create_image_view_texture2d(mWindow, mModelTextures.back().image, fmt));
-            }
-
-            // 2. 追加材质并修复贴图索引 (不变)
-            for (auto mat : newModel.materials) {
-                if (mat.baseColorTexture >= 0) mat.baseColorTexture += baseTextureIdx;
-                if (mat.normalTexture >= 0) mat.normalTexture += baseTextureIdx;
-                if (mat.metalRoughTexture >= 0) mat.metalRoughTexture += baseTextureIdx;
-                if (mat.occlusionTexture >= 0) mat.occlusionTexture += baseTextureIdx;
-                if (mat.emissiveTexture >= 0) mat.emissiveTexture += baseTextureIdx;
-                if (mat.alphaMaskTexture >= 0) mat.alphaMaskTexture += baseTextureIdx;
-
-                mModel.materials.push_back(mat);
-                AddOneMaterialDescriptor(mDefaultSampler.handle, mMaterialDescriptors, mat);
-                AddOneMaterialDescriptor(mDebugSampler.handle, mDebugMaterialDescriptors, mat);
-            }
-
-            // 3. 追加网格并上传 VBO/IBO (不变)
-            for (auto mesh : newModel.meshes) {
-                mesh.materialIndex += baseMaterialIdx;
-                mModel.meshes.push_back(mesh);
-                UploadSingleMesh(mesh);
-            }
-
-            // 4. 更新渲染器维护的全局场景实例列表 (剥离了物理逻辑)
-            //for (auto& instance : newModel.scenes) {
-            for (auto instance : newModel.scenes) {
-                instance.meshIndex += baseMeshIdx;
-                mModel.scenes.push_back(instance);
-            }
-
-            // 把偏移量返回给外面的 SceneManager，让它去配置 ECS
-            return { baseMeshIdx, baseMaterialIdx };
-        }
-        // add an entire model file to the renderer and physics scene
-    //    void load_additional_model(const char* path, bool isStatic, float mass = 1.0f, const glm::mat4& initialTransform = glm::mat4(1.0f), bool isCompound = false, bool isC = false)
-    //    {
-    //        EngineModel newModel = load_engine_model_glb(path);
-    //        uint32_t baseTextureIdx = static_cast<uint32_t>(mModelTextures.size());
-    //        uint32_t baseMaterialIdx = static_cast<uint32_t>(mModel.materials.size());
-    //        uint32_t baseMeshIdx = static_cast<uint32_t>(mModel.meshes.size());
-
-    //        // 1. Appends textures
-    //        for (auto const& tex : newModel.textures) {
-
-
-
-    //            glfwPollEvents();
-    //            VkFormat fmt = (tex.space == ETextureSpace::srgb) ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
-    //            mModelTextures.emplace_back(lut::load_image_texture2d_from_memory(tex.pixels.data(), tex.width, tex.height, mWindow, mCmdPool.handle, mAllocator, fmt));
-    //            mModelTextureViews.emplace_back(lut::create_image_view_texture2d(mWindow, mModelTextures.back().image, fmt));
-    //        }
-
-    //        for (size_t i = 0; i < newModel.textures.size(); ++i) {
-    //            std::printf("[Tex %zu] name='%s' %dx%d\n",
-    //                i + baseTextureIdx,
-    //                newModel.textures[i].name.c_str(),
-    //                newModel.textures[i].width,
-    //                newModel.textures[i].height);
-    //        }
-
-    //        // 2. Append materials (fixing texture references)
-    //        for (auto mat : newModel.materials) {
-    //            if (mat.baseColorTexture >= 0) mat.baseColorTexture += baseTextureIdx;
-    //            if (mat.normalTexture >= 0) mat.normalTexture += baseTextureIdx;
-    //            if (mat.metalRoughTexture >= 0) mat.metalRoughTexture += baseTextureIdx;
-    //            if (mat.occlusionTexture >= 0) mat.occlusionTexture += baseTextureIdx;
-    //            if (mat.emissiveTexture >= 0) mat.emissiveTexture += baseTextureIdx;
-    //            if (mat.alphaMaskTexture >= 0) mat.alphaMaskTexture += baseTextureIdx;
-    //            
-    //            mModel.materials.push_back(mat);
-    //            
-    //            // Add descriptors for new materials
-    //            AddOneMaterialDescriptor(mDefaultSampler.handle, mMaterialDescriptors, mat);
-    //            AddOneMaterialDescriptor(mDebugSampler.handle, mDebugMaterialDescriptors, mat);
-    //        }
-
-    //        std::printf("[LoadModel] %s -> baseMat=%u, added %zu mats, total mats=%zu, total descs=%zu\n",
-    //            path, baseMaterialIdx,
-    //            newModel.materials.size(),
-    //            mModel.materials.size(),
-    //            mMaterialDescriptors.size());
-
-    //        // 3. Append meshes (fixing material references)
-    //        for (auto mesh : newModel.meshes) {
-    //            mesh.materialIndex += baseMaterialIdx;
-    //            mModel.meshes.push_back(mesh);
-    //            UploadSingleMesh(mesh);
-    //              
-    //        }
-
-
-
-    //        // 4.1 apply initial transform and create entities via SceneManager, using local mesh indices to build physics.
-    //        for (auto& instance : newModel.scenes) {
-    //            instance.transform = initialTransform * instance.transform;
-    //        }
-    //        
-    //        // 4.2 update the scenes to use global mesh indices for the renderer.
-    //        if (mSceneManager) {
-    //            if (isCompound) {
-    //                mSceneManager->load_compound_model(newModel, mass, baseMeshIdx, baseMaterialIdx);
-				//}
-    //            else if (isC)
-    //            {
-    //                mSceneManager->load_C_model(newModel, mass, baseMeshIdx, baseMaterialIdx);
-    //            }
-    //            else if (isStatic) {
-    //                mSceneManager->load_static_model(newModel, baseMeshIdx, baseMaterialIdx);
-    //            } else {
-    //                mSceneManager->load_dynamic_model(newModel, mass, baseMeshIdx, baseMaterialIdx);
-    //            }
-    //        }
-
-
-    //        // 5. Update model scenes (fixing mesh references for the global renderer array)
-    //        for (auto& instance : newModel.scenes) {
-    //            instance.meshIndex += baseMeshIdx;
-    //            mModel.scenes.push_back(instance);
-    //        }
-    //    }
+#include "ModelAssetResources.inl"
 
         // returns the material descriptor index assigned to the last add_runtime_mesh() call
         uint32_t get_runtime_mat_index() const { return mRuntimeMatIndex; }
@@ -2517,46 +2345,10 @@ namespace engine {
         void load_animated_model(const char* path,
             const glm::mat4& initialTransform = glm::mat4(1.0f))
         {
-            EngineModel newModel = load_engine_model_glb(path);
-            uint32_t baseTexIdx = static_cast<uint32_t>(mModelTextures.size());
-            uint32_t baseMatIdx = static_cast<uint32_t>(mModel.materials.size());
-            uint32_t baseMeshIdx = static_cast<uint32_t>(mModel.meshes.size());
-
-            // 1. Upload textures
-            for (auto const& tex : newModel.textures) {
-                glfwPollEvents();
-                VkFormat fmt = (tex.space == ETextureSpace::srgb)
-                    ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
-                mModelTextures.emplace_back(lut::load_image_texture2d_from_memory(
-                    tex.pixels.data(), tex.width, tex.height,
-                    mWindow, mCmdPool.handle, mAllocator, fmt));
-                mModelTextureViews.emplace_back(lut::create_image_view_texture2d(
-                    mWindow, mModelTextures.back().image, fmt));
-            }
-
-            // 2. Upload materials
-            for (auto mat : newModel.materials) {
-                if (mat.baseColorTexture >= 0) mat.baseColorTexture += baseTexIdx;
-                if (mat.normalTexture >= 0) mat.normalTexture += baseTexIdx;
-                if (mat.metalRoughTexture >= 0) mat.metalRoughTexture += baseTexIdx;
-                if (mat.occlusionTexture >= 0) mat.occlusionTexture += baseTexIdx;
-                if (mat.emissiveTexture >= 0) mat.emissiveTexture += baseTexIdx;
-                if (mat.alphaMaskTexture >= 0) mat.alphaMaskTexture += baseTexIdx;
-                mModel.materials.push_back(mat);
-                AddOneMaterialDescriptor(mDefaultSampler.handle, mMaterialDescriptors, mat);
-                AddOneMaterialDescriptor(mDebugSampler.handle, mDebugMaterialDescriptors, mat);
-            }
-
-            // 3. Upload meshes (position/normal/texcoord + skinning buffers)
-            for (auto mesh : newModel.meshes) {
-                mesh.materialIndex += baseMatIdx;
-                mModel.meshes.push_back(mesh);
-                uint32_t meshIdx = static_cast<uint32_t>(mModel.meshes.size() - 1);
-                UploadSingleMesh(mesh);
-                if (mesh.isSkinned) {
-                    UploadSkinningBuffers(mesh, meshIdx);
-                }
-            }
+            auto asset = AcquireModelAsset(path);
+            EngineModel newModel = asset->model;
+            const auto baseMatIdx = asset->firstMaterial;
+            const auto baseMeshIdx = asset->firstMesh;
 
             // 4. Apply initial transform
             for (auto& inst : newModel.scenes)
@@ -2572,13 +2364,9 @@ namespace engine {
 
             if (mSceneManager)
                 mSceneManager->load_animated_model(newModel, baseMeshIdx, baseMatIdx,
-                    baseSkinIdx, baseAnimIdx);
+                    baseSkinIdx, baseAnimIdx, asset);
 
-            // 6. Merge scenes into global model
-            for (auto& inst : newModel.scenes) {
-                inst.meshIndex += baseMeshIdx;
-                mModel.scenes.push_back(inst);
-            }
+
         }
 
         void SetState(RendererStateView* state) { this->mState = state; }
@@ -2695,9 +2483,7 @@ namespace engine {
             mesh.localAabbMin = glm::vec3(-0.5f, -0.5f, -kPortalHalfDepth);
             mesh.localAabbMax = glm::vec3(0.5f, 0.5f, kPortalHalfDepth);
 
-            mPortalMeshIndex = static_cast<uint32_t>(mModel.meshes.size());
-            mModel.meshes.push_back(mesh);
-            UploadSingleMesh(mModel.meshes.back());
+            mPortalMeshIndex = add_runtime_mesh(mesh);
         }
 
         VkDescriptorSet BuildPortalSurfaceDesc(VkImageView portalView)
@@ -2940,9 +2726,10 @@ namespace engine {
             return ds;
         }
 
-        void AddOneMaterialDescriptor(VkSampler sampler, std::vector<VkDescriptorSet>& out, const EngineMaterial& mat)
+        void AddOneMaterialDescriptor(VkSampler sampler, std::vector<VkDescriptorSet>& out, const EngineMaterial& mat,
+            VkDescriptorPool pool = VK_NULL_HANDLE, uint32_t slot = UINT32_MAX)
         {
-            VkDescriptorSet ds = lut::alloc_desc_set(mWindow, mModelDescPool.handle, mObjectLayout.handle);
+            VkDescriptorSet ds = lut::alloc_desc_set(mWindow, pool ? pool : mModelDescPool.handle, mObjectLayout.handle);
 
             // 0: BaseColor (基础色)
             VkImageView baseView = mDefaultGrayView.handle;
@@ -2987,7 +2774,8 @@ namespace engine {
 
             // --- 【关键修改：更新数量改成 6】 ---
             vkUpdateDescriptorSets(mWindow.device, 6, w, 0, nullptr);
-            out.emplace_back(ds);
+            if (slot == UINT32_MAX) out.emplace_back(ds);
+            else out.at(slot) = ds;
         }
 
         // allocate exactly one gray descriptor set (for runtime meshes)
@@ -3228,7 +3016,7 @@ void InitSkybox()
 
 
         // upload a single mesh to GPU, appending to the mesh buffer vectors
-        void UploadSingleMesh(const EngineMesh& mesh)
+        void UploadSingleMesh(const EngineMesh& mesh, uint32_t meshIdx = UINT32_MAX)
         {
             VkCommandBuffer uploadCmd = lut::alloc_command_buffer(mWindow, mCmdPool.handle);
             VkCommandBufferBeginInfo bi{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
@@ -3245,10 +3033,14 @@ void InitSkybox()
                     usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                     VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
             };
-            mMeshPositions.emplace_back(mkGpu(posSz, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT));
-            mMeshTexCoords.emplace_back(mkGpu(texSz, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT));
-            mMeshNormals.emplace_back(mkGpu(normSz, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT));
-            mMeshIndices.emplace_back(mkGpu(idxSz, VK_BUFFER_USAGE_INDEX_BUFFER_BIT));
+            if (meshIdx == UINT32_MAX) meshIdx = static_cast<uint32_t>(mMeshPositions.size());
+            const auto count = std::max(mMeshPositions.size(), std::size_t(meshIdx) + 1);
+            mMeshPositions.resize(count); mMeshTexCoords.resize(count);
+            mMeshNormals.resize(count); mMeshIndices.resize(count);
+            mMeshPositions[meshIdx] = mkGpu(posSz, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+            mMeshTexCoords[meshIdx] = mkGpu(texSz, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+            mMeshNormals[meshIdx] = mkGpu(normSz, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+            mMeshIndices[meshIdx] = mkGpu(idxSz, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 
             auto mkStg = [&](VkDeviceSize sz) {
                 return lut::create_buffer(mAllocator, sz,
@@ -3273,21 +3065,21 @@ void InitSkybox()
                 VkBufferCopy c{ 0, 0, sz };
                 vkCmdCopyBuffer(uploadCmd, src.buffer, dst.buffer, 1, &c);
             };
-            cpy(ps, mMeshPositions.back(), posSz);
-            cpy(ts, mMeshTexCoords.back(), texSz);
-            cpy(ns, mMeshNormals.back(),   normSz);
-            cpy(is, mMeshIndices.back(),   idxSz);
+            cpy(ps, mMeshPositions[meshIdx], posSz);
+            cpy(ts, mMeshTexCoords[meshIdx], texSz);
+            cpy(ns, mMeshNormals[meshIdx],   normSz);
+            cpy(is, mMeshIndices[meshIdx],   idxSz);
 
-            lut::buffer_barrier(uploadCmd, mMeshPositions.back().buffer,
+            lut::buffer_barrier(uploadCmd, mMeshPositions[meshIdx].buffer,
                 VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
                 VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT, VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT);
-            lut::buffer_barrier(uploadCmd, mMeshTexCoords.back().buffer,
+            lut::buffer_barrier(uploadCmd, mMeshTexCoords[meshIdx].buffer,
                 VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
                 VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT, VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT);
-            lut::buffer_barrier(uploadCmd, mMeshNormals.back().buffer,
+            lut::buffer_barrier(uploadCmd, mMeshNormals[meshIdx].buffer,
                 VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
                 VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT, VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT);
-            lut::buffer_barrier(uploadCmd, mMeshIndices.back().buffer,
+            lut::buffer_barrier(uploadCmd, mMeshIndices[meshIdx].buffer,
                 VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
                 VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT, VK_ACCESS_2_INDEX_READ_BIT);
 
@@ -3300,6 +3092,7 @@ void InitSkybox()
             vkQueueSubmit2(mWindow.graphicsQueue, 1, &si, VK_NULL_HANDLE);
 
             vkQueueWaitIdle(mWindow.graphicsQueue);
+            vkFreeCommandBuffers(mWindow.device, mCmdPool.handle, 1, &uploadCmd);
 
             glfwPollEvents(); // 保持窗口心跳
         } // 函数结束，旧的 ps, ts 等变成空壳被安全销毁，真正的显存已经归 vector 管了
@@ -3360,6 +3153,7 @@ void InitSkybox()
             si.commandBufferInfoCount = 1; si.pCommandBufferInfos = &ci;
             vkQueueSubmit2(mWindow.graphicsQueue, 1, &si, VK_NULL_HANDLE);
             vkQueueWaitIdle(mWindow.graphicsQueue);
+            vkFreeCommandBuffers(mWindow.device, mCmdPool.handle, 1, &uploadCmd);
 
             mMeshJointIndices.emplace(meshIdx, std::move(jGpu));
             mMeshJointWeights.emplace(meshIdx, std::move(wGpu));

@@ -492,7 +492,7 @@ inline bool RenderSystem::HandleRuntimeUiDebugSelection() {
         !mRuntimeUiDebugEnablePicking ||
         !ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
         (mState->editor.showGameUiEditor && render_system_ui_editor::WantsMouseCapture()) ||
-        ImGuizmo::IsOver()) {
+        (mState->editor.isSceneViewportVisible && !mState->editor.isSceneViewportHovered)) {
         return false;
     }
 

@@ -6,6 +6,20 @@
 
 After building Release Editor/Engine, `Tests/Project/run-generic-play-integration-tests.ps1` runs a hidden real Vulkan Application. It imports repeated multi-mesh GLBs and static/dynamic instances, deletes a mesh, authors a hierarchy/light/camera/particle group, and checks reconstruction before physics, simulation, pause/resume, restart, Stop restoring original entity/body handles, another Play, and scene reopening. This suite needs a working Vulkan device and the repository Assets.
 
+Model lifetime checks run ten import/delete cycles and ten Play/Stop cycles.
+They measure actual VMA allocation bytes returning to baseline, preview/import
+and repeated-instance sharing, last-reference deletion, stable slot reuse while
+another asset remains alive, and direct Flecs destruction. A submitted production
+frame is followed by deletion to verify that allocations stay alive until a frame
+fence completes. Play and Restart must reuse authoring assets without new uploads.
+
+Model lifetime checks run ten import/delete cycles and ten Play/Stop cycles.
+They measure actual VMA allocation bytes returning to baseline, preview/import
+and repeated-instance sharing, last-reference deletion, stable slot reuse while
+another asset remains alive, and direct Flecs destruction. A submitted production
+frame is followed by deletion to verify that allocations stay alive until a frame
+fence completes. Play and Restart must reuse authoring assets without new uploads.
+
 The integration suite also rejects a malformed document after subsystem initialization, then reopens a valid document with a Unicode filename to verify cleanup. Its native Bikers smoke check links `BikersProject`, loads the shipped C++ scene factory, advances the vehicle simulation, pauses, and verifies Stop retains the original compound body. Test windows remain hidden, native game audio is muted, and existing project snapshots/layouts are not modified.
 
 On Windows, restricted process sandboxes may deny `std::filesystem::weakly_canonical` metadata access even where file writes are allowed, or block MSVC PDB service communication. Run these local test scripts in the normal developer terminal when those environment restrictions occur.

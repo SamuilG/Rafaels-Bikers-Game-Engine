@@ -24,6 +24,7 @@
 #include "GameCameraEntity.hpp"
 #include "SceneLighting.hpp"
 #include "SceneAssetIdentity.hpp"
+#include "ModelAsset.hpp"
 
 // Forward declare EngineModel to avoid including engine_model.hpp here
 // 1. Avoid circular dependency
@@ -168,7 +169,8 @@ namespace engine {
         // Load a skinned/animated model: creates entities with AnimationComponent + SkinComponent.
         void load_animated_model(const EngineModel& model,
             uint32_t baseMeshIdx, uint32_t baseMatIdx,
-            uint32_t baseSkinIdx, uint32_t baseAnimIdx);
+            uint32_t baseSkinIdx, uint32_t baseAnimIdx,
+            std::shared_ptr<const ModelAsset> asset = {});
 
         // Build render batches for skinned entities.
         std::vector<RenderBatch> get_skinned_batches(glm::mat4* boneBuffer, size_t maxBones, size_t& outBoneCount);
@@ -259,6 +261,9 @@ namespace engine {
         std::vector<ModelImportSource> mModelImports;
         const ModelImportSource* mLoadingImport = nullptr;
         uint32_t mLoadingPart = 0;
+        std::shared_ptr<const ModelAsset> mLoadingAsset;
+        flecs::entity InstantiateModelAsset(RenderSystem*, const char*, std::shared_ptr<const ModelAsset>,
+            ModelPhysicsType, float, const glm::mat4&, RenderLayer);
         void RecordModelPart(flecs::entity entity);
         PhysicsSystem* m_physics_system; // Optional dependency
 

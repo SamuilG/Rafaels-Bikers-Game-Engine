@@ -1,10 +1,12 @@
 #pragma once
 
 #include "CameraController.hpp"
+#include "EditorGizmoSettings.hpp"
 
 namespace engine {
 struct EditorState {
     CameraController sceneCamera;
+    EditorGizmoSettings gizmos;
     int renderMode = 0; // Stable IDs are defined in Renderer/RenderUtilities/ViewMode.hpp.
     bool editorViewportBackdrop = true; // Neutral editor background; disable to preview scene sky.
     bool editorViewportSkybox = false;  // Render the scene skybox in the editor viewport.

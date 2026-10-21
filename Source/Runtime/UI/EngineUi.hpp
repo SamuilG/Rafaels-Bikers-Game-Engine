@@ -75,6 +75,8 @@ namespace engine {
         
 		//绘制 3D 渲染画面、图标、Gizmo 坐标轴//Draw the 3D rendered scene, icons, and Gizmo axes
         static ImDrawList* GetSceneViewportDrawList();
+        static bool DrawLightGizmos(EditorSceneAdapter& scene, const glm::mat4& sceneViewProjection,
+            EditorState& editor);
         // Draw after camera updates, using the same scene pose as this frame's render.
         static void DrawPlayerCameraGizmo(VkDescriptorSet icon, const editor_camera_gizmo::CameraView& camera,
             const glm::mat4& sceneViewProjection, EditorState& editor,

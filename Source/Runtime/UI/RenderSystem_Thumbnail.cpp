@@ -769,63 +769,35 @@ namespace engine {
 
     // 预加载模型数据以供预览使用
     void RenderSystem::PreloadModelForPreview(const std::string& path) {
-        if (m_previewPrefabCache.count(path)) return;
-
-        EngineModel newModel = load_engine_model_glb(path.c_str());
-        uint32_t baseTextureIdx = static_cast<uint32_t>(mModelTextures.size());
-        uint32_t baseMaterialIdx = static_cast<uint32_t>(mModel.materials.size());
-        uint32_t baseMeshIdx = static_cast<uint32_t>(mModel.meshes.size());
-
-        for (const auto& tex : newModel.textures) {
-            const VkFormat fmt = tex.space == ETextureSpace::srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
-            mModelTextures.emplace_back(lut::load_image_texture2d_from_memory(tex.pixels.data(), tex.width, tex.height, mWindow, mCmdPool.handle, mAllocator, fmt));
-            mModelTextureViews.emplace_back(lut::create_image_view_texture2d(mWindow, mModelTextures.back().image, fmt));
-        }
-
-        for (auto mat : newModel.materials) {
-            if (mat.baseColorTexture >= 0) mat.baseColorTexture += baseTextureIdx;
-            if (mat.normalTexture >= 0) mat.normalTexture += baseTextureIdx;
-            if (mat.metalRoughTexture >= 0) mat.metalRoughTexture += baseTextureIdx;
-            if (mat.occlusionTexture >= 0) mat.occlusionTexture += baseTextureIdx;
-            if (mat.emissiveTexture >= 0) mat.emissiveTexture += baseTextureIdx;
-            if (mat.alphaMaskTexture >= 0) mat.alphaMaskTexture += baseTextureIdx;
-
-            mModel.materials.push_back(mat);
-            AddOneMaterialDescriptor(mDefaultSampler.handle, mMaterialDescriptors, mat);
-            AddOneMaterialDescriptor(mDebugSampler.handle, mDebugMaterialDescriptors, mat);
-        }
-
-        for (auto mesh : newModel.meshes) {
-            mesh.materialIndex += baseMaterialIdx;
-            mModel.meshes.push_back(mesh);
-            UploadSingleMesh(mesh);
-        }
-
+        const auto asset = AcquireModelAsset(path);
+        if (mPreviewModelAsset == asset) return;
+        m_previewPrefabCache.clear();
+        mPreviewModelAsset = asset;
         std::vector<RenderBatch> batches;
-        batches.reserve(newModel.scenes.size());
-        for (const auto& instance : newModel.scenes) {
+        batches.reserve(asset->model.scenes.size());
+        for (const auto& instance : asset->model.scenes) {
             RenderBatch batch{};
-            batch.meshIndex = instance.meshIndex + baseMeshIdx;
-            if (batch.meshIndex >= mModel.meshes.size()) continue;
-
-            batch.materialIndex = mModel.meshes[batch.meshIndex].materialIndex;
+            batch.meshIndex = instance.meshIndex + asset->firstMesh;
+            batch.materialIndex = asset->model.meshes.at(instance.meshIndex).materialIndex + asset->firstMaterial;
             batch.transform = instance.transform;
             batches.push_back(batch);
         }
-
         m_previewPrefabCache[path] = std::move(batches);
     }
 
     // 设置模型预览
     void RenderSystem::SetModelPreview(const std::string& path, const glm::mat4& transform) {
+        if (path != m_previewModelPath) ClearModelPreview();
+        PreloadModelForPreview(path);
         m_previewModelPath = path;
         m_previewTransform = transform;
-        PreloadModelForPreview(path);
     }
 
     // 清空当前模型预览
     void RenderSystem::ClearModelPreview() {
         m_previewModelPath.clear();
+        m_previewPrefabCache.clear();
+        mPreviewModelAsset.reset();
     }
 
     // 获取模型缩略图：
