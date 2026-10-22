@@ -60,6 +60,7 @@ void record_commands(
 	std::vector<EngineMaterial> const& aMaterials,
 	std::vector<VkDescriptorSet> const& aMaterialDescriptors,
 	std::vector<RenderBatch> const& aBatches,
+	std::vector<RenderBatch> const& aShadowBatches,
 	// --- Bloom / blur / composite ---
 	VkPipeline aBlurPipe,
 	VkPipelineLayout aBlurLayout,
@@ -387,8 +388,9 @@ void record_commands(
 	// ---------------------------
 	// Shadow pass (淇濇寔鍘熷疄鐜?
 	// ---------------------------
-	auto renderShadowMap = [&](glsl::SceneUniform const& shadowSceneUniform,
-		const std::vector<RenderBatch>& shadowBatches) {
+	// Only the light matrices vary by view. Never substitute camera-culled
+	// geometry here, including for recursive portal views and the spotlight.
+	auto renderShadowMap = [&](glsl::SceneUniform const& shadowSceneUniform) {
 		const VkPipelineStageFlags2 shadowOldStage =
 			(shadowMapLayout == VK_IMAGE_LAYOUT_UNDEFINED)
 			? VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
@@ -443,9 +445,9 @@ void record_commands(
 			vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
 
 			VkDeviceSize kZeroOffset = 0;
-			for (const auto& batch : shadowBatches) {
+			for (const auto& batch : aShadowBatches) {
 				// 銆愭柊澧炪€戯細濡傛灉杩欎釜鎵规琚爣璁颁负涓嶆姇灏勯槾褰憋紙姣斿瀹冩槸鍙戝厜浣擄級锛岀洿鎺ヨ烦杩囧畠鐨勯槾褰辩粯鍒讹紒
-				if (!batch.castShadow) {
+				if (!batch.castShadow || batch.isPortalClone) {
 					continue;
 				}
 				uint32_t meshIdx = batch.meshIndex;
@@ -466,7 +468,8 @@ void record_commands(
 				vkCmdDrawIndexed(aCmdBuff, static_cast<uint32_t>(aMeshInfos[meshIdx].indices.size()), 1, 0, 0, 0);
 			}
 
-			// --- Skinned shadow pass (character and other animated meshes) ---
+			// Skinned preparation is unculled and reuses the uploaded bone slices.
+			// Portal clones are visual duplicates and do not cast a second shadow.
 			if (aSkinnedShadowPipe != VK_NULL_HANDLE &&
 				aSkinnedBatches && !aSkinnedBatches->empty() &&
 				aSkinnedPipeLayout != VK_NULL_HANDLE &&
@@ -486,7 +489,7 @@ void record_commands(
 
 				for (const auto& batch : *aSkinnedBatches)
 				{
-					if (!batch.castShadow) {
+					if (!batch.castShadow || batch.isPortalClone) {
 						continue;
 					}
 					uint32_t meshIdx = batch.meshIndex;
@@ -879,8 +882,7 @@ void record_commands(
 		glsl::SceneUniform const& sceneUniform,
 		NestedPortalSurface const& nestedPortal1,
 		NestedPortalSurface const& nestedPortal2) {
-		const auto& portalShadowBatches = aPortalBatches ? *aPortalBatches : aBatches;
-		renderShadowMap(sceneUniform, portalShadowBatches);
+		renderShadowMap(sceneUniform);
 		renderPortalView(
 			sceneUniform,
 			aPortalBatches,
@@ -896,8 +898,7 @@ void record_commands(
 		glsl::SceneUniform const& sceneUniform,
 		NestedPortalSurface const& nestedPortal1,
 		NestedPortalSurface const& nestedPortal2) {
-		const auto& portal2ShadowBatches = aPortal2Batches ? *aPortal2Batches : aBatches;
-		renderShadowMap(sceneUniform, portal2ShadowBatches);
+		renderShadowMap(sceneUniform);
 		renderPortalView(
 			sceneUniform,
 			aPortal2Batches,
@@ -980,7 +981,7 @@ void record_commands(
 			renderPortalTwo(portal2FinalTarget, *aPortal2SceneUniform, {}, {});
 		}
 	}
-	renderShadowMap(aSceneUniform, aBatches);
+	renderShadowMap(aSceneUniform);
 	uploadSceneUniform(aSceneUniform);
     if (aSceneUniform.renderMode == engine::view_mode::Shadow) {
         renderGeometryView();

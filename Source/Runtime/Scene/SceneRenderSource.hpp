@@ -19,6 +19,8 @@ struct SceneRenderRequest {
     const Frustum* frustum = nullptr;
     float frustumPadding = 0.0f;
     glm::vec3 cameraPosition = glm::vec3(0.0f);
+    // Auxiliary queries (shadows, portal clones) must not replace view statistics.
+    bool updateFrustumStats = true;
 };
 
 class SceneRenderSource {

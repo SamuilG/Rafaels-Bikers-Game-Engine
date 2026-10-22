@@ -1811,6 +1811,10 @@ namespace engine {
                 }
             };
             appendPreviewBatches(finalBatches);
+            // Collect once without a viewer frustum. Main, portal and recursive
+            // shadow maps all need offscreen casters, including preview meshes.
+            auto shadowBatches = mSceneRenderer.BuildShadowCasters(camPosWorld);
+            appendPreviewBatches(shadowBatches);
             // =========================================================
             std::vector<engine::GpuLight> lights;
             if (mSceneManager) {
@@ -2085,7 +2089,7 @@ namespace engine {
                 mModel.materials,
                 *currentDescs,
                 finalBatches,
-                //mSceneManager ? mSceneManager->get_render_batches() : std::vector<RenderBatch>{},
+                shadowBatches,
                 // --- 新增 Bloom 参数 (必须与 rendering.cpp 顺序一致) ---
                 mBlurPipe.handle,              // VkPipeline aBlurPipe
                 mBlurPipeLayout.handle,        // VkPipelineLayout aBlurLayout

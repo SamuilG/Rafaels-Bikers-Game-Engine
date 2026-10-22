@@ -181,7 +181,8 @@ namespace engine {
 
         // Get render batches for the current frame with Frustum Culling and LOD selection.
         // cameraPos: world-space camera position used for distance-based LOD (ignored when lodEnabled is false).
-        std::vector<RenderBatch> get_render_batches(const Frustum* frustum = nullptr, float frustumPadding = 0.0f, glm::vec3 cameraPos = glm::vec3(0.0f));
+        std::vector<RenderBatch> get_render_batches(const Frustum* frustum = nullptr, float frustumPadding = 0.0f,
+            glm::vec3 cameraPos = glm::vec3(0.0f), bool updateFrustumStats = true);
         std::vector<::RenderBatch> BuildRenderBatches(const SceneRenderRequest& request) override;
 
         // Attach LOD levels to an existing entity.

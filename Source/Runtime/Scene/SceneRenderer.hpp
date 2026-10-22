@@ -22,6 +22,17 @@ public:
         return mSource ? mSource->BuildRenderBatches(request) : std::vector<::RenderBatch>{};
     }
 
+    // A caster outside any viewer's frustum can still shadow a visible receiver.
+    // Share this unculled list across main/portal shadow passes; cameraPosition
+    // selects the same distance-based LOD as the main view, never visibility.
+    std::vector<::RenderBatch> BuildShadowCasters(const glm::vec3& cameraPosition) const {
+        auto batches = BuildOpaque({nullptr, 0.0f, cameraPosition, false});
+        std::erase_if(batches, [](const ::RenderBatch& batch) {
+            return !batch.castShadow || batch.isPortalClone;
+        });
+        return batches;
+    }
+
     std::vector<::RenderBatch> BuildSkinned(glm::mat4* boneBuffer,
         std::size_t maxBones, std::size_t& outBoneCount) const {
         outBoneCount = 0;
@@ -52,7 +63,7 @@ public:
         const glm::vec3& cameraPosition) const {
         std::vector<::RenderBatch> sources;
         if (!visual.active || visual.bodyId == std::numeric_limits<std::uint32_t>::max()) return sources;
-        for (const auto& batch : BuildOpaque({nullptr, 0.0f, cameraPosition})) {
+        for (const auto& batch : BuildOpaque({nullptr, 0.0f, cameraPosition, false})) {
             if (!batch.isPortalClone && batch.compoundBodyID == visual.bodyId) sources.push_back(batch);
         }
         return sources;

@@ -37,6 +37,8 @@ void record_commands(
 	std::vector<EngineMaterial> const& aMaterials,
 	std::vector<VkDescriptorSet> const& aMaterialDescriptors,
 	std::vector<RenderBatch> const& aBatches,
+	// Independent of main/portal camera visibility; includes offscreen casters.
+	std::vector<RenderBatch> const& aShadowBatches,
 	// --- Bloom / blur / composite ---
 	VkPipeline aBlurPipe,
 	VkPipelineLayout aBlurLayout,

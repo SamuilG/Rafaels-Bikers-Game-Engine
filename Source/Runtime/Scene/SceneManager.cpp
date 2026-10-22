@@ -651,10 +651,11 @@ namespace engine {
         return BuildSceneLighting(std::move(candidates));
     }
 
-    std::vector<RenderBatch> SceneManager::get_render_batches(const Frustum* frustum, float frustumPadding, glm::vec3 cameraPos) {
+    std::vector<RenderBatch> SceneManager::get_render_batches(const Frustum* frustum, float frustumPadding,
+        glm::vec3 cameraPos, bool updateFrustumStats) {
         std::vector<RenderBatch> batches;
-        mLastFrustumCullingCandidates = 0;
-        mLastFrustumCullingVisible = 0;
+        uint32_t candidates = 0;
+        uint32_t visible = 0;
 
         const bool doLOD = mState && mState->render.lodEnabled;
 
@@ -663,7 +664,7 @@ namespace engine {
 
             if (!scene_hierarchy::Visible(e)) return;
             if (e.has<SkinComponent>()) return;
-            ++mLastFrustumCullingCandidates;
+            ++candidates;
 
             if (frustum && mc.meshIndex < mModel.meshes.size()) {
                 const EngineMesh& mesh = mModel.meshes[mc.meshIndex];
@@ -677,7 +678,7 @@ namespace engine {
                 }
             }
 
-            ++mLastFrustumCullingVisible;
+            ++visible;
 
             // --- LOD selection ---
             uint32_t selectedMesh = mc.meshIndex;
@@ -719,11 +720,15 @@ namespace engine {
             }
             batches.push_back(batch);
                 });
+        if (updateFrustumStats) {
+            mLastFrustumCullingCandidates = candidates;
+            mLastFrustumCullingVisible = visible;
+        }
         return batches;
     }
 
     std::vector<::RenderBatch> SceneManager::BuildRenderBatches(const SceneRenderRequest& request) {
-        return get_render_batches(request.frustum, request.frustumPadding, request.cameraPosition);
+        return get_render_batches(request.frustum, request.frustumPadding, request.cameraPosition, request.updateFrustumStats);
     }
 
     void SceneManager::SetupEntityLOD(flecs::entity e,

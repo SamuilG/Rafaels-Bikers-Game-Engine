@@ -6,7 +6,7 @@ New-Item -ItemType Directory -Force -Path $shaderDirectory | Out-Null
 $compiler = Join-Path $repoRoot 'glslc.exe'
 if (-not (Test-Path -LiteralPath $compiler)) { $compiler = Join-Path $repoRoot 'ThirdParty/shaderc/win-x86_64/glslc.exe' }
 foreach ($shader in @('debug.vert', 'skinned.vert', 'fullscreen.vert', 'debug_mip.frag', 'debug_depth.frag', 'debug_deriv.frag', 'overdraw.frag',
-    'debug_albedo.frag', 'debug_wireframe.frag', 'debug_shadow.frag', 'debug_buffer.frag')) {
+    'debug_albedo.frag', 'debug_wireframe.frag', 'debug_shadow.frag', 'debug_buffer.frag', 'shadowmap.vert', 'shadowmap.frag')) {
     & $compiler --target-env=vulkan1.3 ('-I' + (Join-Path $repoRoot 'Assets/Shaders')) (Join-Path $repoRoot "Assets/Shaders/$shader") -o (Join-Path $shaderDirectory "$shader.spv")
     if ($LASTEXITCODE -ne 0) { throw "Production shader compilation failed: $shader" }
 }
@@ -17,7 +17,7 @@ if (-not $visualStudio) { throw 'Visual Studio with x64 C++ build tools was not 
 $vcvars = Join-Path $visualStudio 'VC/Auxiliary/Build/vcvars64.bat'
 $sources = @('Tests/Rendering/ViewModeGpuTests.cpp', 'ThirdParty/volk/src/volk.c')
 $arguments = @('/nologo', '/std:c++latest', '/EHsc', '/MDd', '/Od', '/Z7', '/utf-8', '/MP2', '/D_DEBUG=1')
-foreach ($include in @('ThirdParty/volk/include', 'ThirdParty/volk/include/volk', 'ThirdParty/vulkan/include', 'ThirdParty/glm/include', 'ThirdParty/stb/include')) {
+foreach ($include in @('Source', 'ThirdParty/volk/include', 'ThirdParty/volk/include/volk', 'ThirdParty/vulkan/include', 'ThirdParty/glm/include', 'ThirdParty/stb/include')) {
     $arguments += '/I"' + (Join-Path $repoRoot $include) + '"'
 }
 $arguments += $sources | ForEach-Object { '"' + (Join-Path $repoRoot $_) + '"' }

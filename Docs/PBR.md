@@ -16,6 +16,16 @@ the light/settings and fit their own cascades. Shadow distance/splits, receiver
 bias, filtering, blending, strength, raster bias and depth padding are editable
 entity data and are persisted in both scene documents and native snapshots.
 
+Shadow passes use a separate unculled opaque caster list, collected once per
+frame and shared by the main view, both portal views and recursive portal layers.
+Directional cascades and the spotlight never reuse camera-frustum-culled draws:
+an offscreen object may cast onto an onscreen receiver. Entity/ancestor visibility
+and non-casting layers still apply, and LOD uses the main camera position.
+Skinned casters already bypass camera culling and share the uploaded bone slices;
+portal clones do not cast duplicate shadows. Auxiliary queries preserve camera
+culling statistics. This conservative list prioritizes correctness; large scenes
+may submit more shadow draws until independent light-volume culling is added.
+
 `Assets/Shaders/pbr_common.glsl` supplies GGX and Smith functions shared by
 runtime shading and IBL baking. Material roughness is perceptual roughness:
 `alpha = max(roughness * roughness, 0.001)`. The GGX distribution squares alpha
@@ -152,6 +162,7 @@ Run from the repository root:
 ```powershell
 Tests/Rendering/run-pbr-gpu-tests.ps1
 Tests/Rendering/run-view-mode-gpu-tests.ps1
+Tests/Rendering/run-shadow-caster-tests.ps1 # build Release x64 first
 ```
 
 The PBR suite calls the production baker and runs the production PBR vertex /
@@ -178,6 +189,12 @@ Compiler logs and results stay in `Intermediate/Diagnostics/pbr-gpu`. Validation
 layers are enabled when available; an unavailable layer is reported explicitly.
 The suite and existing view-mode GPU regressions passed on an NVIDIA GeForce RTX
 2060 SUPER. This environment did not expose the Khronos validation layer.
+
+The caster regression exercises real ECS extraction with offscreen casters,
+independent main/portal frusta, inherited visibility, non-casting layers, LOD,
+bone slices and unchanged camera statistics. The view-mode GPU suite also renders
+an offscreen caster with the production depth shaders: the old culled list loses
+the shadow, and the separate caster list matches culling-disabled pixels exactly.
 
 For scene comparison, inspect the same metal and nonmetal materials at roughness
 0.1, 0.5 and 0.9, including grazing views. Check softened environment detail on

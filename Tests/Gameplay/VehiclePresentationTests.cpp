@@ -222,8 +222,10 @@ void TestSkinnedClonesAndInactiveEffects() {
 struct FakeScene final : SceneRenderSource {
     std::vector<RenderBatch> batches;
     bool requestedUnculled = false;
+    bool updatesViewStats = true;
     std::vector<RenderBatch> BuildRenderBatches(const SceneRenderRequest& request) override {
         requestedUnculled = request.frustum == nullptr && request.frustumPadding == 0.0f;
+        updatesViewStats = request.updateFrustumStats;
         return batches;
     }
     std::vector<RenderBatch> BuildSkinnedBatches(glm::mat4*, std::size_t, std::size_t& boneCount) override {
@@ -242,8 +244,15 @@ void TestSceneSourceContract() {
     SceneRenderer renderer(&source);
     const auto sources = renderer.PortalCloneSources(Visual(), glm::vec3(0));
     Require(source.requestedUnculled, "clone preparation bypasses real-view frustum culling");
+    Require(!source.updatesViewStats, "auxiliary clone queries preserve view statistics");
     Require(sources.size() == 1 && sources[0].entityId == 11 && !sources[0].isPortalClone,
         "clone preparation filters target body and ignores earlier clones");
+    auto noShadow = Batch(13, 9, 0);
+    noShadow.castShadow = false;
+    source.batches.push_back(noShadow);
+    const auto casters = renderer.BuildShadowCasters(glm::vec3(0));
+    Require(source.requestedUnculled && !source.updatesViewStats && casters.size() == 2,
+        "shadow preparation is unculled, preserves statistics and excludes non-casters and portal clones");
     SceneRenderer noScene;
     Require(noScene.PortalCloneSources(Visual(), glm::vec3(0)).empty(), "empty host safely has no clone sources");
 }

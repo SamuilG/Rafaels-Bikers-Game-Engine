@@ -7,6 +7,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
+#include "Runtime/Scene/SceneRenderer.hpp"
+#include "Runtime/Renderer/RenderUtilities/Frustum.hpp"
 
 #include <algorithm>
 #include <array>
@@ -60,6 +62,25 @@ namespace {
     struct Draw { std::array<Vertex, 6> vertices; ObjectPC pc{}; bool cutoutTexture = false; bool coloredTexture = false; };
     using Pixel = std::array<float, 4>;
     using Frame = std::vector<Pixel>;
+
+    // CPU scene extraction is tested with the real ECS in ShadowCasterTests.
+    // This source lets the GPU regression exercise the render preparation API.
+    struct CasterScene final : engine::SceneRenderSource {
+        std::vector<RenderBatch> batches;
+        std::vector<RenderBatch> BuildRenderBatches(const engine::SceneRenderRequest& request) override {
+            auto result = batches;
+            if (request.frustum) std::erase_if(result, [&](const auto& batch) {
+                glm::vec3 minimum, maximum;
+                engine::TransformAabb(glm::vec3(-1.2f, -1.2f, 0), glm::vec3(1.2f, 1.2f, 0), batch.transform, minimum, maximum);
+                return !engine::IntersectsAabb(*request.frustum, minimum, maximum, request.frustumPadding);
+            });
+            return result;
+        }
+        std::vector<RenderBatch> BuildSkinnedBatches(glm::mat4*, size_t, size_t& count) override { count = 0; return {}; }
+        void CollectLights(std::vector<engine::GpuLight>&) override {}
+        uint32_t LastFrustumCandidates() const override { return 0; }
+        uint32_t LastFrustumVisible() const override { return 0; }
+    };
 
     Draw Quad(float firstDepth, float secondDepth = -1, float uvScale = 1, bool verticalSlope = false) {
         if (secondDepth < 0) secondDepth = firstDepth;
@@ -351,8 +372,8 @@ namespace {
             }
             if (instance) vkDestroyInstance(instance, nullptr);
         }
-        VkPipeline Pipeline(const char* fragment, bool accumulate = false, bool depthTest = true, bool skinned = false, bool wireframe = false, bool fullscreen = false) {
-            const VkShaderModule vertex = Shader(fullscreen ? "fullscreen.vert.spv" : skinned ? "skinned.vert.spv" : "debug.vert.spv"), frag = Shader(fragment);
+        VkPipeline Pipeline(const char* fragment, bool accumulate = false, bool depthTest = true, bool skinned = false, bool wireframe = false, bool fullscreen = false, bool shadowPass = false) {
+            const VkShaderModule vertex = Shader(shadowPass ? "shadowmap.vert.spv" : fullscreen ? "fullscreen.vert.spv" : skinned ? "skinned.vert.spv" : "debug.vert.spv"), frag = Shader(fragment);
             VkPipelineShaderStageCreateInfo stages[2]{};
             stages[0] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO}; stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT; stages[0].module = vertex; stages[0].pName = "main";
             stages[1] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO}; stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT; stages[1].module = frag; stages[1].pName = "main";
@@ -362,7 +383,7 @@ namespace {
                 {3, 0, VK_FORMAT_R32G32B32A32_UINT, offsetof(SkinnedVertex, joints)}, {4, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(SkinnedVertex, weights)}};
             VkPipelineVertexInputStateCreateInfo input{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
             input.vertexBindingDescriptionCount = fullscreen ? 0 : 1; input.pVertexBindingDescriptions = &binding;
-            input.vertexAttributeDescriptionCount = fullscreen ? 0 : skinned ? 5 : 3; input.pVertexAttributeDescriptions = attributes;
+            input.vertexAttributeDescriptionCount = fullscreen ? 0 : shadowPass ? 2 : skinned ? 5 : 3; input.pVertexAttributeDescriptions = attributes;
             VkPipelineInputAssemblyStateCreateInfo assembly{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO}; assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
             VkPipelineViewportStateCreateInfo viewport{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO}; viewport.viewportCount = viewport.scissorCount = 1;
             VkPipelineRasterizationStateCreateInfo raster{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
@@ -374,11 +395,11 @@ namespace {
             attachment.srcColorBlendFactor = attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE; attachment.colorBlendOp = VK_BLEND_OP_ADD;
             attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE; attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; attachment.alphaBlendOp = VK_BLEND_OP_ADD;
             attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-            VkPipelineColorBlendStateCreateInfo blend{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO}; blend.attachmentCount = 1; blend.pAttachments = &attachment;
+            VkPipelineColorBlendStateCreateInfo blend{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO}; blend.attachmentCount = shadowPass ? 0 : 1; blend.pAttachments = &attachment;
             const VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
             VkPipelineDynamicStateCreateInfo dynamic{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO}; dynamic.dynamicStateCount = 2; dynamic.pDynamicStates = dynamicStates;
             VkPipelineRenderingCreateInfo rendering{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
-            rendering.colorAttachmentCount = 1; rendering.pColorAttachmentFormats = &kColorFormat; rendering.depthAttachmentFormat = fullscreen ? VK_FORMAT_UNDEFINED : kDepthFormat;
+            rendering.colorAttachmentCount = shadowPass ? 0 : 1; rendering.pColorAttachmentFormats = &kColorFormat; rendering.depthAttachmentFormat = fullscreen ? VK_FORMAT_UNDEFINED : kDepthFormat;
             VkGraphicsPipelineCreateInfo pipeline{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO}; pipeline.pNext = &rendering;
             pipeline.stageCount = 2; pipeline.pStages = stages; pipeline.pVertexInputState = &input; pipeline.pInputAssemblyState = &assembly;
             pipeline.pViewportState = &viewport; pipeline.pRasterizationState = &raster; pipeline.pMultisampleState = &samples;
@@ -386,6 +407,51 @@ namespace {
             VkPipeline result{}; const VkResult status = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline, nullptr, &result);
             vkDestroyShaderModule(device, vertex, nullptr); vkDestroyShaderModule(device, frag, nullptr); Check(status, "vkCreateGraphicsPipelines");
             pipelines.push_back(result); return result;
+        }
+        void RenderCasters(VkPipeline pipeline, const std::vector<Draw>& casters, const glm::mat4& lightVP) {
+            Require(casters.size() <= 64, "shadow draws fit vertex buffer");
+            std::vector<Vertex> data;
+            for (const auto& caster : casters) data.insert(data.end(), caster.vertices.begin(), caster.vertices.end());
+            if (!data.empty()) Write(vertices, data.data(), data.size() * sizeof(Vertex));
+            const auto map = MakeImage(kDepthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                VK_IMAGE_ASPECT_DEPTH_BIT, 1, 4);
+            Begin();
+            Barrier(map, VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+            std::vector<VkImageView> views;
+            for (uint32_t layer = 0; layer < 4; ++layer) {
+                VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+                view.image = map.handle; view.viewType = VK_IMAGE_VIEW_TYPE_2D; view.format = kDepthFormat;
+                view.subresourceRange = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, layer, 1};
+                VkImageView layerView{}; VK_CHECK(vkCreateImageView(device, &view, nullptr, &layerView)); views.push_back(layerView);
+                VkRenderingAttachmentInfo attachment{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+                attachment.imageView = layerView; attachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+                attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+                attachment.clearValue.depthStencil.depth = 1;
+                VkRenderingInfo rendering{VK_STRUCTURE_TYPE_RENDERING_INFO};
+                rendering.renderArea.extent = {kSize, kSize}; rendering.layerCount = 1; rendering.pDepthAttachment = &attachment;
+                vkCmdBeginRendering(command, &rendering);
+                const VkViewport viewport{0, 0, float(kSize), float(kSize), 0, 1};
+                const VkRect2D scissor{{0, 0}, {kSize, kSize}};
+                vkCmdSetViewport(command, 0, 1, &viewport); vkCmdSetScissor(command, 0, 1, &scissor);
+                vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+                const VkDeviceSize offset = 0; vkCmdBindVertexBuffers(command, 0, 1, &vertices.handle, &offset);
+                for (uint32_t index = 0; index < casters.size(); ++index) {
+                    const auto lightModel = lightVP * casters[index].pc.transform;
+                    vkCmdPushConstants(command, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(lightModel), &lightModel);
+                    const VkDescriptorSet sets[] = {sceneSet, casters[index].cutoutTexture ? cutoutSet : whiteSet};
+                    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 2, sets, 0, nullptr);
+                    vkCmdDraw(command, 6, 1, index * 6, 0);
+                }
+                vkCmdEndRendering(command);
+            }
+            Barrier(map, VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            Submit();
+            for (auto view : views) vkDestroyImageView(device, view, nullptr);
+            VkDescriptorImageInfo info{shadowSampler, map.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+            VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+            write.dstSet = sceneSet; write.dstBinding = 1; write.descriptorCount = 1;
+            write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; write.pImageInfo = &info;
+            vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
         }
         Frame Render(VkPipeline pipeline, const std::vector<Draw>& draws, glm::vec4 portalClip = {}, const glm::mat4* animatedBone = nullptr, const SceneUniform* overrideScene = nullptr) {
             Require(!draws.empty() && draws.size() <= 64, "draw count fits vertex buffer");
@@ -624,6 +690,48 @@ int main(int argc, char** argv) {
         Near(Sample(biased, 16)[0], 1, 0.001f, "authored receiver bias changes the actual comparison sample");
         Save(output, "shadow-csm-visibility.png", splitShadow);
         std::puts("PASS Shadow displays comparison-sampled directional CSM visibility and selects the correct cascade");
+
+        // A caster completely outside the camera still blocks light travelling
+        // diagonally toward the center of the visible receiver at (0, 0, -5).
+        CasterScene casterScene;
+        RenderBatch caster{};
+        caster.transform = glm::translate(glm::mat4(1), glm::vec3(5, 0, -2));
+        casterScene.batches.push_back(caster);
+        engine::SceneRenderer preparation(&casterScene);
+        const auto viewFrustum = engine::BuildFrustum(shadowScene.projCam);
+        const auto cameraCasters = preparation.BuildOpaque({&viewFrustum});
+        Require(cameraCasters.empty(), "regression caster is wholly outside the camera frustum");
+        const auto shadowCasters = preparation.BuildShadowCasters({0, 0, 0});
+        Require(shadowCasters.size() == 1, "independent shadow preparation retains the offscreen caster");
+        const auto casterDraws = [&](const std::vector<RenderBatch>& batches) {
+            std::vector<Draw> draws;
+            for (const auto& batch : batches) {
+                auto draw = Quad(2);
+                // Geometry is centered locally; batch transform provides z=-2.
+                for (auto& vertex : draw.vertices) vertex.position.z = 0;
+                draw.pc.transform = batch.transform; draws.push_back(draw);
+            }
+            return draws;
+        };
+        const auto lightVP = glm::ortho(-4.0f, 4.0f, -4.0f, 4.0f, 0.1f, 30.0f) *
+            glm::lookAt(glm::vec3(10, 0, 1), glm::vec3(0, 0, -5), glm::vec3(0, 1, 0));
+        SceneUniform offscreenScene{};
+        offscreenScene.projection = shadowScene.projection; offscreenScene.projCam = shadowScene.projection;
+        offscreenScene.cascadeSplits = {15, 40, 80, 100};
+        offscreenScene.directionalShadowSampling = {0.00005f, 0, 0, 1};
+        for (auto& matrix : offscreenScene.lightVP) matrix = lightVP;
+        const auto shadowDepth = gpu.Pipeline("shadowmap.frag.spv", false, true, false, false, false, true);
+        gpu.RenderCasters(shadowDepth, casterDraws(cameraCasters), lightVP);
+        const auto missingShadow = gpu.Render(shadow, {Quad(5)}, {}, nullptr, &offscreenScene);
+        Near(Sample(missingShadow, 32, 32)[0], 1, 0.001f, "old camera-culled source loses the offscreen shadow");
+        gpu.RenderCasters(shadowDepth, casterDraws(shadowCasters), lightVP);
+        const auto fixedShadow = gpu.Render(shadow, {Quad(5)}, {}, nullptr, &offscreenScene);
+        Near(Sample(fixedShadow, 32, 32)[0], 0, 0.001f, "independent source restores the visible receiver's shadow");
+        gpu.RenderCasters(shadowDepth, casterDraws(preparation.BuildOpaque({nullptr})), lightVP);
+        const auto cullingDisabled = gpu.Render(shadow, {Quad(5)}, {}, nullptr, &offscreenScene);
+        Require(fixedShadow == cullingDisabled, "GPU shadow pixels match exactly with camera culling on and off");
+        Save(output, "offscreen-caster-shadow.png", fixedShadow);
+        std::puts("PASS offscreen caster: production depth shaders restore the shadow and culling on/off produces identical pixels");
 
         const VkPipeline bufferDebug = gpu.Pipeline("debug_buffer.frag.spv", false, false, false, false, true);
         Frame aoInput(kSize * kSize), ssrInput(kSize * kSize), normalInput(kSize * kSize);
