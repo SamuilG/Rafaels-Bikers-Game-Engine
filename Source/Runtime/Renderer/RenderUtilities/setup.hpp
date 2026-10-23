@@ -176,8 +176,8 @@ lut::PipelineLayout create_composite_pipeline_layout(lut::VulkanContext const& a
 lut::DescriptorSetLayout create_composite_descriptor_layout(lut::VulkanWindow const& aWindow);
 lut::DescriptorSetLayout create_blur_descriptor_layout(lut::VulkanContext const& aContext);
 
-lut::Pipeline create_triangle_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_B8G8R8A8_SRGB );
-lut::Pipeline create_portal_surface_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_B8G8R8A8_SRGB );
+lut::Pipeline create_triangle_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_B8G8R8A8_SRGB, VkSampleCountFlagBits = VK_SAMPLE_COUNT_1_BIT );
+lut::Pipeline create_portal_surface_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_B8G8R8A8_SRGB, VkSampleCountFlagBits = VK_SAMPLE_COUNT_1_BIT );
 bool supports_wireframe(VkPhysicalDevice physicalDevice);
 lut::Pipeline create_debug_pipeline( lut::VulkanWindow const&, VkPipelineLayout, char const* aVertPath, char const* aFragPath, VkFormat = VK_FORMAT_B8G8R8A8_SRGB, bool skinned = false, bool accumulate = false, bool depthTest = true, bool wireframe = false );
 lut::Pipeline create_alpha_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_B8G8R8A8_SRGB );
@@ -203,7 +203,7 @@ lut::Sampler create_post_proc_sampler( lut::VulkanWindow const& );
 
 lut::DescriptorSetLayout create_skybox_descriptor_layout(lut::VulkanWindow const& window);
 lut::PipelineLayout create_skybox_pipeline_layout(lut::VulkanWindow const& window, VkDescriptorSetLayout dsetLayout);
-lut::Pipeline create_skybox_pipeline(lut::VulkanWindow const& window, VkPipelineLayout pipeLayout, VkFormat colorFormat);
+lut::Pipeline create_skybox_pipeline(lut::VulkanWindow const& window, VkPipelineLayout pipeLayout, VkFormat colorFormat, VkSampleCountFlagBits = VK_SAMPLE_COUNT_1_BIT);
 
 // 【新增】：SSR 描述符布局 (需要绑定 Color, Depth, Normal, 还有 UBO)
 lut::DescriptorSetLayout create_ssr_descriptor_layout(lut::VulkanWindow const& aWindow);
@@ -239,7 +239,8 @@ lut::PipelineLayout create_skinned_pipeline_layout(lut::VulkanContext const& aCo
 // Skinned opaque pipeline (uses skinned.vert.spv + default.frag.spv, 5 vertex bindings)
 lut::Pipeline create_skinned_pipeline(lut::VulkanWindow const& aWindow,
                                       VkPipelineLayout aPipelineLayout,
-                                      VkFormat aColorFormat = VK_FORMAT_B8G8R8A8_SRGB);
+                                      VkFormat aColorFormat = VK_FORMAT_B8G8R8A8_SRGB,
+                                      VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT);
 
 // Skinned alpha-masked pipeline
 lut::Pipeline create_skinned_alpha_pipeline(lut::VulkanWindow const& aWindow,

@@ -94,7 +94,7 @@ namespace engine {
         static void DrawContentBrowser(RenderSystem* renderSys, SceneManager* sceneManager, EditorState& editor);
 
         // Independent editor tools; each owns its visibility/close button.
-        static void DrawRenderSettings(RenderSettings& render, const RenderOverrides& overrides, EditorState& editor);
+        static void DrawRenderSettings(RenderSettings& render, const RenderOverrides& overrides, EditorState& editor, const RenderCapabilities& capabilities);
         static void DrawParticlePanel(RenderSettings& render, EditorState& editor, RenderSystem* renderSys, flecs::entity_t& selected_id);
         static void DrawConsole(EditorState& editor);
 

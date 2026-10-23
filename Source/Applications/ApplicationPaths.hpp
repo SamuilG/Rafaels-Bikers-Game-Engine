@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <stdexcept>
 #include <vector>
+#include "Runtime/Rhi/load.hpp"
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -48,6 +49,7 @@ inline void UseRepositoryAssets(const std::filesystem::path& executable) {
     fs::path directory = fs::absolute(executable).parent_path();
     while (!directory.empty()) {
         if (hasAssets(directory)) {
+            labut2::set_shader_directory(directory / "Assets/Shaders/spirv");
             fs::current_path(directory);
             return;
         }
@@ -55,7 +57,10 @@ inline void UseRepositoryAssets(const std::filesystem::path& executable) {
         if (parent == directory) break;
         directory = parent;
     }
-    if (hasAssets(fs::current_path())) return;
+    if (hasAssets(fs::current_path())) {
+        labut2::set_shader_directory(fs::current_path() / "Assets/Shaders/spirv");
+        return;
+    }
     throw std::runtime_error("Assets/Shaders not found beside the application or in its parent directories.");
 }
 }

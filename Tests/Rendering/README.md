@@ -1,5 +1,14 @@
 # Rendering GPU regression tests
 
+`run-anti-aliasing-gpu-tests.ps1` executes production MSAA attachment resolve and
+TAA shaders. It checks subpixel coverage, three MRT resolves, depth resolve,
+history accumulation/reset, rigid and skeletal motion, and disocclusion, both
+with and without MSAA. `run-anti-aliasing-integration-tests.ps1` links the Release
+engine and cycles AA settings, diagnostics, a portal and resizing in a hidden
+editor window, including renderer reinitialization after mounting an older
+project with missing TAA and stale shader copies. See [Anti-aliasing](../../Docs/AntiAliasing.md) for controls,
+resource lifetime and scope.
+
 `run-directional-lighting-tests.ps1` exercises production light preparation and
 CSM math without a GPU: transformed direction agreement, stable primary
 selection, explicit directional/spot shadow assignment, 16-light retention,

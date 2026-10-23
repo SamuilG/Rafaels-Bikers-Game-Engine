@@ -511,6 +511,24 @@ void TestShading(Gpu& gpu, const IblResources& ibl, bool whiteEnvironment = true
     bindImage(compositeSet,0,black,rawSampler); comp.editorBackdrop = 1;
     auto backdrop = draw(compositePipeline.handle,compLayout.handle,&comp,sizeof(comp),false);
     Require(backdrop[0] > .89f && backdrop[0] < .95f,"Editor backdrop remains in its authored display space");
+    // A resolved edge has premultiplied radiance and fractional coverage. It
+    // must blend with paper after tone mapping, rather than expose black clear.
+    comp.srgbOutput = 1;
+    bindImage(compositeSet,0,black,rawSampler);
+    const auto paperLinear = draw(compositePipeline.handle,compLayout.handle,&comp,sizeof(comp),false);
+    bindImage(compositeSet,0,texture({1,.2f,.05f,1}),rawSampler);
+    const auto surfaceLinear = draw(compositePipeline.handle,compLayout.handle,&comp,sizeof(comp),false);
+    for (float srgbOutput : {0.f,1.f}) {
+        comp.srgbOutput = srgbOutput;
+        bindImage(compositeSet,0,texture({.25f,.05f,.0125f,.25f}),rawSampler);
+        const auto edge = draw(compositePipeline.handle,compLayout.handle,&comp,sizeof(comp),false);
+        for (uint32_t c = 0; c < 3; ++c) {
+            float expected = paperLinear[c] * .75f + surfaceLinear[c] * .25f;
+            if (srgbOutput < .5f) expected = expected <= .0031308f ? 12.92f*expected : 1.055f*std::pow(expected,1.f/2.4f)-.055f;
+            Near(edge[c],expected,.003f,"MSAA coverage blends with paper in linear space without dark fringes");
+        }
+    }
+    std::cout << "[PASS] MSAA editor edge coverage and paper compositing in both display paths.\n";
     std::cout << "[PASS] Production composite: HDR exposure, single tone map, display encoding and editor backdrop.\n";
 }
 void TestBake(Gpu& gpu) {

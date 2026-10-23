@@ -295,6 +295,34 @@ namespace engine {
         void ResetPerformanceHistory() {
             if (mState) mState->renderStats.performance.Reset();
             mGpuTimer.DiscardPending();
+            mTemporalAa.ResetHistory();
+        }
+        void ConfigureAntiAliasing() {
+            const uint32_t count = SelectMsaaSamples(mState->render.msaaSamples, mMsaaSupport.sampleCounts);
+            mState->render.msaaSamples = count;
+            mState->capabilities.activeMsaaSamples = count;
+            const bool resized = mAaExtent.width != mWindow.swapchainExtent.width ||
+                mAaExtent.height != mWindow.swapchainExtent.height;
+            const bool samplesChanged = uint32_t(mMsaa.samples) != count;
+            const bool allocateTemporal = mState->render.taaEnabled && !mTemporalAllocated;
+            if (!resized && !samplesChanged && !allocateTemporal) return;
+            // Only settings/size changes wait; normal frames retain the existing
+            // fence schedule and never wait for a temporal history readback.
+            vkDeviceWaitIdle(mWindow.device);
+            if (resized || samplesChanged)
+                mMsaa.Configure(mWindow, mAllocator, mWindow.swapchainExtent, count, mMsaaSupport.depthResolve);
+            if (samplesChanged) {
+                mPipe = create_triangle_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT, mMsaa.samples);
+                mPortalSurfacePipe = create_portal_surface_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT, mMsaa.samples);
+                mSkinnedPipe = create_skinned_pipeline(mWindow, mSkinnedPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT, mMsaa.samples);
+                mSkyboxPipe = create_skybox_pipeline(mWindow, mSkyboxPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT, mMsaa.samples);
+            }
+            if ((mTemporalAllocated && resized) || allocateTemporal) {
+                mTemporalAa.Resize(mWindow, mAllocator, mWindow.swapchainExtent, mCmdBuffers.size());
+                mTemporalAllocated = true;
+            }
+            mAaExtent = mWindow.swapchainExtent;
+            ResetPerformanceHistory();
         }
         void PublishPresentationMode() {
             mState->capabilities.activePresentMode = static_cast<uint32_t>(mWindow.presentMode);
@@ -657,6 +685,9 @@ namespace engine {
             mState->camera.ResetForNewRun();
 
             mAllocator = lut::create_allocator(mWindow);
+            mMsaaSupport = QueryMsaaSupport(mWindow.physicalDevice);
+            mState->capabilities.msaaSampleCounts = mMsaaSupport.sampleCounts;
+            mTemporalAa.Initialize(mWindow);
             mCmdPool = lut::create_command_pool(mWindow, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
             mDescPool = lut::create_descriptor_pool(mWindow);
             mModelDescPool = lut::create_descriptor_pool(mWindow);
@@ -1260,7 +1291,7 @@ namespace engine {
 
                 // 给面板加上开关判断：
                 if (mState->editor.showEngineUi && mState->editor.showRenderSettings) {
-                    EngineUi::DrawRenderSettings(mState->render, mState->renderOverrides, mState->editor);
+                    EngineUi::DrawRenderSettings(mState->render, mState->renderOverrides, mState->editor, mState->capabilities);
                 }
 
                 if (mState->editor.showEngineUi && mState->editor.showParticlePanel) {
@@ -1420,8 +1451,8 @@ namespace engine {
                 }
 
                 if (changes.changedFormat) {
-                    mPipe = create_triangle_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
-                    mPortalSurfacePipe = create_portal_surface_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+                    mPipe = create_triangle_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT, mMsaa.samples);
+                    mPortalSurfacePipe = create_portal_surface_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT, mMsaa.samples);
                     mThumbnailAlphaPipe = create_alpha_pipeline_1_attachment(mWindow, mPipeLayout.handle, VK_FORMAT_R8G8B8A8_UNORM);
                     CreateDebugViewPipelines();
                     mSpeedPostPipe = create_speed_post_pipeline(mWindow, mSpeedPostPipeLayout.handle);
@@ -1559,6 +1590,7 @@ namespace engine {
             }
 
             // Advance to next frame
+            ConfigureAntiAliasing();
             mFrameIndex = (mFrameIndex + 1) % mCmdBuffers.size();
 
             const auto fenceStart = std::chrono::steady_clock::now();
@@ -1872,12 +1904,17 @@ namespace engine {
             float currentBloomStrength = mState->render.bloomEnabled ? mState->render.bloomStrength : 0.0f;
 
             std::vector<RenderBatch> skinnedBatches;
+            std::vector<glm::mat4> temporalBones;
             if (mSceneManager && mBoneSSBO.buffer != VK_NULL_HANDLE) {
                 void* ptr;
                 vmaMapMemory(mAllocator.allocator, mBoneSSBO.allocation, &ptr);
                 size_t boneCount = 0;
                 skinnedBatches = mSceneRenderer.BuildSkinned(
                     static_cast<glm::mat4*>(ptr), kMaxBoneMatrices, boneCount);
+                if (mState->render.taaEnabled && ActiveRenderMode() == view_mode::Default) {
+                    const auto* matrices = static_cast<const glm::mat4*>(ptr);
+                    temporalBones.assign(matrices, matrices + std::min(boneCount, kMaxBoneMatrices));
+                }
                 vmaUnmapMemory(mAllocator.allocator, mBoneSSBO.allocation);
             }
 
@@ -2052,6 +2089,30 @@ namespace engine {
                     portal2RecursiveSceneUniformCount = 1;
                 }
             }
+            const bool temporalEnabled = mTemporalAa.BeginFrame(mState->render, sceneUniforms.camera,
+                sceneUniforms.projection, glm::vec2(finalWidth, finalHeight), mSceneRenderer.Source(),
+                mState->render.taaEnabled && ActiveRenderMode() == view_mode::Default);
+            std::vector<uint32_t> temporalIndexCounts;
+            if (temporalEnabled) {
+                glm::mat4 jitter(1.0f);
+                jitter[3][0] = 2.0f * mTemporalAa.Jitter().x / float(mWindow.swapchainExtent.width);
+                jitter[3][1] = 2.0f * mTemporalAa.Jitter().y / float(mWindow.swapchainExtent.height);
+                auto applyJitter = [&](glsl::SceneUniform& uniform) {
+                    uniform.projection = jitter * uniform.projection;
+                    uniform.projCam = uniform.projection * uniform.camera;
+                };
+                // Visibility and shadow fitting above use stable, unjittered cameras.
+                applyJitter(sceneUniforms);
+                applyJitter(portalSceneUniform); applyJitter(portal2SceneUniform);
+                for (auto& uniform : portalRecursiveSceneUniforms) applyJitter(uniform);
+                for (auto& uniform : portal2RecursiveSceneUniforms) applyJitter(uniform);
+                mTemporalAa.Prepare(mWindow, mAllocator, mFrameIndex, sceneUniforms.projCam, sceneUniforms.projection,
+                    finalBatches, skinnedBatches, temporalBones, mCompositeOutputImage.view, mDepthBuffer.view);
+                temporalIndexCounts.reserve(mModel.meshes.size());
+                for (const auto& mesh : mModel.meshes) temporalIndexCounts.push_back(uint32_t(mesh.indices.size()));
+            }
+            const TemporalGeometry temporalGeometry{mMeshPositions, mMeshIndices, temporalIndexCounts, mMeshJointIndices, mMeshJointWeights};
+            const AntiAliasingFrame antiAliasing{&mMsaa, temporalEnabled ? &mTemporalAa : nullptr, mFrameIndex, &temporalGeometry};
             ImageAndView portalColorTarget{ mPortalColorImage.image, mPortalColorImage.view };
             ImageAndView portalBrightTarget{ mPortalBrightImage.image, mPortalBrightImage.view };
             ImageAndView portalNormalTarget{ mPortalNormalImage.image, mPortalNormalImage.view };
@@ -2209,7 +2270,7 @@ namespace engine {
                 portalVisibleInPortal2View,
                 portal2VisibleInPortalView,
                 portal2VisibleInPortal2View,
-                &mGpuTimer, static_cast<uint32_t>(mFrameIndex)
+                &mGpuTimer, static_cast<uint32_t>(mFrameIndex), &antiAliasing
             );
 			//clear debug renderer data after uploading
             mDebugRenderer.Clear();
@@ -2221,6 +2282,7 @@ namespace engine {
                 mRenderFinished[imageIndex].handle);
 
             mModelFrameSubmissions[mFrameIndex] = ++mLastModelSubmission;
+            if (temporalEnabled) mTemporalAa.Submitted();
             mGpuTimer.Submitted(static_cast<uint32_t>(mFrameIndex));
             const auto presentStart = std::chrono::steady_clock::now();
             present_results(mWindow.presentQueue, mWindow.swapchain,
@@ -2237,6 +2299,7 @@ namespace engine {
             // 1. 确保 GPU 已经完全停下，再开始拆除资源
             vkDeviceWaitIdle(mWindow.device);
             mGpuTimer.Shutdown();
+            mTemporalAa.Shutdown();
 
             // (Removed redundant RAII wrapper destructions)
 
@@ -3216,6 +3279,11 @@ void InitSkybox()
         int mLastFrameRenderMode = -1;
         bool mLastFrameRenderedGame = false;
         lut::GpuFrameTimer mGpuTimer;
+        MsaaSupport mMsaaSupport;
+        MsaaTargets mMsaa;
+        TemporalAntiAliasing mTemporalAa;
+        VkExtent2D mAaExtent{};
+        bool mTemporalAllocated = false;
         bool       mRecreateSwapchain = false;
         std::size_t mFrameIndex = 0;
 

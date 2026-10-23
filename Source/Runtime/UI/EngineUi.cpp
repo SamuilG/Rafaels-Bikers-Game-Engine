@@ -1480,7 +1480,7 @@ namespace engine {
             s_Console.Draw(PanelTitle("Console", "OutputConsole").c_str(), &editor.showConsole);
     }
 
-    void EngineUi::DrawRenderSettings(RenderSettings& render, const RenderOverrides& overrides, EditorState& editor) {
+    void EngineUi::DrawRenderSettings(RenderSettings& render, const RenderOverrides& overrides, EditorState& editor, const RenderCapabilities& capabilities) {
         if (!editor.showRenderSettings) return;
         const bool diagnosticsActive = editor_viewport::ActiveRenderMode(editor,
             editor_viewport::RenderGameViewport(editor)) != view_mode::Default;
@@ -1494,6 +1494,24 @@ namespace engine {
                 ImGui::TextWrapped("Unlimited requested. Tearing may occur. See Diagnostics for the actual mode.");
             if (diagnosticsActive) ImGui::TextWrapped("%s", _SL("Diagnostic views display their rendering data directly. Return to Default to adjust scene effects."));
             ImGui::BeginDisabled(diagnosticsActive);
+            ImGui::SeparatorText("Anti-aliasing");
+            const std::string msaaLabel = render.msaaSamples > 1 ? std::to_string(render.msaaSamples) + "x" : "Off";
+            if (ImGui::BeginCombo("MSAA", msaaLabel.c_str())) {
+                for (uint32_t count : {1u, 2u, 4u, 8u}) {
+                    const bool supported = (capabilities.msaaSampleCounts & count) != 0;
+                    ImGui::BeginDisabled(!supported);
+                    const std::string label = count == 1 ? "Off" : std::to_string(count) + "x";
+                    if (ImGui::Selectable(label.c_str(), render.msaaSamples == count)) render.msaaSamples = count;
+                    ImGui::EndDisabled();
+                }
+                ImGui::EndCombo();
+            }
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Smooths geometry edges. Higher sample counts use more GPU memory and time. Unsupported levels are disabled.");
+            ImGui::Checkbox("Temporal Anti-aliasing (TAA)", &render.taaEnabled);
+            ImGui::BeginDisabled(!render.taaEnabled);
+            ImGui::SliderFloat("TAA history weight", &render.taaHistoryWeight, 0.05f, 0.98f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Higher values smooth more but respond more slowly to changes. MSAA and TAA can be combined.");
+            ImGui::EndDisabled();
             ImGui::SeparatorText("Rendering");
             ImGui::Checkbox("Screen-space Reflections (SSR)", &render.ssrEnabled);
             ImGui::Checkbox("Ambient Occlusion (SSAO)", &render.ssaoEnabled);

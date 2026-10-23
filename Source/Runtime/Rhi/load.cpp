@@ -9,11 +9,32 @@
 
 namespace labut2
 {
+	namespace {
+		std::filesystem::path shaderDirectory;
+	}
+
+	void set_shader_directory( const std::filesystem::path& directory )
+	{
+		shaderDirectory = directory.empty() ? directory : std::filesystem::absolute(directory).lexically_normal();
+	}
+
 	std::vector<std::uint32_t> load_file_u32( char const* aPath )
 	{
 		assert( aPath );
+		auto path = std::filesystem::path(aPath).lexically_normal();
+		if (!shaderDirectory.empty() && !path.is_absolute()) {
+			const auto relative = path.lexically_relative("Assets/Shaders/spirv");
+			if (!relative.empty() && relative != "." && *relative.begin() != "..")
+				path = shaderDirectory / relative;
+		}
+		const auto displayPath = path.generic_u8string();
+		const std::string pathText(displayPath.begin(), displayPath.end());
 
-		if( std::FILE* fin = std::fopen( aPath, "rb" ) )
+#ifdef _WIN32
+		if( std::FILE* fin = _wfopen( path.c_str(), L"rb" ) )
+#else
+		if( std::FILE* fin = std::fopen( path.c_str(), "rb" ) )
+#endif
 		{
 			std::fseek( fin, 0, SEEK_END );
 			auto const bytes = std::size_t(std::ftell( fin ));
@@ -35,7 +56,7 @@ namespace labut2
 					auto const err = std::ferror(fin), eof = std::feof(fin);
 					std::fclose( fin );
 
-					throw Error( "Error reading '%s': ferror = %d, feof = %d", aPath, err, eof );
+					throw Error( "Error reading '{}': ferror = {}, feof = {}", pathText, err, eof );
 				}
 
 				offset += read;
@@ -46,6 +67,6 @@ namespace labut2
 			return code;
 		}
 
-		throw Error( "Cannont open '{}' for reading", aPath );
+		throw Error( "Cannot open '{}' for reading", pathText );
 	}
 }

@@ -46,23 +46,29 @@ void main() {
     }
     
     vec4 sceneSample = texture(uSceneTexture, uv);
+    vec3 bloomColor = texture(uBloomBlur, uv).rgb;
+    float coverage = params.editorBackdrop > 0.5 ? clamp(sceneSample.a, 0.0, 1.0) : 1.0;
+    vec3 backdrop = vec3(0.0);
     // The editor clears only empty background pixels to zero alpha, and omits
     // the main skybox. Apply the neutral surface after scene tone mapping so
     // exposure/SSAO cannot tint the paper backdrop. Matches EditorTheme.hpp.
-    if (params.editorBackdrop > 0.5 && sceneSample.a < 0.0001) {
+    if (params.editorBackdrop > 0.5) {
         vec3 viewport = vec3(229.0, 227.0, 216.0) / 255.0;
         vec3 paper = vec3(240.0, 238.0, 225.0) / 255.0;
-        vec3 backdrop = mix(viewport, paper, (1.0 - v2fTexCoord.y) * 0.25);
-        if (params.srgbOutput > 0.5) backdrop = srgbToLinear(backdrop);
-        vec3 glow = max(texture(uBloomBlur, uv).rgb * params.bloomStrength * params.exposure, vec3(0.0));
+        backdrop = srgbToLinear(mix(viewport, paper, (1.0 - v2fTexCoord.y) * 0.25));
+        vec3 glow = max(bloomColor * params.bloomStrength * params.exposure, vec3(0.0));
         // Retain bloom spilling past object silhouettes without exposing the backdrop.
         vec3 mappedGlow = displayToneMap(glow);
-        if (params.srgbOutput < 0.5) mappedGlow = linearToSrgb(mappedGlow);
-        oColor = vec4(backdrop + (vec3(1.0) - backdrop) * mappedGlow, 1.0);
-        return;
+        backdrop += (vec3(1.0) - backdrop) * mappedGlow;
+        if (coverage < 0.0001) {
+            oColor = vec4(params.srgbOutput < 0.5 ? linearToSrgb(backdrop) : backdrop, 1.0);
+            return;
+        }
     }
-    vec3 sceneColor = sceneSample.rgb;
-    vec3 bloomColor = texture(uBloomBlur, uv).rgb;
+    // MSAA resolves premultiplied radiance and coverage against the transparent
+    // editor clear. Tone-map the covered surface, then blend it with the paper
+    // in linear space; otherwise partially covered edges acquire black halos.
+    vec3 sceneColor = sceneSample.rgb / max(coverage, 0.0001);
     vec4 ssrData    = texture(uSsrColor, uv);
 
     // ==========================================
@@ -85,6 +91,7 @@ void main() {
     vec3 hdrColor = (sceneColor + bloomColor * params.bloomStrength) * params.exposure;
 
     vec3 mapped = displayToneMap(hdrColor);
+    if (params.editorBackdrop > 0.5) mapped = mix(backdrop, mapped, coverage);
     // The sRGB final target handles encoding; UNORM needs explicit encoding.
     if (params.srgbOutput < 0.5) mapped = linearToSrgb(mapped);
 

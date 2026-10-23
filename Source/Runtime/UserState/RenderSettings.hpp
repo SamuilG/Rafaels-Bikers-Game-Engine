@@ -14,13 +14,18 @@ struct EnvironmentLightingSettings {
     float saturation = 1.0f;
     float rotationDegrees = 0.0f;
     bool ignoreSceneOverride = false;
+    bool operator==(const EnvironmentLightingSettings&) const = default;
 };
 struct ToneMappingSettings {
     bool acesEnabled = true;
     std::array<float, 5> acesCurve{2.51f, 0.03f, 2.43f, 0.59f, 0.14f};
+    bool operator==(const ToneMappingSettings&) const = default;
 };
 struct RenderSettings {
     bool vsyncEnabled = true; // Requests display synchronization; actual mode is a capability.
+    uint32_t msaaSamples = 1; // 1 disables MSAA; supported choices are published by the renderer.
+    bool taaEnabled = false;
+    float taaHistoryWeight = 0.9f;
     bool iblEnabled = true;
     EnvironmentLightingSettings environment;
     ToneMappingSettings toneMapping;
@@ -34,8 +39,11 @@ struct RenderSettings {
     bool mosaicEnabled = false; // key 5 toggle
     float bloomExposure = 1.0f;      // 合成阶段曝光（传给 composite shader）。
     float bloomStrength = 1.2f;      // Keep GGX highlights from washing out nearby detail.
+    bool operator==(const RenderSettings&) const = default;
 };
 struct RenderCapabilities {
+    uint32_t msaaSampleCounts = 1; // Bit mask of supported sample counts (1, 2, 4, 8).
+    uint32_t activeMsaaSamples = 1;
     bool gpuTimestampsSupported = false;
     uint32_t activePresentMode = 2; // VkPresentModeKHR numeric value, without a Vulkan dependency.
     bool vsyncFallback = false; // Requested unlimited presentation is unavailable.

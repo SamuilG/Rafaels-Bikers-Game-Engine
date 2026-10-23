@@ -7,6 +7,7 @@
 #include <unordered_map>
 
 #include "setup.hpp"
+#include "AntiAliasing.hpp"
 #include "camera.hpp"
 #include "../../Rhi/vkobject.hpp"
 #include "../../Rhi/vulkan_window.hpp"
@@ -158,7 +159,8 @@ void record_commands(
 	bool aPortal2VisibleInPortalView = false,
 	bool aPortal2VisibleInPortal2View = false,
 	const lut::GpuFrameTimer* aGpuTimer = nullptr,
-	std::uint32_t aGpuTimerSlot = 0
+	std::uint32_t aGpuTimerSlot = 0,
+	const engine::AntiAliasingFrame* aAntiAliasing = nullptr
 );
 
 

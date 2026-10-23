@@ -337,4 +337,6 @@ workspace "EngineWorkspace"
             buildinputs { "Assets/Shaders/tonemap.glsl" }
         filter "files:Assets/Shaders/default.frag or files:Assets/Shaders/skybox.frag"
             buildinputs { "Assets/Shaders/environment.glsl" }
+        filter "files:Assets/Shaders/taa_motion.vert or files:Assets/Shaders/taa_motion_skinned.vert"
+            buildinputs { "Assets/Shaders/taa_common.glsl" }
         filter "*"

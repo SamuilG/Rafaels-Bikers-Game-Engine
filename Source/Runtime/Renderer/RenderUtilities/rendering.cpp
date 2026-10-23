@@ -175,7 +175,8 @@ void record_commands(
 	bool aPortal2VisibleInPortalView,
 	bool aPortal2VisibleInPortal2View,
 	const lut::GpuFrameTimer* aGpuTimer,
-	std::uint32_t aGpuTimerSlot
+	std::uint32_t aGpuTimerSlot,
+	const engine::AntiAliasingFrame* aAntiAliasing
 )
 {
 	// Begin command buffer
@@ -622,21 +623,21 @@ void record_commands(
 		VkImageSubresourceRange portalDepthRange{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
 
 		lut::image_barrier(aCmdBuff, portalColor.image,
-			VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, portalColorRange);
 		lut::image_barrier(aCmdBuff, portalBright.image,
-			VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, portalColorRange);
 		lut::image_barrier(aCmdBuff, portalNormal.image,
-			VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, portalColorRange);
 		lut::image_barrier(aCmdBuff, portalDepth.image,
-			VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-			VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
+			VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+			VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
 			VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, portalDepthRange);
 
 		VkRenderingAttachmentInfo portalDepthAtt{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
@@ -669,6 +670,8 @@ void record_commands(
 		portalInfo.pColorAttachments = portalColorAtts;
 		portalInfo.pDepthAttachment = &portalDepthAtt;
 
+		if (aAntiAliasing && aAntiAliasing->msaa)
+			aAntiAliasing->msaa->Attach(aCmdBuff, portalColorAtts, portalDepthAtt);
 		vkCmdBeginRendering(aCmdBuff, &portalInfo);
 
 		VkViewport portalVp{};
@@ -1022,8 +1025,8 @@ void record_commands(
 	// 銆愭柊澧炶ˉ婕?2銆戯細灏嗘繁搴︾紦鍐查噸缃负鍙鍐欑姸鎬侊紒(鏋佸叾鍏抽敭锛屽惁鍒欐繁搴︽祴璇曞叏宕?
 	lut::image_barrier(aCmdBuff, aDepthAttach.image,
 		VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
-		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-		VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
+		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+		VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
 		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 		VkImageSubresourceRange{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 }
 	);
@@ -1064,6 +1067,8 @@ void record_commands(
 	mrtInfo.pColorAttachments = colorAtts;
 	mrtInfo.pDepthAttachment = &depthAttachmentInfo;
 
+	if (aAntiAliasing && aAntiAliasing->msaa)
+		aAntiAliasing->msaa->Attach(aCmdBuff, colorAtts, depthAttachmentInfo);
 	vkCmdBeginRendering(aCmdBuff, &mrtInfo);
 
 	// Bind pipelines / descriptors and draw scene as before (render to offscreen + bright)
@@ -1260,8 +1265,9 @@ void record_commands(
 		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
 
 	// 3. 娣卞害鍥?-> Read (鍥犱负 SSR 瑕侀潬娣卞害閲嶅缓 3D 鍧愭爣)
+	// Fixed-function depth resolve writes at COLOR_ATTACHMENT_OUTPUT as well.
 	lut::image_barrier(aCmdBuff, aDepthAttach.image,
-		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, depthRange);
     if (aSceneUniform.renderMode == engine::view_mode::Normals) {
         renderBufferView();
@@ -1519,6 +1525,19 @@ void record_commands(
 	vkCmdDraw(aCmdBuff, 3, 1, 0, 0);
 
 	// --- 4. 鐢荤矑瀛愮郴缁?---
+	if (aAntiAliasing && aAntiAliasing->temporal && aAntiAliasing->geometry) {
+		vkCmdEndRendering(aCmdBuff);
+		aAntiAliasing->temporal->Resolve(aCmdBuff, aAntiAliasing->slot, aCompositeOutput.image, *aAntiAliasing->geometry);
+		glsl::SceneUniform overlayUniform = aSceneUniform;
+		glm::mat4 unjitter(1.0f);
+		unjitter[3][0] = -2.0f * aAntiAliasing->temporal->Jitter().x / float(aImageExtent.width);
+		unjitter[3][1] = -2.0f * aAntiAliasing->temporal->Jitter().y / float(aImageExtent.height);
+		overlayUniform.projection = unjitter * overlayUniform.projection;
+		overlayUniform.projCam = overlayUniform.projection * overlayUniform.camera;
+		uploadSceneUniform(overlayUniform);
+		compAtt.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+		vkCmdBeginRendering(aCmdBuff, &compInfo);
+	}
 	if (particlesEnabled) {
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, particlePipe);
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);

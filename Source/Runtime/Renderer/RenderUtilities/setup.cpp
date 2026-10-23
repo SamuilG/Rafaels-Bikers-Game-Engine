@@ -129,7 +129,7 @@ lut::PipelineLayout create_blur_pipeline_layout(lut::VulkanContext const& aConte
 	return lut::PipelineLayout(aContext.device, layout);
 }
 
-lut::Pipeline create_triangle_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, VkFormat aColorFormat)
+lut::Pipeline create_triangle_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, VkFormat aColorFormat, VkSampleCountFlagBits samples)
 {
 	// Load shader code
 	auto const vertSpirV = lut::load_file_u32(cfg::kVertShaderPath);
@@ -233,7 +233,7 @@ lut::Pipeline create_triangle_pipeline(lut::VulkanWindow const& aWindow, VkPipel
 	// Define multisampling state
 	VkPipelineMultisampleStateCreateInfo samplingInfo{};
 	samplingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-	samplingInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	samplingInfo.rasterizationSamples = samples;
 
 	// Define blend state
 	// We define one blend state per color attachment - this example uses a single color attachment, so we only
@@ -333,7 +333,7 @@ lut::Pipeline create_triangle_pipeline(lut::VulkanWindow const& aWindow, VkPipel
 	return lut::Pipeline(aWindow.device, pipe);
 }
 
-lut::Pipeline create_portal_surface_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, VkFormat aColorFormat)
+lut::Pipeline create_portal_surface_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, VkFormat aColorFormat, VkSampleCountFlagBits samples)
 {
 	auto const vertSpirV = lut::load_file_u32(cfg::kPortalVertShaderPath);
 	auto const fragSpirV = lut::load_file_u32(cfg::kPortalFragShaderPath);
@@ -426,7 +426,7 @@ lut::Pipeline create_portal_surface_pipeline(lut::VulkanWindow const& aWindow, V
 
 	VkPipelineMultisampleStateCreateInfo samplingInfo{};
 	samplingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-	samplingInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	samplingInfo.rasterizationSamples = samples;
 
 	VkPipelineColorBlendAttachmentState blendStates[3]{};
 	for (auto& blendState : blendStates) {
@@ -949,7 +949,7 @@ lut::ImageWithView create_offscreen_buffer(lut::VulkanWindow const& aWindow, lut
 	imageInfo.arrayLayers = 1;
 	imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 	imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-	imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+	imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 	imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
@@ -2856,7 +2856,7 @@ lut::PipelineLayout create_skybox_pipeline_layout(lut::VulkanWindow const& windo
 	return lut::PipelineLayout(window.device, layout);
 }
 
-lut::Pipeline create_skybox_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, VkFormat colorFormat) {
+lut::Pipeline create_skybox_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, VkFormat colorFormat, VkSampleCountFlagBits samples) {
 	// 加载 Shader
 	auto const vertSpirV = lut::load_file_u32(cfg::skyboxVertShaderPath);
 	auto const fragSpirV = lut::load_file_u32(cfg::skyboxFragShaderPath);
@@ -2937,7 +2937,7 @@ lut::Pipeline create_skybox_pipeline(lut::VulkanWindow const& aWindow, VkPipelin
 
 	VkPipelineMultisampleStateCreateInfo samplingInfo{};
 	samplingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-	samplingInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	samplingInfo.rasterizationSamples = samples;
 
 	const SkyboxAttachments attachments(colorFormat);
 	VkPipelineColorBlendStateCreateInfo blendInfo{};
@@ -3423,7 +3423,7 @@ static lut::Pipeline make_skinned_pipeline(
 	lut::VulkanWindow const& aWindow,
 	VkPipelineLayout aPipelineLayout,
 	bool alphaBlend,
-	VkFormat aColorFormat) // <--- 新增
+	VkFormat aColorFormat, VkSampleCountFlagBits samples)
 {
 	auto const vertSpirV = lut::load_file_u32(cfg::kSkinnedVertShaderPath);
 	auto const fragSpirV = lut::load_file_u32(cfg::kFragShaderPath);
@@ -3490,7 +3490,7 @@ static lut::Pipeline make_skinned_pipeline(
 
 	VkPipelineMultisampleStateCreateInfo ms{};
 	ms.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-	ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	ms.rasterizationSamples = samples;
 
 	// =================================================================
 	// 【修改 2】：提升到 3 个 Blend 附件
@@ -3571,14 +3571,14 @@ static lut::Pipeline make_skinned_pipeline(
 // 【修改 4】：透传 aColorFormat 给 make 函数
 lut::Pipeline create_skinned_pipeline(lut::VulkanWindow const& aWindow,
 	VkPipelineLayout aPipelineLayout,
-	VkFormat aColorFormat)
+	VkFormat aColorFormat, VkSampleCountFlagBits samples)
 {
-	return make_skinned_pipeline(aWindow, aPipelineLayout, false, aColorFormat);
+	return make_skinned_pipeline(aWindow, aPipelineLayout, false, aColorFormat, samples);
 }
 
 lut::Pipeline create_skinned_alpha_pipeline(lut::VulkanWindow const& aWindow,
 	VkPipelineLayout aPipelineLayout,
 	VkFormat aColorFormat)
 {
-	return make_skinned_pipeline(aWindow, aPipelineLayout, true, aColorFormat);
+	return make_skinned_pipeline(aWindow, aPipelineLayout, true, aColorFormat, VK_SAMPLE_COUNT_1_BIT);
 }
