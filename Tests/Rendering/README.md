@@ -1,5 +1,14 @@
 # Rendering GPU regression tests
 
+`run-frame-graph-tests.ps1` checks the CPU runtime graph model: content versions,
+RAW/WAR/WAW dependencies, array layers, use intervals, imported history,
+footprint estimates and frozen snapshots. The AA integration suite also opens
+the Frame Graph panel, checks actual captured paths and freezes capture across
+a resize. See [Frame Graph](../../Docs/FrameGraph.md) for controls and scope.
+`run-frame-graph-ui-tests.ps1` exercises all three production panel tabs and
+selection/reset states; it renders fixture layout PNGs under
+`Intermediate/Diagnostics/frame-graph-ui` for visual inspection.
+
 `run-anti-aliasing-gpu-tests.ps1` executes production MSAA attachment resolve and
 TAA shaders. It checks subpixel coverage, three MRT resolves, depth resolve,
 history accumulation/reset, rigid and skeletal motion, and disocclusion, both

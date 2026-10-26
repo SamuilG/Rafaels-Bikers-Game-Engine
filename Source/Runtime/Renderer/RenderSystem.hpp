@@ -1,4 +1,5 @@
 #pragma once
+#include "FrameGraphCapture.hpp"
 
 #if !defined(GLM_ENABLE_EXPERIMENTAL)
 #   define GLM_ENABLE_EXPERIMENTAL   
@@ -292,6 +293,7 @@ namespace engine {
 
         const CpuFrameTimings& LastFrameTimings() const { return mFrameTimings; }
         bool HasPresentedFrame() const { return mPresentedFrame; }
+        const FrameGraph& GetFrameGraph() const { return mFrameGraph; }
         void ResetPerformanceHistory() {
             if (mState) mState->renderStats.performance.Reset();
             mGpuTimer.DiscardPending();
@@ -671,6 +673,7 @@ namespace engine {
 
         void Init() override
         {
+            mFrameGraph.Begin({}, 0);
             UIEditorWindow::ResetForNewProject();
             ImGuiPreviewRenderer::ResetFontCache();
             EngineUi::ResetForNewProject();
@@ -1320,6 +1323,9 @@ namespace engine {
 				//debug UI
                 if (mState->editor.showEngineUi && mState->editor.showDebugPanel) {
                     EngineUi::DrawDebugPanel(mState->editor, mState->renderStats, mState->capabilities);
+                }
+                if (mState->editor.showEngineUi && mState->editor.showFrameGraph) {
+                    EngineUi::DrawFrameGraph(mState->editor, mFrameGraph);
                 }
                 if (mState->editor.showEngineUi && mState->editor.showRuntimeUiDebugPanel) {
                     DrawRuntimeUiDebugPanel();
@@ -2132,6 +2138,15 @@ namespace engine {
             // =========================================================
             // Record and submit commands for this frame
             // 在 Update 函数末尾找到 record_commands 调用，修改如下：
+            FrameGraph* frameGraph = nullptr;
+            if (mState->editor.showEngineUi && mState->editor.showFrameGraph &&
+                (!mState->editor.freezeFrameGraph || mFrameGraph.passes.empty())) {
+                frameGraph = &mFrameGraph;
+                frameGraph->Begin(mRenderingGameViewport ? "Game viewport" : "Scene viewport", mLastModelSubmission + 1);
+                FrameGraphCapture capture(frameGraph);
+                capture.Image(colorTarget.image, "Swapchain", mWindow.swapchainExtent, mWindow.swapchainFormat, 1, false, true);
+                capture.Image(finalSceneTarget.image, "Viewport output", mWindow.swapchainExtent, mWindow.swapchainFormat);
+            }
             record_commands(
                 mCmdBuffers[mFrameIndex],
                 currentOpaque,
@@ -2270,7 +2285,7 @@ namespace engine {
                 portalVisibleInPortal2View,
                 portal2VisibleInPortalView,
                 portal2VisibleInPortal2View,
-                &mGpuTimer, static_cast<uint32_t>(mFrameIndex), &antiAliasing
+                &mGpuTimer, static_cast<uint32_t>(mFrameIndex), &antiAliasing, frameGraph
             );
 			//clear debug renderer data after uploading
             mDebugRenderer.Clear();
@@ -3423,6 +3438,7 @@ void InitSkybox()
         EditorProjectActions mEditorProjectActions;
         EditorPlayController* mEditorPlayController = nullptr;
         bool mRenderingGameViewport = false;
+        FrameGraph mFrameGraph;
         UIManager* mRuntimeUiManager = nullptr;
         bool mEditorAvailable = true;
         bool mShowEditorInitially = false;

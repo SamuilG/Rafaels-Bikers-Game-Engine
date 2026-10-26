@@ -6,6 +6,7 @@
 #include "../../Rhi/to_string.hpp"
 #include "setup.hpp"
 #include "ViewMode.hpp"
+#include "../FrameGraphCapture.hpp"
 
 #include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
@@ -176,7 +177,8 @@ void record_commands(
 	bool aPortal2VisibleInPortal2View,
 	const lut::GpuFrameTimer* aGpuTimer,
 	std::uint32_t aGpuTimerSlot,
-	const engine::AntiAliasingFrame* aAntiAliasing
+	const engine::AntiAliasingFrame* aAntiAliasing,
+	engine::FrameGraph* aFrameGraph
 )
 {
 	// Begin command buffer
@@ -193,6 +195,61 @@ void record_commands(
 
 	if (aGpuTimer) aGpuTimer->Begin(aCmdBuff, aGpuTimerSlot);
 
+	engine::FrameGraphCapture graph(aFrameGraph);
+	using GraphAccess = engine::FrameGraph::Access;
+	if (graph) {
+		graph.Image(aOffscreenColor.image, "Scene color", aImageExtent);
+		graph.Image(aBrightColor.image, "Bright color", aImageExtent);
+		graph.Image(aNormalImage.image, "Normals + roughness", aImageExtent);
+		graph.Image(aDepthAttach.image, "Scene depth", aImageExtent, VK_FORMAT_D32_SFLOAT);
+		graph.Image(aSsrOutput.image, "SSR reflection", aImageExtent);
+		graph.Image(aSsaoRawOutput.image, "SSAO occlusion", aImageExtent, VK_FORMAT_R8_UNORM);
+		graph.Image(aBlurTemp.image, "Bloom horizontal", aImageExtent);
+		graph.Image(aFinalBloom.image, "Bloom vertical", aImageExtent);
+		graph.Image(aCompositeOutput.image, "Composite color", aImageExtent);
+		for (uint32_t layer = 0; layer < kCascadeCount; ++layer)
+			graph.Image(aShadowMap.image, "Shadow layer " + std::to_string(layer),
+				{kShadowMapResolution, kShadowMapResolution}, VK_FORMAT_D32_SFLOAT, 1, false, false, layer);
+		auto portalImages = [&](std::string prefix, const ImageAndView* color, const ImageAndView* bright,
+			const ImageAndView* normal, const ImageAndView* depth) {
+			if (color) graph.Image(color->image, prefix + " color", aImageExtent);
+			if (bright) graph.Image(bright->image, prefix + " bright", aImageExtent);
+			if (normal) graph.Image(normal->image, prefix + " normals", aImageExtent);
+			if (depth) graph.Image(depth->image, prefix + " depth", aImageExtent, VK_FORMAT_D32_SFLOAT);
+		};
+		portalImages("Portal A", aPortalColor, aPortalBright, aPortalNormal, aPortalDepth);
+		portalImages("Portal A scratch", aPortalRecursiveColor, aPortalRecursiveBright, aPortalRecursiveNormal, aPortalRecursiveDepth);
+		portalImages("Portal B", aPortal2Color, aPortal2Bright, aPortal2Normal, aPortal2Depth);
+		portalImages("Portal B scratch", aPortal2RecursiveColor, aPortal2RecursiveBright, aPortal2RecursiveNormal, aPortal2RecursiveDepth);
+		if (aAntiAliasing && aAntiAliasing->msaa && aAntiAliasing->msaa->samples > 1) {
+			const auto& msaa = *aAntiAliasing->msaa;
+			for (uint32_t i = 0; i < 3; ++i)
+				graph.Image(msaa.colors[i].image, "MSAA scratch " + std::to_string(i), aImageExtent,
+					VK_FORMAT_R16G16B16A16_SFLOAT, uint32_t(msaa.samples));
+			graph.Image(msaa.depth.image, "MSAA scratch depth", aImageExtent, VK_FORMAT_D32_SFLOAT, uint32_t(msaa.samples));
+		}
+	}
+	auto graphShadows = [&](const glsl::SceneUniform& uniform) {
+		if (!graph) return;
+		for (uint32_t i = 0; i < kCascadeCount; ++i) {
+			if (i < 3 && uniform.directionalShadow.raster.z < 0.5f) continue;
+			graph.Use(aShadowMap.image, GraphAccess::Sample, i);
+		}
+	};
+	auto graphMrt = [&](const char* name, VkImage color, VkImage bright, VkImage normal, VkImage depth) {
+		if (!graph) return;
+		const auto* msaa = aAntiAliasing ? aAntiAliasing->msaa : nullptr;
+		const bool multisampled = msaa && msaa->samples > 1;
+		graph.Pass(name, multisampled ? "Graphics + MSAA resolve" : "Graphics MRT");
+		if (multisampled) {
+			for (const auto& target : msaa->colors) graph.Use(target.image, GraphAccess::Color);
+			graph.Use(msaa->depth.image, GraphAccess::Depth);
+		}
+		for (const auto target : {color, bright, normal})
+			graph.Use(target, multisampled ? GraphAccess::Resolve : GraphAccess::Color);
+		graph.Use(depth, multisampled ? GraphAccess::Resolve : GraphAccess::Depth);
+	};
+
 	auto uploadSceneUniform = [&](glsl::SceneUniform const& sceneUniform) {
 		constexpr VkPipelineStageFlags kShaderStages = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 		lut::buffer_barrier(aCmdBuff, aSceneUBO, kShaderStages, VK_ACCESS_UNIFORM_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
@@ -202,6 +259,9 @@ void record_commands(
 
 	uploadSceneUniform(aSceneUniform);
 	auto finishFrame = [&]() {
+		graph.Pass("Editor / runtime UI", "UI");
+		graph.Use(aFinalSceneColor.image, GraphAccess::Sample);
+		graph.Use(aSwapchainAttach.image, GraphAccess::Color);
 		const VkImageSubresourceRange range{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 		lut::image_barrier(aCmdBuff, aFinalSceneColor.image,
 			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -240,6 +300,9 @@ void record_commands(
 			VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, range);
 
 		if (aGpuTimer) aGpuTimer->End(aCmdBuff, aGpuTimerSlot);
+		graph.Pass("Present", "Present");
+		graph.Use(aSwapchainAttach.image, GraphAccess::Present);
+		if (aFrameGraph) aFrameGraph->Compile();
 		if (auto const res = vkEndCommandBuffer(aCmdBuff); VK_SUCCESS != res)
 		{
 			throw lut::Error("Unable to end recording command buffer\n"
@@ -250,6 +313,11 @@ void record_commands(
 
     // Display the actual intermediate buffer before scene post-processing.
     auto renderBufferView = [&]() {
+        graph.Pass("Buffer diagnostic display", "Diagnostics");
+        if (aSceneUniform.renderMode == engine::view_mode::Normals) graph.Use(aNormalImage.image, GraphAccess::Sample);
+        if (aSceneUniform.renderMode == engine::view_mode::SSR) graph.Use(aSsrOutput.image, GraphAccess::Sample);
+        if (aSceneUniform.renderMode == engine::view_mode::SSAO) graph.Use(aSsaoRawOutput.image, GraphAccess::Sample);
+        graph.Use(aFinalSceneColor.image, GraphAccess::Color);
         const VkImageSubresourceRange range{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
         lut::image_barrier(aCmdBuff, aFinalSceneColor.image,
             VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
@@ -285,6 +353,10 @@ void record_commands(
     // bloom, tone mapping or camera effects. Geometry modes share one target.
     // Shared images discard old contents, but still wait for prior frames to finish reading/writing.
     auto renderGeometryView = [&]() {
+        graph.Pass("Geometry diagnostics", "Diagnostics");
+        graph.Use(aOffscreenColor.image, GraphAccess::Color);
+        graph.Use(aDepthAttach.image, GraphAccess::Depth);
+        if (aSceneUniform.renderMode == engine::view_mode::Shadow) graphShadows(aSceneUniform);
         const VkImageSubresourceRange colorRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
         const VkImageSubresourceRange depthRange{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
         lut::image_barrier(aCmdBuff, aOffscreenColor.image,
@@ -370,6 +442,9 @@ void record_commands(
             VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, colorRange);
         color.imageView = aFinalSceneColor.view;
+        graph.Pass("Diagnostic viewport output", "Diagnostics");
+        graph.Use(aOffscreenColor.image, GraphAccess::Sample);
+        graph.Use(aFinalSceneColor.image, GraphAccess::Color);
         color.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         pass.pDepthAttachment = nullptr;
         vkCmdBeginRendering(aCmdBuff, &pass);
@@ -385,6 +460,14 @@ void record_commands(
         return;
     }
 	VkImageLayout shadowMapLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	std::string_view graphView = "Main";
+	auto graphPortalRead = [&](VkDescriptorSet descriptor) {
+		if (!graph || !descriptor) return;
+		if (descriptor == aPortalSurfaceDesc && aPortalColor) graph.Use(aPortalColor->image, GraphAccess::Sample);
+		else if (descriptor == aPortalRecursiveSurfaceDesc && aPortalRecursiveColor) graph.Use(aPortalRecursiveColor->image, GraphAccess::Sample);
+		else if (descriptor == aPortal2SurfaceDesc && aPortal2Color) graph.Use(aPortal2Color->image, GraphAccess::Sample);
+		else if (descriptor == aPortal2RecursiveSurfaceDesc && aPortal2RecursiveColor) graph.Use(aPortal2RecursiveColor->image, GraphAccess::Sample);
+	};
 
 	// ---------------------------
 	// Shadow pass (淇濇寔鍘熷疄鐜?
@@ -415,6 +498,10 @@ void record_commands(
 		{
 			if (i < 3 && shadowSceneUniform.directionalShadow.raster.z < 0.5f) continue;
 			VkImageView currentLayerView = aShadowCascadeViews[i];
+			if (graph) {
+				graph.Pass(std::string(graphView) + " shadow layer " + std::to_string(i), "Shadow");
+				graph.Use(aShadowMap.image, GraphAccess::Depth, i);
+			}
 
 			VkRenderingAttachmentInfo shadowDepthInfo{};
 			shadowDepthInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -618,6 +705,9 @@ void record_commands(
 		NestedPortalSurface const& nestedPortalA,
 		NestedPortalSurface const& nestedPortalB) {
 		uploadSceneUniform(portalSceneUniform);
+		graphMrt(graphView == "Portal A" ? "Portal A forward MRT" : "Portal B forward MRT",
+			portalColor.image, portalBright.image, portalNormal.image, portalDepth.image);
+		graphShadows(portalSceneUniform);
 
 		VkImageSubresourceRange portalColorRange{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 		VkImageSubresourceRange portalDepthRange{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
@@ -803,6 +893,7 @@ void record_commands(
 			}
 
 			const uint32_t meshIdx = aPortalMeshIndex;
+			graphPortalRead(nestedPortal.surfaceDesc);
 			PortalSurfacePC portalPc{};
 			portalPc.transform = *nestedPortal.surfaceTransform;
 			portalPc.portalParams = glm::vec4(aPortalEffectTime, nestedPortal.phase, 0.0f, 0.0f);
@@ -885,6 +976,7 @@ void record_commands(
 		glsl::SceneUniform const& sceneUniform,
 		NestedPortalSurface const& nestedPortal1,
 		NestedPortalSurface const& nestedPortal2) {
+		graphView = "Portal A";
 		renderShadowMap(sceneUniform);
 		renderPortalView(
 			sceneUniform,
@@ -901,6 +993,7 @@ void record_commands(
 		glsl::SceneUniform const& sceneUniform,
 		NestedPortalSurface const& nestedPortal1,
 		NestedPortalSurface const& nestedPortal2) {
+		graphView = "Portal B";
 		renderShadowMap(sceneUniform);
 		renderPortalView(
 			sceneUniform,
@@ -984,6 +1077,7 @@ void record_commands(
 			renderPortalTwo(portal2FinalTarget, *aPortal2SceneUniform, {}, {});
 		}
 	}
+	graphView = "Main";
 	renderShadowMap(aSceneUniform);
 	uploadSceneUniform(aSceneUniform);
     if (aSceneUniform.renderMode == engine::view_mode::Shadow) {
@@ -1069,6 +1163,9 @@ void record_commands(
 
 	if (aAntiAliasing && aAntiAliasing->msaa)
 		aAntiAliasing->msaa->Attach(aCmdBuff, colorAtts, depthAttachmentInfo);
+	graphMrt("Forward MRT (opaque / skinned / skybox)", aOffscreenColor.image,
+		aBrightColor.image, aNormalImage.image, aDepthAttach.image);
+	graphShadows(aSceneUniform);
 	vkCmdBeginRendering(aCmdBuff, &mrtInfo);
 
 	// Bind pipelines / descriptors and draw scene as before (render to offscreen + bright)
@@ -1135,6 +1232,7 @@ void record_commands(
 
 	if (portalReady && aPortalMainVisible)
 	{
+		graphPortalRead(aPortalSurfaceDesc);
 		uint32_t meshIdx = aPortalMeshIndex;
 		PortalSurfacePC portalPc{};
 		portalPc.transform = *aPortalSurfaceTransform;
@@ -1151,6 +1249,7 @@ void record_commands(
 	}
 	if (portal2Ready && aPortal2MainVisible)
 	{
+		graphPortalRead(aPortal2SurfaceDesc);
 		uint32_t meshIdx = aPortalMeshIndex;
 		PortalSurfacePC portalPc{};
 		portalPc.transform = *aPortal2SurfaceTransform;
@@ -1297,6 +1396,15 @@ void record_commands(
 	ssrRenderInfo.colorAttachmentCount = 1;
 	ssrRenderInfo.pColorAttachments = &ssrAtt;
 
+	const bool graphSsrDraw = aSceneUniform.renderMode == engine::view_mode::SSR ||
+		(aSceneUniform.renderMode == engine::view_mode::Default && aSsrEnabled);
+	graph.Pass(graphSsrDraw ? "SSR" : "SSR clear (disabled)", "Post process");
+	graph.Use(aSsrOutput.image, GraphAccess::Color);
+	if (graphSsrDraw) {
+		graph.Use(aOffscreenColor.image, GraphAccess::Sample);
+		graph.Use(aNormalImage.image, GraphAccess::Sample);
+		graph.Use(aDepthAttach.image, GraphAccess::Sample);
+	}
 	vkCmdBeginRendering(aCmdBuff, &ssrRenderInfo);
 	// 銆愭牳蹇冧慨鏀广€戯細鍙湁寮€鍚簡 SSR锛屾墠缁?GPU 涓嬪彂缁樺埗鎸囦护锛?
 	if (aSceneUniform.renderMode == engine::view_mode::SSR ||
@@ -1358,6 +1466,12 @@ void record_commands(
 	ssaoRenderInfo.colorAttachmentCount = 1;
 	ssaoRenderInfo.pColorAttachments = &ssaoAtt;
 
+	graph.Pass(aSsaoEnabled || aSceneUniform.renderMode == engine::view_mode::SSAO ? "SSAO" : "SSAO clear (disabled)", "Post process");
+	graph.Use(aSsaoRawOutput.image, GraphAccess::Color);
+	if (aSsaoEnabled || aSceneUniform.renderMode == engine::view_mode::SSAO) {
+		graph.Use(aNormalImage.image, GraphAccess::Sample);
+		graph.Use(aDepthAttach.image, GraphAccess::Sample);
+	}
 	vkCmdBeginRendering(aCmdBuff, &ssaoRenderInfo);
 	if (aSceneUniform.renderMode == engine::view_mode::SSAO || aSsaoEnabled) {
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSsaoPipe);
@@ -1423,6 +1537,9 @@ void record_commands(
 	blurRenderInfo.colorAttachmentCount = 1;
 	blurRenderInfo.pColorAttachments = &blurAtt;
 
+	graph.Pass("Bloom horizontal", "Post process");
+	graph.Use(aBrightColor.image, GraphAccess::Sample);
+	graph.Use(aBlurTemp.image, GraphAccess::Color);
 	vkCmdBeginRendering(aCmdBuff, &blurRenderInfo);
 	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aBlurPipe);
 	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aBlurLayout, 0, 1, &aBlurHorizDS, 0, nullptr);
@@ -1456,6 +1573,9 @@ void record_commands(
 	);
 
 	blurAtt.imageView = aFinalBloom.view;
+	graph.Pass("Bloom vertical", "Post process");
+	graph.Use(aBlurTemp.image, GraphAccess::Sample);
+	graph.Use(aFinalBloom.image, GraphAccess::Color);
 	vkCmdBeginRendering(aCmdBuff, &blurRenderInfo);
 	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aBlurLayout, 0, 1, &aBlurVertDS, 0, nullptr);
 	horizontal = 0;
@@ -1512,6 +1632,10 @@ void record_commands(
 	compInfo.pColorAttachments = &compAtt;
 	compInfo.pDepthAttachment = &compDepthAtt; // 鎸傝浇娣卞害鐢绘澘锛?
 
+	graph.Pass("Composite / tone mapping", "Post process");
+	for (const auto image : {aOffscreenColor.image, aFinalBloom.image, aSsrOutput.image, aSsaoRawOutput.image})
+		graph.Use(image, GraphAccess::Sample);
+	graph.Use(aCompositeOutput.image, GraphAccess::Color);
 	vkCmdBeginRendering(aCmdBuff, &compInfo);
 
 	// --- 1. 鐢诲叏灞忚儗鏅悎鎴?(SSAO + SSR + 鍦烘櫙搴曡壊) ---
@@ -1527,7 +1651,8 @@ void record_commands(
 	// --- 4. 鐢荤矑瀛愮郴缁?---
 	if (aAntiAliasing && aAntiAliasing->temporal && aAntiAliasing->geometry) {
 		vkCmdEndRendering(aCmdBuff);
-		aAntiAliasing->temporal->Resolve(aCmdBuff, aAntiAliasing->slot, aCompositeOutput.image, *aAntiAliasing->geometry);
+		aAntiAliasing->temporal->Resolve(aCmdBuff, aAntiAliasing->slot, aCompositeOutput.image,
+			*aAntiAliasing->geometry, aDepthAttach.image, aFrameGraph);
 		glsl::SceneUniform overlayUniform = aSceneUniform;
 		glm::mat4 unjitter(1.0f);
 		unjitter[3][0] = -2.0f * aAntiAliasing->temporal->Jitter().x / float(aImageExtent.width);
@@ -1538,6 +1663,9 @@ void record_commands(
 		compAtt.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 		vkCmdBeginRendering(aCmdBuff, &compInfo);
 	}
+	graph.Pass("Particles / debug overlays", "Overlay");
+	graph.Use(aCompositeOutput.image, GraphAccess::LoadColor);
+	graph.Use(aDepthAttach.image, GraphAccess::DepthRead);
 	if (particlesEnabled) {
 		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, particlePipe);
 		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 1, &aSceneDescriptors, 0, nullptr);
@@ -1591,6 +1719,9 @@ void record_commands(
 	speedInfo.colorAttachmentCount = 1;
 	speedInfo.pColorAttachments = &speedAtt;
 
+	graph.Pass("Camera effects / viewport output", "Post process");
+	graph.Use(aCompositeOutput.image, GraphAccess::Sample);
+	graph.Use(aFinalSceneColor.image, GraphAccess::Color);
 	vkCmdBeginRendering(aCmdBuff, &speedInfo);
 	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSpeedPipe);
 	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSpeedLayout, 0, 1, &aSpeedDesc, 0, nullptr);

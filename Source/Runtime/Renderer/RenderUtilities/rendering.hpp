@@ -18,6 +18,7 @@
 #include "../../Debug/DebugRenderer.hpp"
 
 namespace lut = labut2;
+namespace engine { class FrameGraph; }
 
 
 void record_commands(
@@ -160,7 +161,8 @@ void record_commands(
 	bool aPortal2VisibleInPortal2View = false,
 	const lut::GpuFrameTimer* aGpuTimer = nullptr,
 	std::uint32_t aGpuTimerSlot = 0,
-	const engine::AntiAliasingFrame* aAntiAliasing = nullptr
+	const engine::AntiAliasingFrame* aAntiAliasing = nullptr,
+	engine::FrameGraph* aFrameGraph = nullptr
 );
 
 

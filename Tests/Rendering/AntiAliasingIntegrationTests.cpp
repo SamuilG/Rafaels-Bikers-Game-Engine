@@ -21,6 +21,7 @@ void RunEditorRegression() {
         glfwSetWindowSize(renderer.GetGLFWWindow(),640,480); glfwPollEvents();
         ImGui::GetIO().IniFilename="Intermediate/Diagnostics/anti-aliasing/integration-layout.ini";
         state.editor.showRenderSettings=true; state.editor.editorViewportSkybox=true;
+        state.editor.showFrameGraph=true;
         state.editor.sceneCamera.RequestFree();
         Require(state.editor.sceneCamera.SetFreeTransform(glm::translate(glm::mat4(1),glm::vec3(0,0,4))),"Cannot position scene camera");
         const auto mesh=generate_uv_sphere(1.f,16,24);
@@ -36,6 +37,11 @@ void RunEditorRegression() {
             glfwPollEvents(); scene.Update(1.f/60); renderer.Update(1.f/60);
             if(renderer.HasPresentedFrame()) ++presented;
             Require(running,"Renderer stopped during anti-aliasing changes");
+            const auto& graph = renderer.GetFrameGraph();
+            Require(!graph.passes.empty() && graph.passes.back().name == "Present", "Frame graph did not capture the presented path");
+            if (!graph.warnings.empty()) for (const auto& warning : graph.warnings) std::cerr << warning << '\n';
+            Require(graph.warnings.empty(), "Frame graph found an unwritten render target");
+            for (const auto& dep : graph.dependencies) Require(dep.before < dep.after, "Frame graph contains a cycle");
         };
         for(uint32_t samples:{1u,2u,4u,8u,1u}) {
             if(!(state.capabilities.msaaSampleCounts&samples)) continue;
@@ -47,6 +53,11 @@ void RunEditorRegression() {
                     frame();
                 }
                 Require(state.capabilities.activeMsaaSamples==samples,"Requested MSAA was not applied");
+                const auto& graph = renderer.GetFrameGraph();
+                const bool capturedTaa = std::any_of(graph.passes.begin(), graph.passes.end(), [](const auto& pass) { return pass.name == "TAA history resolve"; });
+                Require(capturedTaa == taa, "Frame graph TAA path does not match actual settings");
+                const bool capturedMsaa = std::any_of(graph.textures.begin(), graph.textures.end(), [](const auto& texture) { return texture.desc.samples > 1 && texture.firstUse != FrameGraph::Invalid; });
+                Require(capturedMsaa == (samples > 1), "Frame graph MSAA resources do not match actual settings");
                 std::cout<<"PASS editor "<<samples<<"x MSAA, TAA "<<taa<<'\n';
             }
         }
@@ -59,10 +70,30 @@ void RunEditorRegression() {
         }
         renderer.SetPortalPreview(glm::translate(glm::mat4(1),glm::vec3(0,0,1.5f)),
             {0,0,4},{0,0,0});
-        frame(); frame(); renderer.DisablePortalPreview();
+        frame(); frame();
+        renderer.SetPortalPreviewPair(glm::translate(glm::mat4(1),glm::vec3(0,0,-1)), {0,0,4}, {0,0,0},
+            glm::translate(glm::mat4(1),glm::vec3(0,0,1)) * glm::rotate(glm::mat4(1), glm::radians(180.f), glm::vec3(0,1,0)),
+            {0,0,-4}, {0,0,0});
+        frame(); frame();
+        const auto& portalGraph = renderer.GetFrameGraph();
+        const auto portalPasses = std::count_if(portalGraph.passes.begin(), portalGraph.passes.end(), [](const auto& pass) {
+            return pass.name == "Portal A forward MRT" || pass.name == "Portal B forward MRT";
+        });
+        Require(portalPasses > 1, "Linked Portal recursion was not captured");
+        Require(std::any_of(portalGraph.textures.begin(), portalGraph.textures.end(), [](const auto& texture) {
+            return texture.name.find("scratch color") != std::string::npos && texture.firstUse != FrameGraph::Invalid;
+        }), "Portal scratch RT lifetime was not captured");
+        renderer.DisablePortalPreview();
         glfwSetWindowSize(renderer.GetGLFWWindow(),800,600); glfwPollEvents(); frame(); frame(); frame();
         Require(state.editor.sceneCamera.SetFreeTransform(glm::translate(glm::mat4(1),glm::vec3(0,0,20))),"Cannot cut scene camera"); frame(); frame();
         state.render.msaaSamples=1; state.render.taaEnabled=false; frame(); frame();
+        const auto frozenFrame = renderer.GetFrameGraph().frame;
+        state.editor.freezeFrameGraph=true; frame(); frame();
+        Require(renderer.GetFrameGraph().frame == frozenFrame, "Frozen frame graph changed");
+        glfwSetWindowSize(renderer.GetGLFWWindow(),960,640); glfwPollEvents(); frame(); frame();
+        Require(renderer.GetFrameGraph().frame == frozenFrame, "Resize invalidated the frozen graph snapshot");
+        state.editor.freezeFrameGraph=false; frame(); frame();
+        Require(renderer.GetFrameGraph().frame > frozenFrame, "Frame graph did not resume capture");
         Require(presented>=30,"Too few frames reached actual Vulkan presentation");
         renderer.Shutdown(); scene.Shutdown();
         std::cout<<"PASS diagnostics, portal, resize, camera cut and AA disable; presented="<<presented<<'\n';

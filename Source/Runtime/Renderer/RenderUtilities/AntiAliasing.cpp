@@ -1,4 +1,5 @@
 #include "AntiAliasing.hpp"
+#include "../FrameGraphCapture.hpp"
 #include "../../Rhi/load.hpp"
 #include "../../Rhi/error.hpp"
 #include <algorithm>
@@ -311,8 +312,17 @@ void TemporalAntiAliasing::Prepare(const lut::VulkanContext& context, const lut:
     }
     mPendingViewProjection = vp; mPendingBones = bones;
 }
-void TemporalAntiAliasing::Resolve(VkCommandBuffer cmd, size_t slot, VkImage color, const TemporalGeometry& geometry) {
+void TemporalAntiAliasing::Resolve(VkCommandBuffer cmd, size_t slot, VkImage color, const TemporalGeometry& geometry,
+    VkImage depth, FrameGraph* frameGraph) {
     if (!mEnabled) return;
+    FrameGraphCapture graph(frameGraph);
+    using Access = FrameGraph::Access;
+    graph.Image(mMotion.image, "TAA motion vectors", mExtent);
+    graph.Image(mHistory[0].image, "TAA history A", mExtent, VK_FORMAT_R16G16B16A16_SFLOAT, 1, true);
+    graph.Image(mHistory[1].image, "TAA history B", mExtent, VK_FORMAT_R16G16B16A16_SFLOAT, 1, true);
+    graph.Pass("TAA motion vectors", "Temporal AA");
+    graph.Use(depth, Access::Sample);
+    graph.Use(mMotion.image, Access::Color);
     auto& frame = mFrames.at(slot);
     barrier(cmd, mMotion.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     VkRenderingAttachmentInfo attachment{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
@@ -340,6 +350,8 @@ void TemporalAntiAliasing::Resolve(VkCommandBuffer cmd, size_t slot, VkImage col
     vkCmdEndRendering(cmd);
     barrier(cmd, mMotion.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     for (uint32_t i = 0; i < 2; ++i) if (!mHistoryInitialized[i]) {
+        graph.Pass(i == 0 ? "Initialize TAA history A" : "Initialize TAA history B", "Transfer");
+        graph.Use(mHistory[i].image, Access::CopyDestination);
         barrier(cmd, mHistory[i].image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
         const VkClearColorValue clear{}; const VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
         vkCmdClearColorImage(cmd, mHistory[i].image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear, 1, &range);
@@ -348,6 +360,9 @@ void TemporalAntiAliasing::Resolve(VkCommandBuffer cmd, size_t slot, VkImage col
     }
     barrier(cmd, color, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     const uint32_t write = 1 - mReadHistory;
+    graph.Pass("TAA history resolve", "Temporal AA");
+    for (const auto input : {color, depth, mMotion.image, mHistory[mReadHistory].image}) graph.Use(input, Access::Sample);
+    graph.Use(mHistory[write].image, Access::Color);
     barrier(cmd, mHistory[write].image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     attachment.imageView = mHistory[write].view; attachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     vkCmdBeginRendering(cmd, &pass); vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, mResolvePipe.handle);
@@ -356,6 +371,9 @@ void TemporalAntiAliasing::Resolve(VkCommandBuffer cmd, size_t slot, VkImage col
     barrier(cmd, mHistory[write].image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     barrier(cmd, color, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     VkImageCopy copy{}; copy.srcSubresource = copy.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    graph.Pass("TAA copy to composite", "Transfer");
+    graph.Use(mHistory[write].image, Access::CopySource);
+    graph.Use(color, Access::CopyDestination);
     copy.extent = {mExtent.width, mExtent.height, 1};
     vkCmdCopyImage(cmd, mHistory[write].image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, color, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
     barrier(cmd, mHistory[write].image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);

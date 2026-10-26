@@ -2508,6 +2508,7 @@ namespace engine {
             ImGui::MenuItem(_SL("Particles"), nullptr, &editor.showParticlePanel);
             ImGui::MenuItem(_SL("Audio"), nullptr, &editor.showAudioPanel);
             ImGui::MenuItem(_SL("Diagnostics"), nullptr, &editor.showDebugPanel);
+            ImGui::MenuItem("Frame Graph", nullptr, &editor.showFrameGraph);
             ImGui::Separator();
             if (ImGui::BeginMenu(_SL("Game UI Tools"))) {
                 ImGui::MenuItem(_SL("Game UI Editor"), nullptr, &editor.showGameUiEditor);
@@ -2537,6 +2538,7 @@ namespace engine {
                 editor.showLightPanel = editor.showCameraPanel = editor.showAudioPanel = false;
                 editor.showDebugPanel = editor.showParticlePanel = editor.showRuntimeUiDebugPanel = false;
                 editor.showGameUiEditor = false;
+                editor.showFrameGraph = editor.freezeFrameGraph = false;
                 s_ResetEditorLayout = true;
             }
             if (ImGui::BeginMenu(_SL("Language"))) {
@@ -2663,6 +2665,7 @@ namespace engine {
     }
 
     void EngineUi::ResetForNewProject() {
+        ResetFrameGraphPanel();
         s_PendingProjectPath.clear();
         s_PendingNewProject = false;
         s_ConfirmProjectChange = false;

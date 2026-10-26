@@ -24,6 +24,8 @@ struct EditorState {
     bool showLightPanel = false;
     bool showCameraPanel = false;
     bool showDebugPanel = false;
+    bool showFrameGraph = false;
+    bool freezeFrameGraph = false;
     bool showAudioPanel = false;
     bool showParticlePanel = false;
     bool showRuntimeUiDebugPanel = false;

@@ -12,6 +12,7 @@
 #include <vector>
 
 namespace engine {
+class FrameGraph;
 
 struct MsaaSupport {
     uint32_t sampleCounts = 1;
@@ -60,7 +61,8 @@ public:
     // Input color is COLOR_ATTACHMENT_OPTIMAL and supports transfer destination.
     // Depth is DEPTH_STENCIL_READ_ONLY_OPTIMAL. Restores the input color layout.
     // History is saved before particles, debug overlays and camera effects.
-    void Resolve(VkCommandBuffer, size_t slot, VkImage color, const TemporalGeometry&);
+    void Resolve(VkCommandBuffer, size_t slot, VkImage color, const TemporalGeometry&,
+        VkImage depth = VK_NULL_HANDLE, FrameGraph* graph = nullptr);
     void Submitted();
     glm::vec2 Jitter() const { return mJitter; }
     bool HistoryValid() const { return mHistoryValid; }

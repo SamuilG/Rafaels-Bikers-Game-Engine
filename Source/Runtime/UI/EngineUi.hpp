@@ -21,6 +21,7 @@ namespace engine {
     class AudioSystem;
     class CameraController;
     class EditorPlayController;
+    class FrameGraph;
     struct PlayerState;
     struct EditorState;
     struct RenderSettings;
@@ -105,6 +106,8 @@ namespace engine {
         static void DrawCameraPanel(CameraController& controller, const PlayerState& player, EditorState& editor);
 		//调试信息面板//Debug info panel
         static void DrawDebugPanel(EditorState& editor, const RenderStatistics& statistics, const RenderCapabilities& capabilities);
+        static void DrawFrameGraph(EditorState& editor, const FrameGraph& graph);
+        static void ResetFrameGraphPanel();
 		//音频系统面板//Audio system panel
         static void DrawAudioPanel(EditorState& editor, AudioSystem* audioSystem);
 
