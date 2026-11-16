@@ -34,9 +34,12 @@ int main() try {
     Require(graph.EstimatedBytes() == 100 * 50 * 4 * 8, "Estimate counted unused RTs or content versions as allocations");
     const auto deps = graph.dependencies.size(); graph.Compile();
     Require(graph.dependencies.size() == deps && graph.versions.size() == 2, "Repeated compile accumulated stale data");
+    graph.branches.push_back({"Portal A", Graph::BranchState::Culled});
     auto snapshot = graph; graph.Begin("Next frame", 2);
     Require(graph.passes.empty() && graph.textures.empty() && graph.versions.empty(), "New frame retained stale GPU identities");
     Require(snapshot.frame == 1 && snapshot.versions.size() == 2, "Snapshot was changed by the next capture");
+    Require(graph.branches.empty() && snapshot.branches.size() == 1 && snapshot.branches[0].state == Graph::BranchState::Culled,
+        "Conditional branch state leaked between frames or changed a frozen snapshot");
     std::cout << "PASS physical identity, layers, versions, RAW/WAR/WAW, intervals, estimates and snapshots\n";
 
     auto historyDesc = desc; historyDesc.samples = 1; historyDesc.importedContents = true;

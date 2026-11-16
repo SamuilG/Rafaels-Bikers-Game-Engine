@@ -34,6 +34,8 @@ Graph Fixture() {
     pass = graph.AddPass("Camera effects / viewport output", "Post process"); use(pass, 5, Graph::Access::Sample); use(pass, 6, Graph::Access::Color);
     pass = graph.AddPass("Editor / runtime UI", "UI"); use(pass, 6, Graph::Access::Sample); use(pass, 7, Graph::Access::Color);
     pass = graph.AddPass("Present", "Present"); use(pass, 7, Graph::Access::Present);
+    graph.branches.push_back({"Portal A", Graph::BranchState::NotConfigured});
+    graph.branches.push_back({"Portal B", Graph::BranchState::Culled});
     graph.Compile(); return graph;
 }
 
@@ -89,13 +91,19 @@ int main(int argc, char** argv) try {
     unsigned char* atlas = nullptr; int w, h; io.Fonts->GetTexDataAsRGBA32(&atlas, &w, &h); io.Fonts->SetTexID(ImTextureID(1));
     engine::EditorState editor; editor.showFrameGraph = true;
     auto graph = Fixture();
+    auto pointInChild = [&](const char* name, ImVec2 offset) {
+        for (auto* window : ImGui::GetCurrentContext()->Windows) if (window->Active && std::string(window->Name).find(name) != std::string::npos) {
+            io.AddMousePosEvent(window->InnerRect.Min.x + offset.x, window->InnerRect.Min.y + offset.y); return;
+        }
+        throw std::runtime_error("Panel child window not found");
+    };
     auto frame = [&]() {
         ImGui::NewFrame(); ImGui::SetNextWindowPos({10, 10}, ImGuiCond_Always); ImGui::SetNextWindowSize({1180, 780}, ImGuiCond_Always);
         engine::EngineUi::DrawFrameGraph(editor, graph); ImGui::Render();
         Require(ImGui::GetDrawData()->TotalVtxCount > 100, "Panel tab has no geometry");
     };
     frame(); frame();
-    io.AddMousePosEvent(70, 205); io.AddMouseButtonEvent(0, true); frame();
+    pointInChild("node-canvas", {50, 45}); io.AddMouseButtonEvent(0, true); frame();
     io.AddMouseButtonEvent(0, false); frame(); io.AddMousePosEvent(-100, -100); frame(); SaveImage(output / "graph.png");
     for (const char* name : {"RT lifetime", "Render targets"}) {
         bool found = false;
@@ -107,7 +115,7 @@ int main(int argc, char** argv) try {
         }
         Require(found, "Panel tab was not created"); frame(); frame();
         if (std::string(name) == "Render targets") {
-            io.AddMousePosEvent(80, 186); io.AddMouseButtonEvent(0, true); frame(); io.AddMouseButtonEvent(0, false); frame();
+            pointInChild("render-targets", {60, 30}); io.AddMouseButtonEvent(0, true); frame(); io.AddMouseButtonEvent(0, false); frame();
         }
         SaveImage(output / (std::string(name) == "RT lifetime" ? "lifetime.png" : "resources.png"));
     }

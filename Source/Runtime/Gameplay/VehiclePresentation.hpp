@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../Renderer/RenderUtilities/SceneEffects.hpp"
+#include "../Scene/PortalShardEmitter.hpp"
 #include "../UserState/FrameExecution.hpp"
 #include "../UserState/LevelState.hpp"
 #include "../UserState/PlayerState.hpp"
@@ -19,6 +20,9 @@ public:
 
     void ResetForNewRun() { mState = SceneEffects{}; }
 
+    void BeginPortalOpening() { mState.portalOpeningAge = 0.0f; }
+    void CancelPortalOpening() { mState.portalOpeningAge = -1.0f; }
+
     void Update(float dt, const PlayerState& player, const LevelState& level,
         const FrameExecution& frame, std::uint64_t entityId, std::uint32_t bodyId) {
         // A completed reload gets its own reset and no partial old-world frame.
@@ -34,6 +38,11 @@ public:
         // Preserve the previous 5*dt response, while keeping long frames bounded.
         mState.speedFactor += (target - mState.speedFactor) * std::min(5.0f * dt, 1.0f);
         mState.portalEffectTime += dt;
+        if (mState.portalOpeningAge >= 0.0f) {
+            mState.portalOpeningAge += dt;
+            if (!player.isAlive || bodyId == UINT32_MAX || mState.portalOpeningAge >= PortalShardEmitter::kMaxDuration)
+                CancelPortalOpening();
+        }
     }
 
 private:

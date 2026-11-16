@@ -108,6 +108,8 @@ namespace cfg
 	// Skeletal skinning
 	constexpr char const* kSkinnedVertShaderPath = SHADERDIR_"skinned.vert.spv";
 	constexpr char const* kPortalVertShaderPath = SHADERDIR_ "portal.vert.spv";
+	constexpr char const* kPortalShardVertShaderPath = SHADERDIR_ "portal_shard.vert.spv";
+	constexpr char const* kPortalShardFragShaderPath = SHADERDIR_ "portal_shard.frag.spv";
 	constexpr char const* kPortalFragShaderPath = SHADERDIR_ "portal.frag.spv";
 	// 【新增】：SSR 屏幕空间反射
 	constexpr char const* kSsrFragShaderPath = SHADERDIR_ "ssr.frag.spv";
@@ -154,7 +156,8 @@ lut::DescriptorSetLayout create_object_descriptor_layout( lut::VulkanWindow cons
 lut::DescriptorSetLayout create_post_proc_descriptor_layout( lut::VulkanWindow const& );
 
 lut::ImageWithView create_depth_buffer( lut::VulkanWindow const&, lut::Allocator const& );
-lut::ImageWithView create_offscreen_buffer( lut::VulkanWindow const&, lut::Allocator const& );
+lut::ImageWithView create_offscreen_buffer(lut::VulkanWindow const&, lut::Allocator const&,
+	VkImageUsageFlags extraUsage = 0);
 
 // 【新增】：创建用于存储世界空间/观察空间法线的 G-Buffer
 lut::ImageWithView create_normal_buffer(lut::VulkanWindow const&, lut::Allocator const&);
@@ -190,6 +193,7 @@ lut::Pipeline create_overshading_pipeline( lut::VulkanWindow const&, VkPipelineL
 lut::Pipeline create_vis_resolve_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkDescriptorSetLayout );
 lut::PipelineLayout create_speed_post_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aDescriptorLayout);
 lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, char const* fragPath = cfg::kSpeedPostFragShaderPath);
+lut::Pipeline create_portal_shard_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout);
 // p2_1.5 shadow mapping
 lut::Pipeline create_shadow_pipeline( lut::VulkanWindow const&, VkPipelineLayout );
 // Skinned shadow pipeline (uses shadowmap_skinned.vert + shadowmap.frag, 5 vertex bindings)

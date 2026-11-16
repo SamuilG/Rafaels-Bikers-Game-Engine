@@ -304,14 +304,23 @@ public:
         if (!IsAlive(id)) return false;
         bool first = true;
         for (auto node : scene_hierarchy::Subtree(mScene->get_world().entity(id))) {
-            if (!node.has<MeshComponent>()) continue;
-            const auto index = node.get<MeshComponent>().meshIndex;
-            if (index >= mScene->get_model().meshes.size()) continue;
-            const auto& mesh = mScene->get_model().meshes[index];
+            glm::vec3 low, high;
+            if (node.has<MeshComponent>()) {
+                const auto index = node.get<MeshComponent>().meshIndex;
+                if (index >= mScene->get_model().meshes.size()) continue;
+                const auto& mesh = mScene->get_model().meshes[index];
+                low = mesh.localAabbMin;
+                high = mesh.localAabbMax;
+            } else if (node.has<PortalShardEmitter>()) {
+                const auto& emitter = node.get<PortalShardEmitter>();
+                const float radius = emitter.spawnRadius.y + emitter.travelDistance.y + emitter.size.y;
+                low = {-radius, emitter.spawnHeight.x + std::min(0.0f, emitter.riseDistance.x) - emitter.size.y, -radius};
+                high = {radius, emitter.spawnHeight.y + std::max(0.0f, emitter.riseDistance.y) + emitter.size.y, radius};
+            } else continue;
             const auto world = scene_hierarchy::World(node);
             for (int i = 0; i < 8; ++i) {
-                const auto point = glm::vec3(world * glm::vec4(i & 1 ? mesh.localAabbMax.x : mesh.localAabbMin.x,
-                    i & 2 ? mesh.localAabbMax.y : mesh.localAabbMin.y, i & 4 ? mesh.localAabbMax.z : mesh.localAabbMin.z, 1));
+                const auto point = glm::vec3(world * glm::vec4(i & 1 ? high.x : low.x,
+                    i & 2 ? high.y : low.y, i & 4 ? high.z : low.z, 1));
                 minimum = first ? point : glm::min(minimum, point); maximum = first ? point : glm::max(maximum, point); first = false;
             }
         }

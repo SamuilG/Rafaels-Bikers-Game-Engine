@@ -249,6 +249,13 @@ void EngineUi::DrawFrameGraph(EditorState& editor, const FrameGraph& graph) {
     state.filter.Draw("Search Pass / RT", 240);
     ImGui::TextWrapped("%s | frame %llu | %zu passes | %zu RT versions | %.2f MiB used RT estimate*",
         graph.view.c_str(), static_cast<unsigned long long>(graph.frame), graph.passes.size(), graph.versions.size(), double(graph.EstimatedBytes()) / 1048576.0);
+    for (const auto& branch : graph.branches) {
+        const auto prefix = branch.name + " forward MRT";
+        const auto views = std::count_if(graph.passes.begin(), graph.passes.end(), [&](const auto& pass) { return pass.name.starts_with(prefix); });
+        if (branch.state == Graph::BranchState::Active)
+            ImGui::TextColored(ImColor(passColor), "%s: %zu view pass(es) recorded", branch.name.c_str(), size_t(views));
+        else ImGui::TextDisabled("%s: %s", branch.name.c_str(), Graph::BranchReason(branch.state));
+    }
     Legend();
     if (graph.passes.empty()) ImGui::TextDisabled("Waiting for a recorded frame. Keep a viewport visible.");
     else if (ImGui::BeginTabBar("frame-graph-tabs")) {

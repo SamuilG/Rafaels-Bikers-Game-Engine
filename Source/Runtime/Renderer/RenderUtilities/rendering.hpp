@@ -4,10 +4,12 @@
 #include <cstdint>
 #include <vector>
 #include <memory>
+#include <span>
 #include <unordered_map>
 
 #include "setup.hpp"
 #include "AntiAliasing.hpp"
+#include "../../Scene/PortalShardEmitter.hpp"
 #include "camera.hpp"
 #include "../../Rhi/vkobject.hpp"
 #include "../../Rhi/vulkan_window.hpp"
@@ -20,6 +22,12 @@
 namespace lut = labut2;
 namespace engine { class FrameGraph; }
 
+struct PortalShardPass {
+	std::span<const engine::PortalShardVisual> shards;
+	VkImage sceneCopy;
+	VkPipeline pipeline;
+	VkDescriptorSet sceneCopyDescriptor;
+};
 
 void record_commands(
 	VkCommandBuffer aCmdBuff,
@@ -162,7 +170,8 @@ void record_commands(
 	const lut::GpuFrameTimer* aGpuTimer = nullptr,
 	std::uint32_t aGpuTimerSlot = 0,
 	const engine::AntiAliasingFrame* aAntiAliasing = nullptr,
-	engine::FrameGraph* aFrameGraph = nullptr
+	engine::FrameGraph* aFrameGraph = nullptr,
+	const PortalShardPass* aPortalShards = nullptr
 );
 
 

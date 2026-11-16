@@ -2,6 +2,7 @@
 
 #include "SceneManager.hpp"
 #include "EntityValidity.hpp"
+#include "PortalShardEmitter.hpp"
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -56,7 +57,7 @@ inline bool Visible(flecs::entity entity) {
 }
 inline bool IsGroup(flecs::entity entity) {
     return IsEntityAlive(entity) && entity.has<LocalTransform>() && !entity.has<MeshComponent>() &&
-        !entity.has<GameCameraComponent>() && !entity.has<LightComponent>();
+        !entity.has<GameCameraComponent>() && !entity.has<LightComponent>() && !entity.has<PortalShardEmitter>();
 }
 inline std::string UniqueName(flecs::world& world, flecs::entity parent, std::string desired, flecs::entity_t self = 0) {
     if (desired.empty() || desired.find("::") != std::string::npos) desired = "Group";

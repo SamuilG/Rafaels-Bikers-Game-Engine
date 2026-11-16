@@ -936,7 +936,8 @@ lut::ImageWithView create_depth_buffer(lut::VulkanWindow const& aWindow, lut::Al
 	return lut::ImageWithView(aAllocator.allocator, image, allocation, view);
 }
 
-lut::ImageWithView create_offscreen_buffer(lut::VulkanWindow const& aWindow, lut::Allocator const& aAllocator)
+lut::ImageWithView create_offscreen_buffer(lut::VulkanWindow const& aWindow, lut::Allocator const& aAllocator,
+	VkImageUsageFlags extraUsage)
 {
 	VkImageCreateInfo imageInfo{};
 	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -949,7 +950,7 @@ lut::ImageWithView create_offscreen_buffer(lut::VulkanWindow const& aWindow, lut
 	imageInfo.arrayLayers = 1;
 	imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 	imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-	imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | extraUsage;
 	imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
@@ -2709,11 +2710,13 @@ lut::PipelineLayout create_speed_post_pipeline_layout(lut::VulkanContext const& 
 // ==============================================================================
 // 极速特效 (Speed Post-Process) 的管线
 // ==============================================================================
-lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, char const* fragPath)
+static lut::Pipeline create_procedural_triangle_pipeline(lut::VulkanWindow const& aWindow,
+	VkPipelineLayout aPipelineLayout, const char* vertPath, const char* fragPath,
+	VkFormat colorFormat, VkFormat depthFormat)
 {
-	// 复用全屏顶点着色器，加载新的极速片段着色器
-	auto const vertSpirV = lut::load_file_u32(cfg::kFullscreenVertShaderPath);
-	auto const fragSpirV = lut::load_file_u32(fragPath); // 注意：需要在 cfg 中定义这个路径！
+	const bool depthTest = depthFormat != VK_FORMAT_UNDEFINED;
+	auto const vertSpirV = lut::load_file_u32(vertPath);
+	auto const fragSpirV = lut::load_file_u32(fragPath);
 
 	VkShaderModuleCreateInfo code[2]{};
 	code[0].sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -2735,7 +2738,7 @@ lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPip
 	stages[1].pName = "main";
 	stages[1].pNext = &code[1];
 
-	// 没有顶点输入，因为在顶点着色器中通过 gl_VertexIndex 硬编码生成全屏三角形
+	// The vertex shader generates its geometry from gl_VertexIndex.
 	VkPipelineVertexInputStateCreateInfo inputInfo{};
 	inputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 
@@ -2759,7 +2762,7 @@ lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPip
 	rasterInfo.depthClampEnable = VK_FALSE;
 	rasterInfo.rasterizerDiscardEnable = VK_FALSE;
 	rasterInfo.polygonMode = VK_POLYGON_MODE_FILL;
-	rasterInfo.cullMode = VK_CULL_MODE_NONE; // 全屏矩形不需要背面剔除
+	rasterInfo.cullMode = depthTest ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE;
 	rasterInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	rasterInfo.depthBiasEnable = VK_FALSE;
 	rasterInfo.lineWidth = 1.f;
@@ -2769,7 +2772,11 @@ lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPip
 	samplingInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
 	VkPipelineColorBlendAttachmentState blendStates[1]{};
-	blendStates[0].blendEnable = VK_FALSE; // 直接覆盖，不需要混合
+	blendStates[0].blendEnable = depthTest;
+	blendStates[0].srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+	blendStates[0].dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+	blendStates[0].srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	blendStates[0].dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
 	blendStates[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
 	VkPipelineColorBlendStateCreateInfo blendInfo{};
@@ -2778,12 +2785,11 @@ lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPip
 	blendInfo.attachmentCount = 1;
 	blendInfo.pAttachments = blendStates;
 
-	// 后期处理不需要深度测试
 	VkPipelineDepthStencilStateCreateInfo depthInfo{};
 	depthInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-	depthInfo.depthTestEnable = VK_FALSE;
+	depthInfo.depthTestEnable = depthTest;
 	depthInfo.depthWriteEnable = VK_FALSE;
-	depthInfo.depthCompareOp = VK_COMPARE_OP_ALWAYS;
+	depthInfo.depthCompareOp = depthTest ? VK_COMPARE_OP_LESS_OR_EQUAL : VK_COMPARE_OP_ALWAYS;
 	depthInfo.minDepthBounds = 0.f;
 	depthInfo.maxDepthBounds = 1.f;
 
@@ -2794,11 +2800,11 @@ lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPip
 	dynamicInfo.dynamicStateCount = 2;
 	dynamicInfo.pDynamicStates = dynamicStates;
 
-	// 渲染目标：通常后期处理直接输出到 Swapchain
 	VkPipelineRenderingCreateInfo renderingInfo{};
 	renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
 	renderingInfo.colorAttachmentCount = 1;
-	renderingInfo.pColorAttachmentFormats = &aWindow.swapchainFormat;
+	renderingInfo.pColorAttachmentFormats = &colorFormat;
+	renderingInfo.depthAttachmentFormat = depthFormat;
 
 	VkGraphicsPipelineCreateInfo pipeInfo{};
 	pipeInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -2821,14 +2827,25 @@ lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPip
 	VkPipeline pipe = VK_NULL_HANDLE;
 	if (auto const res = vkCreateGraphicsPipelines(aWindow.device, VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &pipe); VK_SUCCESS != res)
 	{
-		throw lut::Error("Unable to create speed post proc pipeline\n"
-			"vkCreateGraphicsPipelines() returned {}", lut::to_string(res)
+		throw lut::Error("Unable to create pipeline for {}\n"
+			"vkCreateGraphicsPipelines() returned {}", fragPath, lut::to_string(res)
 		);
 	}
 
 	return lut::Pipeline(aWindow.device, pipe);
 }
 
+lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, char const* fragPath)
+{
+	return create_procedural_triangle_pipeline(aWindow, aPipelineLayout, cfg::kFullscreenVertShaderPath,
+		fragPath, aWindow.swapchainFormat, VK_FORMAT_UNDEFINED);
+}
+
+lut::Pipeline create_portal_shard_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout)
+{
+	return create_procedural_triangle_pipeline(aWindow, aPipelineLayout, cfg::kPortalShardVertShaderPath,
+		cfg::kPortalShardFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT, cfg::kDepthFormat);
+}
 
 
 // ==============================================================================

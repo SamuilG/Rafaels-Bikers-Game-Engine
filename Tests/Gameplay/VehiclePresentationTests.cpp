@@ -138,6 +138,85 @@ void TestPortalGeometry() {
     Require(!presentation.State().portalTransition.active, "portal visual clears when crossing ends");
 }
 
+void TestPortalOpeningShards() {
+    VehiclePresentation presentation;
+    PlayerState player;
+    LevelState level;
+    const auto frame = Simulating();
+    const glm::vec3 origin(12.0f, 4.0f, -7.0f);
+    player.position = origin;
+    PortalShardEmitter effect;
+    const auto shardsAtPlayer = [&] {
+        std::vector<PortalShardVisual> shards;
+        AppendPortalShardVisuals(effect, presentation.State().portalOpeningAge,
+            glm::translate(glm::mat4(1.0f), player.position), shards);
+        return shards;
+    };
+    presentation.Update(kDt, player, level, frame, 71, 7);
+    Require(shardsAtPlayer().empty(), "no shards before the portal opens");
+
+    presentation.BeginPortalOpening();
+    presentation.Update(0.75f, player, level, frame, 71, 7);
+    const auto initial = shardsAtPlayer();
+    Require(initial.size() == 32 && initial.front().material.opacity > 0.0f, "opening spawns 32 visible shards");
+    const glm::vec3 initialOffset = glm::vec3(initial.front().transform[3]) - origin;
+    Require(initialOffset.y > 0.0f && glm::length(initialOffset) < 5.0f,
+        "shards originate in the space around the rider");
+
+    const glm::vec3 moved = origin + glm::vec3(24.0f, 0.0f, 0.0f);
+    player.position = moved;
+    presentation.Update(1.0f, player, level, FrameExecution{}, 71, 7);
+    Near(presentation.State().portalOpeningAge, 0.75f, "the portal opening clock freezes while paused");
+    presentation.Update(2.0f, player, level, frame, 71, 7);
+    const auto expanded = shardsAtPlayer();
+    Require(expanded.size() == 32, "the full burst remains visible more than two seconds after opening");
+    const glm::vec3 expandedOffset = glm::vec3(expanded.front().transform[3]) - moved;
+    Require(glm::length(expandedOffset) < 6.0f && glm::length(expandedOffset) > glm::length(initialOffset),
+        "shards spread while staying near a fast-moving rider");
+    float outerRadius = 0.0f;
+    float highestShard = 0.0f;
+    for (const auto& shard : expanded) {
+        const glm::vec3 offset = glm::vec3(shard.transform[3]) - moved;
+        outerRadius = std::max(outerRadius, glm::length(glm::vec2(offset.x, offset.z)));
+        highestShard = std::max(highestShard, offset.y);
+    }
+    Require(outerRadius > 7.8f && outerRadius <= 8.2f && highestShard > 5.0f,
+        "shards expand across a wider and taller area around the rider");
+    const float fullOpacity = expanded.front().material.opacity;
+    presentation.Update(0.75f, player, level, frame, 71, 7);
+    const auto fading = shardsAtPlayer();
+    Require(!fading.empty() && fading.front().material.opacity > 0.0f && fading.front().material.opacity < fullOpacity,
+        "shards are still visible while fading after three seconds");
+    presentation.Update(0.5f, player, level, frame, 71, 7);
+    Require(shardsAtPlayer().empty(), "shards expire after four seconds");
+
+    presentation.BeginPortalOpening();
+    presentation.Update(0.5f, player, level, frame, 71, 7);
+    Require(!shardsAtPlayer().empty(), "a new deployment restarts emission");
+    presentation.CancelPortalOpening();
+    presentation.Update(kDt, player, level, frame, 71, 7);
+    Require(shardsAtPlayer().empty(), "closing or canceling a portal clears the burst");
+
+    effect.count = 1;
+    effect.emissionDuration = effect.fadeIn = effect.fadeOut = 0.0f;
+    effect.spawnRadius = glm::vec2(4.0f);
+    effect.spawnHeight = glm::vec2(0.0f);
+    effect.expansionSpeed = effect.orbitSpeed = 0.0f;
+    effect.material.opacity = 0.35f;
+    effect.material.ior = 1.9f;
+    effect.duration = 1.25f;
+    presentation.BeginPortalOpening();
+    presentation.Update(0.5f, player, level, frame, 71, 7);
+    const auto edited = shardsAtPlayer();
+    Require(edited.size() == 1, "the authored count supports a single shard without dividing by zero");
+    Same(edited.front().transform[3], glm::vec4(moved + glm::vec3(4.0f, 0.0f, 0.0f), 1.0f),
+        "the authored radius and motion parameters determine placement");
+    Near(edited.front().material.opacity, 0.35f, "the authored opacity reaches the rendered shard");
+    Near(edited.front().material.ior, 1.9f, "the authored refraction index reaches the rendered shard");
+    presentation.Update(0.75f, player, level, frame, 71, 7);
+    Require(shardsAtPlayer().empty(), "an authored lifetime replaces the default");
+}
+
 void TestInvalidDelta() {
     VehiclePresentation presentation;
     PlayerState player;
@@ -264,6 +343,7 @@ int main() {
         {"speed and death outputs", TestSpeedAndDeathPresentation},
         {"pause reload reset", TestPauseReloadAndReset},
         {"portal geometry and exit correction", TestPortalGeometry},
+        {"portal opening shard emission and cleanup", TestPortalOpeningShards},
         {"invalid frame durations", TestInvalidDelta},
         {"opaque clipping far sources and idempotence", TestOpaqueClippingAndClones},
         {"skinned attachments and inactive effects", TestSkinnedClonesAndInactiveEffects},

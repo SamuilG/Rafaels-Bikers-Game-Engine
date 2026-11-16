@@ -1,5 +1,6 @@
 ﻿#include "Level1.hpp"
 #include "../Gameplay/BikersPresentation.hpp"
+#include "PortalShardScene.hpp"
 #include "../Renderer/RenderSystem.hpp"
 #include "../Scene/SceneManager.hpp"
 #include "../Physics/PhysicsSystem.hpp"
@@ -382,6 +383,7 @@ namespace engine {
 
 		m_render->load_animated_model("Assets/Models/character.glb", FinalPos);
 		flecs::entity playerBike = m_scene->LoadModel(m_render, "Assets/Models/tbikeWithAnchor.glb", engine::ModelPhysicsType::CustomC, 90.0f, BikeSpawnPos);
+		CreatePortalShardEffect(m_scene->get_world(), "PortalShardEffect", BikeSpawnPos);
 
 		// 3. ��ʼ������������
 		m_bikeController = std::make_unique<BikeController>(m_physics->GetJoltSystem(), m_input, &mState->player);
@@ -1562,6 +1564,7 @@ namespace engine {
 		if (m_render) {
 			m_render->DisablePortalPreview();
 		}
+		if (mState) mState->vehiclePresentation.CancelPortalOpening();
 		ResetPortalCameraState();
 
 		if (showFeedback && hadPortal) {
@@ -2244,9 +2247,12 @@ namespace engine {
 						m_deployPortalCheckpointForward = BikeForwardFromYaw(m_checkpointYaw);
 						const bool wasDeployPortalCharging = m_deployPortalCharging;
 						m_deployPortalCharging = true;
-						if (!wasDeployPortalCharging && m_audio) {
-							m_audio->PlayOneShot("PortalPlacing1");
-							m_audio->PlayOneShot("PortalPlacing2");
+						if (!wasDeployPortalCharging) {
+							mState->vehiclePresentation.BeginPortalOpening();
+							if (m_audio) {
+								m_audio->PlayOneShot("PortalPlacing1");
+								m_audio->PlayOneShot("PortalPlacing2");
+							}
 						}
 
 						const float progress = std::clamp(m_deployHoldTimer / kDeployPortalHoldDuration, 0.0f, 1.0f);
@@ -2409,6 +2415,7 @@ namespace engine {
 						if (m_audio) {
 							m_audio->PlayOneShot("PortalWarp");
 						}
+						mState->vehiclePresentation.BeginPortalOpening();
 						Toast("Portal Deployed");
 						portalDeployHandled = true;
 					}
@@ -2504,6 +2511,7 @@ namespace engine {
 		m_deployPortalCheckpointForward = glm::vec3(0.0f, 0.0f, -1.0f);
 		if (mState) {
 			mState->camera.CancelPortal();
+			mState->vehiclePresentation.CancelPortalOpening();
 			mState->renderOverrides.iblEnabled.reset();
 		}
 		ReleaseRocketCamera(false);

@@ -178,7 +178,8 @@ void record_commands(
 	const lut::GpuFrameTimer* aGpuTimer,
 	std::uint32_t aGpuTimerSlot,
 	const engine::AntiAliasingFrame* aAntiAliasing,
-	engine::FrameGraph* aFrameGraph
+	engine::FrameGraph* aFrameGraph,
+	const PortalShardPass* aPortalShards
 )
 {
 	// Begin command buffer
@@ -661,6 +662,11 @@ void record_commands(
 		aPortal2Depth,
 		aPortal2SurfaceDesc,
 		aPortal2SurfaceTransform);
+	if (aFrameGraph) for (auto& branch : aFrameGraph->branches) {
+		if (branch.state == engine::FrameGraph::BranchState::Active &&
+			((branch.name == "Portal A" && !portalReady) || (branch.name == "Portal B" && !portal2Ready)))
+			branch.state = engine::FrameGraph::BranchState::ResourcesUnavailable;
+	}
 
 	const bool portalScratchReady = portalReadyFor(
 		aPortalEnabled,
@@ -1648,9 +1654,9 @@ void record_commands(
 	vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
 	vkCmdDraw(aCmdBuff, 3, 1, 0, 0);
 
-	// --- 4. 鐢荤矑瀛愮郴缁?---
-	if (aAntiAliasing && aAntiAliasing->temporal && aAntiAliasing->geometry) {
-		vkCmdEndRendering(aCmdBuff);
+	const bool resolveTemporal = aAntiAliasing && aAntiAliasing->temporal && aAntiAliasing->geometry;
+	if (resolveTemporal || aPortalShards) vkCmdEndRendering(aCmdBuff);
+	if (resolveTemporal) {
 		aAntiAliasing->temporal->Resolve(aCmdBuff, aAntiAliasing->slot, aCompositeOutput.image,
 			*aAntiAliasing->geometry, aDepthAttach.image, aFrameGraph);
 		glsl::SceneUniform overlayUniform = aSceneUniform;
@@ -1660,8 +1666,63 @@ void record_commands(
 		overlayUniform.projection = unjitter * overlayUniform.projection;
 		overlayUniform.projCam = overlayUniform.projection * overlayUniform.camera;
 		uploadSceneUniform(overlayUniform);
+	}
+	if (aPortalShards) {
+		const auto sceneCopy = aPortalShards->sceneCopy;
+		graph.Image(sceneCopy, "Refraction background", aImageExtent);
+		graph.Pass("Copy refraction background", "Transfer");
+		graph.Use(aCompositeOutput.image, GraphAccess::CopySource);
+		graph.Use(sceneCopy, GraphAccess::CopyDestination);
+		lut::image_barrier(aCmdBuff, aCompositeOutput.image,
+			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_COPY_BIT,
+			VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, range);
+		lut::image_barrier(aCmdBuff, sceneCopy,
+			VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, range);
+		VkImageCopy copy{};
+		copy.srcSubresource = copy.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+		copy.extent = {aImageExtent.width, aImageExtent.height, 1};
+		vkCmdCopyImage(aCmdBuff, aCompositeOutput.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			sceneCopy, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+		lut::image_barrier(aCmdBuff, sceneCopy,
+			VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
+		lut::image_barrier(aCmdBuff, aCompositeOutput.image,
+			VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
+	}
+	if (resolveTemporal || aPortalShards) {
 		compAtt.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 		vkCmdBeginRendering(aCmdBuff, &compInfo);
+	}
+	if (aPortalShards) {
+		graph.Pass("Portal shard refraction", "Overlay");
+		graph.Use(aPortalShards->sceneCopy, GraphAccess::Sample);
+		graph.Use(aCompositeOutput.image, GraphAccess::LoadColor);
+		graph.Use(aDepthAttach.image, GraphAccess::DepthRead);
+		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aPortalShards->pipeline);
+		const VkDescriptorSet sets[] = {aSceneDescriptors, aPortalShards->sceneCopyDescriptor};
+		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aGraphicsLayout, 0, 2, sets, 0, nullptr);
+		std::vector<const engine::PortalShardVisual*> sortedShards;
+		sortedShards.reserve(aPortalShards->shards.size());
+		for (const auto& shard : aPortalShards->shards) sortedShards.push_back(&shard);
+		std::ranges::sort(sortedShards, {}, [&](const auto* shard) {
+			return (aSceneUniform.camera * shard->transform[3]).z;
+		});
+		struct alignas(16) ShardPC {
+			glm::mat4 transform;
+			glm::vec4 optics;
+		};
+		static_assert(sizeof(ShardPC) == 80);
+		for (const auto* shard : sortedShards) {
+			const auto& material = shard->material;
+			const ShardPC pc{shard->transform,
+				{material.opacity, material.ior, material.refraction, material.dispersion}};
+			vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
+			vkCmdDraw(aCmdBuff, 12, 1, 0, 0);
+		}
 	}
 	graph.Pass("Particles / debug overlays", "Overlay");
 	graph.Use(aCompositeOutput.image, GraphAccess::LoadColor);

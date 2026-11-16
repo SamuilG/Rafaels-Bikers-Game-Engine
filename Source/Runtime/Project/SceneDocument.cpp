@@ -201,6 +201,8 @@ Json CaptureSceneDocument(SceneManager& scene, RenderSystem& renderer) {
         if (entity.has<LightComponent>()) {
             value["light"] = SerializeLight(entity.get<LightComponent>());
         }
+        if (entity.has<PortalShardEmitter>())
+            value["portalShardEffect"] = SerializePortalShardEmitter(entity.get<PortalShardEmitter>());
         result["entities"].push_back(std::move(value));
     }
     for (const auto& source : scene.ModelImports()) if (imported.contains(source.id)) {
@@ -290,6 +292,8 @@ void InstantiateSceneDocument(const Json& document, SceneManager& scene, RenderS
         if (value.contains("light")) {
             entity.set<LightComponent>(DeserializeLight(value["light"]));
         }
+        if (value.contains("portalShardEffect"))
+            entity.set<PortalShardEmitter>(DeserializePortalShardEmitter(value["portalShardEffect"]));
     }
     std::unordered_set<flecs::entity_t> resolved;
     std::function<glm::mat4(flecs::entity)> worldTransform = [&](flecs::entity entity) {

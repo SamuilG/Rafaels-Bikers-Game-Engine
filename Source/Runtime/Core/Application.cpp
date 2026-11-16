@@ -1,6 +1,7 @@
 #include "Application.hpp"
 #include "../Renderer/RenderSystem.hpp"
 #include "../Scene/SceneManager.hpp"
+#include "../Scene/PortalShardScene.hpp"
 #include "../Physics/PhysicsSystem.hpp"
 #include "../Input/InputSystem.hpp"
 #include "../Event/EventSystem.hpp"
@@ -393,10 +394,27 @@ namespace engine {
         }
         EditorSceneAdapter runtimeScene(sceneManager);
         std::unordered_set<uint32_t> copiedBodies;
+        std::unordered_set<std::string> emitterPaths;
+        std::unordered_set<std::string> emitterAncestors;
+        auto& runtimeWorld = sceneManager->get_world();
+        saved.editorScene->get_world().each([&](flecs::entity source, const PortalShardEmitter&) {
+            const std::string path = source.path().c_str();
+            emitterPaths.insert(path);
+            AddPortalShardAuthoringPath(emitterAncestors, path);
+        });
+        RemoveMissingPortalShardEffects(*sceneManager, emitterPaths);
         std::size_t unmatched = 0;
         saved.editorScene->get_world().each([&](flecs::entity source, const LocalTransform& transform) {
             if (source.name().size() == 0) return;
-            auto target = sceneManager->get_world().lookup(source.path().c_str());
+            const std::string path = source.path().c_str();
+            auto target = runtimeWorld.lookup(path.c_str());
+            if (emitterAncestors.contains(path)) {
+                if (!IsEntityAlive(target)) target = runtimeWorld.entity(path.c_str());
+                if (!target.has<LocalTransform>()) {
+                    target.set<LocalTransform>(transform).set<WorldTransform>({transform.matrix})
+                        .set<EntityStatus>({true, false});
+                }
+            }
             if (!IsEntityAlive(target) || !target.has<LocalTransform>()) {
                 ++unmatched;
                 return;
@@ -410,6 +428,8 @@ namespace engine {
                 target.set<EntityStatus>(source.get<EntityStatus>());
             if (source.has<LightComponent>() && target.has<LightComponent>())
                 target.set<LightComponent>(source.get<LightComponent>());
+            if (source.has<PortalShardEmitter>())
+                target.set<PortalShardEmitter>(source.get<PortalShardEmitter>());
             uint32_t sourceBody = JPH::BodyID::cInvalidBodyID;
             uint32_t targetBody = JPH::BodyID::cInvalidBodyID;
             if (source.has<PhysicsBody>() && target.has<PhysicsBody>()) {

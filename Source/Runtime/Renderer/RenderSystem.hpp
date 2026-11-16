@@ -294,6 +294,11 @@ namespace engine {
         const CpuFrameTimings& LastFrameTimings() const { return mFrameTimings; }
         bool HasPresentedFrame() const { return mPresentedFrame; }
         const FrameGraph& GetFrameGraph() const { return mFrameGraph; }
+        void PreviewPortalShards(flecs::entity_t entity, bool loop) {
+            mPortalShardPreview = {entity, 0.0f, loop};
+            editor_viewport::SelectSceneViewMode(mState->editor, view_mode::Default);
+        }
+        void StopPortalShardPreview() { mPortalShardPreview = {}; }
         void ResetPerformanceHistory() {
             if (mState) mState->renderStats.performance.Reset();
             mGpuTimer.DiscardPending();
@@ -395,6 +400,7 @@ namespace engine {
         }
         void SetActiveScene(SceneManager* scene, AnimationSystem* animation) {
             ResetPerformanceHistory();
+            StopPortalShardPreview();
             mSceneManager = scene;
             mAnimationSystem = animation;
             mSceneRenderer.SetSource(scene);
@@ -481,6 +487,7 @@ namespace engine {
         void ClearSceneTransientResources() {
             WaitForGpuIdle();
             ResetPerformanceHistory();
+            StopPortalShardPreview();
             ClearModelPreview();
             mWorldModelAssets.clear();
             mPortalMeshIndex = UINT32_MAX;
@@ -785,6 +792,7 @@ namespace engine {
             PublishPresentationMode();
             mPipe = create_triangle_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
             mPortalSurfacePipe = create_portal_surface_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
+            mPortalShardPipe = create_portal_shard_pipeline(mWindow, mPipeLayout.handle);
             mThumbnailAlphaPipe = create_alpha_pipeline_1_attachment(mWindow, mPipeLayout.handle, VK_FORMAT_R8G8B8A8_UNORM);
             mShadowPipe = create_shadow_pipeline(mWindow, mPipeLayout.handle);
             mParticlePipe = create_particle_pipeline(mWindow, mPipeLayout.handle, VK_FORMAT_R16G16B16A16_SFLOAT);
@@ -846,7 +854,9 @@ namespace engine {
             mBrightImage = create_offscreen_buffer(mWindow, mAllocator);
             mBlurTempImage = create_offscreen_buffer(mWindow, mAllocator);
             mFinalBloomImage = create_offscreen_buffer(mWindow, mAllocator);
-            mCompositeOutputImage = create_offscreen_buffer(mWindow, mAllocator);
+            mCompositeOutputImage = create_offscreen_buffer(mWindow, mAllocator, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+            mPortalShardSceneCopy = create_offscreen_buffer(mWindow, mAllocator);
+            mPortalShardSceneCopyDesc = BuildPortalSurfaceDesc(mPortalShardSceneCopy.view);
 
             // ==========================================
             // 【清理修复】：SSAO 资源与管线初始化
@@ -1246,11 +1256,11 @@ namespace engine {
                 if (mState->editor.showEngineUi) {
                     EngineUi::DrawGameViewport(m_sceneViewportTexId, mState->editor, IsEditorPlaying(),
                         mEditorPlayController && mEditorPlayController->IsPaused(), IsFreeCameraPreview());
-                    mRenderingGameViewport = editor_viewport::RenderGameViewport(mState->editor);
+                    mRenderingGameViewport = editor_viewport::UpdateRenderViewport(mState->editor);
                     SceneViewport::Set(EngineUi::GetGameViewportPos(), EngineUi::GetGameViewportSize(),
                         EngineUi::GetGameViewportDrawList());
                 } else {
-                    mRenderingGameViewport = true;
+                    mRenderingGameViewport = editor_viewport::UpdateRenderViewport(mState->editor);
                     SceneViewport::Set(
                         EngineUi::GetSceneViewportPos(),
                         EngineUi::GetSceneViewportSize(),
@@ -1496,7 +1506,9 @@ namespace engine {
                     mVisImage = create_vis_image(mWindow, mAllocator);
                     mNormalImage = create_normal_buffer(mWindow, mAllocator);
                     mSsrOutputImage = create_offscreen_buffer(mWindow, mAllocator);
-                    mCompositeOutputImage = create_offscreen_buffer(mWindow, mAllocator);
+                    mCompositeOutputImage = create_offscreen_buffer(mWindow, mAllocator, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+                    mPortalShardSceneCopy = create_offscreen_buffer(mWindow, mAllocator);
+                    WritePortalSurfaceDesc(mPortalShardSceneCopyDesc, mPortalShardSceneCopy.view);
                     mBrightImage = create_offscreen_buffer(mWindow, mAllocator);
                     mBlurTempImage = create_offscreen_buffer(mWindow, mAllocator);
                     mFinalBloomImage = create_offscreen_buffer(mWindow, mAllocator);
@@ -2142,11 +2154,26 @@ namespace engine {
             if (mState->editor.showEngineUi && mState->editor.showFrameGraph &&
                 (!mState->editor.freezeFrameGraph || mFrameGraph.passes.empty())) {
                 frameGraph = &mFrameGraph;
-                frameGraph->Begin(mRenderingGameViewport ? "Game viewport" : "Scene viewport", mLastModelSubmission + 1);
+                const bool visible = mRenderingGameViewport ? mState->editor.isGameViewportVisible : mState->editor.isSceneViewportVisible;
+                frameGraph->Begin(std::string(mRenderingGameViewport ? "Game viewport" : "Scene viewport") +
+                    (visible ? "" : " (tab hidden; retaining camera)"), mLastModelSubmission + 1);
+                auto portalBranch = [&](const char* name, bool configured, bool viewEnabled, bool visibleForFrame) {
+                    using State = FrameGraph::BranchState;
+                    frameGraph->branches.push_back({name, !configured ? State::NotConfigured :
+                        !viewEnabled ? State::DiagnosticView : !visibleForFrame ? State::Culled : State::Active});
+                };
+                portalBranch("Portal A", mPortalEnabled, portalEnabledForFrame, portalVisibleForFrame);
+                portalBranch("Portal B", mPortal2Enabled, portal2EnabledForFrame, portal2VisibleForFrame);
                 FrameGraphCapture capture(frameGraph);
                 capture.Image(colorTarget.image, "Swapchain", mWindow.swapchainExtent, mWindow.swapchainFormat, 1, false, true);
                 capture.Image(finalSceneTarget.image, "Viewport output", mWindow.swapchainExtent, mWindow.swapchainFormat);
             }
+            CollectPortalShardVisuals(dt, frameRenderMode);
+            const PortalShardPass portalShardPass{
+                mPortalShardVisuals,
+                mPortalShardSceneCopy.image,
+                mPortalShardPipe.handle, mPortalShardSceneCopyDesc
+            };
             record_commands(
                 mCmdBuffers[mFrameIndex],
                 currentOpaque,
@@ -2285,7 +2312,8 @@ namespace engine {
                 portalVisibleInPortal2View,
                 portal2VisibleInPortalView,
                 portal2VisibleInPortal2View,
-                &mGpuTimer, static_cast<uint32_t>(mFrameIndex), &antiAliasing, frameGraph
+                &mGpuTimer, static_cast<uint32_t>(mFrameIndex), &antiAliasing, frameGraph,
+                portalShardPass.shards.empty() ? nullptr : &portalShardPass
             );
 			//clear debug renderer data after uploading
             mDebugRenderer.Clear();
@@ -2480,6 +2508,45 @@ namespace engine {
             vkUpdateDescriptorSets(mWindow.device, 3, writes, 0, nullptr);
         }
     private:
+        void CollectPortalShardVisuals(float dt, int renderMode) {
+            mPortalShardVisuals.clear();
+            if (!mSceneManager || renderMode != view_mode::Default) return;
+
+            auto& world = mSceneManager->get_world();
+            if (mState->editor.showEngineUi && !mRenderingGameViewport) {
+                if (!mPortalShardPreview.entity) return;
+                const auto entity = world.entity(mPortalShardPreview.entity);
+                if (!IsEntityAlive(entity) || !entity.has<PortalShardEmitter>() || !scene_hierarchy::Visible(entity)) {
+                    StopPortalShardPreview();
+                    return;
+                }
+                const auto& emitter = entity.get<PortalShardEmitter>();
+                if (!emitter.IsValid()) return;
+                if (std::isfinite(dt) && dt > 0.0f) mPortalShardPreview.elapsed += dt;
+                if (mPortalShardPreview.elapsed >= emitter.duration) {
+                    if (!mPortalShardPreview.loop) {
+                        StopPortalShardPreview();
+                        return;
+                    }
+                    mPortalShardPreview.elapsed = std::fmod(mPortalShardPreview.elapsed, emitter.duration);
+                }
+                const auto transform = scene_hierarchy::World(entity);
+                if (scene_hierarchy::Invertible(transform))
+                    AppendPortalShardVisuals(emitter, mPortalShardPreview.elapsed, transform, mPortalShardVisuals);
+                return;
+            }
+
+            const float elapsed = mState->effects.portalOpeningAge;
+            if (elapsed < 0.0f) return;
+            world.each([&](flecs::entity entity, const PortalShardEmitter& emitter) {
+                if (elapsed >= emitter.duration || !emitter.IsValid() || !scene_hierarchy::Visible(entity)) return;
+                auto transform = scene_hierarchy::World(entity);
+                if (emitter.followRider) transform[3] = glm::vec4(mState->player.State().position, 1.0f);
+                if (scene_hierarchy::Invertible(transform))
+                    AppendPortalShardVisuals(emitter, elapsed, transform, mPortalShardVisuals);
+            });
+        }
+
         void CreateDebugViewPipelines() {
             mState->capabilities.wireframeSupported = supports_wireframe(mWindow.physicalDevice);
             if (!mState->capabilities.wireframeSupported && mState->editor.renderMode == view_mode::Wireframe)
@@ -3502,6 +3569,16 @@ void InitSkybox()
         // (Speed Post-Process) 的句柄和资源
         // =========================================================
         lut::ImageWithView mCompositeOutputImage; // 存放 Composite 合成结果的中间缓冲
+        struct PortalShardPreview {
+            flecs::entity_t entity = 0;
+            float elapsed = 0.0f;
+            bool loop = false;
+        };
+        PortalShardPreview mPortalShardPreview;
+        std::vector<PortalShardVisual> mPortalShardVisuals;
+        lut::ImageWithView mPortalShardSceneCopy;
+        lut::Pipeline mPortalShardPipe;
+        VkDescriptorSet mPortalShardSceneCopyDesc = VK_NULL_HANDLE;
         lut::Pipeline mSpeedPostPipe;
         lut::Pipeline mBufferViewPipe;
         std::array<std::vector<VkDescriptorSet>, 3> mBufferViewDescriptors;

@@ -2,6 +2,8 @@
 #include "Runtime/UserState/UserState.hpp"
 #include "Runtime/Scene/SceneManager.hpp"
 #include "Applications/ApplicationPaths.hpp"
+#include "Runtime/UI/EditorLayout.hpp"
+#include <imgui_internal.h>
 #include <chrono>
 #include <fstream>
 #include <iostream>
@@ -83,7 +85,35 @@ void RunEditorRegression() {
         Require(std::any_of(portalGraph.textures.begin(), portalGraph.textures.end(), [](const auto& texture) {
             return texture.name.find("scratch color") != std::string::npos && texture.firstUse != FrameGraph::Invalid;
         }), "Portal scratch RT lifetime was not captured");
+        state.camera.RequestFree();
+        Require(state.camera.SetFreeTransform(glm::translate(glm::mat4(1),glm::vec3(0,0,4))), "Cannot position Game camera");
+        state.editor.focusGameViewport = true; frame(); frame();
+        Require(renderer.GetFrameGraph().view.starts_with("Game viewport"), "Game route was not captured before inspection");
+        auto* gameWindow = ImGui::FindWindowByName(editor_layout::kGameViewport);
+        Require(gameWindow && gameWindow->DockId, "Game viewport has no dock node");
+        ImGui::DockBuilderDockWindow("Frame Graph###FrameGraph", gameWindow->DockId);
+        ImGui::SetWindowFocus("Frame Graph###FrameGraph"); frame(); frame();
+        Require(!state.editor.isSceneViewportVisible && !state.editor.isGameViewportVisible,
+            "Graph inspection did not hide the viewport peer tabs");
+        Require(renderer.GetFrameGraph().view.starts_with("Game viewport"), "Graph inspection switched the capture to Scene camera");
+        Require(std::any_of(renderer.GetFrameGraph().passes.begin(), renderer.GetFrameGraph().passes.end(), [](const auto& pass) {
+            return pass.name == "Portal A forward MRT" || pass.name == "Portal B forward MRT";
+        }), "Game Portal passes disappeared while inspecting their graph");
+        state.editor.focusSceneViewport = true; frame(); frame();
+        Require(state.editor.sceneCamera.SetFreeTransform(glm::translate(glm::mat4(1),glm::vec3(1000,0,4))), "Cannot move Scene camera off portals");
+        frame(); frame();
+        const auto& culledGraph = renderer.GetFrameGraph();
+        Require(culledGraph.branches.size() == 2 && culledGraph.branches[0].state == FrameGraph::BranchState::Culled &&
+            culledGraph.branches[1].state == FrameGraph::BranchState::Culled, "Culled Portal branches have no explanation");
+        editor_viewport::SelectSceneViewMode(state.editor, view_mode::Normals); frame(); frame();
+        Require(renderer.GetFrameGraph().branches[0].state == FrameGraph::BranchState::DiagnosticView,
+            "Diagnostic Portal suppression has no explanation");
+        editor_viewport::SelectSceneViewMode(state.editor, view_mode::Default);
+        Require(state.editor.sceneCamera.SetFreeTransform(glm::translate(glm::mat4(1),glm::vec3(0,0,4))), "Cannot restore Scene camera");
         renderer.DisablePortalPreview();
+        frame(); frame();
+        Require(renderer.GetFrameGraph().branches[0].state == FrameGraph::BranchState::NotConfigured,
+            "Inactive Portal branches have no explanation");
         glfwSetWindowSize(renderer.GetGLFWWindow(),800,600); glfwPollEvents(); frame(); frame(); frame();
         Require(state.editor.sceneCamera.SetFreeTransform(glm::translate(glm::mat4(1),glm::vec3(0,0,20))),"Cannot cut scene camera"); frame(); frame();
         state.render.msaaSamples=1; state.render.taaEnabled=false; frame(); frame();

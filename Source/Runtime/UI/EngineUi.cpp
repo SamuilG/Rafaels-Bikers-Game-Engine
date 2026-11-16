@@ -13,6 +13,8 @@
 #include "LightInspector.hpp"
 #include "../Scene/CameraSerialization.hpp"
 #include "../Scene/LightSerialization.hpp"
+#include "../Scene/PortalShardScene.hpp"
+#include "../Scene/PortalShardSerialization.hpp"
 #include "../Core/EditorPlayController.hpp"
 #include "../Project/SceneSnapshotValidation.hpp"
 #include "../Project/SceneDocument.hpp"
@@ -550,6 +552,10 @@ namespace engine {
 		json entitiesArray = json::array();
 		if (sceneManager) {
 			auto& world = sceneManager->get_world();
+            std::unordered_set<std::string> emitterAncestors;
+            world.each([&](flecs::entity entity, const PortalShardEmitter&) {
+                AddPortalShardAuthoringPath(emitterAncestors, entity.path().c_str());
+            });
 			world.each([&](flecs::entity e, const LocalTransform& lt) {
 				std::string name = e.name().length() > 0 ? e.name().c_str() : "";
 
@@ -576,6 +582,10 @@ namespace engine {
                         entityJson["Light"] = SerializeLight(e.get<LightComponent>());
                         entityJson["Visible"] = e.get<EntityStatus>().should_render;
                     }
+                    if (e.has<PortalShardEmitter>())
+                        entityJson["PortalShardEffect"] = SerializePortalShardEmitter(e.get<PortalShardEmitter>());
+                    if (emitterAncestors.contains(e.path().c_str()) && e.has<EntityStatus>())
+                        entityJson["Visible"] = e.get<EntityStatus>().should_render;
 
 					// To度数// Convert quaternion to Euler angles in degrees for better readability
 					glm::vec3 eulerRotation = glm::degrees(glm::eulerAngles(rotation));
@@ -590,6 +600,7 @@ namespace engine {
 				});
 		}
 		root["Entities"] = entitiesArray;
+        root["PortalShardEffectsAuthored"] = true;
 
 
 		//保存粒子系统 save Particle Systems
@@ -669,6 +680,16 @@ namespace engine {
 
 		if (sceneManager && root.contains("Entities")) {
 			auto& world = sceneManager->get_world();
+            std::unordered_set<std::string> emitterPaths;
+            std::unordered_set<std::string> emitterAncestors;
+            for (const auto& entityJson : root["Entities"]) {
+                if (!entityJson.contains("PortalShardEffect")) continue;
+                const std::string path = entityJson["Name"].get<std::string>();
+                emitterPaths.insert(path);
+                AddPortalShardAuthoringPath(emitterAncestors, path);
+            }
+            if (root.value("PortalShardEffectsAuthored", false))
+                RemoveMissingPortalShardEffects(*sceneManager, emitterPaths);
 			for (const auto& entityJson : root["Entities"]) {
 				std::string name = entityJson["Name"].get<std::string>();
 				flecs::entity e = world.lookup(name.c_str());
@@ -676,6 +697,12 @@ namespace engine {
                     const auto light = DeserializeLight(entityJson["Light"]);
                     e = sceneManager->create_light_entity(name.c_str(), light.type, light.color, light.intensity,
                         glm::mat4(1), light.range, light.direction, light.innerCutOff, light.outerCutOff);
+                }
+                if (emitterAncestors.contains(name)) {
+                    if (!IsEntityAlive(e)) e = world.entity(name.c_str());
+                    if (!e.has<LocalTransform>())
+                        e.set<LocalTransform>({glm::mat4(1)}).set<WorldTransform>({glm::mat4(1)})
+                            .set<EntityStatus>({true, false});
                 }
 
 				if (IsEntityAlive(e) && e.has<LocalTransform>()) {
@@ -693,6 +720,13 @@ namespace engine {
                     if (entityJson.contains("Light")) {
                         e.set<LightComponent>(DeserializeLight(entityJson["Light"]));
                         if (entityJson.contains("Visible")) e.set<EntityStatus>({entityJson["Visible"].get<bool>(), false});
+                    }
+                    if (entityJson.contains("PortalShardEffect"))
+                        e.set<PortalShardEmitter>(DeserializePortalShardEmitter(entityJson["PortalShardEffect"]));
+                    if (emitterAncestors.contains(name) && entityJson.contains("Visible")) {
+                        auto status = e.has<EntityStatus>() ? e.get<EntityStatus>() : EntityStatus{true, false};
+                        status.should_render = entityJson["Visible"].get<bool>();
+                        e.set<EntityStatus>(status);
                     }
                     if (e.has<GameCameraComponent>()) {
                         if (!entityJson.contains("Camera")) continue;
@@ -2026,6 +2060,93 @@ namespace engine {
 		ImGui::End();
 	}
 
+    static void DrawPortalShardInspector(flecs::entity entity, RenderSystem* renderer) {
+        auto effect = entity.get<PortalShardEmitter>();
+        static bool loopPreview = false;
+        ImGui::PushID("PortalShardEffect");
+        ImGui::SeparatorText(_SL("Portal Shard Effect"));
+        ImGui::BeginDisabled(!renderer || !scene_hierarchy::Visible(entity));
+        if (ImGui::Button(_SL("Preview Effect"))) renderer->PreviewPortalShards(entity.id(), loopPreview);
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!renderer);
+        if (ImGui::Button(_SL("Stop Preview"))) renderer->StopPortalShardPreview();
+        ImGui::EndDisabled();
+        ImGui::Checkbox(_SL("Loop Preview"), &loopPreview);
+        ImGui::SameLine();
+        bool changed = ImGui::Button(_SL("Reset Effect"));
+        if (changed) effect = PortalShardEmitter{};
+
+        changed |= ImGui::Checkbox(_SL("Follow Rider on Portal Open"), &effect.followRider);
+        ImGui::TextWrapped("%s", _SL("Preview uses the entity position in Scene Viewport."));
+        const auto drag = [&](const char* label, float& value, float minimum, float maximum,
+            float speed = 0.025f, const char* format = "%.2f") {
+            return ImGui::DragFloat(_SL(label), &value, speed, minimum, maximum, format, ImGuiSliderFlags_AlwaysClamp);
+        };
+        const auto range = [&](const char* label, glm::vec2& value, float minimum, float maximum) {
+            return ImGui::DragFloatRange2(_SL(label), &value.x, &value.y, 0.025f, minimum, maximum,
+                "%.2f", nullptr, ImGuiSliderFlags_AlwaysClamp);
+        };
+        if (ImGui::TreeNodeEx(_SL("Shard Emission"), ImGuiTreeNodeFlags_DefaultOpen)) {
+            using Emitter = PortalShardEmitter;
+            changed |= ImGui::DragInt(_SL("Shard Count"), &effect.count, 1.0f, 1, Emitter::kMaxCount,
+                "%d", ImGuiSliderFlags_AlwaysClamp);
+            changed |= drag("Effect Duration (s)", effect.duration, 0.1f, Emitter::kMaxDuration);
+            changed |= drag("Emission Time (s)", effect.emissionDuration, 0, Emitter::kMaxDuration);
+            changed |= drag("Fade In (s)", effect.fadeIn, 0, Emitter::kMaxDuration);
+            changed |= drag("Fade Out (s)", effect.fadeOut, 0, Emitter::kMaxDuration);
+            changed |= range("Spawn Radius (m)", effect.spawnRadius, 0, Emitter::kMaxDistance);
+            changed |= range("Spawn Height (m)", effect.spawnHeight, -Emitter::kMaxDistance, Emitter::kMaxDistance);
+            changed |= range("Shard Size (m)", effect.size, 0.01f, Emitter::kMaxSize);
+            ImGui::TreePop();
+        }
+        if (ImGui::TreeNode(_SL("Shard Motion"))) {
+            using Emitter = PortalShardEmitter;
+            changed |= range("Outward Travel (m)", effect.travelDistance, 0, Emitter::kMaxDistance);
+            changed |= range("Rise Distance (m)", effect.riseDistance, -Emitter::kMaxDistance, Emitter::kMaxDistance);
+            changed |= drag("Expansion Speed", effect.expansionSpeed, 0, Emitter::kMaxSpeed);
+            changed |= drag("Orbit Speed (rad/s)", effect.orbitSpeed, -Emitter::kMaxSpeed, Emitter::kMaxSpeed);
+            changed |= range("Spin Speed (rad/s)", effect.spinSpeed, -Emitter::kMaxSpeed, Emitter::kMaxSpeed);
+            ImGui::TreePop();
+        }
+        if (ImGui::TreeNode(_SL("Refraction Material"))) {
+            auto& material = effect.material;
+            changed |= drag("Opacity", material.opacity, 0, 1, 0.005f);
+            changed |= drag("Index of Refraction", material.ior, 1, 3, 0.005f);
+            changed |= drag("Refraction Strength", material.refraction, 0, 0.5f, 0.001f, "%.3f");
+            changed |= drag("Color Dispersion", material.dispersion, 0, 1, 0.005f);
+            ImGui::TreePop();
+        }
+        if (changed && effect.IsValid()) entity.set<PortalShardEmitter>(effect);
+        ImGui::PopID();
+    }
+
+    static void DrawPortalShardEntities(EditorSceneAdapter& scene, EditorState& editor, const glm::mat4& view) {
+        if (ImGui::Button(_SL("Portal Shard Effects"))) ImGui::OpenPopup("PortalShardEffects");
+        if (!ImGui::BeginPopup("PortalShardEffects")) return;
+        auto& world = scene.Scene()->get_world();
+        flecs::entity_t selection = 0;
+        world.each([&](flecs::entity entity, const PortalShardEmitter&) {
+            ImGui::PushID(reinterpret_cast<void*>(static_cast<uintptr_t>(entity.id())));
+            if (ImGui::Selectable(entity.path().c_str(), scene.Selection() == entity.id())) selection = entity.id();
+            ImGui::PopID();
+        });
+        if (ImGui::Selectable(_SL("Add Portal Shard Effect"))) {
+            const auto camera = glm::inverse(view);
+            const auto transform = glm::translate(glm::mat4(1.0f), glm::vec3(camera[3] - 15.0f * camera[2]));
+            const auto name = scene_hierarchy::UniqueName(world, flecs::entity::null(), "PortalShardEffect");
+            PortalShardEmitter effect;
+            effect.followRider = false;
+            selection = CreatePortalShardEffect(world, name.c_str(), transform, effect).id();
+        }
+        if (selection != 0) {
+            scene.Select(selection);
+            editor.activeParticleIndex = -1;
+            editor.showEntityInspector = true;
+        }
+        ImGui::EndPopup();
+    }
+
 	void EngineUi::DrawSceneHierarchy(RenderSystem* renderSys, SceneManager* sceneManager, EditorSceneAdapter& editorScene, const glm::mat4& view, const glm::mat4& proj, flecs::entity_t& selected_id, EditorState& editor)
 	{
 		// 获取当前屏幕分辨率 (Current screen resolution)
@@ -2049,6 +2170,7 @@ namespace engine {
                         editor.activeParticleIndex = -1;
                         editor.showEntityInspector = true;
                     }
+                    DrawPortalShardEntities(editorScene, editor, view);
 					ImGui::Text(_SL("Total Entities: %d"), editorScene.EntityCount());
 					ImGui::Separator();
 
@@ -2157,6 +2279,7 @@ namespace engine {
                         if (selectedEntity.group) ImGui::TextDisabled("Group: transforms and visibility affect children.");
                     }
                     if (entity.has<LightComponent>()) DrawEntityLightControls(*editorScene.Scene(), entity);
+                    if (entity.has<PortalShardEmitter>()) DrawPortalShardInspector(entity, renderSys);
                     if (isCamera && renderSys) {
                         DrawGameCameraInspector(entity, renderSys->GetGameCameraState());
                         auto& camera = entity.get_mut<GameCameraComponent>();

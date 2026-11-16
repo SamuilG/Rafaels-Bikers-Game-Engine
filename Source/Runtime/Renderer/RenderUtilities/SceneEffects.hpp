@@ -23,6 +23,7 @@ struct SceneEffects {
     float deathFactor = 0.0f;
     float portalEffectTime = 0.0f;
     PortalTransitionVisual portalTransition;
+    float portalOpeningAge = -1.0f;
 };
 
 } // namespace engine

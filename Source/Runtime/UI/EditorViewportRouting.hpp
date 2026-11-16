@@ -15,8 +15,16 @@ inline void SelectSceneViewMode(EditorState& editor, int mode) {
 }
 
 inline bool RenderGameViewport(const EditorState& editor) {
-    return !editor.showEngineUi ||
-        (editor.isGameViewportVisible && !editor.isSceneViewportVisible);
+    if (!editor.showEngineUi) return true;
+    if (editor.isSceneViewportVisible) return false;
+    if (editor.isGameViewportVisible) return true;
+    return editor.lastRenderedGameViewport;
+}
+
+inline bool UpdateRenderViewport(EditorState& editor) {
+    const bool game = RenderGameViewport(editor);
+    editor.lastRenderedGameViewport = game;
+    return game;
 }
 
 inline bool FreeCameraPreview(const EditorState& editor, bool playing, CameraMode mode) {

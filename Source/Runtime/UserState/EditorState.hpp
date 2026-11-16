@@ -44,6 +44,7 @@ struct EditorState {
     bool isGameViewportHovered = false;
     bool isGameViewportFocused = false;
     bool isGameViewportVisible = false;
+    bool lastRenderedGameViewport = false; // Keep the camera route while an inspection tab hides both viewports.
     bool focusGameViewport = false;
     bool focusSceneViewport = false;
 };

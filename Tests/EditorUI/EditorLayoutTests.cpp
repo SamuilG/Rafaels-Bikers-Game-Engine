@@ -120,6 +120,7 @@ namespace {
             draw(layout::kEntityInspector);
             draw(layout::kSceneViewport);
             draw(layout::kGameViewport);
+            if (editor.showFrameGraph) draw("Frame Graph###FrameGraph");
             if (optional) {
                 for (const char* name : kOptionalWindows) {
                     if (name != layout::kRenderSettings && name != layout::kParticles) draw(name);
@@ -131,6 +132,7 @@ namespace {
             Begin();
             const bool ready = layout::DrawDockspace(reset);
             Windows(optional);
+            engine::editor_viewport::UpdateRenderViewport(editor);
             ImGui::Render();
             return ready;
         }
@@ -477,6 +479,29 @@ namespace {
         std::puts("PASS all 12 Scene view modes activate their real dock tab from Game and retain correct rendering routes");
     }
 
+    void TestInspectionTabRetainsViewport() {
+        namespace routing = engine::editor_viewport;
+        HeadlessContext fixture(1280, 720);
+        fixture.Settle(); fixture.editor.focusGameViewport = true; fixture.Settle();
+        Require(routing::RenderGameViewport(fixture.editor), "Game route is active before inspection");
+        fixture.editor.showFrameGraph = true; fixture.Frame();
+        ImGui::DockBuilderDockWindow("Frame Graph###FrameGraph", Window(layout::kGameViewport).DockId);
+        ImGui::SetWindowFocus("Frame Graph###FrameGraph"); fixture.Settle();
+        Require(!fixture.editor.isSceneViewportVisible && !fixture.editor.isGameViewportVisible,
+            "Frame Graph peer tab hides both viewport canvases");
+        Require(routing::RenderGameViewport(fixture.editor) && routing::ActiveRenderMode(fixture.editor, true) == 0,
+            "Inspecting a Game graph must retain its Game camera and pass routing");
+        Require(routing::PortalsEnabled(fixture.editor, routing::RenderGameViewport(fixture.editor), true),
+            "Inspection tab must not suppress Game portal passes");
+        routing::SelectSceneViewMode(fixture.editor, engine::view_mode::Normals); fixture.Settle();
+        ImGui::SetWindowFocus("Frame Graph###FrameGraph"); fixture.Settle();
+        Require(!fixture.editor.isSceneViewportVisible && !fixture.editor.isGameViewportVisible &&
+            !routing::RenderGameViewport(fixture.editor), "Inspection retains the last Scene camera as well");
+        Require(routing::ActiveRenderMode(fixture.editor, false) == engine::view_mode::Normals,
+            "Inspection preserves an explicitly selected Scene diagnostic");
+        std::puts("PASS Game/Scene -> docked Frame Graph retains camera, mode and Portal routing");
+    }
+
     void TestDeferredInitialLayout() {
         for (const ImVec2 size : {ImVec2(0, 0), ImVec2(0, 720), ImVec2(1280, 0),
                 ImVec2(1, 1), ImVec2(64, 64), ImVec2(1280, 24)}) {
@@ -604,6 +629,7 @@ int main() {
     TestGameCanvasMousePressRelease();
     TestCapturedInputCannotClickEditor();
     TestSceneViewModeRouting();
+    TestInspectionTabRetainsViewport();
     TestDeferredInitialLayout();
     TestUnavailableViewportPreservesCustomLayout();
     TestLanguageSwitch();

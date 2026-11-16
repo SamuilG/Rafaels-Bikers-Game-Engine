@@ -2,6 +2,10 @@
 
 Open **Window > Frame Graph** in the editor. The panel captures the last
 recorded graphics frame for the active Scene or Game viewport.
+When Frame Graph shares the viewport dock, selecting its tab retains the last
+Scene/Game camera and render mode instead of silently switching camera routes.
+The frame caption identifies a hidden source viewport. A frozen capture keeps
+its original source caption and conditional-pass statuses.
 
 - **Graph** displays blue Pass nodes and orange RT content versions. A write
   creates a new `vN` of the same physical image; reads connect to the version
@@ -34,6 +38,19 @@ paths. TAA histories retain their previous-frame origin. MSAA resolve is part
 of the MRT rendering instance, so its scratch and resolved images belong to
 the same Pass. Particle/debug stages are logical stages within rendering
 instances and can contain no draws.
+
+Portal status rows explain conditional branches even when they have no recorded
+Pass: not deployed/configured, disabled by the current diagnostic view, culled
+(outside the view or back-facing), or missing render resources. Active rows
+report the number of recorded Portal view passes, including recursion.
+The graph contains executed passes; these status rows do not create fake
+execution nodes. **Unused RTs** can reveal allocated Portal targets in a frame
+where no Portal view rendered.
+
+In the Bike example, Portals are deployed dynamically by the `DEPLOY` action
+(default keyboard binding: **R**) after the game's checkpoint and speed
+conditions are met. Starting or playing that project alone does not imply that
+its Portal branch executes every frame.
 
 `FrameGraph::Compile()` derives content versions, RAW/WAR/WAW constraints,
 per-frame use intervals and unwritten-read diagnostics from access declarations
@@ -68,3 +85,8 @@ The Vulkan integration suite opens the actual panel and verifies captured
 paths for MSAA 1x/2x/4x/8x and TAA, diagnostics, a Portal, resizing, camera cuts,
 freezing through a resize and resumed capture, also after mounting an older
 project's asset directory. It checks presentation and graph validation.
+It also docks Frame Graph with the viewport tabs and checks that Game camera
+Portal passes remain present when both viewport canvases are hidden. Separate
+checks cover configured-but-culled, diagnostic-disabled and undeployed statuses.
+The standalone editor layout suite tests the same tab switch with real ImGui
+docking for both Game and Scene cameras.

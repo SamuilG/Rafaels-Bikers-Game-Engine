@@ -8,6 +8,9 @@ a resize. See [Frame Graph](../../Docs/FrameGraph.md) for controls and scope.
 `run-frame-graph-ui-tests.ps1` exercises all three production panel tabs and
 selection/reset states; it renders fixture layout PNGs under
 `Intermediate/Diagnostics/frame-graph-ui` for visual inspection.
+The integration suite also tests Game -> docked Frame Graph camera retention,
+visible recursive Portal passes and explanations for culled, diagnostic-disabled
+and undeployed Portal branches.
 
 `run-anti-aliasing-gpu-tests.ps1` executes production MSAA attachment resolve and
 TAA shaders. It checks subpixel coverage, three MRT resolves, depth resolve,

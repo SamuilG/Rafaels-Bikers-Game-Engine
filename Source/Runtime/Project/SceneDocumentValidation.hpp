@@ -18,6 +18,7 @@
 #include "ThirdParty/json/json.hpp"
 #include "Runtime/Scene/CameraSerialization.hpp"
 #include "Runtime/Scene/LightSerialization.hpp"
+#include "Runtime/Scene/PortalShardSerialization.hpp"
 
 namespace engine {
 namespace scene_document_detail {
@@ -277,6 +278,8 @@ inline void ValidateSceneDocument(const nlohmann::json& document) {
             Object(light, "entity.light", {"type", "color", "intensity", "range", "specularMultiplier", "direction", "innerCutOff", "outerCutOff"});
             (void)DeserializeLight(light);
         }
+        if (entity.contains("portalShardEffect"))
+            (void)DeserializePortalShardEmitter(entity["portalShardEffect"]);
     }
     if (usedImports.size() != modelIds.size()) Invalid("models", "unreferenced model import");
     std::unordered_map<std::string, unsigned> visiting;

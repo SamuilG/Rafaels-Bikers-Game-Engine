@@ -17,6 +17,8 @@ public:
     static constexpr Id Invalid = std::numeric_limits<Id>::max();
     enum class Access { Sample, Color, Depth, DepthRead, Resolve, LoadColor, CopySource, CopyDestination, Present };
     enum class Hazard { ReadAfterWrite, WriteAfterRead, WriteAfterWrite };
+    enum class BranchState { Active, NotConfigured, DiagnosticView, Culled, ResourcesUnavailable };
+    struct Branch { std::string name; BranchState state; };
     struct TextureDesc {
         uint32_t width = 0, height = 0, samples = 1, layers = 1, bytesPerTexel = 0;
         std::string format;
@@ -50,6 +52,18 @@ public:
     std::vector<Version> versions;
     std::vector<Dependency> dependencies;
     std::vector<std::string> warnings;
+    std::vector<Branch> branches;
+
+    static const char* BranchReason(BranchState state) {
+        switch (state) {
+        case BranchState::Active: return "Visible / scheduled";
+        case BranchState::NotConfigured: return "Not deployed / configured";
+        case BranchState::DiagnosticView: return "Disabled by diagnostic view";
+        case BranchState::Culled: return "Culled (outside view or back-facing)";
+        case BranchState::ResourcesUnavailable: return "Render resources not ready";
+        }
+        return "Unknown";
+    }
 
     static bool Reads(Access access) {
         return access == Access::Sample || access == Access::DepthRead || access == Access::LoadColor ||
@@ -72,7 +86,7 @@ public:
     }
     void Begin(std::string name, uint64_t serial) {
         view = std::move(name); frame = serial;
-        textures.clear(); passes.clear(); versions.clear(); dependencies.clear(); warnings.clear();
+        textures.clear(); passes.clear(); versions.clear(); dependencies.clear(); warnings.clear(); branches.clear();
     }
     Id FindTexture(uint64_t image, uint32_t layer = 0) const {
         for (Id i = 0; i < textures.size(); ++i)

@@ -8,6 +8,7 @@
 #include "ThirdParty/json/json.hpp"
 #include "Runtime/Scene/CameraSerialization.hpp"
 #include "Runtime/Scene/LightSerialization.hpp"
+#include "Runtime/Scene/PortalShardSerialization.hpp"
 
 namespace engine {
 
@@ -41,6 +42,8 @@ inline void ValidateSceneSnapshot(const nlohmann::json& document) {
         if (number < minimum || number > maximum) fail(path, "an integer within the destination type's range");
     };
     if (!document.is_object()) fail("root", "an object");
+    if (document.contains("PortalShardEffectsAuthored") && !document["PortalShardEffectsAuthored"].is_boolean())
+        fail("PortalShardEffectsAuthored", "a boolean");
     if (document.contains("Entities")) {
         const auto& entities = document["Entities"];
         if (!entities.is_array()) fail("Entities", "an array");
@@ -54,6 +57,7 @@ inline void ValidateSceneSnapshot(const nlohmann::json& document) {
             }
             text(entity["Name"], path + ".Name");
             if (entity.contains("Light")) (void)DeserializeLight(entity["Light"]);
+            if (entity.contains("PortalShardEffect")) (void)DeserializePortalShardEmitter(entity["PortalShardEffect"]);
             if (entity.contains("Visible") && !entity["Visible"].is_boolean()) fail(path + ".Visible", "a boolean");
             for (const auto* field : {"Position", "Rotation", "Scale"})
                 vector(entity[field], 3, path + "." + field);
