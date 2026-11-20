@@ -1,6 +1,7 @@
 #pragma once
 
 #include <volk/volk.h>
+#include <array>
 #include <cstdint>
 #include <vector>
 #include <memory>
@@ -27,6 +28,29 @@ struct PortalShardPass {
 	VkImage sceneCopy;
 	VkPipeline pipeline;
 	VkDescriptorSet sceneCopyDescriptor;
+};
+
+struct PortalGroundDraw {
+	uint32_t materialIndex;
+	uint32_t firstSlab;
+	uint32_t slabCount;
+};
+
+struct PortalWavePass {
+	engine::PortalWaveVisual wave;
+	VkDescriptorSet descriptor;
+	VkImage maskImage;
+	VkImage sceneCopy;
+	VkPipeline groundPipeline;
+	VkPipelineLayout groundLayout;
+	VkBuffer groundBuffer;
+	VkBuffer groundMaterialBuffer;
+	std::array<VkDescriptorSet, 4> portalDescriptors;
+	VkPipeline surfacePipeline;
+	float groundSpacing = 0.0f;
+	std::span<const float> groundUpload;
+	std::span<const glsl::PortalGroundMaterialMapping> groundMaterialUpload;
+	std::span<const PortalGroundDraw> groundDraws;
 };
 
 void record_commands(
@@ -92,9 +116,8 @@ void record_commands(
 	VkPipeline aSpeedPipe,
 	VkPipelineLayout aSpeedLayout,
 	VkDescriptorSet aSpeedDesc,
-	float aSpeedFactor,
-	bool isAlive,       // <--- 直接把 userState 里的变量喂给渲染器！
-	float deathFactor,
+	const glsl::CameraPostParameters& aCameraEffects,
+	const PortalWavePass& aPortalWave,
 	ImageAndView const& aFinalSceneColor, // 最终场景渲染缓冲区（输出到 ImGui）
 	// ==============================================================
 

@@ -2079,6 +2079,8 @@ namespace engine {
 
         changed |= ImGui::Checkbox(_SL("Follow Rider on Portal Open"), &effect.followRider);
         ImGui::TextWrapped("%s", _SL("Preview uses the entity position in Scene Viewport."));
+        if (effect.followRider)
+            ImGui::TextWrapped("%s", _SL("Spawn distances and shard size scale with the camera. Values are based on a 5 m viewing distance."));
         const auto drag = [&](const char* label, float& value, float minimum, float maximum,
             float speed = 0.025f, const char* format = "%.2f") {
             return ImGui::DragFloat(_SL(label), &value, speed, minimum, maximum, format, ImGuiSliderFlags_AlwaysClamp);
@@ -2115,6 +2117,28 @@ namespace engine {
             changed |= drag("Index of Refraction", material.ior, 1, 3, 0.005f);
             changed |= drag("Refraction Strength", material.refraction, 0, 0.5f, 0.001f, "%.3f");
             changed |= drag("Color Dispersion", material.dispersion, 0, 1, 0.005f);
+            ImGui::TreePop();
+        }
+        if (ImGui::TreeNodeEx(_SL("Portal Screen Filter"), ImGuiTreeNodeFlags_DefaultOpen)) {
+            changed |= ImGui::Checkbox(_SL("Enable Portal Filter"), &effect.screenFilter.enabled);
+            ImGui::BeginDisabled(!effect.screenFilter.enabled);
+            changed |= drag("Filter Strength", effect.screenFilter.strength, 0.0f, 1.0f, 0.01f);
+            changed |= drag("Filter Fade Out (s)", effect.screenFilter.fadeOut, 0.1f, kPortalFilterMaxFade);
+            ImGui::EndDisabled();
+            ImGui::TreePop();
+        }
+        if (ImGui::TreeNodeEx(_SL("Portal Crossing Wave"), ImGuiTreeNodeFlags_DefaultOpen)) {
+            auto& wave = effect.crossingWave;
+            changed |= ImGui::Checkbox(_SL("Enable Crossing Wave"), &wave.enabled);
+            ImGui::BeginDisabled(!wave.enabled);
+            changed |= drag("Wave Duration (s)", wave.duration, 0.1f, kPortalWaveMaxDuration);
+            changed |= drag("Wave Radius (m)", wave.radius, 1.0f, 150.0f);
+            changed |= drag("Wave Width (m)", wave.width, 0.1f, 12.0f);
+            changed |= drag("Wave Strength", wave.strength, 0.0f, 1.0f, 0.01f);
+            changed |= drag("Wave Texture Scale", wave.textureScale, 0.02f, 2.0f, 0.01f);
+            changed |= drag("Ground Lift (m)", wave.groundLift, 0.0f, 2.0f, 0.01f);
+            changed |= drag("Ground Slab Thickness (m)", wave.groundThickness, 0.0f, 0.6f, 0.01f);
+            ImGui::EndDisabled();
             ImGui::TreePop();
         }
         if (changed && effect.IsValid()) entity.set<PortalShardEmitter>(effect);

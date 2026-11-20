@@ -30,7 +30,7 @@ namespace engine {
 		constexpr float kDeployPortalHeight = 8.4f;
 		constexpr float kDeployPortalExitOffset = 4.0f;
 		constexpr float kDeployPortalDistance = 14.0f;
-		constexpr float kDeployPortalHoldDuration = 1.5f;
+		constexpr float kDeployPortalHoldDuration = kPortalOpeningDuration;
 		constexpr float kDeployPortalMinScale = 0.16f;
 		constexpr float kDeployPortalVerticalOffset = -0.55f;
 		constexpr float kPortalDiscTriggerRadius = 0.56f;
@@ -43,6 +43,8 @@ namespace engine {
 		constexpr float kPortalCollisionSoftMargin = 0.08f;
 		constexpr float kPortalExitClearance = cfg::kPortalSurfaceHalfDepth + 0.28f;
 		constexpr float kPortalTeleportCooldown = 0.25f;
+		constexpr glm::vec3 kRiderLeftFootTarget(0.30f, 0.12f, -0.12f);
+		constexpr glm::vec3 kRiderRightFootTarget(-0.30f, -0.10f, 0.17f);
 
 		class ScopedFlecsDefer {
 		public:
@@ -514,7 +516,7 @@ namespace engine {
 					c.endBone = "LeftFoot";
 					c.targetEntityId = pedalLEntity.is_valid() ? pedalLEntity.id() : 0;
 					c.localTargetOffset = glm::vec3(0.0f, 0.06f, 0.0f);    // foot slightly above pedal center
-					c.localBikeTarget = glm::vec3(0.30f, 0.12f, -0.12f); // pedal pos fallback (raised)
+					c.localBikeTarget = kRiderLeftFootTarget;
 					c.localBikePole = glm::vec3(0.45f, 0.2f, 0.40f);  // knee out-left
 					c.enabled = true;
 					rik.chains.push_back(c);
@@ -528,7 +530,7 @@ namespace engine {
 					c.endBone = "RightFoot";
 					c.targetEntityId = pedalREntity.is_valid() ? pedalREntity.id() : 0;
 					c.localTargetOffset = glm::vec3(0.0f, 0.06f, 0.0f);     // foot slightly above pedal center
-					c.localBikeTarget = glm::vec3(-0.30f, -0.10f, 0.17f); // pedal pos fallback (raised)
+					c.localBikeTarget = kRiderRightFootTarget;
 					c.localBikePole = glm::vec3(-0.45f, 0.2f, 0.40f);  // knee out-right
 					c.enabled = true;
 					rik.chains.push_back(c);
@@ -1774,6 +1776,12 @@ namespace engine {
 				bi.SetPositionAndRotation(id, exitPos, exitRot, JPH::EActivation::Activate);
 				bi.SetLinearVelocity(id, exitVel);
 				bi.SetAngularVelocity(id, exitAngularVel);
+				// The shockwave begins between the soles in the exit pose and stays there.
+				const glm::vec3 feetOffset = (kRiderLeftFootTarget + kRiderRightFootTarget) * 0.5f -
+					glm::vec3(0.0f, 0.06f, 0.0f);
+				const JPH::Vec3 exitFeet = exitRot * JPH::Vec3(feetOffset.x, feetOffset.y, feetOffset.z);
+				mState->vehiclePresentation.OnPortalTraversal(mappedBodyPos +
+					glm::vec3(exitFeet.GetX(), exitFeet.GetY(), exitFeet.GetZ()));
 
 				mState->player.NotifyTeleported(
 					mappedYaw,
@@ -2256,7 +2264,9 @@ namespace engine {
 						}
 
 						const float progress = std::clamp(m_deployHoldTimer / kDeployPortalHoldDuration, 0.0f, 1.0f);
-						const float portalScale = kDeployPortalMinScale + (1.0f - kDeployPortalMinScale) * SmoothStep01(progress);
+						const float easedProgress = SmoothStep01(progress);
+						mState->vehiclePresentation.SetPortalOpeningProgress(easedProgress);
+						const float portalScale = kDeployPortalMinScale + (1.0f - kDeployPortalMinScale) * easedProgress;
 						const float portalHalfHeight = kDeployPortalHeight * portalScale * 0.5f;
 						const float portalVerticalOffset = kDeployPortalVerticalOffset * portalScale;
 						const glm::vec3 entryCenter(
@@ -2416,6 +2426,7 @@ namespace engine {
 							m_audio->PlayOneShot("PortalWarp");
 						}
 						mState->vehiclePresentation.BeginPortalOpening();
+						mState->vehiclePresentation.SetPortalOpeningProgress(1.0f);
 						Toast("Portal Deployed");
 						portalDeployHandled = true;
 					}

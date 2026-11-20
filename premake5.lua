@@ -333,8 +333,12 @@ workspace "EngineWorkspace"
             buildinputs { "Assets/Shaders/shadow_sampling.glsl" }
         filter "files:Assets/Shaders/default.frag or files:Assets/Shaders/ibl_bake.frag"
             buildinputs { "Assets/Shaders/pbr_common.glsl" }
-        filter "files:Assets/Shaders/default.frag or files:Assets/Shaders/composite.frag"
+        filter "files:Assets/Shaders/default.frag or files:Assets/Shaders/composite.frag or files:Assets/Shaders/speed_postprocess.frag or files:Assets/Shaders/portal_ground_wave.frag"
             buildinputs { "Assets/Shaders/tonemap.glsl" }
+        filter "files:Assets/Shaders/speed_postprocess.frag or files:Assets/Shaders/portal_ground_wave.frag"
+            buildinputs { "Assets/Shaders/portal_grade.glsl" }
+        filter "files:Assets/Shaders/speed_postprocess.frag or files:Assets/Shaders/portal_wave_surface.frag"
+            buildinputs { "Assets/Shaders/portal_wave_mask.glsl" }
         filter "files:Assets/Shaders/default.frag or files:Assets/Shaders/skybox.frag"
             buildinputs { "Assets/Shaders/environment.glsl" }
         filter "files:Assets/Shaders/taa_motion.vert or files:Assets/Shaders/taa_motion_skinned.vert"

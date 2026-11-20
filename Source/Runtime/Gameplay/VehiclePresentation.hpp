@@ -18,10 +18,36 @@ class VehiclePresentation final {
 public:
     const SceneEffects& State() const { return mState; }
 
-    void ResetForNewRun() { mState = SceneEffects{}; }
+    void ResetForNewRun() {
+        mState = SceneEffects{};
+        mPortalWaveStarted = false;
+    }
 
-    void BeginPortalOpening() { mState.portalOpeningAge = 0.0f; }
-    void CancelPortalOpening() { mState.portalOpeningAge = -1.0f; }
+    void BeginPortalOpening() {
+        mState.portalOpeningAge = 0.0f;
+        mState.portalFilter = {};
+    }
+
+    void SetPortalOpeningProgress(float progress) {
+        if (mState.portalFilter.fadeElapsed < 0.0f)
+            mState.portalFilter.opening = progress;
+    }
+
+    void FadePortalFilter() {
+        if (mState.portalFilter.fadeElapsed < 0.0f)
+            mState.portalFilter.fadeElapsed = 0.0f;
+    }
+
+    void OnPortalTraversal(const glm::vec3& feetAtExit) {
+        FadePortalFilter();
+        mState.portalWave = {feetAtExit, 0.0f};
+        mPortalWaveStarted = true;
+    }
+
+    void CancelPortalOpening() {
+        mState.portalOpeningAge = -1.0f;
+        FadePortalFilter();
+    }
 
     void Update(float dt, const PlayerState& player, const LevelState& level,
         const FrameExecution& frame, std::uint64_t entityId, std::uint32_t bodyId) {
@@ -38,11 +64,24 @@ public:
         // Preserve the previous 5*dt response, while keeping long frames bounded.
         mState.speedFactor += (target - mState.speedFactor) * std::min(5.0f * dt, 1.0f);
         mState.portalEffectTime += dt;
+        if (mPortalWaveStarted) {
+            mPortalWaveStarted = false;
+        } else if (mState.portalWave.age >= 0.0f) {
+            mState.portalWave.age += dt;
+            if (mState.portalWave.age >= kPortalWaveMaxDuration) mState.portalWave = {};
+        }
+        if (!player.isAlive || bodyId == UINT32_MAX) {
+            mState.portalOpeningAge = -1.0f;
+            mState.portalFilter = {};
+            return;
+        }
         if (mState.portalOpeningAge >= 0.0f) {
             mState.portalOpeningAge += dt;
-            if (!player.isAlive || bodyId == UINT32_MAX || mState.portalOpeningAge >= PortalShardEmitter::kMaxDuration)
-                CancelPortalOpening();
+            if (mState.portalOpeningAge >= PortalShardEmitter::kMaxDuration)
+                mState.portalOpeningAge = -1.0f;
         }
+        if (mState.portalFilter.fadeElapsed >= 0.0f)
+            mState.portalFilter.fadeElapsed = std::min(mState.portalFilter.fadeElapsed + dt, kPortalFilterMaxFade);
     }
 
 private:
@@ -94,6 +133,7 @@ private:
     }
 
     SceneEffects mState;
+    bool mPortalWaveStarted = false;
 };
 
 } // namespace engine

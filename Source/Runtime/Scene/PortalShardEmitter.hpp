@@ -1,8 +1,11 @@
 #pragma once
 
+#include "../Renderer/RenderUtilities/SceneEffects.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <numeric>
+#include <optional>
 #include <vector>
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -16,6 +19,47 @@ struct PortalShardMaterial {
     float dispersion = 0.08f;
 };
 
+struct PortalFilterSettings {
+    bool enabled = true;
+    float strength = 0.82f;
+    float fadeOut = 1.2f;
+
+    bool IsValid() const {
+        return strength >= 0.0f && strength <= 1.0f && fadeOut >= 0.1f && fadeOut <= kPortalFilterMaxFade;
+    }
+
+    float Amount(const PortalFilterTimeline& timeline) const {
+        return enabled ? strength * timeline.Envelope(fadeOut) : 0.0f;
+    }
+};
+
+struct PortalWaveSettings {
+    bool enabled = true;
+    float duration = 2.35f;
+    float radius = 38.0f;
+    float width = 1.8f;
+    float strength = 0.9f;
+    float textureScale = 0.20f;
+    float groundLift = 1.05f;
+    float groundThickness = 0.16f;
+
+    bool IsValid() const {
+        return duration >= 0.10f && duration <= kPortalWaveMaxDuration &&
+            radius >= 1.0f && radius <= 150.0f && width >= 0.1f && width <= 12.0f &&
+            strength >= 0.0f && strength <= 1.0f && textureScale >= 0.02f && textureScale <= 2.0f &&
+            groundLift >= 0.0f && groundLift <= 2.0f && groundThickness >= 0.0f && groundThickness <= 0.6f;
+    }
+
+    PortalWaveVisual Visual(const PortalWaveTimeline& timeline) const {
+        if (!enabled || timeline.age < 0.0f || timeline.age >= duration || strength <= 0.0f) return {};
+        const float t = timeline.age / duration;
+        const float expansion = 1.0f - std::pow(1.0f - t, 1.80f);
+        const float outwardLift = groundLift * (1.0f - glm::smoothstep(0.08f, 1.0f, expansion));
+        return {timeline.origin, glm::mix(0.4f, radius, expansion), width,
+            strength * (1.0f - glm::smoothstep(0.57f, 1.0f, t)), textureScale, radius, outwardLift, groundThickness};
+    }
+};
+
 struct PortalShardEmitter {
     static constexpr int kMaxCount = 256;
     static constexpr float kMaxDuration = 30.0f;
@@ -24,20 +68,22 @@ struct PortalShardEmitter {
     static constexpr float kMaxSpeed = 20.0f;
 
     bool followRider = true;
-    int count = 32;
-    float duration = 4.0f;
+    int count = 12;
+    float duration = 8.8f;
     float emissionDuration = 0.5f;
     float fadeIn = 0.22f;
     float fadeOut = 1.2f;
-    glm::vec2 spawnRadius{1.55f, 3.0f};
+    glm::vec2 spawnRadius{2.02f, 3.0f};
     glm::vec2 travelDistance{2.55f, 5.2f};
     glm::vec2 spawnHeight{0.55f, 4.2f};
     glm::vec2 riseDistance{0.45f, 1.6f};
-    glm::vec2 size{0.34f, 0.82f};
+    glm::vec2 size{3.59f, 7.77f};
     float expansionSpeed = 1.6f;
-    float orbitSpeed = 0.3f;
-    glm::vec2 spinSpeed{2.4f, 5.1f};
+    float orbitSpeed = 0.14f;
+    glm::vec2 spinSpeed{0.38f, 1.0f};
     PortalShardMaterial material;
+    PortalFilterSettings screenFilter;
+    PortalWaveSettings crossingWave;
 
     bool IsValid() const {
         const auto in = [](float value, float min, float max) {
@@ -53,18 +99,71 @@ struct PortalShardEmitter {
             range(size, 0.01f, kMaxSize) && in(expansionSpeed, 0, kMaxSpeed) &&
             in(orbitSpeed, -kMaxSpeed, kMaxSpeed) && range(spinSpeed, -kMaxSpeed, kMaxSpeed) &&
             in(material.opacity, 0, 1) && in(material.ior, 1, 3) && in(material.refraction, 0, 0.5f) &&
-            in(material.dispersion, 0, 1);
+            in(material.dispersion, 0, 1) && screenFilter.IsValid() && crossingWave.IsValid();
     }
+};
+
+struct PortalShardClearance {
+    glm::vec3 direction{0.0f};
+    float sine = 0.0f;
+    float cosine = 1.0f;
+    float weight = 0.0f;
 };
 
 struct PortalShardVisual {
     glm::mat4 transform;
     PortalShardMaterial material;
+    PortalShardClearance riderClearance;
+};
+
+struct PortalShardFraming {
+    float rangeScale = 1.0f;
+    float sizeScale = 1.0f;
+    PortalShardClearance riderClearance;
+
+    PortalShardFraming(const glm::vec3& riderPosition, std::optional<glm::vec3> cameraPosition) {
+        if (!cameraPosition) return;
+        mCameraPosition = *cameraPosition;
+        const glm::vec3 toRider = riderPosition + glm::vec3(0.0f, 1.1f, 0.0f) - mCameraPosition;
+        const float distance = glm::length(toRider);
+        if (!std::isfinite(distance)) return;
+
+        // Authored dimensions are measured at 5 m. Spread grows faster than shard size.
+        rangeScale = std::sqrt((std::min(distance, 100.0f) + 2.0f) / 7.0f);
+        sizeScale = std::sqrt(rangeScale);
+
+        // Ease in the clearance when pulling back so a close chase camera can still see the burst.
+        riderClearance.weight = glm::smoothstep(4.0f, 8.0f, distance);
+        if (riderClearance.weight <= 0.0f) return;
+        riderClearance.direction = toRider / distance;
+        constexpr float riderRadius = 2.5f;
+        riderClearance.sine = riderRadius / distance;
+        riderClearance.cosine = std::sqrt(1.0f - riderClearance.sine * riderClearance.sine);
+    }
+
+    bool FullyHidden(const glm::vec3& shardPosition, float shardRadius) const {
+        if (riderClearance.weight < 1.0f) return false;
+        // Cull only when the whole shard fits within the rider's protected rays.
+        // The fragment shader fades individual pixels for shards crossing the edge.
+        const glm::vec3 fromEye = shardPosition - mCameraPosition;
+        const float depth = glm::dot(fromEye, riderClearance.direction);
+        const float offset = glm::length(fromEye - riderClearance.direction * depth);
+        const float edgeDistance = offset * riderClearance.cosine - depth * riderClearance.sine;
+        return edgeDistance <= -shardRadius;
+    }
+
+private:
+    glm::vec3 mCameraPosition{0.0f};
 };
 
 inline void AppendPortalShardVisuals(const PortalShardEmitter& emitter, float elapsed,
-    const glm::mat4& emitterToWorld, std::vector<PortalShardVisual>& shards) {
+    const glm::mat4& emitterToWorld, std::vector<PortalShardVisual>& shards,
+    std::optional<glm::vec3> cameraPosition = std::nullopt) {
     if (elapsed < 0.0f || elapsed >= emitter.duration || emitter.material.opacity <= 0.0f) return;
+    const PortalShardFraming framing(glm::vec3(emitterToWorld[3]), emitter.followRider ? cameraPosition : std::nullopt);
+    // The mesh fits inside a unit sphere. This upper bound also handles scaled or sheared parents.
+    const glm::vec3 x(emitterToWorld[0]), y(emitterToWorld[1]), z(emitterToWorld[2]);
+    const float emitterBound = std::sqrt(glm::dot(x, x) + glm::dot(y, y) + glm::dot(z, z));
     const auto step = [&](int preferred) {
         while (std::gcd(preferred, emitter.count) != 1) ++preferred;
         return preferred;
@@ -93,13 +192,16 @@ inline void AppendPortalShardVisuals(const PortalShardEmitter& emitter, float el
             + expansion * sample(emitter.riseDistance, variation);
         const float fadeIn = emitter.fadeIn > 0.0f ? glm::smoothstep(0.0f, emitter.fadeIn, age) : 1.0f;
         const float fade = fadeIn * fadeOut;
-        const float size = sample(emitter.size, variation) * glm::mix(0.5f, 1.0f, fade);
-        auto transform = glm::translate(emitterToWorld, radial * radius + glm::vec3(0.0f, height, 0.0f));
-        transform = glm::rotate(transform, 1.8f * angle + age * sample(emitter.spinSpeed, variation),
-            radial + glm::vec3(0.0f, 0.7f, 0.0f));
+        const float size = sample(emitter.size, variation) * glm::mix(0.5f, 1.0f, fade) * framing.sizeScale;
+        auto transform = glm::translate(emitterToWorld,
+            (radial * radius + glm::vec3(0.0f, height, 0.0f)) * framing.rangeScale);
+        if (framing.FullyHidden(glm::vec3(transform[3]), size * emitterBound)) continue;
         auto material = emitter.material;
         material.opacity *= fade;
-        shards.push_back({glm::scale(transform, glm::vec3(size)), material});
+        if (material.opacity <= 0.0f) continue;
+        transform = glm::rotate(transform, 1.8f * angle + age * sample(emitter.spinSpeed, variation),
+            radial + glm::vec3(0.0f, 0.7f, 0.0f));
+        shards.push_back({glm::scale(transform, glm::vec3(size)), material, framing.riderClearance});
     }
 }
 

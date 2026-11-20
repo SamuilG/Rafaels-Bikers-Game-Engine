@@ -2677,21 +2677,51 @@ lut::Pipeline create_alpha_pipeline_1_attachment(lut::VulkanWindow const& aWindo
 // ==============================================================================
 // 极速特效 (Speed Post-Process) 的管线布局
 // ==============================================================================
-lut::PipelineLayout create_speed_post_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aDescriptorLayout)
+lut::DescriptorSetLayout create_portal_wave_descriptor_layout(lut::VulkanContext const& context)
 {
-	// 定义 Push Constant 范围，传递一个 4 字节的 float (speedFactor)
+	const VkDescriptorSetLayoutBinding bindings[] = {
+		{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+		{1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+		{2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr},
+		{3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+		{4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr},
+		{5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr},
+	};
+	const VkDescriptorSetLayoutCreateInfo info{
+		VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr, 0, uint32_t(std::size(bindings)), bindings};
+	VkDescriptorSetLayout layout = VK_NULL_HANDLE;
+	if (const auto result = vkCreateDescriptorSetLayout(context.device, &info, nullptr, &layout); result != VK_SUCCESS)
+		throw lut::Error("Unable to create portal wave descriptor layout: {}", lut::to_string(result));
+	return lut::DescriptorSetLayout(context.device, layout);
+}
+
+lut::PipelineLayout create_portal_ground_pipeline_layout(lut::VulkanContext const& context,
+	VkDescriptorSetLayout descriptorLayout, VkDescriptorSetLayout materialLayout, VkDescriptorSetLayout sceneLayout)
+{
+	const VkPushConstantRange params{
+		VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(glsl::PortalGroundParameters)};
+	const VkDescriptorSetLayout layouts[] = {descriptorLayout, materialLayout, sceneLayout};
+	const VkPipelineLayoutCreateInfo info{
+		VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, nullptr, 0, uint32_t(std::size(layouts)), layouts, 1, &params};
+	VkPipelineLayout layout = VK_NULL_HANDLE;
+	if (const auto result = vkCreatePipelineLayout(context.device, &info, nullptr, &layout); result != VK_SUCCESS)
+		throw lut::Error("Unable to create portal ground pipeline layout: {}", lut::to_string(result));
+	return lut::PipelineLayout(context.device, layout);
+}
+
+lut::PipelineLayout create_speed_post_pipeline_layout(lut::VulkanContext const& aContext,
+	VkDescriptorSetLayout aDescriptorLayout, VkDescriptorSetLayout aWaveLayout)
+{
 	VkPushConstantRange pushConstant{};
 	pushConstant.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 	pushConstant.offset = 0;
-	pushConstant.size = sizeof(float);
+	pushConstant.size = sizeof(glsl::CameraPostParameters);
 
-	VkDescriptorSetLayout layouts[] = {
-		aDescriptorLayout // set 0: 包含输入渲染好的场景纹理
-	};
+	const VkDescriptorSetLayout layouts[] = {aDescriptorLayout, aWaveLayout};
 
 	VkPipelineLayoutCreateInfo layoutInfo{};
 	layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	layoutInfo.setLayoutCount = 1;
+	layoutInfo.setLayoutCount = 2;
 	layoutInfo.pSetLayouts = layouts;
 	layoutInfo.pushConstantRangeCount = 1;
 	layoutInfo.pPushConstantRanges = &pushConstant;
@@ -2712,7 +2742,7 @@ lut::PipelineLayout create_speed_post_pipeline_layout(lut::VulkanContext const& 
 // ==============================================================================
 static lut::Pipeline create_procedural_triangle_pipeline(lut::VulkanWindow const& aWindow,
 	VkPipelineLayout aPipelineLayout, const char* vertPath, const char* fragPath,
-	VkFormat colorFormat, VkFormat depthFormat)
+	VkFormat colorFormat, VkFormat depthFormat, VkCullModeFlags cullMode = VK_CULL_MODE_NONE)
 {
 	const bool depthTest = depthFormat != VK_FORMAT_UNDEFINED;
 	auto const vertSpirV = lut::load_file_u32(vertPath);
@@ -2762,7 +2792,7 @@ static lut::Pipeline create_procedural_triangle_pipeline(lut::VulkanWindow const
 	rasterInfo.depthClampEnable = VK_FALSE;
 	rasterInfo.rasterizerDiscardEnable = VK_FALSE;
 	rasterInfo.polygonMode = VK_POLYGON_MODE_FILL;
-	rasterInfo.cullMode = depthTest ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE;
+	rasterInfo.cullMode = cullMode;
 	rasterInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	rasterInfo.depthBiasEnable = VK_FALSE;
 	rasterInfo.lineWidth = 1.f;
@@ -2844,7 +2874,19 @@ lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPip
 lut::Pipeline create_portal_shard_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout)
 {
 	return create_procedural_triangle_pipeline(aWindow, aPipelineLayout, cfg::kPortalShardVertShaderPath,
-		cfg::kPortalShardFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT, cfg::kDepthFormat);
+		cfg::kPortalShardFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT, cfg::kDepthFormat, VK_CULL_MODE_BACK_BIT);
+}
+
+lut::Pipeline create_portal_ground_pipeline(lut::VulkanWindow const& window, VkPipelineLayout layout)
+{
+	return create_procedural_triangle_pipeline(window, layout, cfg::kPortalGroundVertShaderPath,
+		cfg::kPortalGroundFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT, cfg::kDepthFormat, VK_CULL_MODE_BACK_BIT);
+}
+
+lut::Pipeline create_portal_wave_surface_pipeline(lut::VulkanWindow const& window, VkPipelineLayout layout)
+{
+	return create_procedural_triangle_pipeline(window, layout, cfg::kFullscreenVertShaderPath,
+		cfg::kPortalWaveSurfaceFragShaderPath, VK_FORMAT_R16G16B16A16_SFLOAT, VK_FORMAT_UNDEFINED);
 }
 
 

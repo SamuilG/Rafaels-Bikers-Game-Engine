@@ -66,6 +66,7 @@ namespace lut = labut2;
 #include "RenderUtilities/setup.hpp"
 #include "RenderUtilities/light.hpp"
 #include "RenderUtilities/rendering.hpp"
+#include "RenderUtilities/PortalGroundSlabs.hpp"
 #include "RenderUtilities/ViewMode.hpp"
 
 #include "../Input/InputSystem.hpp"
@@ -821,22 +822,22 @@ namespace engine {
 
             mDepthBuffer = create_depth_buffer(mWindow, mAllocator);
             mOffscreenImage = create_offscreen_buffer(mWindow, mAllocator);
-            mPortalColorImage = create_offscreen_buffer(mWindow, mAllocator);
+            mPortalColorImage = create_offscreen_buffer(mWindow, mAllocator, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
             mPortalBrightImage = create_offscreen_buffer(mWindow, mAllocator);
             mPortalNormalImage = create_normal_buffer(mWindow, mAllocator);
             mPortalDepthImage = create_depth_buffer(mWindow, mAllocator);
             mPortalSurfaceDesc = BuildPortalSurfaceDesc(mPortalColorImage.view);
-            mPortalRecursiveColorImage = create_offscreen_buffer(mWindow, mAllocator);
+            mPortalRecursiveColorImage = create_offscreen_buffer(mWindow, mAllocator, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
             mPortalRecursiveBrightImage = create_offscreen_buffer(mWindow, mAllocator);
             mPortalRecursiveNormalImage = create_normal_buffer(mWindow, mAllocator);
             mPortalRecursiveDepthImage = create_depth_buffer(mWindow, mAllocator);
             mPortalRecursiveSurfaceDesc = BuildPortalSurfaceDesc(mPortalRecursiveColorImage.view);
-            mPortal2ColorImage = create_offscreen_buffer(mWindow, mAllocator);
+            mPortal2ColorImage = create_offscreen_buffer(mWindow, mAllocator, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
             mPortal2BrightImage = create_offscreen_buffer(mWindow, mAllocator);
             mPortal2NormalImage = create_normal_buffer(mWindow, mAllocator);
             mPortal2DepthImage = create_depth_buffer(mWindow, mAllocator);
             mPortal2SurfaceDesc = BuildPortalSurfaceDesc(mPortal2ColorImage.view);
-            mPortal2RecursiveColorImage = create_offscreen_buffer(mWindow, mAllocator);
+            mPortal2RecursiveColorImage = create_offscreen_buffer(mWindow, mAllocator, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
             mPortal2RecursiveBrightImage = create_offscreen_buffer(mWindow, mAllocator);
             mPortal2RecursiveNormalImage = create_normal_buffer(mWindow, mAllocator);
             mPortal2RecursiveDepthImage = create_depth_buffer(mWindow, mAllocator);
@@ -874,7 +875,34 @@ namespace engine {
             mCompDescLayout = create_composite_descriptor_layout(mWindow);
             mBlurPipeLayout = create_blur_pipeline_layout(mWindow, mBlurDescLayout.handle);
             mCompPipeLayout = create_composite_pipeline_layout(mWindow, mCompDescLayout.handle);
-            mSpeedPostPipeLayout = create_speed_post_pipeline_layout(mWindow, mBlurDescLayout.handle);
+            mPortalWaveDescLayout = create_portal_wave_descriptor_layout(mWindow);
+            mPortalWaveMask = lut::load_image_texture2d(cfg::kPortalWaveMaskPath, mWindow, mCmdPool.handle,
+                mAllocator, VK_FORMAT_R8G8B8A8_UNORM);
+            mPortalWaveMaskView = lut::create_image_view_texture2d(mWindow, mPortalWaveMask.image, VK_FORMAT_R8G8B8A8_UNORM);
+            mPortalGroundBuffer = lut::create_buffer(mAllocator, sizeof(mPortalGroundSurface.heights),
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, 0, VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
+            {
+                const auto slabs = BuildPortalGroundSlabs();
+                const auto bytes = slabs.size() * sizeof(PortalGroundSlab);
+                mPortalGroundSlabBuffer = lut::create_buffer(mAllocator, bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT, VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
+                if (const auto result = vmaCopyMemoryToAllocation(mAllocator.allocator, slabs.data(),
+                    mPortalGroundSlabBuffer.allocation, 0, bytes); result != VK_SUCCESS)
+                    throw lut::Error("Unable to upload portal ground slabs: {}", lut::to_string(result));
+                mPortalGroundMaterialPoints.reserve(slabs.size());
+                for (const auto& slab : slabs) mPortalGroundMaterialPoints.emplace_back(slab.centerAndHinge);
+                mPortalGroundMaterialBuffer = lut::create_buffer(mAllocator, slabs.size() * sizeof(glsl::PortalGroundMaterialMapping),
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, 0, VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
+            }
+            mPortalWaveDesc = lut::alloc_desc_set(mWindow, mDescPool.handle, mPortalWaveDescLayout.handle);
+            for (auto& descriptor : mPortalViewWaveDescs)
+                descriptor = lut::alloc_desc_set(mWindow, mDescPool.handle, mPortalWaveDescLayout.handle);
+            WritePortalWaveDescriptors();
+            mPortalGroundLayout = create_portal_ground_pipeline_layout(mWindow, mPortalWaveDescLayout.handle,
+                mObjectLayout.handle, mSceneLayout.handle);
+            mPortalGroundPipe = create_portal_ground_pipeline(mWindow, mPortalGroundLayout.handle);
+            mPortalWaveSurfacePipe = create_portal_wave_surface_pipeline(mWindow, mPortalGroundLayout.handle);
+            mSpeedPostPipeLayout = create_speed_post_pipeline_layout(mWindow, mBlurDescLayout.handle, mPortalWaveDescLayout.handle);
 
             mBlurPipe = create_blur_pipeline(mWindow, mBlurPipeLayout.handle);
             mCompositePipe = create_composite_pipeline(mWindow, mCompPipeLayout.handle);
@@ -1483,22 +1511,22 @@ namespace engine {
                     // 1. 重建所有与屏幕尺寸绑定的画板 (Image)
                     mDepthBuffer = create_depth_buffer(mWindow, mAllocator);
                     mOffscreenImage = create_offscreen_buffer(mWindow, mAllocator);
-                    mPortalColorImage = create_offscreen_buffer(mWindow, mAllocator);
+                    mPortalColorImage = create_offscreen_buffer(mWindow, mAllocator, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
                     mPortalBrightImage = create_offscreen_buffer(mWindow, mAllocator);
                     mPortalNormalImage = create_normal_buffer(mWindow, mAllocator);
                     mPortalDepthImage = create_depth_buffer(mWindow, mAllocator);
                     WritePortalSurfaceDesc(mPortalSurfaceDesc, mPortalColorImage.view);
-                    mPortalRecursiveColorImage = create_offscreen_buffer(mWindow, mAllocator);
+                    mPortalRecursiveColorImage = create_offscreen_buffer(mWindow, mAllocator, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
                     mPortalRecursiveBrightImage = create_offscreen_buffer(mWindow, mAllocator);
                     mPortalRecursiveNormalImage = create_normal_buffer(mWindow, mAllocator);
                     mPortalRecursiveDepthImage = create_depth_buffer(mWindow, mAllocator);
                     WritePortalSurfaceDesc(mPortalRecursiveSurfaceDesc, mPortalRecursiveColorImage.view);
-                    mPortal2ColorImage = create_offscreen_buffer(mWindow, mAllocator);
+                    mPortal2ColorImage = create_offscreen_buffer(mWindow, mAllocator, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
                     mPortal2BrightImage = create_offscreen_buffer(mWindow, mAllocator);
                     mPortal2NormalImage = create_normal_buffer(mWindow, mAllocator);
                     mPortal2DepthImage = create_depth_buffer(mWindow, mAllocator);
                     WritePortalSurfaceDesc(mPortal2SurfaceDesc, mPortal2ColorImage.view);
-                    mPortal2RecursiveColorImage = create_offscreen_buffer(mWindow, mAllocator);
+                    mPortal2RecursiveColorImage = create_offscreen_buffer(mWindow, mAllocator, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
                     mPortal2RecursiveBrightImage = create_offscreen_buffer(mWindow, mAllocator);
                     mPortal2RecursiveNormalImage = create_normal_buffer(mWindow, mAllocator);
                     mPortal2RecursiveDepthImage = create_depth_buffer(mWindow, mAllocator);
@@ -1509,6 +1537,7 @@ namespace engine {
                     mCompositeOutputImage = create_offscreen_buffer(mWindow, mAllocator, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
                     mPortalShardSceneCopy = create_offscreen_buffer(mWindow, mAllocator);
                     WritePortalSurfaceDesc(mPortalShardSceneCopyDesc, mPortalShardSceneCopy.view);
+                    WritePortalWaveDescriptors();
                     mBrightImage = create_offscreen_buffer(mWindow, mAllocator);
                     mBlurTempImage = create_offscreen_buffer(mWindow, mAllocator);
                     mFinalBloomImage = create_offscreen_buffer(mWindow, mAllocator);
@@ -2168,7 +2197,8 @@ namespace engine {
                 capture.Image(colorTarget.image, "Swapchain", mWindow.swapchainExtent, mWindow.swapchainFormat, 1, false, true);
                 capture.Image(finalSceneTarget.image, "Viewport output", mWindow.swapchainExtent, mWindow.swapchainFormat);
             }
-            CollectPortalShardVisuals(dt, frameRenderMode);
+            const auto portalEffects = CollectPortalEffects(dt, frameRenderMode);
+            const auto portalWavePass = PreparePortalWavePass(portalEffects.wave);
             const PortalShardPass portalShardPass{
                 mPortalShardVisuals,
                 mPortalShardSceneCopy.image,
@@ -2242,9 +2272,9 @@ namespace engine {
                 mSpeedPostPipe.handle,
                 mSpeedPostPipeLayout.handle,
                 mSpeedPostDescriptors[mFrameIndex],
-                editorBackdrop ? 0.0f : mState->effects.speedFactor, // Keep the neutral editor canvas free from camera effects.
-                mState->effects.subjectAlive,
-                editorBackdrop ? 0.0f : mState->effects.deathFactor,
+                glsl::CameraPostParameters{editorBackdrop ? 0.0f : mState->effects.speedFactor,
+                    editorBackdrop ? 0.0f : mState->effects.deathFactor, portalEffects.filter.amount, portalEffects.filter.time},
+                portalWavePass,
                 finalSceneTarget,    // 极速特效输出到最终
 
                 // --- 剩下的原有参数 ---
@@ -2508,43 +2538,163 @@ namespace engine {
             vkUpdateDescriptorSets(mWindow.device, 3, writes, 0, nullptr);
         }
     private:
-        void CollectPortalShardVisuals(float dt, int renderMode) {
+        void WritePortalWaveDescriptors() {
+            WritePortalWaveDescriptor(mPortalWaveDesc, mDepthBuffer.view);
+            const VkImageView depths[] = {mPortalDepthImage.view, mPortalRecursiveDepthImage.view,
+                mPortal2DepthImage.view, mPortal2RecursiveDepthImage.view};
+            for (size_t i = 0; i < mPortalViewWaveDescs.size(); ++i)
+                WritePortalWaveDescriptor(mPortalViewWaveDescs[i], depths[i]);
+        }
+
+        void WritePortalWaveDescriptor(VkDescriptorSet descriptor, VkImageView depth) {
+            const VkDescriptorImageInfo images[] = {
+                {mPostSampler.handle, depth, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL},
+                {mDefaultSampler.handle, mPortalWaveMaskView.handle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+                {mPostSampler.handle, mPortalShardSceneCopy.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+            };
+            const VkDescriptorBufferInfo heights{mPortalGroundBuffer.buffer, 0, VK_WHOLE_SIZE};
+            const VkDescriptorBufferInfo slabs{mPortalGroundSlabBuffer.buffer, 0, VK_WHOLE_SIZE};
+            const VkDescriptorBufferInfo materials{mPortalGroundMaterialBuffer.buffer, 0, VK_WHOLE_SIZE};
+            const VkWriteDescriptorSet writes[] = {
+                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, descriptor, 0, 0, 1,
+                    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &images[0], nullptr, nullptr},
+                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, descriptor, 1, 0, 1,
+                    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &images[1], nullptr, nullptr},
+                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, descriptor, 2, 0, 1,
+                    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &heights, nullptr},
+                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, descriptor, 3, 0, 1,
+                    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &images[2], nullptr, nullptr},
+                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, descriptor, 4, 0, 1,
+                    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &slabs, nullptr},
+                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, descriptor, 5, 0, 1,
+                    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &materials, nullptr},
+            };
+            vkUpdateDescriptorSets(mWindow.device, uint32_t(std::size(writes)), writes, 0, nullptr);
+        }
+
+        PortalWavePass PreparePortalWavePass(const PortalWaveVisual& wave) {
+            PortalWavePass pass{wave, mPortalWaveDesc, mPortalWaveMask.image, mPortalShardSceneCopy.image,
+                mPortalGroundPipe.handle, mPortalGroundLayout.handle, mPortalGroundBuffer.buffer,
+                mPortalGroundMaterialBuffer.buffer, mPortalViewWaveDescs, mPortalWaveSurfacePipe.handle};
+            if (wave.strength <= 0.0f || wave.groundLift <= 0.0f) {
+                mPortalGroundScene = nullptr;
+                return pass;
+            }
+
+            // Snapshot support geometry at the crossing so camera movement does not
+            // rebuild or move the fragments. A replay or a changed range takes a new sample.
+            auto* source = mSceneRenderer.Source();
+            if (source != mPortalGroundScene || wave.origin != mPortalGroundSample.origin ||
+                wave.maxRadius != mPortalGroundSample.maxRadius || wave.width != mPortalGroundSample.width ||
+                wave.radius < mPortalGroundSample.radius) {
+                mPortalGroundScene = source;
+                const auto batches = mSceneRenderer.BuildOpaque({nullptr, 0.0f, wave.origin, false});
+                mPortalGroundDraws.clear();
+                mPortalGroundMaterialMappings.clear();
+                if (mPortalGroundSurface.Build(wave, batches, mModel, mState->effects.portalTransition.bodyId,
+                    mPortalGroundMaterialPoints)) {
+                    const auto& samples = mPortalGroundSurface.materials;
+                    std::vector<uint32_t> order;
+                    order.reserve(samples.size());
+                    for (uint32_t i = 0; i < samples.size(); ++i) {
+                        const auto material = samples[i].materialIndex;
+                        if (material < mMaterialDescriptors.size() && mMaterialDescriptors[material])
+                            order.push_back(i);
+                    }
+                    std::stable_sort(order.begin(), order.end(), [&](uint32_t a, uint32_t b) {
+                        return samples[a].materialIndex < samples[b].materialIndex;
+                    });
+                    for (const auto slab : order) {
+                        const auto& sample = samples[slab];
+                        if (mPortalGroundDraws.empty() || mPortalGroundDraws.back().materialIndex != sample.materialIndex) {
+                            mPortalGroundDraws.push_back({sample.materialIndex,
+                                static_cast<uint32_t>(mPortalGroundMaterialMappings.size()), 0});
+                        }
+                        ++mPortalGroundDraws.back().slabCount;
+                        mPortalGroundMaterialMappings.push_back({
+                            {sample.uv.x, sample.uvPerX.x, sample.uvPerZ.x, float(slab)},
+                            {sample.uv.y, sample.uvPerX.y, sample.uvPerZ.y, 0.0f}});
+                    }
+                    if (!mPortalGroundDraws.empty()) {
+                        pass.groundUpload = mPortalGroundSurface.heights;
+                        pass.groundMaterialUpload = mPortalGroundMaterialMappings;
+                    }
+                }
+            }
+            mPortalGroundSample = wave;
+            pass.groundSpacing = mPortalGroundSurface.spacing;
+            pass.groundDraws = mPortalGroundDraws;
+            return pass;
+        }
+
+        struct PortalEffectsVisual {
+            PortalFilterVisual filter;
+            PortalWaveVisual wave;
+        };
+
+        PortalEffectsVisual CollectPortalEffects(float dt, int renderMode) {
             mPortalShardVisuals.clear();
-            if (!mSceneManager || renderMode != view_mode::Default) return;
+            if (!mSceneManager || renderMode != view_mode::Default) return {};
 
             auto& world = mSceneManager->get_world();
             if (mState->editor.showEngineUi && !mRenderingGameViewport) {
-                if (!mPortalShardPreview.entity) return;
+                if (!mPortalShardPreview.entity) return {};
                 const auto entity = world.entity(mPortalShardPreview.entity);
                 if (!IsEntityAlive(entity) || !entity.has<PortalShardEmitter>() || !scene_hierarchy::Visible(entity)) {
                     StopPortalShardPreview();
-                    return;
+                    return {};
                 }
                 const auto& emitter = entity.get<PortalShardEmitter>();
-                if (!emitter.IsValid()) return;
+                if (!emitter.IsValid()) return {};
+                // Preview the crossing shortly after the door finishes opening.
+                constexpr float previewCrossing = kPortalOpeningDuration + 0.75f;
+                const auto& filter = emitter.screenFilter;
+                float duration = filter.enabled && filter.strength > 0.0f
+                    ? std::max(emitter.duration, previewCrossing + filter.fadeOut) : emitter.duration;
+                const auto& waveSettings = emitter.crossingWave;
+                if (waveSettings.enabled && waveSettings.strength > 0.0f)
+                    duration = std::max(duration, previewCrossing + waveSettings.duration);
                 if (std::isfinite(dt) && dt > 0.0f) mPortalShardPreview.elapsed += dt;
-                if (mPortalShardPreview.elapsed >= emitter.duration) {
+                if (mPortalShardPreview.elapsed >= duration) {
                     if (!mPortalShardPreview.loop) {
                         StopPortalShardPreview();
-                        return;
+                        return {};
                     }
-                    mPortalShardPreview.elapsed = std::fmod(mPortalShardPreview.elapsed, emitter.duration);
+                    mPortalShardPreview.elapsed = std::fmod(mPortalShardPreview.elapsed, duration);
                 }
                 const auto transform = scene_hierarchy::World(entity);
                 if (scene_hierarchy::Invertible(transform))
-                    AppendPortalShardVisuals(emitter, mPortalShardPreview.elapsed, transform, mPortalShardVisuals);
-                return;
+                    AppendPortalShardVisuals(emitter, mPortalShardPreview.elapsed, transform, mPortalShardVisuals,
+                        glm::vec3(RenderCameraState().camera2world[3]));
+                const float seconds = mPortalShardPreview.elapsed;
+                const PortalFilterTimeline timeline{glm::smoothstep(0.0f, kPortalOpeningDuration, seconds),
+                    seconds - previewCrossing};
+                return {{filter.Amount(timeline), seconds},
+                    waveSettings.Visual({glm::vec3(transform[3]), seconds - previewCrossing})};
             }
 
             const float elapsed = mState->effects.portalOpeningAge;
-            if (elapsed < 0.0f) return;
+            const auto& timeline = mState->effects.portalFilter;
+            const auto& waveTimeline = mState->effects.portalWave;
+            if (elapsed < 0.0f && waveTimeline.age < 0.0f &&
+                (timeline.opening <= 0.0f || timeline.fadeElapsed >= kPortalFilterMaxFade))
+                return {};
+            PortalEffectsVisual result;
+            result.filter.time = mState->effects.portalEffectTime;
+            const glm::vec3 cameraPosition(RenderCameraState().camera2world[3]);
             world.each([&](flecs::entity entity, const PortalShardEmitter& emitter) {
-                if (elapsed >= emitter.duration || !emitter.IsValid() || !scene_hierarchy::Visible(entity)) return;
+                if (!emitter.IsValid() || !scene_hierarchy::Visible(entity)) return;
+                // Multiple emitters may contribute shards to the same portal.
+                result.filter.amount = std::max(result.filter.amount, emitter.screenFilter.Amount(timeline));
+                const auto wave = emitter.crossingWave.Visual(waveTimeline);
+                if (wave.strength > result.wave.strength) result.wave = wave;
+                if (elapsed < 0.0f || elapsed >= emitter.duration) return;
                 auto transform = scene_hierarchy::World(entity);
                 if (emitter.followRider) transform[3] = glm::vec4(mState->player.State().position, 1.0f);
                 if (scene_hierarchy::Invertible(transform))
-                    AppendPortalShardVisuals(emitter, elapsed, transform, mPortalShardVisuals);
+                    AppendPortalShardVisuals(emitter, elapsed, transform, mPortalShardVisuals, cameraPosition);
             });
+            return result;
         }
 
         void CreateDebugViewPipelines() {
@@ -3579,6 +3729,23 @@ void InitSkybox()
         lut::ImageWithView mPortalShardSceneCopy;
         lut::Pipeline mPortalShardPipe;
         VkDescriptorSet mPortalShardSceneCopyDesc = VK_NULL_HANDLE;
+        lut::Image mPortalWaveMask;
+        lut::ImageView mPortalWaveMaskView;
+        lut::DescriptorSetLayout mPortalWaveDescLayout;
+        VkDescriptorSet mPortalWaveDesc = VK_NULL_HANDLE;
+        std::array<VkDescriptorSet, 4> mPortalViewWaveDescs{};
+        PortalGroundSurface mPortalGroundSurface;
+        PortalWaveVisual mPortalGroundSample;
+        const SceneRenderSource* mPortalGroundScene = nullptr;
+        lut::Buffer mPortalGroundBuffer;
+        lut::Buffer mPortalGroundSlabBuffer;
+        lut::Buffer mPortalGroundMaterialBuffer;
+        std::vector<glm::vec2> mPortalGroundMaterialPoints;
+        std::vector<glsl::PortalGroundMaterialMapping> mPortalGroundMaterialMappings;
+        std::vector<PortalGroundDraw> mPortalGroundDraws;
+        lut::PipelineLayout mPortalGroundLayout;
+        lut::Pipeline mPortalGroundPipe;
+        lut::Pipeline mPortalWaveSurfacePipe;
         lut::Pipeline mSpeedPostPipe;
         lut::Pipeline mBufferViewPipe;
         std::array<std::vector<VkDescriptorSet>, 3> mBufferViewDescriptors;

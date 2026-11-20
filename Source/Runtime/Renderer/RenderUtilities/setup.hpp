@@ -101,6 +101,11 @@ namespace cfg
 
 
 	constexpr char const* kSpeedPostFragShaderPath = SHADERDIR_"speed_postprocess.frag.spv";
+	constexpr char const* kPortalWaveMaskPath = "Assets/Textures/PortalWaveCells.png";
+	constexpr uint32_t kPortalWaveMaskSize = 128;
+	constexpr char const* kPortalGroundVertShaderPath = SHADERDIR_"portal_ground_wave.vert.spv";
+	constexpr char const* kPortalGroundFragShaderPath = SHADERDIR_"portal_ground_wave.frag.spv";
+	constexpr char const* kPortalWaveSurfaceFragShaderPath = SHADERDIR_"portal_wave_surface.frag.spv";
 
 	//skybox
 	constexpr char const* skyboxVertShaderPath = SHADERDIR_"skybox.vert.spv";
@@ -191,8 +196,14 @@ lut::Pipeline create_composite_pipeline(lut::VulkanWindow const& aWindow, VkPipe
 lut::Pipeline create_overdraw_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_R8G8B8A8_UNORM, bool skinned = false );
 lut::Pipeline create_overshading_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkFormat = VK_FORMAT_R8G8B8A8_UNORM, bool skinned = false );
 lut::Pipeline create_vis_resolve_pipeline( lut::VulkanWindow const&, VkPipelineLayout, VkDescriptorSetLayout );
-lut::PipelineLayout create_speed_post_pipeline_layout(lut::VulkanContext const& aContext, VkDescriptorSetLayout aDescriptorLayout);
+lut::DescriptorSetLayout create_portal_wave_descriptor_layout(lut::VulkanContext const& context);
+lut::PipelineLayout create_portal_ground_pipeline_layout(lut::VulkanContext const& context,
+	VkDescriptorSetLayout descriptorLayout, VkDescriptorSetLayout materialLayout, VkDescriptorSetLayout sceneLayout);
+lut::Pipeline create_portal_ground_pipeline(lut::VulkanWindow const& window, VkPipelineLayout layout);
+lut::PipelineLayout create_speed_post_pipeline_layout(lut::VulkanContext const& aContext,
+	VkDescriptorSetLayout aDescriptorLayout, VkDescriptorSetLayout aWaveLayout);
 lut::Pipeline create_speed_post_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout, char const* fragPath = cfg::kSpeedPostFragShaderPath);
+lut::Pipeline create_portal_wave_surface_pipeline(lut::VulkanWindow const& window, VkPipelineLayout layout);
 lut::Pipeline create_portal_shard_pipeline(lut::VulkanWindow const& aWindow, VkPipelineLayout aPipelineLayout);
 // p2_1.5 shadow mapping
 lut::Pipeline create_shadow_pipeline( lut::VulkanWindow const&, VkPipelineLayout );

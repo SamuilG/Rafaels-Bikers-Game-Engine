@@ -6,6 +6,8 @@
 #include "../../Rhi/to_string.hpp"
 #include "setup.hpp"
 #include "ViewMode.hpp"
+#include "PortalGroundSlabs.hpp"
+#include "frustum.hpp"
 #include "../FrameGraphCapture.hpp"
 
 #include <glm/glm.hpp>
@@ -103,9 +105,8 @@ void record_commands(
 	VkPipeline aSpeedPipe,
 	VkPipelineLayout aSpeedLayout,
 	VkDescriptorSet aSpeedDesc,
-	float aSpeedFactor,
-	bool isAlive,       // <--- 鐩存帴鎶?userState 閲岀殑鍙橀噺鍠傜粰娓叉煋鍣紒
-	float deathFactor,
+	const glsl::CameraPostParameters& aCameraEffects,
+	const PortalWavePass& aPortalWave,
 	ImageAndView const& aFinalSceneColor, // 鏈€缁堝満鏅覆鏌撶紦鍐插尯锛堣緭鍑哄埌 ImGui锛?
 	// ==============================================================
 
@@ -208,6 +209,9 @@ void record_commands(
 		graph.Image(aBlurTemp.image, "Bloom horizontal", aImageExtent);
 		graph.Image(aFinalBloom.image, "Bloom vertical", aImageExtent);
 		graph.Image(aCompositeOutput.image, "Composite color", aImageExtent);
+		if (aPortalWave.wave.strength > 0.0f)
+			graph.Image(aPortalWave.maskImage, "Portal wave cellular mask", {cfg::kPortalWaveMaskSize, cfg::kPortalWaveMaskSize},
+				VK_FORMAT_R8G8B8A8_UNORM, 1, true);
 		for (uint32_t layer = 0; layer < kCascadeCount; ++layer)
 			graph.Image(aShadowMap.image, "Shadow layer " + std::to_string(layer),
 				{kShadowMapResolution, kShadowMapResolution}, VK_FORMAT_D32_SFLOAT, 1, false, false, layer);
@@ -462,6 +466,86 @@ void record_commands(
     }
 	VkImageLayout shadowMapLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	std::string_view graphView = "Main";
+
+	const auto copyWaveBackground = [&](VkImage source, VkImage sceneCopy, const std::string& name) {
+		const VkImageSubresourceRange colorRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+		graph.Image(sceneCopy, "Refraction background", aImageExtent);
+		graph.Pass(name, "Transfer");
+		graph.Use(source, GraphAccess::CopySource);
+		graph.Use(sceneCopy, GraphAccess::CopyDestination);
+		lut::image_barrier(aCmdBuff, source,
+			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_COPY_BIT,
+			VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, colorRange);
+		lut::image_barrier(aCmdBuff, sceneCopy,
+			VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, colorRange);
+		VkImageCopy copy{};
+		copy.srcSubresource = copy.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+		copy.extent = {aImageExtent.width, aImageExtent.height, 1};
+		vkCmdCopyImage(aCmdBuff, source, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			sceneCopy, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+		lut::image_barrier(aCmdBuff, sceneCopy,
+			VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, colorRange);
+		lut::image_barrier(aCmdBuff, source,
+			VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, colorRange);
+	};
+	const auto uploadGroundBuffer = [&](VkBuffer buffer, std::span<const std::byte> data) {
+		if (data.empty()) return;
+		lut::buffer_barrier(aCmdBuff, buffer, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+		constexpr size_t maxBytes = 65536;
+		for (size_t offset = 0; offset < data.size(); offset += maxBytes)
+			vkCmdUpdateBuffer(aCmdBuff, buffer, offset, std::min(data.size() - offset, maxBytes), data.data() + offset);
+		lut::buffer_barrier(aCmdBuff, buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+			VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	};
+	uploadGroundBuffer(aPortalWave.groundBuffer, std::as_bytes(aPortalWave.groundUpload));
+	uploadGroundBuffer(aPortalWave.groundMaterialBuffer, std::as_bytes(aPortalWave.groundMaterialUpload));
+
+	const auto drawDisplacedGround = [&](VkDescriptorSet descriptor, VkImage color, VkImage depth,
+		const glm::mat4& viewProjection, float colorMode, float exposure, std::string_view prefix) {
+		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aPortalWave.groundPipeline);
+		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aPortalWave.groundLayout, 0, 1,
+			&descriptor, 0, nullptr);
+		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aPortalWave.groundLayout, 2, 1,
+			&aSceneDescriptors, 0, nullptr);
+		const auto& wave = aPortalWave.wave;
+		using Slab = engine::PortalGroundSlab;
+		constexpr uint32_t slabVertices = Slab::kMaxCorners * Slab::kVerticesPerCorner;
+		constexpr uint32_t fissureVertices = Slab::kMaxCorners * Slab::kFissureVerticesPerCorner;
+		const auto drawGround = [&](uint32_t vertexCount, uint32_t firstVertex) {
+			graph.Use(aPortalWave.maskImage, GraphAccess::Sample);
+			graph.Use(depth, GraphAccess::DepthRead);
+			graph.Use(depth, GraphAccess::Sample);
+			graph.Use(color, GraphAccess::LoadColor);
+			for (const auto& draw : aPortalWave.groundDraws) {
+				const auto material = draw.materialIndex;
+				if (material >= aMaterialDescriptors.size() || material >= aMaterials.size() || !aMaterialDescriptors[material])
+					continue;
+				const auto& source = aMaterials[material];
+				const glsl::PortalGroundParameters params{viewProjection, {wave.origin, wave.radius},
+					{wave.width, wave.strength, wave.textureScale, wave.groundLift},
+					{aPortalWave.groundSpacing, colorMode, wave.groundThickness, exposure},
+					{glm::vec3(source.baseColorFactor), source.alphaCutoff / std::max(source.baseColorFactor.a, 0.00001f)}};
+				vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aPortalWave.groundLayout, 1, 1,
+					&aMaterialDescriptors[material], 0, nullptr);
+				vkCmdPushConstants(aCmdBuff, aPortalWave.groundLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+					0, sizeof(params), &params);
+				vkCmdDraw(aCmdBuff, vertexCount, draw.slabCount, firstVertex, draw.firstSlab);
+			}
+		};
+		// Shade the exposed ground first so plates can cover fissures across material groups.
+		graph.Pass(std::string(prefix) + "Portal ground fissures", "Overlay");
+		drawGround(fissureVertices, slabVertices);
+		graph.Pass(std::string(prefix) + "Portal ground vertex displacement", "Overlay");
+		graph.Use(aPortalWave.sceneCopy, GraphAccess::Sample);
+		drawGround(slabVertices, 0);
+	};
+
 	auto graphPortalRead = [&](VkDescriptorSet descriptor) {
 		if (!graph || !descriptor) return;
 		if (descriptor == aPortalSurfaceDesc && aPortalColor) graph.Use(aPortalColor->image, GraphAccess::Sample);
@@ -693,6 +777,7 @@ void record_commands(
 		ImageAndView const* normal = nullptr;
 		ImageAndView const* depth = nullptr;
 		VkDescriptorSet surfaceDesc = VK_NULL_HANDLE;
+		VkDescriptorSet waveDesc = VK_NULL_HANDLE;
 	};
 
 	struct NestedPortalSurface {
@@ -702,12 +787,78 @@ void record_commands(
 		float phase = 0.0f;
 	};
 
+	const auto renderPortalWave = [&](const glsl::SceneUniform& camera,
+		const ImageAndView& color, const ImageAndView& depth, VkDescriptorSet descriptor) {
+		const auto& wave = aPortalWave.wave;
+		if (wave.strength <= 0.0f) return;
+		const float reach = wave.radius + 2.1f * wave.width + 12.0f * aPortalWave.groundSpacing + 2.0f * wave.groundLift;
+		const glm::vec3 bounds(reach);
+		if (glm::dot(camera.portalClipPlane, glm::vec4(wave.origin, 1.0f)) < -reach ||
+			!engine::IntersectsAabb(engine::BuildFrustum(camera.projCam), wave.origin - bounds, wave.origin + bounds))
+			return;
+
+		const VkImageSubresourceRange depthRange{VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1};
+		lut::image_barrier(aCmdBuff, depth.image,
+			VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT |
+				VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+			VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+			VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+			VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT |
+				VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+			VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+			VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL, depthRange);
+
+		const std::string prefix = std::string(graphView) + " / ";
+		VkRenderingAttachmentInfo colorAtt{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+		colorAtt.imageView = color.view;
+		colorAtt.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		colorAtt.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+		colorAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+		VkRenderingInfo info{VK_STRUCTURE_TYPE_RENDERING_INFO};
+		info.renderArea.extent = aImageExtent;
+		info.layerCount = 1;
+		info.colorAttachmentCount = 1;
+		info.pColorAttachments = &colorAtt;
+
+		if (!aPortalWave.groundDraws.empty()) {
+			copyWaveBackground(color.image, aPortalWave.sceneCopy, prefix + "Copy refraction background");
+			VkRenderingAttachmentInfo depthAtt{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+			depthAtt.imageView = depth.view;
+			depthAtt.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+			depthAtt.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+			depthAtt.storeOp = VK_ATTACHMENT_STORE_OP_NONE;
+			info.pDepthAttachment = &depthAtt;
+			vkCmdBeginRendering(aCmdBuff, &info);
+			drawDisplacedGround(descriptor, color.image, depth.image, camera.projCam, 2.0f, 1.0f, prefix);
+			vkCmdEndRendering(aCmdBuff);
+			info.pDepthAttachment = nullptr;
+		}
+
+		copyWaveBackground(color.image, aPortalWave.sceneCopy, prefix + "Copy crossing wave background");
+		graph.Pass(prefix + "Crossing wave", "Overlay");
+		graph.Use(aPortalWave.sceneCopy, GraphAccess::Sample);
+		graph.Use(aPortalWave.maskImage, GraphAccess::Sample);
+		graph.Use(depth.image, GraphAccess::Sample);
+		graph.Use(color.image, GraphAccess::LoadColor);
+		const glsl::PortalWaveSurfaceParameters params{glm::inverse(camera.projCam),
+			{wave.origin, wave.radius}, {wave.width, wave.strength, wave.textureScale, 0.0f}, camera.portalClipPlane};
+		vkCmdBeginRendering(aCmdBuff, &info);
+		vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aPortalWave.surfacePipeline);
+		vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aPortalWave.groundLayout, 0, 1,
+			&descriptor, 0, nullptr);
+		vkCmdPushConstants(aCmdBuff, aPortalWave.groundLayout,
+			VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(params), &params);
+		vkCmdDraw(aCmdBuff, 3, 1, 0, 0);
+		vkCmdEndRendering(aCmdBuff);
+	};
+
 	auto renderPortalView = [&](glsl::SceneUniform const& portalSceneUniform,
 		const std::vector<RenderBatch>* portalBatches,
 		ImageAndView const& portalColor,
 		ImageAndView const& portalBright,
 		ImageAndView const& portalNormal,
 		ImageAndView const& portalDepth,
+		VkDescriptorSet waveDescriptor,
 		NestedPortalSurface const& nestedPortalA,
 		NestedPortalSurface const& nestedPortalB) {
 		uploadSceneUniform(portalSceneUniform);
@@ -928,6 +1079,7 @@ void record_commands(
 
 		vkCmdEndRendering(aCmdBuff);
 
+		renderPortalWave(portalSceneUniform, portalColor, portalDepth, waveDescriptor);
 		lut::image_barrier(aCmdBuff, portalColor.image,
 			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -940,28 +1092,32 @@ void record_commands(
 		aPortalBright,
 		aPortalNormal,
 		aPortalDepth,
-		aPortalSurfaceDesc
+		aPortalSurfaceDesc,
+		aPortalWave.portalDescriptors[0]
 	};
 	const PortalTargetSet portalScratchTarget{
 		aPortalRecursiveColor,
 		aPortalRecursiveBright,
 		aPortalRecursiveNormal,
 		aPortalRecursiveDepth,
-		aPortalRecursiveSurfaceDesc
+		aPortalRecursiveSurfaceDesc,
+		aPortalWave.portalDescriptors[1]
 	};
 	const PortalTargetSet portal2FinalTarget{
 		aPortal2Color,
 		aPortal2Bright,
 		aPortal2Normal,
 		aPortal2Depth,
-		aPortal2SurfaceDesc
+		aPortal2SurfaceDesc,
+		aPortalWave.portalDescriptors[2]
 	};
 	const PortalTargetSet portal2ScratchTarget{
 		aPortal2RecursiveColor,
 		aPortal2RecursiveBright,
 		aPortal2RecursiveNormal,
 		aPortal2RecursiveDepth,
-		aPortal2RecursiveSurfaceDesc
+		aPortal2RecursiveSurfaceDesc,
+		aPortalWave.portalDescriptors[3]
 	};
 
 	auto portalLayerUniform = [&](uint32_t layer) -> glsl::SceneUniform const& {
@@ -991,6 +1147,7 @@ void record_commands(
 			*target.bright,
 			*target.normal,
 			*target.depth,
+			target.waveDesc,
 			nestedPortal1,
 			nestedPortal2);
 	};
@@ -1008,6 +1165,7 @@ void record_commands(
 			*target.bright,
 			*target.normal,
 			*target.depth,
+			target.waveDesc,
 			nestedPortal1,
 			nestedPortal2);
 	};
@@ -1610,8 +1768,8 @@ void record_commands(
 	// 銆愭牳蹇冧慨澶嶃€戯細灏嗘繁搴﹀浘杞负鈥滃彧璇绘繁搴︽祴璇曗€濈姸鎬侊紒
 	lut::image_barrier(aCmdBuff, aDepthAttach.image,
 		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-		VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+		VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
 		VkImageSubresourceRange{ VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 }
 	);
 
@@ -1655,7 +1813,9 @@ void record_commands(
 	vkCmdDraw(aCmdBuff, 3, 1, 0, 0);
 
 	const bool resolveTemporal = aAntiAliasing && aAntiAliasing->temporal && aAntiAliasing->geometry;
-	if (resolveTemporal || aPortalShards) vkCmdEndRendering(aCmdBuff);
+	const bool drawGroundWave = !aPortalWave.groundDraws.empty();
+	const bool copyScene = aPortalShards || drawGroundWave;
+	if (resolveTemporal || copyScene) vkCmdEndRendering(aCmdBuff);
 	if (resolveTemporal) {
 		aAntiAliasing->temporal->Resolve(aCmdBuff, aAntiAliasing->slot, aCompositeOutput.image,
 			*aAntiAliasing->geometry, aDepthAttach.image, aFrameGraph);
@@ -1667,36 +1827,16 @@ void record_commands(
 		overlayUniform.projCam = overlayUniform.projection * overlayUniform.camera;
 		uploadSceneUniform(overlayUniform);
 	}
-	if (aPortalShards) {
-		const auto sceneCopy = aPortalShards->sceneCopy;
-		graph.Image(sceneCopy, "Refraction background", aImageExtent);
-		graph.Pass("Copy refraction background", "Transfer");
-		graph.Use(aCompositeOutput.image, GraphAccess::CopySource);
-		graph.Use(sceneCopy, GraphAccess::CopyDestination);
-		lut::image_barrier(aCmdBuff, aCompositeOutput.image,
-			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_COPY_BIT,
-			VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, range);
-		lut::image_barrier(aCmdBuff, sceneCopy,
-			VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, range);
-		VkImageCopy copy{};
-		copy.srcSubresource = copy.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-		copy.extent = {aImageExtent.width, aImageExtent.height, 1};
-		vkCmdCopyImage(aCmdBuff, aCompositeOutput.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-			sceneCopy, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
-		lut::image_barrier(aCmdBuff, sceneCopy,
-			VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
-		lut::image_barrier(aCmdBuff, aCompositeOutput.image,
-			VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
-	}
-	if (resolveTemporal || aPortalShards) {
+	if (copyScene)
+		copyWaveBackground(aCompositeOutput.image,
+			aPortalShards ? aPortalShards->sceneCopy : aPortalWave.sceneCopy, "Copy refraction background");
+	if (resolveTemporal || copyScene) {
 		compAtt.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 		vkCmdBeginRendering(aCmdBuff, &compInfo);
 	}
+	if (drawGroundWave)
+		drawDisplacedGround(aPortalWave.descriptor, aCompositeOutput.image, aDepthAttach.image,
+			aSceneUniform.projCam, compositeParams.srgbOutput, compositeParams.exposure, "");
 	if (aPortalShards) {
 		graph.Pass("Portal shard refraction", "Overlay");
 		graph.Use(aPortalShards->sceneCopy, GraphAccess::Sample);
@@ -1714,12 +1854,18 @@ void record_commands(
 		struct alignas(16) ShardPC {
 			glm::mat4 transform;
 			glm::vec4 optics;
+			glm::vec4 riderCone;
+			glm::vec4 riderFade;
 		};
-		static_assert(sizeof(ShardPC) == 80);
+		static_assert(sizeof(ShardPC) == 112);
+		const glm::mat3 worldToView(aSceneUniform.camera);
 		for (const auto* shard : sortedShards) {
 			const auto& material = shard->material;
+			const auto& clearance = shard->riderClearance;
 			const ShardPC pc{shard->transform,
-				{material.opacity, material.ior, material.refraction, material.dispersion}};
+				{material.opacity, material.ior, material.refraction, material.dispersion},
+				{worldToView * clearance.direction, clearance.sine},
+				{clearance.cosine, clearance.weight, 0.0f, 0.0f}};
 			vkCmdPushConstants(aCmdBuff, aGraphicsLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
 			vkCmdDraw(aCmdBuff, 12, 1, 0, 0);
 		}
@@ -1783,22 +1929,22 @@ void record_commands(
 	graph.Pass("Camera effects / viewport output", "Post process");
 	graph.Use(aCompositeOutput.image, GraphAccess::Sample);
 	graph.Use(aFinalSceneColor.image, GraphAccess::Color);
+	auto cameraEffects = aCameraEffects;
+	cameraEffects.srgbOutput = compositeParams.srgbOutput;
+	const auto& wave = aPortalWave.wave;
+	if (wave.strength > 0.0f) {
+		graph.Use(aPortalWave.maskImage, GraphAccess::Sample);
+		graph.Use(aDepthAttach.image, GraphAccess::Sample);
+		cameraEffects.waveWorldFromClip = glm::inverse(aSceneUniform.projCam);
+		cameraEffects.waveOriginRadius = {wave.origin, wave.radius};
+		cameraEffects.waveShape = {wave.width, wave.strength, wave.textureScale, 0.0f};
+	}
 	vkCmdBeginRendering(aCmdBuff, &speedInfo);
 	vkCmdBindPipeline(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSpeedPipe);
-	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSpeedLayout, 0, 1, &aSpeedDesc, 0, nullptr);
-	// 1. 缁勮涓€涓寘鍚墍鏈夊悗澶勭悊鍙傛暟鐨勭粨鏋勪綋 (娉ㄦ剰 16 瀛楄妭瀵归綈)
-	struct alignas(16) PostProcessPC {
-		float speedFactor; // 鏋侀€熺壒鏁堟瘮渚?
-		float deathFactor; // 姝讳骸婊ら暅姣斾緥 (0.0 = 娲? 1.0 = 姝?
-		float _pad[2];     // 琛ラ綈鍒?16 瀛楄妭锛岄槻姝?Vulkan 鎶ラ敊
-	};
-
-	PostProcessPC ppData{};
-	ppData.speedFactor = aSpeedFactor;
-	ppData.deathFactor = deathFactor; // <--- 杩欓噷鐩存帴浼犲叆 0.0 鍒?1.0 涔嬮棿鐨勬彃鍊?
-
-	// 2. 灏嗘墦鍖呭ソ鐨勭粨鏋勪綋鎺ㄩ€佺粰 Shader
-	vkCmdPushConstants(aCmdBuff, aSpeedLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PostProcessPC), &ppData);
+	const VkDescriptorSet cameraSets[] = {aSpeedDesc, aPortalWave.descriptor};
+	vkCmdBindDescriptorSets(aCmdBuff, VK_PIPELINE_BIND_POINT_GRAPHICS, aSpeedLayout, 0, 2, cameraSets, 0, nullptr);
+	vkCmdPushConstants(aCmdBuff, aSpeedLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+		sizeof(cameraEffects), &cameraEffects);
 	vkCmdSetViewport(aCmdBuff, 0, 1, &vp);
 	vkCmdSetScissor(aCmdBuff, 0, 1, &scissor);
 	vkCmdDraw(aCmdBuff, 3, 1, 0, 0);

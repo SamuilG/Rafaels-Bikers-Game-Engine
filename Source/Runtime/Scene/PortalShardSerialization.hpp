@@ -11,13 +11,19 @@ inline nlohmann::json SerializePortalShardEmitter(const PortalShardEmitter& e) {
     if (!e.IsValid()) throw std::runtime_error("Cannot save invalid portal shard effect settings.");
     const auto vec2 = [](const glm::vec2& v) { return nlohmann::json::array({v.x, v.y}); };
     const auto& m = e.material;
+    const auto& filter = e.screenFilter;
+    const auto& wave = e.crossingWave;
     return {{"followRider", e.followRider}, {"count", e.count}, {"duration", e.duration},
         {"emissionDuration", e.emissionDuration}, {"fadeIn", e.fadeIn}, {"fadeOut", e.fadeOut},
         {"spawnRadius", vec2(e.spawnRadius)}, {"travelDistance", vec2(e.travelDistance)},
         {"spawnHeight", vec2(e.spawnHeight)}, {"riseDistance", vec2(e.riseDistance)}, {"size", vec2(e.size)},
         {"expansionSpeed", e.expansionSpeed}, {"orbitSpeed", e.orbitSpeed}, {"spinSpeed", vec2(e.spinSpeed)},
         {"material", {{"opacity", m.opacity}, {"ior", m.ior}, {"refraction", m.refraction},
-            {"dispersion", m.dispersion}}}};
+            {"dispersion", m.dispersion}}},
+        {"screenFilter", {{"enabled", filter.enabled}, {"strength", filter.strength}, {"fadeOut", filter.fadeOut}}},
+        {"crossingWave", {{"enabled", wave.enabled}, {"duration", wave.duration}, {"radius", wave.radius},
+            {"width", wave.width}, {"strength", wave.strength}, {"textureScale", wave.textureScale},
+            {"groundLift", wave.groundLift}, {"groundThickness", wave.groundThickness}}}};
 }
 
 inline PortalShardEmitter DeserializePortalShardEmitter(const nlohmann::json& value) {
@@ -66,6 +72,31 @@ inline PortalShardEmitter DeserializePortalShardEmitter(const nlohmann::json& va
         number(m, "ior", e.material.ior);
         number(m, "refraction", e.material.refraction);
         number(m, "dispersion", e.material.dispersion);
+    }
+    if (value.contains("screenFilter")) {
+        const auto& filter = value["screenFilter"];
+        if (!filter.is_object()) fail("screenFilter");
+        if (filter.contains("enabled")) {
+            if (!filter["enabled"].is_boolean()) fail("screenFilter.enabled");
+            e.screenFilter.enabled = filter["enabled"].get<bool>();
+        }
+        number(filter, "strength", e.screenFilter.strength);
+        number(filter, "fadeOut", e.screenFilter.fadeOut);
+    }
+    if (value.contains("crossingWave")) {
+        const auto& wave = value["crossingWave"];
+        if (!wave.is_object()) fail("crossingWave");
+        if (wave.contains("enabled")) {
+            if (!wave["enabled"].is_boolean()) fail("crossingWave.enabled");
+            e.crossingWave.enabled = wave["enabled"].get<bool>();
+        }
+        number(wave, "duration", e.crossingWave.duration);
+        number(wave, "radius", e.crossingWave.radius);
+        number(wave, "width", e.crossingWave.width);
+        number(wave, "strength", e.crossingWave.strength);
+        number(wave, "textureScale", e.crossingWave.textureScale);
+        number(wave, "groundLift", e.crossingWave.groundLift);
+        number(wave, "groundThickness", e.crossingWave.groundThickness);
     }
     if (!e.IsValid()) fail("parameter range");
     return e;

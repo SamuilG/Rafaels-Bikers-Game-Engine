@@ -6,6 +6,40 @@
 
 namespace engine {
 
+inline constexpr float kPortalOpeningDuration = 1.5f;
+inline constexpr float kPortalFilterMaxFade = 10.0f;
+inline constexpr float kPortalWaveMaxDuration = 8.0f;
+
+struct PortalFilterTimeline {
+    float opening = 0.0f;
+    float fadeElapsed = -1.0f;
+
+    float Envelope(float fadeDuration) const {
+        return opening * (1.0f - glm::smoothstep(0.0f, fadeDuration, fadeElapsed));
+    }
+};
+
+struct PortalFilterVisual {
+    float amount = 0.0f;
+    float time = 0.0f;
+};
+
+struct PortalWaveTimeline {
+    glm::vec3 origin{0.0f};
+    float age = -1.0f;
+};
+
+struct PortalWaveVisual {
+    glm::vec3 origin{0.0f};
+    float radius = 0.0f;
+    float width = 0.0f;
+    float strength = 0.0f;
+    float textureScale = 0.0f;
+    float maxRadius = 0.0f;
+    float groundLift = 0.0f;
+    float groundThickness = 0.0f;
+};
+
 // Rendering consumes geometric instructions, without knowing which gameplay
 // object crossed a portal or which rules produced a post-process effect.
 struct PortalTransitionVisual {
@@ -24,6 +58,8 @@ struct SceneEffects {
     float portalEffectTime = 0.0f;
     PortalTransitionVisual portalTransition;
     float portalOpeningAge = -1.0f;
+    PortalFilterTimeline portalFilter;
+    PortalWaveTimeline portalWave;
 };
 
 } // namespace engine
